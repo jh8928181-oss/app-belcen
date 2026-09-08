@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Soplado - Reporte de Turno</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f6f9; }
+        .card { background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 500px; margin: auto; }
+        label { font-weight: bold; display: block; margin-top: 12px; }
+        input, select, button { width: 100%; padding: 10px; margin-top: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        button { background-color: #17a2b8; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 20px; font-size: 16px; }
+        button:hover { background-color: #138496; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>Reporte de Turno - Soplado</h2>
+        <form id="formSoplado">
+            <label>Operador en Turno:</label>
+            <select id="usuarioId" required>
+                <option value="1">Operador Soplado - Turno Mañana</option>
+            </select>
+
+            <label>Preformas Consumidas (Uds):</label>
+            <input type="number" id="preformas" placeholder="Ej. 1000" min="1" required>
+
+            <label>Etiquetas Consumidas (Uds):</label>
+            <input type="number" id="etiquetas" placeholder="Ej. 980" min="1" required>
+
+            <label>Botellas Conformes Producidas (Uds):</label>
+            <input type="number" id="botellas" placeholder="Ej. 970" min="1" required>
+
+            <label>Mermas / Defectuosas (Uds):</label>
+            <input type="number" id="mermas" placeholder="Ej. 10" value="0" min="0">
+
+            <button type="submit">Registrar Producción y Actualizar Stock</button>
+        </form>
+    </div>
+
+    <script>
+        document.getElementById('formSoplado').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const data = {
+                usuario_id: document.getElementById('usuarioId').value,
+                preformas_usadas: parseInt(document.getElementById('preformas').value),
+                etiquetas_usadas: parseInt(document.getElementById('etiquetas').value),
+                botellas_producidas: parseInt(document.getElementById('botellas').value),
+                mermas: parseInt(document.getElementById('mermas').value)
+            };
+
+            const res = await fetch('/api/soplado/reportar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            const result = await res.json();
+            if (result.ok) {
+                alert(result.mensaje);
+                e.target.reset();
+            } else {
+                alert('Error: ' + result.error);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard - Control de Inventario</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f6f9; }
+        .container { max-width: 1000px; margin: auto; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 14px; }
+        th { background-color: #343a40; color: white; }
+        .badge { font-weight: bold; padding: 4px 8px; border-radius: 4px; color: white; font-size: 12px; }
+        .badge-ok { background-color: #28a745; }
+        .badge-low { background-color: #dc3545; }
+        button { background-color: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Dashboard - Inventario General en Tiempo Real</h2>
+        <button onclick="cargarInventario()">Actualizar Stock</button>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Artículo</th>
+                    <th>Categoría</th>
+                    <th>Stock Actual</th>
+                    <th>Unidad</th>
+                    <th>Estado</th>
+                </tr>
+            </thead>
+            <tbody id="tablaInventario">
+                <tr><td colspan="6" style="text-align:center;">Cargando inventario...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        async function cargarInventario() {
+            try {
+                const res = await fetch('/api/inventario');
+                const articulos = await res.json();
+                const tbody = document.getElementById('tablaInventario');
+                tbody.innerHTML = '';
+
+                articulos.forEach(art => {
+                    const tr = document.createElement('tr');
+                    const esBajoStock = art.estado_stock === 'REALIZAR PEDIDO';
+                    const estadoClass = esBajoStock ? 'badge-low' : 'badge-ok';
+
+                    tr.innerHTML = `
+                        <td>${art.id}</td>
+                        <td><b>${art.nombre}</b></td>
+                        <td>${art.categoria}</td>
+                        <td>${art.stock}</td>
+                        <td>${art.unidad_medida}</td>
+                        <td><span class="badge ${estadoClass}">${art.estado_stock}</span></td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        cargarInventario();
+    </script>
+</body>
+</html>

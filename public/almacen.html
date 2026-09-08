@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Gestión de Inventario y Almacén - Belcen</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; background-color: #f4f6f9; padding: 20px; }
+        .table-container { max-width: 1100px; margin: auto; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 25px; }
+        h3 { color: #343a40; text-align: center; border-bottom: 2px solid #007bff; padding-bottom: 8px; }
+        select, input { padding: 8px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; box-sizing: border-box; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        th { background-color: #007bff; color: white; }
+        .text-center { text-align: center; }
+        .logout { display: block; text-align: center; margin-top: 15px; color: #dc3545; text-decoration: none; font-weight: bold; }
+        .btn-accion { padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-accion:hover { background: #218838; }
+        .btn-ajustar { background: #ffc107; color: #000; }
+        .btn-ajustar:hover { background: #e0a800; }
+        .btn-regularizar { background: #17a2b8; color: white; }
+        .btn-regularizar:hover { background: #138496; }
+    </style>
+</head>
+<body>
+
+    <!-- 1. SECCIÓN DE INGRESOS PENDIENTES DE VIGILANCIA -->
+    <div class="table-container" style="border-top: 5px solid #ffc107;">
+        <h3 style="color: #d39e00; border-bottom: 2px solid #ffc107;">NOTIFICACIONES Y PENDIENTES DE VIGILANCIA</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>GUÍA / DOC</th>
+                    <th>PROVEEDOR</th>
+                    <th>PRODUCTO TEXTUAL</th>
+                    <th class="text-center">CANTIDAD</th>
+                    <th class="text-center">ACCESORIOS / FOTO</th>
+                    <th class="text-center">DAR CONFORMIDAD</th>
+                </tr>
+            </thead>
+            <tbody id="tablaPendientes">
+                <tr><td colspan="6" class="text-center">Cargando pendientes...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 2. SECCIÓN DE INVENTARIO Y AJUSTE MANUAL -->
+    <div class="table-container" style="border-top: 5px solid #007bff;">
+        <h3 style="color: #007bff;">INVENTARIO GENERAL Y AJUSTE MANUAL</h3>
+        
+        <div style="display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 250px;">
+                <label><b>Filtrar por Categoría:</b></label>
+                <select id="filtroCategoria" onchange="aplicarFiltros()" style="width: 100%;">
+                    <option value="TODOS">-- Ver Todas las Categorías --</option>
+                    <option value="BOTELLAS Y GALONERAS">Envases (Botellas / Baldes / Latas)</option>
+                    <option value="CAJAS">Cajas</option>
+                    <option value="TAPAS Y ACCESORIOS">Tapas y Accesorios</option>
+                    <option value="PREFORMAS Y SERVICIOS">Preformas y Servicios</option>
+                    <option value="ETIQUETAS">Etiquetas</option>
+                </select>
+            </div>
+            <div style="flex: 1; min-width: 250px;">
+                <label><b>Buscar Artículo:</b></label>
+                <input type="text" id="inputBuscador" onkeyup="aplicarFiltros()" placeholder="Escribe para buscar..." style="width: 100%;">
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>ARTÍCULO / INSUMO</th>
+                    <th>CATEGORÍA</th>
+                    <th class="text-center">STOCK ACTUAL</th>
+                    <th class="text-center" style="background: #17a2b8;">EQUIVALENTE EN CAJAS (Solo Envases)</th>
+                    <th class="text-center">ESTADO</th>
+                    <th class="text-center">ACCIÓN MANUAL</th>
+                </tr>
+            </thead>
+            <tbody id="tablaInventarioAlmacen"></tbody>
+        </table>
+    </div>
+
+    <!-- 3. SECCIÓN DE REGISTRO DE SALIDAS Y LECTOR DE GUÍAS -->
+    <div class="table-container" style="border-top: 5px solid #dc3545;">
+        <h3 style="color: #dc3545;">REGISTRO DE SALIDAS DE ALMACÉN (CON / SIN GUÍA)</h3>
+        
+        <form id="formSalida" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;" enctype="multipart/form-data">
+            <div>
+                <label><b>Tipo de Salida:</b></label>
+                <select id="tipo_registro" required style="width: 100%;">
+                    <option value="CON GUIA">Con Guía de Remisión (Lector PDF automático)</option>
+                    <option value="SIN GUIA">Sin Guía (Queda pendiente de regularizar)</option>
+                </select>
+            </div>
+
+            <div>
+                <label><b>Subir Guía de Remisión (PDF):</b></label>
+                <input type="file" id="archivo_guia" name="archivo_guia" accept=".pdf" style="width: 100%;">
+            </div>
+
+            <div>
+                <label><b>Fecha de Salida:</b></label>
+                <input type="date" id="fecha_salida" required style="width: 100%;">
+            </div>
+
+            <div>
+                <label><b>Seleccionar Producto a Despachar:</b></label>
+                <select id="selectArticuloSalida" required style="width: 100%;">
+                    <option value="">-- Seleccione un artículo --</option>
+                </select>
+            </div>
+
+            <div>
+                <label><b>Cantidad a Despachar:</b></label>
+                <input type="number" step="0.01" id="cantidad_salida" placeholder="Ej. 50" required style="width: 100%;">
+            </div>
+
+            <div>
+                <label><b>N° de Guía (Opcional si sube PDF):</b></label>
+                <input type="text" id="numero_guia" name="numero_guia" placeholder="Ej. F001-000452" style="width: 100%;">
+            </div>
+
+            <div>
+                <label><b>Empresa Cliente / Destinatario:</b></label>
+                <input type="text" id="empresa" name="empresa" placeholder="Nombre de la empresa" required style="width: 100%;">
+            </div>
+
+            <div>
+                <label><b>RUC:</b></label>
+                <input type="text" id="ruc" name="ruc" placeholder="RUC de la empresa" style="width: 100%;">
+            </div>
+
+            <div>
+                <label><b>Destino (Lugar de entrega):</b></label>
+                <input type="text" id="destino" name="destino" placeholder="Dirección de destino" required style="width: 100%;">
+            </div>
+
+            <div>
+                <label><b>Chofer / Licencia:</b></label>
+                <input type="text" id="chofer_licencia" name="chofer_licencia" placeholder="Nombre y Licencia" required style="width: 100%;">
+            </div>
+
+            <div>
+                <label><b>Placa del Vehículo:</b></label>
+                <input type="text" id="placa" name="placa" placeholder="Ej. ABC-123" required style="width: 100%;">
+            </div>
+
+            <div style="grid-column: span 2;">
+                <label><b>Punto de Partida:</b></label>
+                <input type="text" id="punto_partida" name="punto_partida" value="Planta Principal - Corporación Belcen" required style="width: 100%;">
+            </div>
+
+            <div style="grid-column: span 2;">
+                <button type="submit" style="background: #dc3545; color: white; padding: 12px; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; width: 100%;">Registrar Salida en Historial</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- 4. CUADRO RESUMEN DE HISTORIAL DE SALIDAS -->
+    <div class="table-container" style="border-top: 5px solid #6c757d;">
+        <h3 style="color: #495057;">HISTORIAL DE SALIDAS REGISTRADAS</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>FECHA</th>
+                    <th>TIPO / ESTADO GUÍA</th>
+                    <th>N° GUÍA</th>
+                    <th>EMPRESA / RUC</th>
+                    <th>DESTINO</th>
+                    <th>PRODUCTO</th>
+                    <th class="text-center">CANTIDAD</th>
+                    <th class="text-center">ACCIÓN</th>
+                </tr>
+            </thead>
+            <tbody id="tablaHistorialSalidas">
+                <tr><td colspan="8" class="text-center">Cargando salidas...</td></tr>
+            </tbody>
+        </table>
+        <a href="dashboard.html" class="logout">Volver al Dashboard General</a>
+    </div>
+
+    <script>
+        let inventarioGlobal = [];
+        document.getElementById('fecha_salida').valueAsDate = new Date();
+
+        // --- CARGAR PENDIENTES DE VIGILANCIA ---
+        async function cargarPendientes() {
+            try {
+                const res = await fetch('/api/almacen/pendientes');
+                const data = await res.json();
+                const tbody = document.getElementById('tablaPendientes');
+                tbody.innerHTML = '';
+
+                if (data.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="6" class="text-center" style="color: #6c757d;">No hay ingresos pendientes de conformidad por parte de vigilancia.</td></tr>`;
+                    return;
+                }
+
+                data.forEach(item => {
+                    tbody.innerHTML += `
+                        <tr>
+                            <td><b>${item.tipo_documento}:</b> ${item.numero_guia}</td>
+                            <td>${item.proveedor}</td>
+                            <td>${item.producto_textual}</td>
+                            <td class="text-center" style="font-weight: bold; color: #007bff;">${item.cantidad} ${item.unidad_medida}</td>
+                            <td class="text-center">
+                                ${item.foto_url ? `<a href="${item.foto_url}" target="_blank" style="color: #007bff; font-weight: bold;">Ver Guía/Foto</a>` : 'Sin archivo'}
+                            </td>
+                            <td class="text-center">
+                                <button onclick="darConformidad(${item.id}, '${item.producto_textual}')" class="btn-accion">Dar Conformidad</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+            } catch (e) {
+                console.error("Error al cargar pendientes:", e);
+            }
+        }
+
+        async function darConformidad(id, productoTextual) {
+            const nombreManual = prompt(`Asocie "${productoTextual}" a un artículo exacto del inventario:`, productoTextual);
+            if (nombreManual === null) return;
+
+            try {
+                const res = await fetch('/api/almacen/conformidad', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ingreso_id: id,
+                        nombre_manual: nombreManual,
+                        usuario_almacen: localStorage.getItem('usuario_actual') || 'almacen_user'
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    alert('✅ ' + data.mensaje);
+                    cargarPendientes();
+                    cargarInventarioAlmacen();
+                } else {
+                    alert('❌ ' + (data.mensaje || 'Error al procesar'));
+                }
+            } catch (err) {
+                console.error(err);
+                alert('❌ Error de conexión.');
+            }
+        }
+
+        // --- CARGAR INVENTARIO Y FILTROS ---
+        async function cargarInventarioAlmacen() {
+            try {
+                const res = await fetch('/api/inventario');
+                inventarioGlobal = await res.json();
+                aplicarFiltros();
+                cargarArticulosParaSalida();
+            } catch (e) {
+                console.error("Error al cargar inventario:", e);
+            }
+        }
+
+        function calcularCajasSiEsEnvase(categoria, nombre, stock) {
+            if (categoria !== 'BOTELLAS Y GALONERAS') return '-';
+            let divisor = 12; 
+            let n = nombre.toLowerCase();
+            if (n.includes('200 ml') || n.includes('200ml')) divisor = 24;
+            else if (n.includes('2 lt') || n.includes('3 lt') || n.includes('5 lt')) divisor = 4;
+            else if (n.includes('18 lt') || n.includes('20 lt')) divisor = 1;
+            let cajas = stock / divisor;
+            return divisor === 1 ? '-' : `${cajas.toFixed(1)} cjs (fac. ${divisor})`;
+        }
+
+        function mostrarInventarioAlmacen(data) {
+            const tbody = document.getElementById('tablaInventarioAlmacen');
+            tbody.innerHTML = '';
+
+            if (data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="text-center" style="color: #6c757d;">No se encontraron artículos.</td></tr>`;
+                return;
+            }
+
+            data.forEach(item => {
+                const equivalenciaCajas = calcularCajasSiEsEnvase(item.categoria, item.nombre, item.stock);
+                tbody.innerHTML += `
+                    <tr>
+                        <td><b>${item.nombre}</b></td>
+                        <td><span style="background: #e9ecef; padding: 3px 8px; border-radius: 4px; font-size: 12px;">${item.categoria || 'General'}</span></td>
+                        <td class="text-center" style="font-weight: bold; color: #007bff;">${item.stock} ${item.unidad_medida || 'UNIDADES'}</td>
+                        <td class="text-center" style="background: #f8f9fa; color: #28a745; font-weight: bold;">${equivalenciaCajas}</td>
+                        <td class="text-center"><span style="padding: 3px 6px; border-radius: 4px; font-size: 11px; background: ${item.estado === 'STOCK SUFICIENTE' ? '#d4edda' : '#f8d7da'}; color: ${item.estado === 'STOCK SUFICIENTE' ? '#155724' : '#721c24'};">${item.estado}</span></td>
+                        <td class="text-center">
+                            <button onclick="ajustarStockManual(${item.id}, '${item.nombre}', ${item.stock})" class="btn-accion btn-ajustar">Ajustar</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        function aplicarFiltros() {
+            const categoria = document.getElementById('filtroCategoria').value;
+            const textoBusqueda = document.getElementById('inputBuscador').value.toLowerCase();
+            let resultado = inventarioGlobal;
+
+            if (categoria !== 'TODOS') {
+                resultado = resultado.filter(i => i.categoria === categoria);
+            }
+            if (textoBusqueda.trim() !== '') {
+                resultado = resultado.filter(i => i.nombre.toLowerCase().includes(textoBusqueda));
+            }
+            mostrarInventarioAlmacen(resultado);
+        }
+
+       function ajustarStockManual(id, nombre, stockActual) {
+            // Creamos un contenedor flotante o pedimos el valor mediante un input directo reemplazando el prompt bloqueado
+            let nuevoValor = window.prompt ? null : null;
+            
+            // Usamos un pequeño truco con un modal nativo o un input de formulario rápido
+            let contenedor = document.createElement('div');
+            contenedor.style.position = 'fixed';
+            contenedor.style.top = '0';
+            contenedor.style.left = '0';
+            contenedor.style.width = '100%';
+            contenedor.style.height = '100%';
+            contenedor.style.background = 'rgba(0,0,0,0.5)';
+            contenedor.style.display = 'flex';
+            contenedor.style.justifyContent = 'center';
+            contenedor.style.alignItems = 'center';
+            contenedor.style.zIndex = '9999';
+
+            contenedor.innerHTML = `
+                <div style="background: white; padding: 20px; border-radius: 8px; width: 350px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
+                    <h4 style="margin-top: 0; color: #333;">Ajustar Stock Manual</h4>
+                    <p style="font-size: 13px; color: #666;"><b>${nombre}</b><br>Stock actual: ${stockActual}</p>
+                    <input type="number" step="0.01" id="inputNuevoStock" value="${stockActual}" style="width: 100%; padding: 8px; margin-bottom: 15px; box-sizing: border-box;">
+                    <div style="text-align: right;">
+                        <button id="btnCancelarStock" style="padding: 6px 12px; margin-right: 5px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancelar</button>
+                        <button id="btnGuardarStock" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Guardar</button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(contenedor);
+            const inputVal = document.getElementById('inputNuevoStock');
+            inputVal.focus();
+            inputVal.select();
+
+            document.getElementById('btnCancelarStock').onclick = () => {
+                document.body.removeChild(contenedor);
+            };
+
+            document.getElementById('btnGuardarStock').onclick = async () => {
+                const stockNum = parseFloat(inputVal.value);
+                if (isNaN(stockNum) || stockNum < 0) {
+                    alert('❌ Ingrese un valor numérico válido.');
+                    return;
+                }
+
+                document.body.removeChild(contenedor);
+
+                try {
+                    const res = await fetch('/api/almacen/ajustar-stock', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            articulo_id: parseInt(id), 
+                            nuevo_stock: stockNum 
+                        })
+                    });
+                    const data = await res.json();
+                    if(res.ok && data.success) {
+                        alert('✅ ' + data.mensaje);
+                        cargarInventarioAlmacen();
+                    } else {
+                        alert('❌ ' + (data.mensaje || 'Error al actualizar'));
+                    }
+                } catch(e) {
+                    console.error(e);
+                    alert('❌ Error de conexión al actualizar el stock.');
+                }
+            };
+        }
+
+        // --- CARGAR ARTÍCULOS EN SELECTOR DE SALIDAS ---
+        function cargarArticulosParaSalida() {
+            const select = document.getElementById('selectArticuloSalida');
+            select.innerHTML = '<option value="">-- Seleccione un artículo --</option>';
+            inventarioGlobal.forEach(item => {
+                select.innerHTML += `<option value="${item.id}">${item.nombre} (Stock: ${item.stock} ${item.unidad_medida || 'UNIDADES'})</option>`;
+            });
+        }
+
+        // --- HISTORIAL DE SALIDAS Y REGULARIZACIÓN ---
+        async function cargarHistorialSalidas() {
+            try {
+                const res = await fetch('/api/salidas/historial');
+                const data = await res.json();
+                const tbody = document.getElementById('tablaHistorialSalidas');
+                tbody.innerHTML = '';
+
+                if(data.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="8" class="text-center" style="color: #6c757d;">No hay salidas registradas aún.</td></tr>`;
+                    return;
+                }
+
+                data.forEach(row => {
+                    const fecha = row.fecha_salida ? row.fecha_salida.split('T')[0] : '';
+                    const estadoBadge = row.estado_guia === 'REGULARIZADO' 
+                        ? `<span style="background: #28a745; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px;">REGULARIZADO</span>` 
+                        : `<span style="background: #ffc107; color: black; padding: 2px 6px; border-radius: 3px; font-size: 10px;">PENDIENTE GUÍA</span>`;
+
+                    tbody.innerHTML += `
+                        <tr>
+                            <td><b>${fecha}</b></td>
+                            <td>${row.tipo_registro}<br>${estadoBadge}</td>
+                            <td><b>${row.numero_guia || 'S/N'}</b></td>
+                            <td><b>${row.empresa}</b><br><small>RUC: ${row.ruc}</small></td>
+                            <td>${row.destino}</td>
+                            <td><b>${row.articulo_nombre}</b></td>
+                            <td class="text-center" style="font-weight: bold; color: #dc3545;">${row.cantidad_salida} ${row.unidad_medida}</td>
+                            <td class="text-center">
+                                ${row.estado_guia !== 'REGULARIZADO' ? `<button onclick="regularizarGuia(${row.id})" class="btn-accion btn-regularizar">Reg. Guía</button>` : '-'}
+                            </td>
+                        </tr>
+                    `;
+                });
+            } catch(e) {
+                console.error("Error al cargar historial de salidas:", e);
+            }
+        }
+
+        async function regularizarGuia(id) {
+            const nuevaGuia = prompt("Ingrese el número de la Guía de Remisión para regularizar este despacho:");
+            if (!nuevaGuia || nuevaGuia.trim() === '') return;
+
+            try {
+                const res = await fetch('/api/salidas/regularizar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ salida_id: id, nuevo_numero_guia: nuevaGuia.trim() })
+                });
+                const data = await res.json();
+                alert(data.mensaje);
+                cargarHistorialSalidas();
+            } catch(e) {
+                console.error(e);
+                alert("Error al conectar con el servidor.");
+            }
+        }
+
+        document.getElementById('formSalida').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+
+            try {
+                const res = await fetch('/api/salidas/registrar', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+
+                if(res.ok && data.success) {
+                    alert('✅ ' + data.mensaje);
+                    document.getElementById('formSalida').reset();
+                    document.getElementById('fecha_salida').valueAsDate = new Date();
+                    cargarHistorialSalidas();
+                } else {
+                    alert('❌ ' + (data.mensaje || 'Error al registrar la salida.'));
+                }
+            } catch(err) {
+                console.error(err);
+                alert('❌ Error de conexión con el servidor.');
+            }
+        });
+
+        // Inicializar datos en la vista
+        cargarPendientes();
+        cargarInventarioAlmacen();
+        cargarHistorialSalidas();
+    </script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auditoría - Corporación Belcen</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; }
+        .container { max-width: 1100px; margin: auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        h2 { color: #343a40; text-align: center; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #dee2e6; padding: 10px; text-align: left; font-size: 13px; }
+        th { background-color: #343a40; color: white; }
+        .logout { background-color: #dc3545; margin-top: 20px; display: inline-block; padding: 10px 20px; text-decoration: none; color: white; border-radius: 4px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Panel de Auditoría - Registros de Vigilancia y Almacén</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Fecha / Hora</th>
+                    <th>Vigilante</th>
+                    <th>Documento / N°</th>
+                    <th>Producto & Cantidad</th>
+                    <th>Proveedor / Ruta</th>
+                    <th>Estado / Conformidad</th>
+                    <th>Evidencia</th>
+                </tr>
+            </thead>
+            <tbody id="tablaAuditoria">
+                <!-- Datos dinámicos -->
+            </tbody>
+        </table>
+        <br>
+        <button class="logout" onclick="localStorage.clear(); window.location.href='index.html';">Cerrar Sesión</button>
+    </div>
+
+    <script>
+        async function cargarRegistrosAuditoria() {
+            try {
+                const res = await fetch('/api/auditoria/registros');
+                const registros = await res.json();
+                const tbody = document.getElementById('tablaAuditoria');
+                tbody.innerHTML = '';
+
+                if(registros.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No hay registros en el sistema.</td></tr>';
+                    return;
+                }
+
+                registros.forEach(item => {
+                    let fotoHtml = item.foto_url ? `<a href="${item.foto_url}" target="_blank">Ver Foto</a>` : 'Sin Foto';
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${new Date(item.fecha_ingreso).toLocaleString()}</td>
+                        <td>${item.usuario_vigilancia || 'N/D'}</td>
+                        <td><b>${item.tipo_documento}</b><br>${item.numero_guia || 'S/N'}</td>
+                        <td>${item.producto_textual}<br><b>Cant:</b> ${item.cantidad} ${item.unidad_medida || ''}</td>
+                        <td>${item.proveedor || '-'}<br><small>${item.lugar_partida || ''} -> ${item.punto_llegada || ''}</small></td>
+                        <td><span style="color: ${item.estado.includes('CONFORME') ? 'green' : 'orange'}; font-weight:bold;">${item.estado}</span></td>
+                        <td>${fotoHtml}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch(err) {
+                console.error(err);
+            }
+        }
+
+        cargarRegistrosAuditoria();
+    </script>
+</body>
+</html>

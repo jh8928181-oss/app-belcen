@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vigilancia - Corporación Belcen</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        h2 { color: #343a40; text-align: center; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; color: #495057; }
+        input, select { width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 4px; box-sizing: border-box; }
+        button { background-color: #28a745; color: white; border: none; padding: 12px; width: 100%; border-radius: 4px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        button:hover { background-color: #218838; }
+        .logout { background-color: #dc3545; margin-top: 15px; }
+        .logout:hover { background-color: #c82333; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Control de Vigilancia - Ingresos</h2>
+        <form id="formVigilancia">
+            <div class="form-group">
+                <label for="producto">Producto / Material a Ingresar:</label>
+                <input type="text" id="producto" placeholder="Ej. Botellas 1L B-1, Tapas doradas, etc." required>
+            </div>
+            <div class="form-group">
+                <label for="cantidad">Cantidad:</label>
+                <input type="number" step="0.01" id="cantidad" placeholder="Ingrese cantidad" required>
+            </div>
+            <div class="form-group">
+                <label for="tipo_documento">Tipo de Documento:</label>
+                <select id="tipo_documento" required>
+                    <option value="Guia de Remision">Guía de Remisión</option>
+                    <option value="Otro Documento">Otro Documento</option>
+                    <option value="Sin Documento">Sin Documento (Alerta a Almacén)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="numero_guia">Número de Guía / Doc / Observación:</label>
+                <input type="text" id="numero_guia" placeholder="Número de documento o motivo">
+            </div>
+            <div class="form-group" id="grupoFoto">
+                <label for="foto">Foto de la Guía o Documento:</label>
+                <input type="file" id="foto" accept="image/*">
+            </div>
+            <button type="submit">Registrar Ingreso en Garita</button>
+        </form>
+        <button class="logout" onclick="localStorage.clear(); window.location.href='index.html';">Cerrar Sesión</button>
+    </div>
+
+    <script>
+        document.getElementById('tipo_documento').addEventListener('change', (e) => {
+            const grupoFoto = document.getElementById('grupoFoto');
+            if(e.target.value === 'Sin Documento') {
+                grupoFoto.style.display = 'none';
+            } else {
+                grupoFoto.style.display = 'block';
+            }
+        });
+
+        document.getElementById('formVigilancia').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData();
+            formData.append('usuario', localStorage.getItem('usuario_actual') || 'vigilancia_user');
+            formData.append('producto_textual', document.getElementById('producto').value);
+            formData.append('cantidad', document.getElementById('cantidad').value);
+            formData.append('tipo_documento', document.getElementById('tipo_documento').value);
+            formData.append('numero_guia', document.getElementById('numero_guia').value);
+            formData.append('lugar_partida', 'Proveedor / Externa');
+            formData.append('punto_llegada', 'Planta Principal - Almacén');
+            formData.append('unidad_medida', 'UNIDADES');
+            
+            const fotoInput = document.getElementById('foto');
+            if(fotoInput.files[0]) {
+                formData.append('foto_guia', fotoInput.files[0]);
+            }
+
+            try {
+                const res = await fetch('/api/vigilancia/registrar', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                if(res.ok && data.success) {
+                    alert('✅ Ingreso registrado correctamente en garita.');
+                    document.getElementById('formVigilancia').reset();
+                    document.getElementById('grupoFoto').style.display = 'block';
+                } else {
+                    alert('❌ Error: ' + (data.mensaje || 'No se pudo registrar'));
+                }
+            } catch(err) {
+                console.error(err);
+                alert('Error de conexión con el servidor.');
+            }
+        });
+    </script>
+</body>
+</html>

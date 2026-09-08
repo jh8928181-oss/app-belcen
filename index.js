@@ -1,0 +1,485 @@
+const express = require('express');
+const pool = require('./db');
+const path = require('path');
+const multer = require('multer');
+const pdfParse = require('pdf-parse');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const upload = multer({ dest: 'public/uploads/' });
+
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+// --- LOGIN ---
+app.post('/api/login', async (req, res) => {
+    try {
+        const { usuario, password } = req.body;
+        const result = await pool.query('SELECT * FROM usuarios_sistema WHERE usuario = $1 AND password = $2', [usuario, password]);
+        
+        if (result.rows.length > 0) {
+            const user = result.rows[0];
+            res.json({ success: true, rol: user.rol, usuario: user.usuario });
+        } else {
+            res.status(401).json({ success: false, mensaje: 'Usuario o contraseña incorrectos' });
+        }
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Error en el servidor');
+    }
+});
+
+// --- VIGILANCIA (Registro con foto/documento) ---
+app.post('/api/vigilancia/registrar', upload.single('foto_guia'), async (req, res) => {
+    try {
+        const { tipo_documento, numero_guia, proveedor, lugar_partida, punto_llegada, producto_textual, cantidad, unidad_medida, usuario } = req.body;
+        const foto_url = req.file ? `/uploads/${req.file.filename}` : null;
+
+        const query = `
+            INSERT INTO ingresos_vigilancia (tipo_documento, numero_guia, proveedor, lugar_partida, punto_llegada, producto_textual, cantidad, unidad_medida, foto_url, usuario_vigilancia, estado)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PENDIENTE CONFORMIDAD') RETURNING *;
+        `;
+        const values = [tipo_documento, numero_guia, proveedor, lugar_partida, punto_llegada, producto_textual, cantidad, unidad_medida, foto_url, usuario];
+        
+        const nuevoIngreso = await pool.query(query, values);
+        res.json({ success: true, mensaje: 'Ingreso registrado por vigilancia correctamente', ingreso: nuevoIngreso.rows[0] });
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Error al registrar en vigilancia');
+    }
+});
+
+// --- ALMACÉN: PENDIENTES Y CONFORMIDAD ---
+app.get('/api/almacen/pendientes', async (req, res) => {
+    try {
+        const result = await pool.query("SELECT * FROM ingresos_vigilancia WHERE estado = 'PENDIENTE CONFORMIDAD' ORDER BY id DESC");
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Error al obtener pendientes');
+    }
+});
+
+app.post('/api/almacen/conformidad', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { ingreso_id, articulo_id_inventario, nombre_manual, usuario_almacen } = req.body;
+        await client.query('BEGIN');
+
+        const ingresoRes = await client.query('SELECT * FROM ingresos_vigilancia WHERE id = $1', [ingreso_id]);
+        const ingreso = ingresoRes.rows[0];
+
+        let targetArticuloId = articulo_id_inventario;
+
+        if (!targetArticuloId && nombre_manual) {
+            const existeRes = await client.query('SELECT id FROM inventario WHERE LOWER(nombre) = LOWER($1)', [nombre_manual]);
+            if (existeRes.rows.length > 0) {
+                targetArticuloId = existeRes.rows[0].id;
+            } else {
+                const nuevoArt = await client.query(
+                    `INSERT INTO inventario (nombre, categoria, stock, unidad_medida, estado) VALUES ($1, 'General', 0, 'UNIDADES', 'STOCK NORMAL') RETURNING id`,
+                    [nombre_manual]
+                );
+                targetArticuloId = nuevoArt.rows[0].id;
+            }
+        }
+
+        await client.query(
+            `UPDATE inventario SET stock = stock + $1 WHERE id = $2`,
+            [ingreso.cantidad, targetArticuloId]
+        );
+
+        await client.query(
+            `UPDATE ingresos_vigilancia SET estado = 'CONFORME - RECIBIDO POR ${usuario_almacen}' WHERE id = $1`,
+            [ingreso_id]
+        );
+
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: 'Conformidad aplicada y stock actualizado exitosamente.' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error(err);
+        res.status(500).send('Error al procesar conformidad');
+    } finally {
+        client.release();
+    }
+});
+
+// --- ALMACÉN: AJUSTE MANUAL DE INVENTARIO ---
+app.post('/api/almacen/ajustar-stock', async (req, res) => {
+    try {
+        const { articulo_id, nuevo_stock } = req.body;
+        
+        await pool.query(
+            `UPDATE inventario 
+             SET stock = $1, 
+                 estado = CASE WHEN $1 <= 0 THEN 'REALIZAR PEDIDO' ELSE 'STOCK SUFICIENTE' END 
+             WHERE id = $2`,
+            [nuevo_stock, articulo_id]
+        );
+
+        res.json({ success: true, mensaje: 'Stock ajustado manualmente con éxito.' });
+    } catch (err) {
+        console.error("Error al ajustar stock:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al actualizar el stock manualmente.' });
+    }
+});
+
+// --- INVENTARIO GENERAL (Para el Dashboard) ---
+app.get('/api/inventario', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT id, nombre, categoria, stock, 
+                   COALESCE(unidad_medida, 'UNIDADES') as unidad_medida, 
+                   COALESCE(estado, 'STOCK NORMAL') as estado 
+            FROM inventario 
+            ORDER BY id ASC
+        `);
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Error al obtener el inventario');
+    }
+});
+
+// --- SOPLADO ---
+app.post('/api/soplado/registrar', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { preforma_id, cantidad_preformas, etiqueta_id, cantidad_etiquetas, botella_id, cantidad_botellas } = req.body;
+
+        await client.query('BEGIN');
+
+        if (preforma_id && cantidad_preformas) {
+            await client.query(`UPDATE inventario SET stock = stock - $1 WHERE id = $2`, [cantidad_preformas, preforma_id]);
+        }
+        if (etiqueta_id && cantidad_etiquetas) {
+            await client.query(`UPDATE inventario SET stock = stock - $1 WHERE id = $2`, [cantidad_etiquetas, etiqueta_id]);
+        }
+        if (botella_id && cantidad_botellas) {
+            await client.query(`UPDATE inventario SET stock = stock + $1 WHERE id = $2`, [cantidad_botellas, botella_id]);
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: 'Producción de soplado registrada y stock actualizado correctamente.' });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error al registrar soplado:', error);
+        res.status(500).send('Error al procesar el reporte de soplado');
+    } finally {
+        client.release();
+    }
+});
+
+// --- ENVASADO (Descuento automático de insumos) ---
+app.post('/api/envasado/registrar', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { producto_tipo, cantidad_producida, numero_lote } = req.body; 
+        await client.query('BEGIN');
+
+        let insumosADescontar = [];
+
+        switch (producto_tipo) {
+            case 'b1_200ml':
+                insumosADescontar = [
+                    { nombre: 'Botella de 200 ml - B-1', cantidad: cantidad_producida * 24 },
+                    { nombre: 'Tapa Tapon 26mm (200ml)', cantidad: (cantidad_producida * 24) / 1000 }
+                ];
+                break;
+            case 'b1_500ml':
+                insumosADescontar = [
+                    { nombre: 'Botella de 500 ml - B-1', cantidad: cantidad_producida * 12 },
+                    { nombre: 'Tapa dosif. N° 26 blanco / Dorado', cantidad: (cantidad_producida * 12) / 1000 }
+                ];
+                break;
+            case 'b1_900ml':
+                insumosADescontar = [
+                    { nombre: 'Botella de 900 ml - B-1', cantidad: cantidad_producida * 12 },
+                    { nombre: 'Tapa dosif. N° 26 blanco / Dorado', cantidad: (cantidad_producida * 12) / 1000 }
+                ];
+                break;
+            case 'b1_1lt':
+                insumosADescontar = [
+                    { nombre: 'Botella de 1 Lt - B-1', cantidad: cantidad_producida * 12 },
+                    { nombre: 'Tapa dosif. N° 26 blanco / Dorado', cantidad: (cantidad_producida * 12) / 1000 }
+                ];
+                break;
+            case 'b1_2lt':
+                insumosADescontar = [
+                    { nombre: 'Botella de 2 Lt - B-1', cantidad: cantidad_producida * 6 },
+                    { nombre: 'Tapa color Rojo 2lt', cantidad: (cantidad_producida * 6) / 1000 }
+                ];
+                break;
+            case 'b1_5lt':
+                insumosADescontar = [
+                    { nombre: 'Galonera B-1 x 5 lt', cantidad: cantidad_producida * 4 },
+                    { nombre: 'Tapa dorada 5lt', cantidad: (cantidad_producida * 4) / 1000 }
+                ];
+                break;
+            case 'donlalo_800ml':
+                insumosADescontar = [
+                    { nombre: 'Botella de 800ml - Don Lalo', cantidad: cantidad_producida * 12 },
+                    { nombre: 'Tapa dosif. N° 26 blanco / Dorado', cantidad: (cantidad_producida * 12) / 1000 }
+                ];
+                break;
+            case 'donlalo_20lt':
+                insumosADescontar = [
+                    { nombre: 'Balde Don Lalo x 20lt', cantidad: cantidad_producida * 1 },
+                    { nombre: 'TAAAAPA BALDE DON LALO', cantidad: cantidad_producida * 1 }
+                ];
+                break;
+            case 'belini_200ml':
+                insumosADescontar = [
+                    { nombre: 'Botella Belini x 200 ml', cantidad: cantidad_producida * 24 },
+                    { nombre: 'Tapa Tapon 26mm (200ml)', cantidad: (cantidad_producida * 24) / 1000 }
+                ];
+                break;
+            case 'belini_500ml':
+                insumosADescontar = [
+                    { nombre: 'Botella Belini x 500 ml', cantidad: cantidad_producida * 12 },
+                    { nombre: 'Tapa dosif. N° 26 blanco / Dorado', cantidad: (cantidad_producida * 12) / 1000 }
+                ];
+                break;
+            case 'belini_900ml':
+                insumosADescontar = [
+                    { nombre: 'Botella Belini x 900 ml', cantidad: cantidad_producida * 12 },
+                    { nombre: 'Tapa dosif. N° 26 blanco / Dorado', cantidad: (cantidad_producida * 12) / 1000 }
+                ];
+                break;
+            case 'belini_1lt':
+                insumosADescontar = [
+                    { nombre: 'Botella Belini x 1 lt', cantidad: cantidad_producida * 12 },
+                    { nombre: 'Tapa dosif. N° 26 blanco / Dorado', cantidad: (cantidad_producida * 12) / 1000 }
+                ];
+                break;
+            case 'belini_2lt':
+                insumosADescontar = [
+                    { nombre: 'Galonera Belini x 2 lt', cantidad: cantidad_producida * 6 },
+                    { nombre: 'Tapa dorada 2lt', cantidad: (cantidad_producida * 6) / 1000 }
+                ];
+                break;
+            case 'belini_3lt':
+                insumosADescontar = [
+                    { nombre: 'Botella Belini x 3 lt', cantidad: cantidad_producida * 4 },
+                    { nombre: 'Tapa color Celeste 3lt', cantidad: (cantidad_producida * 4) / 1000 },
+                    { nombre: 'Asas plasticas color celestes pico 45', cantidad: (cantidad_producida * 4) / 1000 }
+                ];
+                break;
+            case 'belini_5lt':
+                insumosADescontar = [
+                    { nombre: 'Galonera Belini x 5 lt', cantidad: cantidad_producida * 4 },
+                    { nombre: 'Tapa dorada 5lt', cantidad: (cantidad_producida * 4) / 1000 }
+                ];
+                break;
+            case 'belini_lata18lt':
+                insumosADescontar = [
+                    { nombre: 'Lata Belini 18lt', cantidad: cantidad_producida * 1 }
+                ];
+                break;
+            case 'belini_balde18lt':
+                insumosADescontar = [
+                    { nombre: 'Balde Belini x 18 lt', cantidad: cantidad_producida * 1 },
+                    { nombre: 'Tapa BALDE BELINI color amarillo', cantidad: cantidad_producida * 1 }
+                ];
+                break;
+            default:
+                throw new Error('Tipo de producto desconocido para la receta de envasado.');
+        }
+
+        for (const insumo of insumosADescontar) {
+            await client.query(
+                `UPDATE inventario SET stock = stock - $1 WHERE nombre = $2`,
+                [insumo.cantidad, insumo.nombre]
+            );
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: `Producción del lote ${numero_lote} registrada. Insumos descontados automáticamente.` });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error en registro de envasado:', error);
+        res.status(500).json({ success: false, mensaje: 'Error al procesar la producción de envasado.' });
+    } finally {
+        client.release();
+    }
+});
+
+// --- SALIDAS DE ALMACÉN (Con lector PDF inteligente y control de estado de guía) ---
+app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, res) => {
+    try {
+        const { 
+            tipo_registro, numero_guia, empresa, ruc, destino, 
+            chofer_licencia, placa, punto_partida, articulo_id, 
+            cantidad_salida, fecha_salida, usuario 
+        } = req.body;
+
+        let guiaFinal = numero_guia || '';
+        let empresaFinal = empresa;
+        let rucFinal = ruc;
+        let estadoGuia = tipo_registro === 'CON GUIA' ? 'REGULARIZADO' : 'PENDIENTE REGULARIZAR';
+
+        // Lector de PDF si subió archivo con guía
+        if (tipo_registro === 'CON GUIA' && req.file) {
+            const fs = require('fs');
+            const dataBuffer = fs.readFileSync(req.file.path);
+            const pdfData = await pdfParse(dataBuffer);
+            const textoPdf = pdfData.text;
+
+            // Intentar detectar número de guía en el texto del PDF
+            const guiaMatch = textoPdf.match(/(?:[F|B]\d{3}-\d{1,8})|(?:\bGUIA\b[\s\S]{0,15}(\d{3,4}-\d{4,8}))/i);
+            if (guiaMatch) {
+                guiaFinal = guiaMatch[1] || guiaMatch[0];
+            }
+
+            const rucMatch = textoPdf.match(/\b(20\d{9})\b/);
+            if (rucMatch) rucFinal = rucMatch[1];
+            if (!empresaFinal) empresaFinal = "Extraído de PDF";
+        }
+
+        const querySalida = `
+            INSERT INTO salidas_almacen 
+            (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, articulo_id, cantidad_salida, usuario_registro, estado_guia)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *;
+        `;
+        const valoresSalida = [
+            fecha_salida || new Date(), tipo_registro, guiaFinal || 'S/N', 
+            empresaFinal || 'N/A', rucFinal || 'N/A', destino || 'N/A', 
+            chofer_licencia || 'N/A', placa || 'N/A', punto_partida || 'Almacén Principal', 
+            articulo_id, cantidad_salida, usuario || 'almacen_user', estadoGuia
+        ];
+
+        const resultadoSalida = await pool.query(querySalida, valoresSalida);
+        res.json({ success: true, mensaje: 'Salida registrada correctamente.', salida: resultadoSalida.rows[0] });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, mensaje: 'Error al registrar la salida.' });
+    }
+});
+
+// Ruta para regularizar guía de un registro sin guía previo
+app.post('/api/salidas/regularizar', async (req, res) => {
+    try {
+        const { salida_id, nuevo_numero_guia } = req.body;
+        await pool.query(
+            `UPDATE salidas_almacen SET numero_guia = $1, estado_guia = 'REGULARIZADO' WHERE id = $2`,
+            [nuevo_numero_guia, salida_id]
+        );
+        res.json({ success: true, mensaje: 'Guía regularizada con éxito.' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, mensaje: 'Error al regularizar guía.' });
+    }
+});
+
+app.get('/api/salidas/historial', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT s.*, i.nombre as articulo_nombre, i.unidad_medida 
+            FROM salidas_almacen s
+            JOIN inventario i ON s.articulo_id = i.id
+            ORDER BY s.id DESC LIMIT 50
+        `);
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Error al obtener el historial de salidas');
+    }
+});
+
+// --- AUDITORÍA ---
+app.get('/api/auditoria/registros', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT id, tipo_documento, numero_guia, proveedor, lugar_partida, 
+                   punto_llegada, producto_textual, cantidad, unidad_medida, 
+                   foto_url, usuario_vigilancia, estado, fecha_ingreso
+            FROM ingresos_vigilancia 
+            ORDER BY id DESC
+        `);
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Error al obtener los registros de auditoría');
+    }
+});
+
+// --- REPORTE DE PRODUCCIÓN ---
+app.post('/api/produccion/reporte', async (req, res) => {
+    const { fecha_produccion, presentacion, cantidad_cajas, toneladas, observaciones, usuario } = req.body;
+    try {
+        await pool.query(
+            `INSERT INTO reportes_produccion (fecha_produccion, presentacion, cantidad_cajas, unidad_medida, toneladas, observaciones, usuario_registro) 
+             VALUES ($1, $2, $3, 'CAJAS', $4, $5, $6)`,
+            [fecha_produccion, presentacion, cantidad_cajas, toneladas, observaciones || '', usuario || 'envasado_user']
+        );
+        res.json({ success: true, mensaje: 'Reporte registrado correctamente' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, mensaje: 'Error al registrar el reporte de producción' });
+    }
+});
+
+app.get('/api/produccion/reportes', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM reportes_produccion ORDER BY id DESC LIMIT 20');
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Error al obtener los reportes');
+    }
+});
+
+// --- BLOQUE DEL BOTÓN DE CIERRE (RUTAS DE ARCHIVADO Y REINICIO) ---
+app.post('/api/produccion/cierre', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { fecha_cierre, usuario } = req.body;
+        await client.query('BEGIN');
+
+        const resumen = await client.query(
+            `SELECT SUM(cantidad_cajas) as total_cajas, SUM(toneladas) as total_tn, COUNT(*) as total_registros 
+             FROM reportes_produccion WHERE fecha_produccion = $1`,
+            [fecha_cierre]
+        );
+
+        if (resumen.rows[0].total_registros == 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: 'No hay registros de producción para cerrar en esta fecha.' });
+        }
+
+        const { total_cajas, total_tn } = resumen.rows[0];
+
+        await client.query(
+            `INSERT INTO historial_cierres_produccion (fecha_cierre, total_cajas, total_toneladas, usuario_cierre) 
+             VALUES ($1, $2, $3, $4)`,
+            [fecha_cierre, total_cajas || 0, total_tn || 0, usuario || 'envasado_user']
+        );
+
+        await client.query(`DELETE FROM reportes_produccion WHERE fecha_produccion = $1`, [fecha_cierre]);
+
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: `Cierre de producción del ${fecha_cierre} realizado con éxito. Cuadro reiniciado.` });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error(err);
+        res.status(500).json({ success: false, mensaje: 'Error al procesar el cierre de producción.' });
+    } finally {
+        client.release();
+    }
+});
+
+app.get('/api/produccion/historial-cierres', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM historial_cierres_produccion ORDER BY fecha_cierre DESC');
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Error al obtener el historial de cierres');
+    }
+});
+
+// --- INICIAR SERVIDOR ---
+app.listen(PORT, () => {
+    console.log(`Servidor ejecutándose en http://localhost:${PORT}`);
+});

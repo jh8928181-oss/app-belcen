@@ -23,10 +23,10 @@ app.post('/api/login', async (req, res) => {
         } else {
             res.status(401).json({ success: false, mensaje: 'Usuario o contraseña incorrectos' });
         }
-    } catch (err) {
-        console.error(err);
-        res.status(500).send('Error en el servidor');
-    }
+   } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, mensaje: 'Error en el servidor' });
+}
 });
 
 // --- VIGILANCIA (Registro con foto/documento) ---

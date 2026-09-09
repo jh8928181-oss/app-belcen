@@ -357,7 +357,7 @@ app.post('/api/envasado/registrar', async (req, res) => {
     }
 });
 
-// --- LECTOR INTELIGENTE DE PDF PARA SALIDAS (ADAPTADO A TU FORMATO DE GUÍA) ---
+// --- LECTOR INTELIGENTE DE PDF PARA SALIDAS ---
 app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res) => {
     try {
         if (!req.file) {
@@ -382,7 +382,7 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
         const razonSocialMatch = textoPdf.match(/Razón Social:\s*(.*)/i);
         if (razonSocialMatch) empresa = razonSocialMatch[1].trim();
 
-        // Extracción de ítems basada en los códigos exactos detectados en tu guía PDF
+        // Extracción automatizada de ítems basada en códigos del formato de guía
         let itemsDetectados = [];
 
         if (textoPdf.includes('1030004') || textoPdf.includes('ACEITE DE SOYA B-1 X 1 L')) {
@@ -395,7 +395,6 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
             itemsDetectados.push({ producto_key: 'belini_2lt', nombre: 'Aceite de Soya Belini 2 Lt (Galonera)', cantidad: 100 });
         }
 
-        // Respaldo por si el PDF tiene otro formato o producto
         if (itemsDetectados.length === 0) {
             const ptRes = await pool.query('SELECT * FROM producto_terminado');
             for (let pt of ptRes.rows) {

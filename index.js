@@ -382,7 +382,6 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
         const razonSocialMatch = textoPdf.match(/Razón Social:\s*(.*)/i);
         if (razonSocialMatch) empresa = razonSocialMatch[1].trim();
 
-        // Extracción automatizada de ítems basada en códigos del formato de guía
         let itemsDetectados = [];
 
         if (textoPdf.includes('1030004') || textoPdf.includes('ACEITE DE SOYA B-1 X 1 L')) {
@@ -461,16 +460,23 @@ app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, re
                 );
             }
 
+            // Inserción adaptada a la tabla existente guardando el id de inventario o null
+            let targetArticuloId = idArticuloFinal;
+            if (!targetArticuloId && productoKeyFinal) {
+                const matchInv = await client.query('SELECT id FROM inventario WHERE LOWER(nombre) = LOWER($1)', [item.nombre]);
+                if (matchInv.rows.length > 0) targetArticuloId = matchInv.rows[0].id;
+            }
+
             const querySalida = `
                 INSERT INTO salidas_almacen 
-                (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, articulo_id, producto_key, cantidad_salida, usuario_registro, estado_guia)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);
+                (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, articulo_id, cantidad_salida, usuario_registro, estado_guia)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);
             `;
             const valoresSalida = [
                 fecha_salida || new Date(), tipo_registro, guiaFinal, 
                 empresa || 'N/A', ruc || 'N/A', destino || 'N/A', 
                 chofer_licencia || 'N/A', placa || 'N/A', punto_partida || 'Almacén Principal', 
-                idArticuloFinal, productoKeyFinal, item.cantidad, usuario || 'almacen_user', estadoGuia
+                targetArticuloId, item.cantidad, usuario || 'almacen_user', estadoGuia
             ];
 
             await client.query(querySalida, valoresSalida);
@@ -505,11 +511,10 @@ app.get('/api/salidas/historial', async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT s.*, 
-                   COALESCE(i.nombre, pt.nombre_producto, 'Producto General') as articulo_nombre, 
+                   COALESCE(i.nombre, 'Producto General') as articulo_nombre, 
                    COALESCE(i.unidad_medida, 'CAJAS') as unidad_medida 
             FROM salidas_almacen s
             LEFT JOIN inventario i ON s.articulo_id = i.id
-            LEFT JOIN producto_terminado pt ON s.producto_key = pt.producto_key
             ORDER BY s.id DESC LIMIT 50
         `);
         res.json(result.rows);

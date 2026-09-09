@@ -3,6 +3,7 @@ const pool = require('./db');
 const path = require('path');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -357,14 +358,13 @@ app.post('/api/envasado/registrar', async (req, res) => {
     }
 });
 
-// --- LECTOR INTELIGENTE DE PDF PARA SALIDAS ---
+// --- LECTOR INTELIGENTE DE PDF PARA SALIDAS (ACTUALIZADO) ---
 app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ success: false, mensaje: 'No se subió ningún archivo PDF.' });
         }
 
-        const fs = require('fs');
         const dataBuffer = fs.readFileSync(req.file.path);
         const pdfData = await pdfParse(dataBuffer);
         const textoPdf = pdfData.text;
@@ -372,15 +372,34 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
         let numero_guia = '';
         let ruc = '';
         let empresa = '';
+        let destino = '';
 
-        const guiaMatch = textoPdf.match(/([T|F|B]\d{3}-\d{1,8})/i);
-        if (guiaMatch) numero_guia = guiaMatch[1];
+        // Extracción mejorada de Guía (Ej: T009-00000782)
+        const guiaMatch = textoPdf.match(/([T|F|B]\s*0\d{2}\s*-\s*\d{1,8})/i);
+        if (guiaMatch) {
+            numero_guia = guiaMatch[1].replace(/\s+/g, '');
+        }
 
-        const rucMatch = textoPdf.match(/RUC\D*(\d{11})/i);
-        if (rucMatch) ruc = rucMatch[1];
+        // Extracción de RUC
+        const rucMatches = textoPdf.match(/RUC[:\s]*(\d{11})/gi);
+        if (rucMatches && rucMatches.length > 0) {
+            const numRuc = rucMatches[rucMatches.length - 1].match(/(\d{11})/);
+            if (numRuc) ruc = numRuc[1];
+        }
 
-        const razonSocialMatch = textoPdf.match(/Razón Social:\s*(.*)/i);
-        if (razonSocialMatch) empresa = razonSocialMatch[1].trim();
+        // Extracción de Razón Social / Empresa
+        const razonSocialMatch = textoPdf.match(/Razón Social[:\s]*(.*)/i);
+        if (razonSocialMatch) {
+            empresa = razonSocialMatch[1].trim();
+        } else {
+            empresa = 'CORPORACION DON LALO S.A.C.';
+        }
+
+        // Extraccion de direccion de destino
+        const llegadaMatch = textoPdf.match(/P\.Llegada[:\s]*(.*)/i);
+        if (llegadaMatch) {
+            destino = llegadaMatch[1].trim();
+        }
 
         let itemsDetectados = [];
 
@@ -413,7 +432,8 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
             datos: {
                 numero_guia,
                 ruc,
-                empresa: empresa || 'Corporación Don Lalo S.A.C.',
+                empresa,
+                destino,
                 items: itemsDetectados
             }
         });
@@ -460,7 +480,6 @@ app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, re
                 );
             }
 
-            // Inserción adaptada a la tabla existente guardando el id de inventario o null
             let targetArticuloId = idArticuloFinal;
             if (!targetArticuloId && productoKeyFinal) {
                 const matchInv = await client.query('SELECT id FROM inventario WHERE LOWER(nombre) = LOWER($1)', [item.nombre]);
@@ -571,6 +590,8 @@ app.post('/api/produccion/cierre', async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK');
         res.status(500).json({ success: false, mensaje: err.message });
+    } finally {
+        client.release();
     }
 });
 

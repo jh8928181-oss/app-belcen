@@ -44,9 +44,28 @@
         </table>
     </div>
 
-    <!-- 2. SECCIÓN DE INVENTARIO Y AJUSTE MANUAL -->
+    <!-- 2. NUEVA SECCIÓN: STOCK DE PRODUCTO TERMINADO (ALIMENTADO DESDE ENVASADO) -->
+    <div class="table-container" style="border-top: 5px solid #28a745;">
+        <h3 style="color: #28a745; border-bottom: 2px solid #28a745;">STOCK DE PRODUCTO TERMINADO (CAJAS LISTAS PARA DESPACHO)</h3>
+        <p style="font-size: 13px; color: #6c757d; text-align: center; margin-top: -5px;">Se incrementa automáticamente con la producción de Envasado y se descuenta al registrar Salidas.</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>PRODUCTO / PRESENTACIÓN</th>
+                    <th class="text-center">STOCK ACTUAL (CAJAS)</th>
+                    <th class="text-center">ESTADO</th>
+                    <th class="text-center">AJUSTE MANUAL</th>
+                </tr>
+            </thead>
+            <tbody id="tablaProductoTerminado">
+                <tr><td colspan="4" class="text-center">Cargando producto terminado...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 3. SECCIÓN DE INVENTARIO GENERAL Y AJUSTE MANUAL (INSUMOS) -->
     <div class="table-container" style="border-top: 5px solid #007bff;">
-        <h3 style="color: #007bff;">INVENTARIO GENERAL Y AJUSTE MANUAL</h3>
+        <h3 style="color: #007bff;">INVENTARIO DE INSUMOS Y MATERIA PRIMA</h3>
         
         <div style="display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap;">
             <div style="flex: 1; min-width: 250px;">
@@ -54,7 +73,7 @@
                 <select id="filtroCategoria" onchange="aplicarFiltros()" style="width: 100%;">
                     <option value="TODOS" selected>-- Ver Todas las Categorías --</option>
                     <option value="BOTELLAS Y GALONERAS">Envases (Botellas / Baldes / Latas)</option>
-                    <option value="CAJAS">Cajas</option>
+                    <option value="CAJAS">Cajas Vacías</option>
                     <option value="TAPAS Y ACCESORIOS">Tapas y Accesorios</option>
                     <option value="PREFORMAS Y SERVICIOS">Preformas y Servicios</option>
                     <option value="ETIQUETAS">Etiquetas</option>
@@ -81,7 +100,7 @@
         </table>
     </div>
 
-    <!-- 3. SECCIÓN DE REGISTRO DE SALIDAS Y LECTOR DE GUÍAS -->
+    <!-- 4. SECCIÓN DE REGISTRO DE SALIDAS Y LECTOR DE GUÍAS -->
     <div class="table-container" style="border-top: 5px solid #dc3545;">
         <h3 style="color: #dc3545;">REGISTRO DE SALIDAS DE ALMACÉN (CON / SIN GUÍA)</h3>
         
@@ -105,9 +124,9 @@
             </div>
 
             <div>
-                <label><b>Seleccionar Producto a Despachar:</b></label>
-                <select id="selectArticuloSalida" name="articulo_id" required style="width: 100%;">
-                    <option value="">-- Seleccione un artículo --</option>
+                <label><b>Seleccionar Producto / Insumo a Despachar:</b></label>
+                <select id="selectProductoSalida" required style="width: 100%;">
+                    <option value="">-- Seleccione un producto o insumo --</option>
                 </select>
             </div>
 
@@ -157,7 +176,7 @@
         </form>
     </div>
 
-    <!-- 4. CUADRO RESUMEN DE HISTORIAL DE SALIDAS -->
+    <!-- 5. CUADRO RESUMEN DE HISTORIAL DE SALIDAS -->
     <div class="table-container" style="border-top: 5px solid #6c757d;">
         <h3 style="color: #495057;">HISTORIAL DE SALIDAS REGISTRADAS</h3>
         <table>
@@ -168,7 +187,7 @@
                     <th>N° GUÍA</th>
                     <th>EMPRESA / RUC</th>
                     <th>DESTINO</th>
-                    <th>PRODUCTO</th>
+                    <th>PRODUCTO / INSUMO</th>
                     <th class="text-center">CANTIDAD</th>
                     <th class="text-center">ACCIÓN</th>
                 </tr>
@@ -182,6 +201,7 @@
 
     <script>
         let inventarioGlobal = [];
+        let productoTerminadoGlobal = [];
         document.getElementById('fecha_salida').valueAsDate = new Date();
 
         // --- CARGAR PENDIENTES DE VIGILANCIA ---
@@ -246,13 +266,72 @@
             }
         }
 
-        // --- CARGAR INVENTARIO Y FILTROS ---
+        // --- CARGAR PRODUCTO TERMINADO ---
+        async function cargarProductoTerminado() {
+            try {
+                const res = await fetch('/api/producto-terminado');
+                productoTerminadoGlobal = await res.json();
+                const tbody = document.getElementById('tablaProductoTerminado');
+                tbody.innerHTML = '';
+
+                if (productoTerminadoGlobal.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="4" class="text-center" style="color: #6c757d;">No hay registros de producto terminado.</td></tr>`;
+                    return;
+                }
+
+                productoTerminadoGlobal.forEach(item => {
+                    const esDisponible = item.stock_cajas > 0;
+                    tbody.innerHTML += `
+                        <tr>
+                            <td><b>${item.nombre_producto}</b></td>
+                            <td class="text-center" style="font-weight: bold; color: #28a745; font-size: 15px;">${item.stock_cajas} CAJAS</td>
+                            <td class="text-center">
+                                <span style="padding: 3px 8px; border-radius: 4px; font-size: 11px; background: ${esDisponible ? '#d4edda' : '#f8d7da'}; color: ${esDisponible ? '#155724' : '#721c24'}; font-weight: bold;">
+                                    ${esDisponible ? 'DISPONIBLE' : 'SIN STOCK'}
+                                </span>
+                            </td>
+                            <td class="text-center">
+                                <button onclick="ajustarProductoTerminadoManual(${item.id}, '${item.nombre_producto}', ${item.stock_cajas})" class="btn-accion btn-ajustar">Ajustar</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+                poblarSelectSalida();
+            } catch (e) {
+                console.error("Error al cargar producto terminado:", e);
+            }
+        }
+
+        function ajustarProductoTerminadoManual(id, nombre, stockActual) {
+            const nuevoStock = prompt(`Ajustar stock de Producto Terminado:\n${nombre}\n\nStock actual: ${stockActual} cajas`, stockActual);
+            if (nuevoStock === null) return;
+
+            const stockNum = parseInt(nuevoStock);
+            if (isNaN(stockNum) || stockNum < 0) {
+                alert('❌ Ingrese un valor numérico válido.');
+                return;
+            }
+
+            fetch('/api/producto-terminado/ajustar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, nuevo_stock: stockNum })
+            })
+            .then(res => res.json())
+            .then(data => {
+                alert('✅ ' + data.mensaje);
+                cargarProductoTerminado();
+            })
+            .catch(err => console.error(err));
+        }
+
+        // --- CARGAR INVENTARIO DE INSUMOS Y FILTROS ---
         async function cargarInventarioAlmacen() {
             try {
                 const res = await fetch('/api/inventario');
                 inventarioGlobal = await res.json();
                 aplicarFiltros();
-                cargarArticulosParaSalida();
+                poblarSelectSalida();
             } catch (e) {
                 console.error("Error al cargar inventario:", e);
             }
@@ -334,78 +413,58 @@
         }
 
         function ajustarStockManual(id, nombre, stockActual) {
-            let contenedor = document.createElement('div');
-            contenedor.style.position = 'fixed';
-            contenedor.style.top = '0';
-            contenedor.style.left = '0';
-            contenedor.style.width = '100%';
-            contenedor.style.height = '100%';
-            contenedor.style.background = 'rgba(0,0,0,0.5)';
-            contenedor.style.display = 'flex';
-            contenedor.style.justifyContent = 'center';
-            contenedor.style.alignItems = 'center';
-            contenedor.style.zIndex = '9999';
+            const nuevoStock = prompt(`Ajustar stock de Insumo:\n${nombre}\n\nStock actual: ${stockActual}`, stockActual);
+            if (nuevoStock === null) return;
 
-            contenedor.innerHTML = `
-                <div style="background: white; padding: 20px; border-radius: 8px; width: 350px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
-                    <h4 style="margin-top: 0; color: #333;">Ajustar Stock Manual</h4>
-                    <p style="font-size: 13px; color: #666;"><b>${nombre}</b><br>Stock actual: ${stockActual}</p>
-                    <input type="number" step="0.01" id="inputNuevoStock" value="${stockActual}" style="width: 100%; padding: 8px; margin-bottom: 15px; box-sizing: border-box;">
-                    <div style="text-align: right;">
-                        <button id="btnCancelarStock" style="padding: 6px 12px; margin-right: 5px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancelar</button>
-                        <button id="btnGuardarStock" style="padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Guardar</button>
-                    </div>
-                </div>
-            `;
+            const stockNum = parseFloat(nuevoStock);
+            if (isNaN(stockNum) || stockNum < 0) {
+                alert('❌ Ingrese un valor numérico válido.');
+                return;
+            }
 
-            document.body.appendChild(contenedor);
-            const inputVal = document.getElementById('inputNuevoStock');
-            inputVal.focus();
-            inputVal.select();
-
-            document.getElementById('btnCancelarStock').onclick = () => {
-                document.body.removeChild(contenedor);
-            };
-
-            document.getElementById('btnGuardarStock').onclick = async () => {
-                const stockNum = parseFloat(inputVal.value);
-                if (isNaN(stockNum) || stockNum < 0) {
-                    alert('❌ Ingrese un valor numérico válido.');
-                    return;
-                }
-
-                document.body.removeChild(contenedor);
-
-                try {
-                    const res = await fetch('/api/almacen/ajustar-stock', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            articulo_id: parseInt(id), 
-                            nuevo_stock: stockNum 
-                        })
-                    });
-                    const data = await res.json();
-                    if(res.ok && data.success) {
-                        alert('✅ ' + data.mensaje);
-                        cargarInventarioAlmacen();
-                    } else {
-                        alert('❌ ' + (data.mensaje || 'Error al actualizar'));
-                    }
-                } catch(e) {
-                    console.error(e);
-                    alert('❌ Error de conexión al actualizar el stock.');
-                }
-            };
+            fetch('/api/almacen/ajustar-stock', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ articulo_id: parseInt(id), nuevo_stock: stockNum })
+            })
+            .then(res => res.json())
+            .then(data => {
+                alert('✅ ' + data.mensaje);
+                cargarInventarioAlmacen();
+            })
+            .catch(err => console.error(err));
         }
 
-        // --- CARGAR ARTÍCULOS EN SELECTOR DE SALIDAS ---
-        function cargarArticulosParaSalida() {
-            const select = document.getElementById('selectArticuloSalida');
-            select.innerHTML = '<option value="">-- Seleccione un artículo --</option>';
-            inventarioGlobal.forEach(item => {
-                select.innerHTML += `<option value="${item.id}">${item.nombre} (Stock: ${item.stock} ${item.unidad_medida || 'UNIDADES'})</option>`;
-            });
+        // --- UNIFICAR ARTÍCULOS Y PRODUCTO TERMINADO EN SELECTOR DE SALIDAS ---
+        function poblarSelectSalida() {
+            const select = document.getElementById('selectProductoSalida');
+            select.innerHTML = '<option value="">-- Seleccione un producto o insumo --</option>';
+
+            // 1. Grupo Producto Terminado (Cajas listas)
+            if (productoTerminadoGlobal.length > 0) {
+                const optgroupPT = document.createElement('optgroup');
+                optgroupPT.label = "📦 PRODUCTO TERMINADO (CAJAS LISTAS)";
+                productoTerminadoGlobal.forEach(pt => {
+                    const opt = document.createElement('option');
+                    opt.value = `PT:${pt.producto_key}`;
+                    opt.textContent = `${pt.nombre_producto} (Stock: ${pt.stock_cajas} CAJAS)`;
+                    optgroupPT.appendChild(opt);
+                });
+                select.appendChild(optgroupPT);
+            }
+
+            // 2. Grupo Insumos Generales
+            if (inventarioGlobal.length > 0) {
+                const optgroupINS = document.createElement('optgroup');
+                optgroupINS.label = "🏭 INSUMOS / MATERIA PRIMA";
+                inventarioGlobal.forEach(item => {
+                    const opt = document.createElement('option');
+                    opt.value = `INS:${item.id}`;
+                    opt.textContent = `${item.nombre} (Stock: ${item.stock} ${item.unidad_medida || 'UNIDADES'})`;
+                    optgroupINS.appendChild(opt);
+                });
+                select.appendChild(optgroupINS);
+            }
         }
 
         // --- HISTORIAL DE SALIDAS Y REGULARIZACIÓN ---
@@ -468,8 +527,20 @@
 
         document.getElementById('formSalida').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const selectedVal = document.getElementById('selectProductoSalida').value;
+            if (!selectedVal) {
+                alert('❌ Seleccione un producto o insumo a despachar.');
+                return;
+            }
+
             const formData = new FormData(e.target);
             formData.append('usuario', localStorage.getItem('usuario_actual') || 'almacen_user');
+
+            if (selectedVal.startsWith('PT:')) {
+                formData.append('producto_key', selectedVal.replace('PT:', ''));
+            } else if (selectedVal.startsWith('INS:')) {
+                formData.append('articulo_id', selectedVal.replace('INS:', ''));
+            }
 
             try {
                 const res = await fetch('/api/salidas/registrar', {
@@ -483,6 +554,7 @@
                     document.getElementById('formSalida').reset();
                     document.getElementById('fecha_salida').valueAsDate = new Date();
                     cargarHistorialSalidas();
+                    cargarProductoTerminado();
                     cargarInventarioAlmacen();
                 } else {
                     alert('❌ ' + (data.mensaje || 'Error al registrar la salida.'));
@@ -495,6 +567,7 @@
 
         // Inicializar datos en la vista
         cargarPendientes();
+        cargarProductoTerminado();
         cargarInventarioAlmacen();
         cargarHistorialSalidas();
     </script>

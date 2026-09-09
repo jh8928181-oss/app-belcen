@@ -11,6 +11,27 @@ const upload = multer({ dest: 'public/uploads/' });
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Mapeo oficial de keys y nombres legibles
+const PRODUCTOS_TERMINADOS_MAP = {
+    'b1_200ml': 'Aceite de Soya B-1 200 ml',
+    'b1_500ml': 'Aceite de Soya B-1 500 ml',
+    'b1_900ml': 'Aceite de Soya B-1 900 ml',
+    'b1_1lt': 'Aceite de Soya B-1 1 Lt',
+    'b1_2lt': 'Aceite de Soya B-1 2 Lt',
+    'b1_5lt': 'Aceite de Soya B-1 5 Lt (Galonera)',
+    'donlalo_800ml': 'Aceite de Soya Don Lalo 800 ml',
+    'donlalo_20lt': 'Aceite de Soya Don Lalo Balde 20 Lt',
+    'belini_200ml': 'Aceite de Soya Belini 200 ml',
+    'belini_500ml': 'Aceite de Soya Belini 500 ml',
+    'belini_900ml': 'Aceite de Soya Belini 900 ml',
+    'belini_1lt': 'Aceite de Soya Belini 1 Lt',
+    'belini_2lt': 'Aceite de Soya Belini 2 Lt (Galonera)',
+    'belini_3lt': 'Aceite de Soya Belini 3 Lt',
+    'belini_5lt': 'Aceite de Soya Belini 5 Lt (Galonera)',
+    'belini_lata18lt': 'Aceite de Soya Belini Lata 18 Lt',
+    'belini_balde18lt': 'Aceite de Soya Belini Balde 18 Lt'
+};
+
 // --- LOGIN ---
 app.post('/api/login', async (req, res) => {
     try {
@@ -105,7 +126,7 @@ app.post('/api/almacen/conformidad', async (req, res) => {
     }
 });
 
-// --- ALMACÉN: AJUSTE MANUAL DE INVENTARIO ---
+// --- ALMACÉN: AJUSTE MANUAL DE INVENTARIO INSUMOS ---
 app.post('/api/almacen/ajustar-stock', async (req, res) => {
     try {
         const { articulo_id, nuevo_stock } = req.body;
@@ -118,10 +139,32 @@ app.post('/api/almacen/ajustar-stock', async (req, res) => {
             [nuevo_stock, articulo_id]
         );
 
-        res.json({ success: true, mensaje: 'Stock ajustado manualmente con éxito.' });
+        res.json({ success: true, mensaje: 'Stock de insumo ajustado manualmente.' });
     } catch (err) {
         console.error("Error al ajustar stock:", err);
         res.status(500).json({ success: false, mensaje: 'Error al actualizar el stock manualmente: ' + err.message });
+    }
+});
+
+// --- PRODUCTO TERMINADO: CONSULTA Y AJUSTE ---
+app.get('/api/producto-terminado', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM producto_terminado ORDER BY nombre_producto ASC');
+        res.json(result.rows);
+    } catch (err) {
+        console.error("Error al obtener productos terminados:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al obtener productos terminados' });
+    }
+});
+
+app.post('/api/producto-terminado/ajustar', async (req, res) => {
+    try {
+        const { id, nuevo_stock } = req.body;
+        await pool.query('UPDATE producto_terminado SET stock_cajas = $1 WHERE id = $2', [nuevo_stock, id]);
+        res.json({ success: true, mensaje: 'Stock de producto terminado actualizado correctamente.' });
+    } catch (err) {
+        console.error("Error al ajustar producto terminado:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al ajustar stock de producto terminado' });
     }
 });
 
@@ -171,7 +214,7 @@ app.post('/api/soplado/registrar', async (req, res) => {
     }
 });
 
-// --- ENVASADO ---
+// --- ENVASADO: DESCUENTO DE INSUMOS + SUMA A PRODUCTO TERMINADO ---
 app.post('/api/envasado/registrar', async (req, res) => {
     const client = await pool.connect();
     try {
@@ -287,6 +330,7 @@ app.post('/api/envasado/registrar', async (req, res) => {
                 throw new Error('Tipo de producto desconocido para la receta de envasado.');
         }
 
+        // Descontar insumos del inventario
         for (const insumo of insumosADescontar) {
             await client.query(
                 `UPDATE inventario SET stock = stock - $1 WHERE LOWER(nombre) = LOWER($2)`,
@@ -294,8 +338,17 @@ app.post('/api/envasado/registrar', async (req, res) => {
             );
         }
 
+        // Sumar cajas producidas a la tabla producto_terminado
+        const nombreLegible = PRODUCTOS_TERMINADOS_MAP[producto_tipo] || producto_tipo;
+        await client.query(`
+            INSERT INTO producto_terminado (producto_key, nombre_producto, stock_cajas)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (producto_key) 
+            DO UPDATE SET stock_cajas = producto_terminado.stock_cajas + EXCLUDED.stock_cajas;
+        `, [producto_tipo, nombreLegible, cantidad_producida]);
+
         await client.query('COMMIT');
-        res.json({ success: true, mensaje: `Producción del lote ${numero_lote} registrada. Insumos descontados automáticamente.` });
+        res.json({ success: true, mensaje: `Producción del lote ${numero_lote} registrada (+${cantidad_producida} cajas a Producto Terminado). Insumos descontados.` });
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Error en registro de envasado:', error);
@@ -307,12 +360,15 @@ app.post('/api/envasado/registrar', async (req, res) => {
 
 // --- SALIDAS DE ALMACÉN ---
 app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, res) => {
+    const client = await pool.connect();
     try {
         const { 
             tipo_registro, numero_guia, empresa, ruc, destino, 
-            chofer_licencia, placa, punto_partida, articulo_id, 
+            chofer_licencia, placa, punto_partida, articulo_id, producto_key,
             cantidad_salida, fecha_salida, usuario 
         } = req.body;
+
+        await client.query('BEGIN');
 
         let guiaFinal = numero_guia || '';
         let empresaFinal = empresa;
@@ -335,23 +391,44 @@ app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, re
             if (!empresaFinal) empresaFinal = "Extraído de PDF";
         }
 
+        let idArticuloFinal = articulo_id ? parseInt(articulo_id) : null;
+
+        // Si la salida es un Producto Terminado (Cajas)
+        if (producto_key) {
+            await client.query(
+                `UPDATE producto_terminado SET stock_cajas = stock_cajas - $1 WHERE producto_key = $2`,
+                [parseFloat(cantidad_salida), producto_key]
+            );
+        } else if (idArticuloFinal) {
+            // Si es un insumo suelto de la tabla inventario
+            await client.query(
+                `UPDATE inventario SET stock = stock - $1 WHERE id = $2`,
+                [parseFloat(cantidad_salida), idArticuloFinal]
+            );
+        }
+
         const querySalida = `
             INSERT INTO salidas_almacen 
-            (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, articulo_id, cantidad_salida, usuario_registro, estado_guia)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *;
+            (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, articulo_id, producto_key, cantidad_salida, usuario_registro, estado_guia)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *;
         `;
         const valoresSalida = [
             fecha_salida || new Date(), tipo_registro, guiaFinal || 'S/N', 
             empresaFinal || 'N/A', rucFinal || 'N/A', destino || 'N/A', 
             chofer_licencia || 'N/A', placa || 'N/A', punto_partida || 'Almacén Principal', 
-            articulo_id, cantidad_salida, usuario || 'almacen_user', estadoGuia
+            idArticuloFinal, producto_key || null, cantidad_salida, usuario || 'almacen_user', estadoGuia
         ];
 
-        const resultadoSalida = await pool.query(querySalida, valoresSalida);
-        res.json({ success: true, mensaje: 'Salida registrada correctamente.', salida: resultadoSalida.rows[0] });
+        const resultadoSalida = await client.query(querySalida, valoresSalida);
+        await client.query('COMMIT');
+
+        res.json({ success: true, mensaje: 'Salida registrada correctamente y stock descontado.', salida: resultadoSalida.rows[0] });
     } catch (err) {
+        await client.query('ROLLBACK');
         console.error("Error al registrar salida:", err);
         res.status(500).json({ success: false, mensaje: 'Error al registrar la salida: ' + err.message });
+    } finally {
+        client.release();
     }
 });
 
@@ -372,9 +449,12 @@ app.post('/api/salidas/regularizar', async (req, res) => {
 app.get('/api/salidas/historial', async (req, res) => {
     try {
         const result = await pool.query(`
-            SELECT s.*, i.nombre as articulo_nombre, i.unidad_medida 
+            SELECT s.*, 
+                   COALESCE(i.nombre, pt.nombre_producto, 'Producto General') as articulo_nombre, 
+                   COALESCE(i.unidad_medida, 'CAJAS') as unidad_medida 
             FROM salidas_almacen s
-            JOIN inventario i ON s.articulo_id = i.id
+            LEFT JOIN inventario i ON s.articulo_id = i.id
+            LEFT JOIN producto_terminado pt ON s.producto_key = pt.producto_key
             ORDER BY s.id DESC LIMIT 50
         `);
         res.json(result.rows);

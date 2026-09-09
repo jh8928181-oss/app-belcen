@@ -7,9 +7,10 @@ async function poblarInventarioReal() {
 
         // 1. Limpiar tablas existentes
         await client.query('DROP TABLE IF EXISTS inventario CASCADE;');
+        await client.query('DROP TABLE IF EXISTS producto_terminado CASCADE;');
         await client.query('DROP TABLE IF EXISTS usuarios_sistema CASCADE;');
 
-        // 2. Crear tabla inventario (la que lee la API /api/inventario)
+        // 2. Crear tabla inventario
         await client.query(`
             CREATE TABLE inventario (
                 id SERIAL PRIMARY KEY,
@@ -21,7 +22,17 @@ async function poblarInventarioReal() {
             );
         `);
 
-        // 3. Crear usuarios
+        // 3. Crear tabla producto_terminado
+        await client.query(`
+            CREATE TABLE producto_terminado (
+                id SERIAL PRIMARY KEY,
+                producto_key VARCHAR(100) UNIQUE NOT NULL,
+                nombre_producto VARCHAR(150) NOT NULL,
+                stock_cajas INT DEFAULT 0
+            );
+        `);
+
+        // 4. Crear usuarios
         await client.query(`
             CREATE TABLE usuarios_sistema (
                 id SERIAL PRIMARY KEY,
@@ -39,14 +50,14 @@ async function poblarInventarioReal() {
             ON CONFLICT (usuario) DO NOTHING;
         `);
 
-        // 4. Insertar datos oficiales
+        // 5. Insertar datos de inventario
         const queryInsert = `
             INSERT INTO inventario (nombre, categoria, stock, unidad_medida, estado) 
             VALUES ($1, $2, $3, $4, $5);
         `;
 
         const articulos = [
-            // ENVASES
+            // BOTELLAS Y GALONERAS
             ['Botella de 200 ml - B-1', 'BOTELLAS Y GALONERAS', 25274, 'UNIDADES', 'STOCK SUFICIENTE'],
             ['Botella de 500 ml - B-1', 'BOTELLAS Y GALONERAS', 10906, 'UNIDADES', 'REALIZAR PEDIDO'],
             ['Botella de 900 ml - B-1', 'BOTELLAS Y GALONERAS', 6126, 'UNIDADES', 'REALIZAR PEDIDO'],
@@ -66,7 +77,7 @@ async function poblarInventarioReal() {
             ['Balde Don Lalo x 20lt', 'BOTELLAS Y GALONERAS', 745, 'UNIDADES', 'STOCK SUFICIENTE'],
             ['Botella VEGA x 900 ml', 'BOTELLAS Y GALONERAS', 25200, 'UNIDADES', 'STOCK SUFICIENTE'],
 
-            // CAJAS
+            // CAJAS (Insumo vacío)
             ['Caja B-1 x 200 ml', 'CAJAS', 2437, 'UNIDADES', 'REALIZAR PEDIDO'],
             ['Caja B-1 x 500 ml', 'CAJAS', 14262, 'UNIDADES', 'STOCK SUFICIENTE'],
             ['Caja B-1 x 900 ml', 'CAJAS', 74125, 'UNIDADES', 'STOCK SUFICIENTE'],
@@ -119,8 +130,36 @@ async function poblarInventarioReal() {
             await client.query(queryInsert, art);
         }
 
+        // 6. Sembrar Presentaciones de Producto Terminado en 0 cajas
+        const productosTerminados = [
+            ['b1_200ml', 'Aceite de Soya B-1 200 ml'],
+            ['b1_500ml', 'Aceite de Soya B-1 500 ml'],
+            ['b1_900ml', 'Aceite de Soya B-1 900 ml'],
+            ['b1_1lt', 'Aceite de Soya B-1 1 Lt'],
+            ['b1_2lt', 'Aceite de Soya B-1 2 Lt'],
+            ['b1_5lt', 'Aceite de Soya B-1 5 Lt (Galonera)'],
+            ['donlalo_800ml', 'Aceite de Soya Don Lalo 800 ml'],
+            ['donlalo_20lt', 'Aceite de Soya Don Lalo Balde 20 Lt'],
+            ['belini_200ml', 'Aceite de Soya Belini 200 ml'],
+            ['belini_500ml', 'Aceite de Soya Belini 500 ml'],
+            ['belini_900ml', 'Aceite de Soya Belini 900 ml'],
+            ['belini_1lt', 'Aceite de Soya Belini 1 Lt'],
+            ['belini_2lt', 'Aceite de Soya Belini 2 Lt (Galonera)'],
+            ['belini_3lt', 'Aceite de Soya Belini 3 Lt'],
+            ['belini_5lt', 'Aceite de Soya Belini 5 Lt (Galonera)'],
+            ['belini_lata18lt', 'Aceite de Soya Belini Lata 18 Lt'],
+            ['belini_balde18lt', 'Aceite de Soya Belini Balde 18 Lt']
+        ];
+
+        for (const pt of productosTerminados) {
+            await client.query(
+                `INSERT INTO producto_terminado (producto_key, nombre_producto, stock_cajas) VALUES ($1, $2, 0);`,
+                pt
+            );
+        }
+
         await client.query('COMMIT');
-        console.log('✅ Base de datos "inventario" poblada exitosamente.');
+        console.log('✅ Base de datos "inventario" y "producto_terminado" pobladas exitosamente.');
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Error al poblar base de datos:', error);

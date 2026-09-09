@@ -20,6 +20,13 @@ const inicializarBaseDeDatos = async () => {
             ALTER TABLE inventario ADD COLUMN IF NOT EXISTS estado VARCHAR(50) DEFAULT 'STOCK SUFICIENTE';
             ALTER TABLE inventario ADD COLUMN IF NOT EXISTS unidad_medida VARCHAR(50) DEFAULT 'UNIDADES';
 
+            CREATE TABLE IF NOT EXISTS producto_terminado (
+                id SERIAL PRIMARY KEY,
+                producto_key VARCHAR(100) UNIQUE NOT NULL,
+                nombre_producto VARCHAR(150) NOT NULL,
+                stock_cajas INT DEFAULT 0
+            );
+
             CREATE TABLE IF NOT EXISTS ingresos_vigilancia (
                 id SERIAL PRIMARY KEY,
                 tipo_documento VARCHAR(50),
@@ -48,6 +55,7 @@ const inicializarBaseDeDatos = async () => {
                 placa VARCHAR(50),
                 punto_partida VARCHAR(150),
                 articulo_id INT REFERENCES inventario(id),
+                producto_key VARCHAR(100),
                 cantidad_salida NUMERIC(10,2),
                 usuario_registro VARCHAR(50),
                 estado_guia VARCHAR(50) DEFAULT 'REGULARIZADO'

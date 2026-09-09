@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reporte de Envasado - Belcen</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 0; background-color: #f4f6f9; padding: 20px; }
@@ -126,6 +127,12 @@
                 tbody.innerHTML = '';
                 let totalTn = 0;
 
+                if (data.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="6" class="text-center" style="color: #6c757d;">No hay registros de producción activa en el turno.</td></tr>`;
+                    document.getElementById('totalTmGeneral').textContent = '0.00';
+                    return;
+                }
+
                 data.forEach(row => {
                     totalTn += parseFloat(row.toneladas || 0);
                     const fechaFormateada = row.fecha_produccion ? row.fecha_produccion.split('T')[0] : '';
@@ -186,6 +193,7 @@
             const presentacionTexto = selectProd.options[selectProd.selectedIndex].text;
 
             try {
+                // 1. Descontar insumos en inventario primero
                 const responseEnvasado = await fetch('/api/envasado/registrar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -193,6 +201,12 @@
                 });
                 const dataEnvasado = await responseEnvasado.json();
 
+                if (!responseEnvasado.ok || !dataEnvasado.success) {
+                    alert('❌ Error al descontar insumos: ' + (dataEnvasado.mensaje || 'Operación cancelada.'));
+                    return; // Detiene el flujo si falla el descuento
+                }
+
+                // 2. Si el descuento fue exitoso, registra el reporte
                 const responseReporte = await fetch('/api/produccion/reporte', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -207,13 +221,13 @@
                 });
                 const dataReporte = await responseReporte.json();
 
-                if (responseEnvasado.ok && dataEnvasado.success && responseReporte.ok && dataReporte.success) {
+                if (responseReporte.ok && dataReporte.success) {
                     alert('✅ ' + dataEnvasado.mensaje);
                     document.getElementById('formEnvasado').reset();
                     document.getElementById('fecha_produccion').valueAsDate = new Date();
                     cargarReportesProduccion();
                 } else {
-                    alert('❌ Error al procesar: ' + (dataEnvasado.mensaje || 'No se pudo completar'));
+                    alert('⚠️ Insumos descontados, pero no se pudo registrar en la tabla activa: ' + dataReporte.mensaje);
                 }
             } catch (err) {
                 console.error(err);

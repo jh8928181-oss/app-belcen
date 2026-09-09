@@ -7,7 +7,6 @@ const pool = new Pool({
 
 const inicializarBaseDeDatos = async () => {
     try {
-        // 1. Crear tabla inventario si no existe
         await pool.query(`
             CREATE TABLE IF NOT EXISTS inventario (
                 id SERIAL PRIMARY KEY,
@@ -17,18 +16,10 @@ const inicializarBaseDeDatos = async () => {
                 unidad_medida VARCHAR(50) DEFAULT 'UNIDADES',
                 estado VARCHAR(50) DEFAULT 'STOCK SUFICIENTE'
             );
-        `);
 
-        // 2. FORZAR la adición de columnas si la tabla ya existía previamente
-        await pool.query(`
             ALTER TABLE inventario ADD COLUMN IF NOT EXISTS estado VARCHAR(50) DEFAULT 'STOCK SUFICIENTE';
             ALTER TABLE inventario ADD COLUMN IF NOT EXISTS unidad_medida VARCHAR(50) DEFAULT 'UNIDADES';
-            UPDATE inventario SET estado = 'STOCK SUFICIENTE' WHERE estado IS NULL;
-            UPDATE inventario SET unidad_medida = 'UNIDADES' WHERE unidad_medida IS NULL;
-        `);
 
-        // 3. Crear el resto de tablas
-        await pool.query(`
             CREATE TABLE IF NOT EXISTS ingresos_vigilancia (
                 id SERIAL PRIMARY KEY,
                 tipo_documento VARCHAR(50),

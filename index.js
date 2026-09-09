@@ -29,7 +29,7 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// --- VIGILANCIA (Registro con foto/documento) ---
+// --- VIGILANCIA ---
 app.post('/api/vigilancia/registrar', upload.single('foto_guia'), async (req, res) => {
     try {
         const { tipo_documento, numero_guia, proveedor, lugar_partida, punto_llegada, producto_textual, cantidad, unidad_medida, usuario } = req.body;
@@ -72,12 +72,12 @@ app.post('/api/almacen/conformidad', async (req, res) => {
         let targetArticuloId = articulo_id_inventario;
 
         if (!targetArticuloId && nombre_manual) {
-            const existeRes = await client.query('SELECT id FROM articulos WHERE LOWER(nombre) = LOWER($1)', [nombre_manual]);
+            const existeRes = await client.query('SELECT id FROM inventario WHERE LOWER(nombre) = LOWER($1)', [nombre_manual]);
             if (existeRes.rows.length > 0) {
                 targetArticuloId = existeRes.rows[0].id;
             } else {
                 const nuevoArt = await client.query(
-                    `INSERT INTO articulos (nombre, categoria, stock, unidad_medida, estado) VALUES ($1, 'General', 0, 'UNIDADES', 'STOCK SUFICIENTE') RETURNING id`,
+                    `INSERT INTO inventario (nombre, categoria, stock, unidad_medida, estado) VALUES ($1, 'General', 0, 'UNIDADES', 'STOCK SUFICIENTE') RETURNING id`,
                     [nombre_manual]
                 );
                 targetArticuloId = nuevoArt.rows[0].id;
@@ -85,7 +85,7 @@ app.post('/api/almacen/conformidad', async (req, res) => {
         }
 
         await client.query(
-            `UPDATE articulos SET stock = stock + $1 WHERE id = $2`,
+            `UPDATE inventario SET stock = stock + $1 WHERE id = $2`,
             [ingreso.cantidad, targetArticuloId]
         );
 
@@ -111,7 +111,7 @@ app.post('/api/almacen/ajustar-stock', async (req, res) => {
         const { articulo_id, nuevo_stock } = req.body;
         
         await pool.query(
-            `UPDATE articulos 
+            `UPDATE inventario 
              SET stock = $1, 
                  estado = CASE WHEN $1 <= 0 THEN 'REALIZAR PEDIDO' ELSE 'STOCK SUFICIENTE' END 
              WHERE id = $2`,
@@ -125,14 +125,14 @@ app.post('/api/almacen/ajustar-stock', async (req, res) => {
     }
 });
 
-// --- INVENTARIO GENERAL (Para el Dashboard y Almacén) ---
+// --- INVENTARIO GENERAL ---
 app.get('/api/inventario', async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT id, nombre, categoria, stock, 
                    COALESCE(unidad_medida, 'UNIDADES') as unidad_medida, 
                    COALESCE(estado, 'STOCK SUFICIENTE') as estado 
-            FROM articulos 
+            FROM inventario 
             ORDER BY id ASC
         `);
         res.json(result.rows);
@@ -151,13 +151,13 @@ app.post('/api/soplado/registrar', async (req, res) => {
         await client.query('BEGIN');
 
         if (preforma_id && cantidad_preformas) {
-            await client.query(`UPDATE articulos SET stock = stock - $1 WHERE id = $2`, [cantidad_preformas, preforma_id]);
+            await client.query(`UPDATE inventario SET stock = stock - $1 WHERE id = $2`, [cantidad_preformas, preforma_id]);
         }
         if (etiqueta_id && cantidad_etiquetas) {
-            await client.query(`UPDATE articulos SET stock = stock - $1 WHERE id = $2`, [cantidad_etiquetas, etiqueta_id]);
+            await client.query(`UPDATE inventario SET stock = stock - $1 WHERE id = $2`, [cantidad_etiquetas, etiqueta_id]);
         }
         if (botella_id && cantidad_botellas) {
-            await client.query(`UPDATE articulos SET stock = stock + $1 WHERE id = $2`, [cantidad_botellas, botella_id]);
+            await client.query(`UPDATE inventario SET stock = stock + $1 WHERE id = $2`, [cantidad_botellas, botella_id]);
         }
 
         await client.query('COMMIT');
@@ -171,7 +171,7 @@ app.post('/api/soplado/registrar', async (req, res) => {
     }
 });
 
-// --- ENVASADO (Descuento automático de insumos) ---
+// --- ENVASADO ---
 app.post('/api/envasado/registrar', async (req, res) => {
     const client = await pool.connect();
     try {
@@ -214,7 +214,7 @@ app.post('/api/envasado/registrar', async (req, res) => {
             case 'b1_5lt':
                 insumosADescontar = [
                     { nombre: 'Galonera B-1 x 5 lt', cantidad: cantidad_producida * 4 },
-                    { nombre: 'Tapa dorada 5lt', cantidad: (cantidad_producida * 4) / 1000 }
+                    { nombre: 'Tapa color rojo 5lt', cantidad: (cantidad_producida * 4) / 1000 }
                 ];
                 break;
             case 'donlalo_800ml':
@@ -249,27 +249,27 @@ app.post('/api/envasado/registrar', async (req, res) => {
                 break;
             case 'belini_1lt':
                 insumosADescontar = [
-                    { nombre: 'Botella Belini x 1 lt', cantidad: cantidad_producida * 12 },
+                    { nombre: 'Botella Belini x 1 Lt', cantidad: cantidad_producida * 12 },
                     { nombre: 'Tapa dosif. N° 26 blanco / Dorado', cantidad: (cantidad_producida * 12) / 1000 }
                 ];
                 break;
             case 'belini_2lt':
                 insumosADescontar = [
                     { nombre: 'Galonera Belini x 2 lt', cantidad: cantidad_producida * 6 },
-                    { nombre: 'Tapa dorada 2lt', cantidad: (cantidad_producida * 6) / 1000 }
+                    { nombre: 'Tapa color Rojo 2lt', cantidad: (cantidad_producida * 6) / 1000 }
                 ];
                 break;
             case 'belini_3lt':
                 insumosADescontar = [
                     { nombre: 'Botella Belini x 3 lt', cantidad: cantidad_producida * 4 },
                     { nombre: 'Tapa color Celeste 3lt', cantidad: (cantidad_producida * 4) / 1000 },
-                    { nombre: 'Asas plasticas color celestes pico 45', cantidad: (cantidad_producida * 4) / 1000 }
+                    { nombre: 'Asas plasticas color celeste pico 45', cantidad: (cantidad_producida * 4) / 1000 }
                 ];
                 break;
             case 'belini_5lt':
                 insumosADescontar = [
                     { nombre: 'Galonera Belini x 5 lt', cantidad: cantidad_producida * 4 },
-                    { nombre: 'Tapa dorada 5lt', cantidad: (cantidad_producida * 4) / 1000 }
+                    { nombre: 'Tapa color rojo 5lt', cantidad: (cantidad_producida * 4) / 1000 }
                 ];
                 break;
             case 'belini_lata18lt':
@@ -289,7 +289,7 @@ app.post('/api/envasado/registrar', async (req, res) => {
 
         for (const insumo of insumosADescontar) {
             await client.query(
-                `UPDATE articulos SET stock = stock - $1 WHERE LOWER(nombre) = LOWER($2)`,
+                `UPDATE inventario SET stock = stock - $1 WHERE LOWER(nombre) = LOWER($2)`,
                 [insumo.cantidad, insumo.nombre]
             );
         }
@@ -374,7 +374,7 @@ app.get('/api/salidas/historial', async (req, res) => {
         const result = await pool.query(`
             SELECT s.*, i.nombre as articulo_nombre, i.unidad_medida 
             FROM salidas_almacen s
-            JOIN articulos i ON s.articulo_id = i.id
+            JOIN inventario i ON s.articulo_id = i.id
             ORDER BY s.id DESC LIMIT 50
         `);
         res.json(result.rows);
@@ -476,7 +476,6 @@ app.get('/api/produccion/historial-cierres', async (req, res) => {
     }
 });
 
-// --- INICIAR SERVIDOR ---
 app.listen(PORT, () => {
     console.log(`Servidor ejecutándose en http://localhost:${PORT}`);
 });

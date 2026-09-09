@@ -362,10 +362,10 @@
                         renderTablaItems();
                         alert('📄 Guía leída con éxito: Cabecera e ítems cargados automáticamente.');
                     } else {
-                        alert('📄 Cabecera leída. Agregue los productos manualmente abajo.');
+                        alert('📄 Cabecera leída, pero no se reconocieron los ítems automáticamente.');
                     }
                 }
-            } catch(e) { console.error(e); }
+            } catch(e) { console.error(e); alert('Error al leer el PDF.'); }
         }
 
         function agregarItemManual() {

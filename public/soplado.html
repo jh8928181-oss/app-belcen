@@ -2,67 +2,113 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Soplado - Reporte de Turno</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f6f9; }
         .card { background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 500px; margin: auto; }
-        label { font-weight: bold; display: block; margin-top: 12px; }
-        input, select, button { width: 100%; padding: 10px; margin-top: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        label { font-weight: bold; display: block; margin-top: 12px; color: #495057; }
+        input, select, button { width: 100%; padding: 10px; margin-top: 5px; box-sizing: border-box; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; }
         button { background-color: #17a2b8; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 20px; font-size: 16px; }
         button:hover { background-color: #138496; }
+        .logout { display: block; text-align: center; margin-top: 15px; color: #dc3545; text-decoration: none; font-weight: bold; }
     </style>
 </head>
 <body>
     <div class="card">
         <h2>Reporte de Turno - Soplado</h2>
         <form id="formSoplado">
-            <label>Operador en Turno:</label>
-            <select id="usuarioId" required>
-                <option value="1">Operador Soplado - Turno Mañana</option>
+            <label>Preforma a Descontar:</label>
+            <select id="preforma_id">
+                <option value="">-- Seleccione Preforma --</option>
             </select>
+            <label>Cantidad de Preformas:</label>
+            <input type="number" id="cantidad_preformas" placeholder="Ej. 1000" min="0" value="0">
 
-            <label>Preformas Consumidas (Uds):</label>
-            <input type="number" id="preformas" placeholder="Ej. 1000" min="1" required>
+            <label>Etiqueta a Descontar (Opcional):</label>
+            <select id="etiqueta_id">
+                <option value="">-- Seleccione Etiqueta --</option>
+            </select>
+            <label>Cantidad de Etiquetas:</label>
+            <input type="number" id="cantidad_etiquetas" placeholder="Ej. 980" min="0" value="0">
 
-            <label>Etiquetas Consumidas (Uds):</label>
-            <input type="number" id="etiquetas" placeholder="Ej. 980" min="1" required>
-
-            <label>Botellas Conformes Producidas (Uds):</label>
-            <input type="number" id="botellas" placeholder="Ej. 970" min="1" required>
-
-            <label>Mermas / Defectuosas (Uds):</label>
-            <input type="number" id="mermas" placeholder="Ej. 10" value="0" min="0">
+            <label>Botella Producida (Aumentar Stock):</label>
+            <select id="botella_id" required>
+                <option value="">-- Seleccione Botella / Envase --</option>
+            </select>
+            <label>Cantidad de Botellas Producidas:</label>
+            <input type="number" id="cantidad_botellas" placeholder="Ej. 970" min="1" required>
 
             <button type="submit">Registrar Producción y Actualizar Stock</button>
         </form>
+        <a href="dashboard.html" class="logout">Volver al Dashboard General</a>
     </div>
 
     <script>
+        async function cargarInventarioSoplado() {
+            try {
+                const res = await fetch('/api/inventario');
+                const inventario = await res.json();
+                
+                const selectPreforma = document.getElementById('preforma_id');
+                const selectEtiqueta = document.getElementById('etiqueta_id');
+                const selectBotella = document.getElementById('botella_id');
+
+                inventario.forEach(item => {
+                    const cat = (item.categoria || '').toUpperCase();
+                    const opt = document.createElement('option');
+                    opt.value = item.id;
+                    opt.textContent = `${item.nombre} (Stock: ${item.stock} ${item.unidad_medida})`;
+
+                    if (cat.includes('PREFORMAS') || cat.includes('SERVICIOS')) {
+                        selectPreforma.appendChild(opt.cloneNode(true));
+                    }
+                    if (cat.includes('ETIQUETAS')) {
+                        selectEtiqueta.appendChild(opt.cloneNode(true));
+                    }
+                    if (cat.includes('BOTELLAS') || cat.includes('GALONERAS') || cat.includes('LATAS') || cat.includes('BALDES')) {
+                        selectBotella.appendChild(opt.cloneNode(true));
+                    }
+                });
+            } catch (e) {
+                console.error("Error al cargar inventario para soplado:", e);
+            }
+        }
+
         document.getElementById('formSoplado').addEventListener('submit', async (e) => {
             e.preventDefault();
 
             const data = {
-                usuario_id: document.getElementById('usuarioId').value,
-                preformas_usadas: parseInt(document.getElementById('preformas').value),
-                etiquetas_usadas: parseInt(document.getElementById('etiquetas').value),
-                botellas_producidas: parseInt(document.getElementById('botellas').value),
-                mermas: parseInt(document.getElementById('mermas').value)
+                preforma_id: document.getElementById('preforma_id').value || null,
+                cantidad_preformas: parseFloat(document.getElementById('cantidad_preformas').value) || 0,
+                etiqueta_id: document.getElementById('etique_id').value || null,
+                cantidad_etiquetas: parseFloat(document.getElementById('cantidad_etiquetas').value) || 0,
+                botella_id: document.getElementById('botella_id').value || null,
+                cantidad_botellas: parseFloat(document.getElementById('cantidad_botellas').value) || 0
             };
 
-            const res = await fetch('/api/soplado/reportar', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
+            // Corrección específica para apuntar al endpoint real /api/soplado/registrar
+            try {
+                const res = await fetch('/api/soplado/registrar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
 
-            const result = await res.json();
-            if (result.ok) {
-                alert(result.mensaje);
-                e.target.reset();
-            } else {
-                alert('Error: ' + result.error);
+                const result = await res.json();
+                if (res.ok && result.success) {
+                    alert('✅ ' + result.mensaje);
+                    e.target.reset();
+                } else {
+                    alert('❌ Error: ' + (result.mensaje || 'No se pudo registrar'));
+                }
+            } catch (err) {
+                console.error(err);
+                alert('❌ Error de conexión con el servidor.');
             }
         });
+
+        cargarInventarioSoplado();
     </script>
 </body>
 </html>

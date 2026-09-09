@@ -24,7 +24,7 @@
 </head>
 <body>
 
-    <!-- 1. SECCIÓN DE INGRESOS PENDIENTES DE VIGILANCIA -->
+    <!-- 1. PENDIENTES DE VIGILANCIA -->
     <div class="table-container" style="border-top: 5px solid #ffc107;">
         <h3 style="color: #d39e00; border-bottom: 2px solid #ffc107;">NOTIFICACIONES Y PENDIENTES DE VIGILANCIA</h3>
         <table>
@@ -44,10 +44,9 @@
         </table>
     </div>
 
-    <!-- 2. STOCK DE PRODUCTO TERMINADO (SOLO MAYOR A 0) -->
+    <!-- 2. PRODUCTO TERMINADO -->
     <div class="table-container" style="border-top: 5px solid #28a745;">
-        <h3 style="color: #28a745; border-bottom: 2px solid #28a745;">STOCK DE PRODUCTO TERMINADO (CAJAS LISTAS PARA DESPACHO)</h3>
-        <p style="font-size: 13px; color: #6c757d; text-align: center; margin-top: -5px;">Se incrementa automáticamente con la producción de Envasado y se descuenta al registrar Salidas.</p>
+        <h3 style="color: #28a745; border-bottom: 2px solid #28a745;">STOCK DE PRODUCTO TERMINADO (CAJAS LISTAS)</h3>
         <table>
             <thead>
                 <tr>
@@ -66,147 +65,128 @@
     <!-- 3. INVENTARIO DE INSUMOS -->
     <div class="table-container" style="border-top: 5px solid #007bff;">
         <h3 style="color: #007bff;">INVENTARIO DE INSUMOS Y MATERIA PRIMA</h3>
-        
-        <div style="display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap;">
-            <div style="flex: 1; min-width: 250px;">
-                <label><b>Filtrar por Categoría:</b></label>
-                <select id="filtroCategoria" onchange="aplicarFiltros()" style="width: 100%;">
-                    <option value="TODOS" selected>-- Ver Todas las Categorías --</option>
-                    <option value="BOTELLAS Y GALONERAS">Envases (Botellas / Baldes / Latas)</option>
-                    <option value="CAJAS">Cajas Vacías</option>
-                    <option value="TAPAS Y ACCESORIOS">Tapas y Accesorios</option>
-                    <option value="PREFORMAS Y SERVICIOS">Preformas y Servicios</option>
-                    <option value="ETIQUETAS">Etiquetas</option>
-                </select>
-            </div>
-            <div style="flex: 1; min-width: 250px;">
-                <label><b>Buscar Artículo:</b></label>
-                <input type="text" id="inputBuscador" onkeyup="aplicarFiltros()" placeholder="Escribe para buscar..." style="width: 100%;">
-            </div>
-        </div>
-
         <table>
             <thead>
                 <tr>
                     <th>ARTÍCULO / INSUMO</th>
                     <th>CATEGORÍA</th>
                     <th class="text-center">STOCK ACTUAL</th>
-                    <th class="text-center" style="background: #17a2b8;">EQUIVALENTE EN CAJAS</th>
-                    <th class="text-center">ESTADO</th>
-                    <th class="text-center">ACCIÓN MANUAL</th>
+                    <th class="text-center">ACCIÓN</th>
                 </tr>
             </thead>
             <tbody id="tablaInventarioAlmacen"></tbody>
         </table>
     </div>
 
-    <!-- 4. REGISTRO DE SALIDAS MULTIPRODUCTO CON LECTOR DE PDF -->
+    <!-- 4. REGISTRO DE SALIDAS CON LECTOR PDF AUTOMÁTICO -->
     <div class="table-container" style="border-top: 5px solid #dc3545;">
-        <h3 style="color: #dc3545;">REGISTRO DE SALIDAS DE ALMACÉN (CON / SIN GUÍA)</h3>
+        <h3 style="color: #dc3545;">REGISTRO DE SALIDAS DE ALMACÉN (CON GUÍA PDF O MANUAL)</h3>
         
         <form id="formSalida" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;" enctype="multipart/form-data">
             <div>
                 <label><b>Tipo de Salida:</b></label>
-                <select id="tipo_registro" name="tipo_registro" required style="width: 100%;">
-                    <option value="CON GUIA">Con Guía de Remisión</option>
-                    <option value="SIN GUIA">Sin Guía (Queda pendiente de regularizar)</option>
+                <select id="tipo_registro" name="tipo_registro" style="width: 100%;">
+                    <option value="CON GUIA">Con Guía de Remisión (Auto-lectura PDF)</option>
+                    <option value="SIN GUIA">Sin Guía (Carga Manual)</option>
                 </select>
             </div>
 
             <div>
-                <label><b>Subir Guía PDF (Auto-completar datos):</b></label>
-                <input type="file" id="archivo_guia" name="archivo_guia" accept=".pdf" onchange="leerPdfPrevio(this)" style="width: 100%;">
+                <label><b>Subir Guía PDF (Rellena todo automático):</b></label>
+                <input type="file" id="archivo_guia" name="archivo_guia" accept=".pdf" onchange="leerPdfAutomatico(this)" style="width: 100%;">
             </div>
 
             <div>
                 <label><b>Fecha de Salida:</b></label>
-                <input type="date" id="fecha_salida" name="fecha_salida" required style="width: 100%;">
+                <input type="date" id="fecha_salida" name="fecha_salida" style="width: 100%;">
             </div>
 
             <div>
-                <label><b>N° de Guía de Remisión:</b></label>
+                <label><b>N° de Guía:</b></label>
                 <input type="text" id="numero_guia" name="numero_guia" placeholder="Ej. F001-000452" style="width: 100%;">
             </div>
 
             <div>
-                <label><b>Empresa Cliente / Destinatario:</b></label>
-                <input type="text" id="empresa" name="empresa" placeholder="Nombre de la empresa" required style="width: 100%;">
+                <label><b>Empresa Cliente:</b></label>
+                <input type="text" id="empresa" name="empresa" placeholder="Nombre de la empresa" style="width: 100%;">
             </div>
 
             <div>
                 <label><b>RUC:</b></label>
-                <input type="text" id="ruc" name="ruc" placeholder="RUC de la empresa" style="width: 100%;">
+                <input type="text" id="ruc" name="ruc" placeholder="RUC" style="width: 100%;">
             </div>
 
             <div>
-                <label><b>Destino (Lugar de entrega):</b></label>
-                <input type="text" id="destino" name="destino" placeholder="Dirección de destino" required style="width: 100%;">
+                <label><b>Destino:</b></label>
+                <input type="text" id="destino" name="destino" placeholder="Dirección" style="width: 100%;">
             </div>
 
             <div>
                 <label><b>Chofer / Licencia:</b></label>
-                <input type="text" id="chofer_licencia" name="chofer_licencia" placeholder="Nombre y Licencia" required style="width: 100%;">
+                <input type="text" id="chofer_licencia" name="chofer_licencia" placeholder="Chofer" style="width: 100%;">
             </div>
 
             <div>
-                <label><b>Placa del Vehículo:</b></label>
-                <input type="text" id="placa" name="placa" placeholder="Ej. ABC-123" required style="width: 100%;">
+                <label><b>Placa:</b></label>
+                <input type="text" id="placa" name="placa" placeholder="Placa" style="width: 100%;">
             </div>
 
             <div>
                 <label><b>Punto de Partida:</b></label>
-                <input type="text" id="punto_partida" name="punto_partida" value="Planta Principal - Corporación Belcen" required style="width: 100%;">
+                <input type="text" id="punto_partida" name="punto_partida" value="Planta Principal - Corporación Belcen" style="width: 100%;">
             </div>
 
-            <!-- DETALLE MULTIPRODUCTO -->
-            <div style="grid-column: span 2; background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px solid #ddd;">
-                <h4 style="margin-top: 0; color: #343a40;">📦 Productos e Insumos en esta Guía / Despacho</h4>
-                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                    <select id="selectProductoSalida" style="flex: 2;">
+            <!-- TABLA DE PRODUCTOS A DESPACHAR -->
+            <div style="grid-column: span 2; background: #eef2f5; padding: 15px; border-radius: 6px; border: 2px dashed #007bff;">
+                <h4 style="margin-top: 0; color: #007bff;">📦 Lista de Productos a Despachar</h4>
+                <p style="font-size: 12px; color: #555; margin-top: -5px;">Si subiste el PDF, los productos se autocompletarán. Si es sin guía, agrégalos manualmente aquí:</p>
+                
+                <div style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;">
+                    <select id="selectProductoSalida" style="flex: 2; min-width: 200px;">
                         <option value="">-- Seleccione un producto o insumo --</option>
                     </select>
-                    <input type="number" step="0.01" id="cantidad_temp" placeholder="Cantidad" style="flex: 1;">
-                    <button type="button" onclick="agregarItemADespacho()" style="background: #28a745; color: white; border: none; padding: 8px 15px; font-weight: bold; border-radius: 4px; cursor: pointer;">+ Agregar Ítem</button>
+                    <input type="number" step="0.01" id="cantidad_temp" placeholder="Cantidad" style="flex: 1; min-width: 100px;">
+                    <button type="button" onclick="agregarItemManual()" style="background: #28a745; color: white; border: none; padding: 8px 15px; font-weight: bold; border-radius: 4px; cursor: pointer;">+ Agregar Ítem Manual</button>
                 </div>
 
                 <table style="width: 100%; background: white;">
                     <thead>
-                        <tr style="background: #6c757d; color: white;">
+                        <tr style="background: #343a40; color: white;">
                             <th>PRODUCTO / INSUMO</th>
                             <th class="text-center">CANTIDAD</th>
                             <th class="text-center">QUITAR</th>
                         </tr>
                     </thead>
                     <tbody id="tablaItemsDespacho">
-                        <tr><td colspan="3" class="text-center" style="color: #6c757d;">No se han agregado productos a este despacho.</td></tr>
+                        <tr><td colspan="3" class="text-center" style="color: #6c757d; font-style: italic;">Sube un PDF o agrega ítems manualmente.</td></tr>
                     </tbody>
                 </table>
             </div>
 
-            <div style="grid-column: span 2;">
-                <button type="submit" style="background: #dc3545; color: white; padding: 12px; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; width: 100%;">Registrar Despacho Completo en Historial</button>
+            <div style="grid-column: span 2; margin-top: 10px;">
+                <button type="submit" style="background: #dc3545; color: white; padding: 14px; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; width: 100%; font-size: 16px;">
+                    🚀 REGISTRAR DESPACHO COMPLETO EN HISTORIAL
+                </button>
             </div>
         </form>
     </div>
 
-    <!-- 5. HISTORIAL DE SALIDAS -->
+    <!-- 5. HISTORIAL -->
     <div class="table-container" style="border-top: 5px solid #6c757d;">
         <h3 style="color: #495057;">HISTORIAL DE SALIDAS REGISTRADAS</h3>
         <table>
             <thead>
                 <tr>
                     <th>FECHA</th>
-                    <th>TIPO / ESTADO GUÍA</th>
+                    <th>TIPO / ESTADO</th>
                     <th>N° GUÍA</th>
                     <th>EMPRESA / RUC</th>
-                    <th>DESTINO</th>
-                    <th>PRODUCTO / INSUMO</th>
+                    <th>PRODUCTO</th>
                     <th class="text-center">CANTIDAD</th>
-                    <th class="text-center">ACCIÓN</th>
                 </tr>
             </thead>
             <tbody id="tablaHistorialSalidas">
-                <tr><td colspan="8" class="text-center">Cargando salidas...</td></tr>
+                <tr><td colspan="6" class="text-center">Cargando historial...</td></tr>
             </tbody>
         </table>
         <a href="dashboard.html" class="logout">Volver al Dashboard General</a>
@@ -218,349 +198,168 @@
         let itemsDespachoArray = [];
         document.getElementById('fecha_salida').valueAsDate = new Date();
 
-        // --- CARGAR PENDIENTES DE VIGILANCIA ---
         async function cargarPendientes() {
             try {
                 const res = await fetch('/api/almacen/pendientes');
                 const data = await res.json();
                 const tbody = document.getElementById('tablaPendientes');
-                tbody.innerHTML = '';
-
-                if (data.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="6" class="text-center" style="color: #6c757d;">No hay ingresos pendientes de conformidad por parte de vigilancia.</td></tr>`;
-                    return;
-                }
-
+                tbody.innerHTML = data.length === 0 ? `<tr><td colspan="6" class="text-center">No hay pendientes.</td></tr>` : '';
                 data.forEach(item => {
-                    tbody.innerHTML += `
-                        <tr>
-                            <td><b>${item.tipo_documento}:</b> ${item.numero_guia || 'S/N'}</td>
-                            <td>${item.proveedor || 'N/A'}</td>
-                            <td>${item.producto_textual}</td>
-                            <td class="text-center" style="font-weight: bold; color: #007bff;">${item.cantidad} ${item.unidad_medida || 'UND'}</td>
-                            <td class="text-center">
-                                ${item.foto_url ? `<a href="${item.foto_url}" target="_blank" style="color: #007bff; font-weight: bold;">Ver Guía/Foto</a>` : 'Sin archivo'}
-                            </td>
-                            <td class="text-center">
-                                <button onclick="darConformidad(${item.id}, '${item.producto_textual}')" class="btn-accion">Dar Conformidad</button>
-                            </td>
-                        </tr>
-                    `;
+                    tbody.innerHTML += `<tr><td><b>${item.tipo_documento}:</b> ${item.numero_guia || 'S/N'}</td><td>${item.proveedor}</td><td>${item.producto_textual}</td><td class="text-center">${item.cantidad}</td><td class="text-center">${item.foto_url ? `<a href="${item.foto_url}" target="_blank">Ver</a>` : '-'}</td><td class="text-center"><button onclick="darConformidad(${item.id}, '${item.producto_textual}')" class="btn-accion">Conformidad</button></td></tr>`;
                 });
-            } catch (e) {
-                console.error("Error al cargar pendientes:", e);
-            }
+            } catch(e) { console.error(e); }
         }
 
         async function darConformidad(id, productoTextual) {
-            const nombreManual = prompt(`Asocie "${productoTextual}" a un artículo exacto del inventario:`, productoTextual);
-            if (nombreManual === null) return;
-
-            try {
-                const res = await fetch('/api/almacen/conformidad', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        ingreso_id: id,
-                        nombre_manual: nombreManual.trim(),
-                        usuario_almacen: localStorage.getItem('usuario_actual') || 'almacen_user'
-                    })
-                });
-                const data = await res.json();
-                if (res.ok && data.success) {
-                    alert('✅ ' + data.mensaje);
-                    cargarPendientes();
-                    cargarInventarioAlmacen();
-                } else {
-                    alert('❌ ' + (data.mensaje || 'Error al procesar'));
-                }
-            } catch (err) {
-                console.error(err);
-                alert('❌ Error de conexión.');
-            }
+            const nombreManual = prompt(`Asocie "${productoTextual}" al inventario:`, productoTextual);
+            if (!nombreManual) return;
+            const res = await fetch('/api/almacen/conformidad', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ingreso_id: id, nombre_manual: nombreManual.trim(), usuario_almacen: localStorage.getItem('usuario_actual') || 'almacen_user' })
+            });
+            const data = await res.json();
+            alert(data.mensaje);
+            cargarPendientes();
+            cargarInventarioAlmacen();
         }
 
-        // --- CARGAR PRODUCTO TERMINADO (SOLO MAYOR A 0) ---
         async function cargarProductoTerminado() {
             try {
                 const res = await fetch('/api/producto-terminado');
                 const data = await res.json();
                 productoTerminadoGlobal = data.filter(item => item.stock_cajas > 0);
-                
                 const tbody = document.getElementById('tablaProductoTerminado');
-                tbody.innerHTML = '';
-
-                if (productoTerminadoGlobal.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="4" class="text-center" style="color: #6c757d; font-style: italic;">No hay producto terminado en stock actualmente (0 Cajas disponibles).</td></tr>`;
-                    poblarSelectSalida();
-                    return;
-                }
-
+                tbody.innerHTML = productoTerminadoGlobal.length === 0 ? `<tr><td colspan="4" class="text-center">No hay producto terminado disponible.</td></tr>` : '';
                 productoTerminadoGlobal.forEach(item => {
-                    tbody.innerHTML += `
-                        <tr>
-                            <td><b>${item.nombre_producto}</b></td>
-                            <td class="text-center" style="font-weight: bold; color: #28a745; font-size: 15px;">${item.stock_cajas} CAJAS</td>
-                            <td class="text-center">
-                                <span style="padding: 3px 8px; border-radius: 4px; font-size: 11px; background: #d4edda; color: #155724; font-weight: bold;">
-                                    DISPONIBLE
-                                </span>
-                            </td>
-                            <td class="text-center">
-                                <button onclick="ajustarProductoTerminadoManual(${item.id}, '${item.nombre_producto}', ${item.stock_cajas})" class="btn-accion btn-ajustar">Ajustar</button>
-                            </td>
-                        </tr>
-                    `;
+                    tbody.innerHTML += `<tr><td><b>${item.nombre_producto}</b></td><td class="text-center" style="color: #28a745; font-weight: bold;">${item.stock_cajas} CAJAS</td><td class="text-center"><span style="background: #d4edda; color: #155724; padding: 2px 6px; border-radius: 3px;">DISPONIBLE</span></td><td class="text-center"><button onclick="ajustarPT(${item.id}, '${item.nombre_producto}', ${item.stock_cajas})" class="btn-accion btn-ajustar">Ajustar</button></td></tr>`;
                 });
                 poblarSelectSalida();
-            } catch (e) {
-                console.error("Error al cargar producto terminado:", e);
-            }
+            } catch(e) { console.error(e); }
         }
 
-        function ajustarProductoTerminadoManual(id, nombre, stockActual) {
-            const nuevoStock = prompt(`Ajustar stock de Producto Terminado:\n${nombre}\n\nStock actual: ${stockActual} cajas`, stockActual);
+        function ajustarPT(id, nombre, stockActual) {
+            const nuevoStock = prompt(`Ajustar stock de ${nombre}:`, stockActual);
             if (nuevoStock === null) return;
-
-            const stockNum = parseInt(nuevoStock);
-            if (isNaN(stockNum) || stockNum < 0) {
-                alert('❌ Ingrese un valor numérico válido.');
-                return;
-            }
-
             fetch('/api/producto-terminado/ajustar', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id, nuevo_stock: stockNum })
-            })
-            .then(res => res.json())
-            .then(data => {
-                alert('✅ ' + data.mensaje);
-                cargarProductoTerminado();
-            })
-            .catch(err => console.error(err));
+                body: JSON.stringify({ id, nuevo_stock: parseInt(nuevoStock) })
+            }).then(r => r.json()).then(d => { alert(d.mensaje); cargarProductoTerminado(); });
         }
 
-        // --- CARGAR INVENTARIO DE INSUMOS ---
         async function cargarInventarioAlmacen() {
             try {
                 const res = await fetch('/api/inventario');
                 inventarioGlobal = await res.json();
-                aplicarFiltros();
-                poblarSelectSalida();
-            } catch (e) {
-                console.error("Error al cargar inventario:", e);
-            }
-        }
-
-        function calcularCajasSiEsEnvase(categoria, nombre, stock) {
-            if (!categoria) return '-';
-            const catUpper = categoria.toUpperCase();
-            if (!['BOTELLAS', 'GALONERAS', 'BALDES', 'LATAS', 'BOTELLAS Y GALONERAS'].includes(catUpper)) return '-';
-
-            let divisor = 12; 
-            let n = nombre.toLowerCase();
-            if (n.includes('200 ml') || n.includes('200ml')) divisor = 24;
-            else if (n.includes('2 lt') || n.includes('3 lt') || n.includes('5 lt')) divisor = 4;
-            else if (n.includes('18 lt') || n.includes('20 lt') || n.includes('18lt') || n.includes('20lt')) divisor = 1;
-
-            let cajas = stock / divisor;
-            return divisor === 1 ? '-' : `${cajas.toFixed(1)} cjs (fac. ${divisor})`;
-        }
-
-        function mostrarInventarioAlmacen(data) {
-            const tbody = document.getElementById('tablaInventarioAlmacen');
-            tbody.innerHTML = '';
-
-            if (data.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" class="text-center" style="color: #6c757d;">No se encontraron artículos.</td></tr>`;
-                return;
-            }
-
-            data.forEach(item => {
-                const equivalenciaCajas = calcularCajasSiEsEnvase(item.categoria, item.nombre, item.stock);
-                const estadoTexto = item.estado || 'STOCK SUFICIENTE';
-                const esSuficiente = estadoTexto === 'STOCK SUFICIENTE';
-
-                tbody.innerHTML += `
-                    <tr>
-                        <td><b>${item.nombre}</b></td>
-                        <td><span style="background: #e9ecef; padding: 3px 8px; border-radius: 4px; font-size: 12px;">${item.categoria || 'General'}</span></td>
-                        <td class="text-center" style="font-weight: bold; color: #007bff;">${item.stock} ${item.unidad_medida || 'UNIDADES'}</td>
-                        <td class="text-center" style="background: #f8f9fa; color: #28a745; font-weight: bold;">${equivalenciaCajas}</td>
-                        <td class="text-center"><span style="padding: 3px 6px; border-radius: 4px; font-size: 11px; background: ${esSuficiente ? '#d4edda' : '#f8d7da'}; color: ${esSuficiente ? '#155724' : '#721c24'};">${estadoTexto}</span></td>
-                        <td class="text-center">
-                            <button onclick="ajustarStockManual(${item.id}, '${item.nombre}', ${item.stock})" class="btn-accion btn-ajustar">Ajustar</button>
-                        </td>
-                    </tr>
-                `;
-            });
-        }
-
-        function aplicarFiltros() {
-            const categoria = document.getElementById('filtroCategoria').value;
-            const textoBusqueda = document.getElementById('inputBuscador').value.toLowerCase().trim();
-            let resultado = inventarioGlobal;
-
-            if (categoria !== 'TODOS') {
-                resultado = resultado.filter(i => {
-                    if (!i.categoria) return false;
-                    const catItem = i.categoria.toUpperCase();
-                    const catFiltro = categoria.toUpperCase();
-
-                    if (catFiltro === 'BOTELLAS Y GALONERAS') {
-                        return catItem.includes('BOTELLA') || catItem.includes('GALONERA') || catItem.includes('BALDE') || catItem.includes('LATA');
-                    }
-                    if (catFiltro === 'TAPAS Y ACCESORIOS') {
-                        return catItem.includes('TAPA') || catItem.includes('ACCESORIO');
-                    }
-                    if (catFiltro === 'PREFORMAS Y SERVICIOS') {
-                        return catItem.includes('PREFORMA') || catItem.includes('SERVICIO');
-                    }
-                    return catItem === catFiltro;
+                const tbody = document.getElementById('tablaInventarioAlmacen');
+                tbody.innerHTML = '';
+                inventarioGlobal.forEach(item => {
+                    tbody.innerHTML += `<tr><td><b>${item.nombre}</b></td><td>${item.categoria}</td><td class="text-center">${item.stock} ${item.unidad_medida}</td><td class="text-center"><button onclick="ajustarStock(${item.id}, '${item.nombre}', ${item.stock})" class="btn-accion btn-ajustar">Ajustar</button></td></tr>`;
                 });
-            }
-
-            if (textoBusqueda !== '') {
-                resultado = resultado.filter(i => i.nombre.toLowerCase().includes(textoBusqueda));
-            }
-
-            mostrarInventarioAlmacen(resultado);
+                poblarSelectSalida();
+            } catch(e) { console.error(e); }
         }
 
-        function ajustarStockManual(id, nombre, stockActual) {
-            const nuevoStock = prompt(`Ajustar stock de Insumo:\n${nombre}\n\nStock actual: ${stockActual}`, stockActual);
+        function ajustarStock(id, nombre, stockActual) {
+            const nuevoStock = prompt(`Ajustar stock de insumo ${nombre}:`, stockActual);
             if (nuevoStock === null) return;
-
-            const stockNum = parseFloat(nuevoStock);
-            if (isNaN(stockNum) || stockNum < 0) {
-                alert('❌ Ingrese un valor numérico válido.');
-                return;
-            }
-
             fetch('/api/almacen/ajustar-stock', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ articulo_id: parseInt(id), nuevo_stock: stockNum })
-            })
-            .then(res => res.json())
-            .then(data => {
-                alert('✅ ' + data.mensaje);
-                cargarInventarioAlmacen();
-            })
-            .catch(err => console.error(err));
+                body: JSON.stringify({ articulo_id: id, nuevo_stock: parseFloat(nuevoStock) })
+            }).then(r => r.json()).then(d => { alert(d.mensaje); cargarInventarioAlmacen(); });
         }
 
         function poblarSelectSalida() {
             const select = document.getElementById('selectProductoSalida');
-            select.innerHTML = '<option value="">-- Seleccione un producto o insumo --</option>';
-
+            select.innerHTML = '<option value="">-- Seleccione producto o insumo --</option>';
             if (productoTerminadoGlobal.length > 0) {
-                const optgroupPT = document.createElement('optgroup');
-                optgroupPT.label = "📦 PRODUCTO TERMINADO (CAJAS LISTAS)";
+                const g1 = document.createElement('optgroup');
+                g1.label = "📦 PRODUCTO TERMINADO";
                 productoTerminadoGlobal.forEach(pt => {
                     const opt = document.createElement('option');
                     opt.value = `PT:${pt.producto_key}`;
-                    opt.textContent = `${pt.nombre_producto} (Stock: ${pt.stock_cajas} CAJAS)`;
-                    optgroupPT.appendChild(opt);
+                    opt.textContent = `${pt.nombre_producto} (Stock: ${pt.stock_cajas} cjs)`;
+                    g1.appendChild(opt);
                 });
-                select.appendChild(optgroupPT);
+                select.appendChild(g1);
             }
-
             if (inventarioGlobal.length > 0) {
-                const optgroupINS = document.createElement('optgroup');
-                optgroupINS.label = "🏭 INSUMOS / MATERIA PRIMA";
-                inventarioGlobal.forEach(item => {
+                const g2 = document.createElement('optgroup');
+                g2.label = "🏭 INSUMOS";
+                inventarioGlobal.forEach(ins => {
                     const opt = document.createElement('option');
-                    opt.value = `INS:${item.id}`;
-                    opt.textContent = `${item.nombre} (Stock: ${item.stock} ${item.unidad_medida || 'UNIDADES'})`;
-                    optgroupINS.appendChild(opt);
+                    opt.value = `INS:${ins.id}`;
+                    opt.textContent = `${ins.nombre} (Stock: ${ins.stock})`;
+                    g2.appendChild(opt);
                 });
-                select.appendChild(optgroupINS);
+                select.appendChild(g2);
             }
         }
 
-        async function leerPdfPrevio(input) {
+        async function leerPdfAutomatico(input) {
             if (!input.files || !input.files[0]) return;
-
             const formData = new FormData();
             formData.append('archivo_guia', input.files[0]);
 
             try {
-                const res = await fetch('/api/salidas/leer-pdf', {
-                    method: 'POST',
-                    body: formData
-                });
+                const res = await fetch('/api/salidas/leer-pdf', { method: 'POST', body: formData });
                 const data = await res.json();
 
                 if (res.ok && data.success) {
                     if (data.datos.numero_guia) document.getElementById('numero_guia').value = data.datos.numero_guia;
                     if (data.datos.ruc) document.getElementById('ruc').value = data.datos.ruc;
                     if (data.datos.empresa) document.getElementById('empresa').value = data.datos.empresa;
-                    alert('📄 Datos de la Guía extraídos desde el PDF correctamente.');
+
+                    // Si el lector encontró ítems automáticamente, los cargamos a la lista
+                    if (data.datos.items && data.datos.items.length > 0) {
+                        itemsDespachoArray = data.datos.items.map(i => ({
+                            nombre: i.nombre,
+                            cantidad: i.cantidad,
+                            producto_key: i.producto_key,
+                            articulo_id: null
+                        }));
+                        renderTablaItems();
+                        alert('📄 Guía PDF leída: Cabecera e ítems detectados automáticamente.');
+                    } else {
+                        alert('📄 Cabecera leída con éxito. Agregue los productos manualmente si el PDF no tenía formato estándar.');
+                    }
                 }
-            } catch (e) {
-                console.error("Error al procesar PDF:", e);
-            }
+            } catch(e) { console.error(e); }
         }
 
-        function agregarItemADespacho() {
+        function agregarItemManual() {
             const select = document.getElementById('selectProductoSalida');
             const val = select.value;
             const text = select.options[select.selectedIndex].text;
             const cant = parseFloat(document.getElementById('cantidad_temp').value);
 
-            if (!val) {
-                alert('❌ Seleccione un producto o insumo.');
-                return;
-            }
-            if (isNaN(cant) || cant <= 0) {
-                alert('❌ Ingrese una cantidad válida mayor a 0.');
+            if (!val || isNaN(cant) || cant <= 0) {
+                alert('❌ Seleccione un producto e ingrese una cantidad válida.');
                 return;
             }
 
             let producto_key = null;
             let articulo_id = null;
-
             if (val.startsWith('PT:')) producto_key = val.replace('PT:', '');
             else if (val.startsWith('INS:')) articulo_id = val.replace('INS:', '');
 
-            itemsDespachoArray.push({
-                val_raw: val,
-                nombre: text,
-                cantidad: cant,
-                producto_key,
-                articulo_id
-            });
-
-            renderTablaItemsDespacho();
+            itemsDespachoArray.push({ nombre: text, cantidad: cant, producto_key, articulo_id });
+            renderTablaItems();
             document.getElementById('cantidad_temp').value = '';
         }
 
-        function quitarItemDespacho(index) {
+        function quitarItem(index) {
             itemsDespachoArray.splice(index, 1);
-            renderTablaItemsDespacho();
+            renderTablaItems();
         }
 
-        function renderTablaItemsDespacho() {
+        function renderTablaItems() {
             const tbody = document.getElementById('tablaItemsDespacho');
-            tbody.innerHTML = '';
-
-            if (itemsDespachoArray.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="3" class="text-center" style="color: #6c757d;">No se han agregado productos a este despacho.</td></tr>`;
-                return;
-            }
-
+            tbody.innerHTML = itemsDespachoArray.length === 0 ? `<tr><td colspan="3" class="text-center" style="color: #6c757d;">No hay ítems en la lista.</td></tr>` : '';
             itemsDespachoArray.forEach((item, idx) => {
-                tbody.innerHTML += `
-                    <tr>
-                        <td><b>${item.nombre}</b></td>
-                        <td class="text-center" style="font-weight: bold; color: #dc3545;">${item.cantidad}</td>
-                        <td class="text-center">
-                            <button type="button" onclick="quitarItemDespacho(${idx})" style="background: #dc3545; color: white; border: none; padding: 2px 8px; border-radius: 3px; cursor: pointer;">X</button>
-                        </td>
-                    </tr>
-                `;
+                tbody.innerHTML += `<tr><td><b>${item.nombre}</b></td><td class="text-center" style="color: #dc3545; font-weight: bold;">${item.cantidad}</td><td class="text-center"><button type="button" onclick="quitarItem(${idx})" style="background: #dc3545; color: white; border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer;">X</button></td></tr>`;
             });
         }
 
@@ -569,63 +368,18 @@
                 const res = await fetch('/api/salidas/historial');
                 const data = await res.json();
                 const tbody = document.getElementById('tablaHistorialSalidas');
-                tbody.innerHTML = '';
-
-                if(data.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="8" class="text-center" style="color: #6c757d;">No hay salidas registradas aún.</td></tr>`;
-                    return;
-                }
-
+                tbody.innerHTML = data.length === 0 ? `<tr><td colspan="6" class="text-center">No hay salidas registradas.</td></tr>` : '';
                 data.forEach(row => {
                     const fecha = row.fecha_salida ? row.fecha_salida.split('T')[0] : '';
-                    const estadoBadge = row.estado_guia === 'REGULARIZADO' 
-                        ? `<span style="background: #28a745; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px;">REGULARIZADO</span>` 
-                        : `<span style="background: #ffc107; color: black; padding: 2px 6px; border-radius: 3px; font-size: 10px;">PENDIENTE GUÍA</span>`;
-
-                    tbody.innerHTML += `
-                        <tr>
-                            <td><b>${fecha}</b></td>
-                            <td>${row.tipo_registro}<br>${estadoBadge}</td>
-                            <td><b>${row.numero_guia || 'S/N'}</b></td>
-                            <td><b>${row.empresa}</b><br><small>RUC: ${row.ruc}</small></td>
-                            <td>${row.destino}</td>
-                            <td><b>${row.articulo_nombre}</b></td>
-                            <td class="text-center" style="font-weight: bold; color: #dc3545;">${row.cantidad_salida} ${row.unidad_medida || 'UND'}</td>
-                            <td class="text-center">
-                                ${row.estado_guia !== 'REGULARIZADO' ? `<button onclick="regularizarGuia(${row.id})" class="btn-accion btn-regularizar">Reg. Guía</button>` : '-'}
-                            </td>
-                        </tr>
-                    `;
+                    tbody.innerHTML += `<tr><td><b>${fecha}</b></td><td>${row.tipo_registro}</td><td><b>${row.numero_guia || 'S/N'}</b></td><td>${row.empresa}</td><td><b>${row.articulo_nombre}</b></td><td class="text-center" style="color: #dc3545; font-weight: bold;">${row.cantidad_salida}</td></tr>`;
                 });
-            } catch(e) {
-                console.error("Error al cargar historial de salidas:", e);
-            }
-        }
-
-        async function regularizarGuia(id) {
-            const nuevaGuia = prompt("Ingrese el número de la Guía de Remisión para regularizar este despacho:");
-            if (!nuevaGuia || nuevaGuia.trim() === '') return;
-
-            try {
-                const res = await fetch('/api/salidas/regularizar', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ salida_id: id, nuevo_numero_guia: nuevaGuia.trim() })
-                });
-                const data = await res.json();
-                alert(data.mensaje);
-                cargarHistorialSalidas();
-            } catch(e) {
-                console.error(e);
-                alert("Error al conectar con el servidor.");
-            }
+            } catch(e) { console.error(e); }
         }
 
         document.getElementById('formSalida').addEventListener('submit', async (e) => {
             e.preventDefault();
-
             if (itemsDespachoArray.length === 0) {
-                alert('❌ Agregue al menos un producto a la lista con el botón "+ Agregar Ítem".');
+                alert('❌ Debe incluir al menos un producto en el despacho.');
                 return;
             }
 
@@ -634,31 +388,23 @@
             formData.append('items_json', JSON.stringify(itemsDespachoArray));
 
             try {
-                const res = await fetch('/api/salidas/registrar', {
-                    method: 'POST',
-                    body: formData
-                });
+                const res = await fetch('/api/salidas/registrar', { method: 'POST', body: formData });
                 const data = await res.json();
-
                 if (res.ok && data.success) {
                     alert('✅ ' + data.mensaje);
                     document.getElementById('formSalida').reset();
                     document.getElementById('fecha_salida').valueAsDate = new Date();
                     itemsDespachoArray = [];
-                    renderTablaItemsDespacho();
+                    renderTablaItems();
                     cargarHistorialSalidas();
                     cargarProductoTerminado();
                     cargarInventarioAlmacen();
                 } else {
-                    alert('❌ ' + (data.mensaje || 'Error al registrar la salida.'));
+                    alert('❌ ' + (data.mensaje || 'Error al registrar.'));
                 }
-            } catch (err) {
-                console.error(err);
-                alert('❌ Error de conexión con el servidor.');
-            }
+            } catch(err) { console.error(err); alert('Error de conexión.'); }
         });
 
-        // Cargar todo al iniciar
         cargarPendientes();
         cargarProductoTerminado();
         cargarInventarioAlmacen();

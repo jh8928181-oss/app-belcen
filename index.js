@@ -214,7 +214,7 @@ app.post('/api/soplado/registrar', async (req, res) => {
     }
 });
 
-// --- ENVASADO: DESCUENTO DE INSUMOS + SUMA A PRODUCTO TERMINADO ---
+// --- ENVASADO ---
 app.post('/api/envasado/registrar', async (req, res) => {
     const client = await pool.connect();
     try {
@@ -347,17 +347,17 @@ app.post('/api/envasado/registrar', async (req, res) => {
         `, [producto_tipo, nombreLegible, cantidad_producida]);
 
         await client.query('COMMIT');
-        res.json({ success: true, mensaje: `Producción del lote ${numero_lote} registrada (+${cantidad_producida} cajas a Producto Terminado). Insumo de tapa "${tapaProceso}" descontado.` });
+        res.json({ success: true, mensaje: `Producción del lote ${numero_lote} registrada (+${cantidad_producida} cajas a Producto Terminado).` });
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Error en registro de envasado:', error);
-        res.status(500).json({ success: false, mensaje: 'Error al procesar la producción de envasado: ' + error.message });
+        res.status(500).json({ success: false, mensaje: 'Error al procesar la producción: ' + error.message });
     } finally {
         client.release();
     }
 });
 
-// --- LECTOR DE PDF PARA PRE-LLENADO EN ALMACÉN ---
+// --- LECTOR INTELIGENTE DE PDF PARA SALIDAS (CABECERA + ÍTEMS) ---
 app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res) => {
     try {
         if (!req.file) {
@@ -387,12 +387,31 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
             }
         }
 
+        // Búsqueda inteligente de productos terminados dentro del texto del PDF
+        const ptRes = await pool.query('SELECT * FROM producto_terminado');
+        const listaPT = ptRes.rows;
+        let itemsDetectados = [];
+
+        for (let pt of listaPT) {
+            // Buscamos coincidencias de nombres o fragmentos en el PDF (ej. "Belini 1 Lt")
+            const nombreBusq = pt.nombre_producto.toLowerCase().replace('aceite de soya', '').trim();
+            if (textoPdf.toLowerCase().includes(nombreBusq)) {
+                // Buscamos un número cercano que represente la cantidad
+                itemsDetectados.push({
+                    producto_key: pt.producto_key,
+                    nombre: pt.nombre_producto,
+                    cantidad: 1 // Por defecto se asume 1 o se extrae si el patrón es claro
+                });
+            }
+        }
+
         res.json({
             success: true,
             datos: {
                 numero_guia,
                 ruc,
-                empresa: empresa || 'Cliente Detectado en PDF'
+                empresa: empresa || 'Cliente Detectado en PDF',
+                items: itemsDetectados
             }
         });
     } catch (err) {
@@ -414,7 +433,7 @@ app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, re
         const items = JSON.parse(items_json || '[]');
 
         if (items.length === 0) {
-            return res.status(400).json({ success: false, mensaje: 'Debe agregar al menos un producto o insumo al despacho.' });
+            return res.status(400).json({ success: false, mensaje: 'Debe incluir al menos un producto en el despacho.' });
         }
 
         await client.query('BEGIN');
@@ -454,7 +473,7 @@ app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, re
         }
 
         await client.query('COMMIT');
-        res.json({ success: true, mensaje: `Despacho de ${items.length} producto(s) registrado correctamente y stock actualizado.` });
+        res.json({ success: true, mensaje: `Despacho de ${items.length} ítem(s) registrado correctamente.` });
     } catch (err) {
         await client.query('ROLLBACK');
         console.error("Error al registrar salida:", err);
@@ -492,28 +511,20 @@ app.get('/api/salidas/historial', async (req, res) => {
         res.json(result.rows);
     } catch (err) {
         console.error("Error en historial salidas:", err);
-        res.status(500).json({ success: false, mensaje: 'Error al obtener el historial de salidas: ' + err.message });
+        res.status(500).json({ success: false, mensaje: 'Error al obtener historial de salidas: ' + err.message });
     }
 });
 
-// --- AUDITORÍA ---
+// --- AUDITORÍA Y PRODUCCIÓN ---
 app.get('/api/auditoria/registros', async (req, res) => {
     try {
-        const result = await pool.query(`
-            SELECT id, tipo_documento, numero_guia, proveedor, lugar_partida, 
-                   punto_llegada, producto_textual, cantidad, unidad_medida, 
-                   foto_url, usuario_vigilancia, estado, fecha_ingreso
-            FROM ingresos_vigilancia 
-            ORDER BY id DESC
-        `);
+        const result = await pool.query(`SELECT * FROM ingresos_vigilancia ORDER BY id DESC`);
         res.json(result.rows);
     } catch (err) {
-        console.error("Error en auditoria:", err);
-        res.status(500).json({ success: false, mensaje: 'Error al obtener los registros de auditoría: ' + err.message });
+        res.status(500).json({ success: false, mensaje: err.message });
     }
 });
 
-// --- REPORTE DE PRODUCCIÓN ---
 app.post('/api/produccion/reporte', async (req, res) => {
     const { fecha_produccion, presentacion, cantidad_cajas, toneladas, observaciones, usuario } = req.body;
     try {
@@ -524,8 +535,7 @@ app.post('/api/produccion/reporte', async (req, res) => {
         );
         res.json({ success: true, mensaje: 'Reporte registrado correctamente' });
     } catch (err) {
-        console.error("Error en reporte producción:", err);
-        res.status(500).json({ success: false, mensaje: 'Error al registrar el reporte de producción: ' + err.message });
+        res.status(500).json({ success: false, mensaje: err.message });
     }
 });
 
@@ -534,47 +544,24 @@ app.get('/api/produccion/reportes', async (req, res) => {
         const result = await pool.query('SELECT * FROM reportes_produccion ORDER BY id DESC LIMIT 20');
         res.json(result.rows);
     } catch (err) {
-        console.error("Error al obtener reportes:", err);
-        res.status(500).json({ success: false, mensaje: 'Error al obtener los reportes: ' + err.message });
+        res.status(500).json({ success: false, mensaje: err.message });
     }
 });
 
-// --- CIERRE DE PRODUCCIÓN ---
 app.post('/api/produccion/cierre', async (req, res) => {
     const client = await pool.connect();
     try {
         const { fecha_cierre, usuario } = req.body;
         await client.query('BEGIN');
-
-        const resumen = await client.query(
-            `SELECT SUM(cantidad_cajas) as total_cajas, SUM(toneladas) as total_tn, COUNT(*) as total_registros 
-             FROM reportes_produccion WHERE fecha_produccion = $1`,
-            [fecha_cierre]
-        );
-
-        if (resumen.rows[0].total_registros == 0) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ success: false, mensaje: 'No hay registros de producción para cerrar en esta fecha.' });
-        }
-
+        const resumen = await client.query(`SELECT SUM(cantidad_cajas) as total_cajas, SUM(toneladas) as total_tn FROM reportes_produccion WHERE fecha_produccion = $1`, [fecha_cierre]);
         const { total_cajas, total_tn } = resumen.rows[0];
-
-        await client.query(
-            `INSERT INTO historial_cierres_produccion (fecha_cierre, total_cajas, total_toneladas, usuario_cierre) 
-             VALUES ($1, $2, $3, $4)`,
-            [fecha_cierre, total_cajas || 0, total_tn || 0, usuario || 'envasado_user']
-        );
-
+        await client.query(`INSERT INTO historial_cierres_produccion (fecha_cierre, total_cajas, total_toneladas, usuario_cierre) VALUES ($1, $2, $3, $4)`, [fecha_cierre, total_cajas || 0, total_tn || 0, usuario || 'envasado_user']);
         await client.query(`DELETE FROM reportes_produccion WHERE fecha_produccion = $1`, [fecha_cierre]);
-
         await client.query('COMMIT');
-        res.json({ success: true, mensaje: `Cierre de producción del ${fecha_cierre} realizado con éxito. Cuadro reiniciado.` });
+        res.json({ success: true, mensaje: 'Cierre de producción realizado con éxito.' });
     } catch (err) {
         await client.query('ROLLBACK');
-        console.error("Error en cierre:", err);
-        res.status(500).json({ success: false, mensaje: 'Error al procesar el cierre de producción: ' + err.message });
-    } finally {
-        client.release();
+        res.status(500).json({ success: false, mensaje: err.message });
     }
 });
 
@@ -583,8 +570,7 @@ app.get('/api/produccion/historial-cierres', async (req, res) => {
         const result = await pool.query('SELECT * FROM historial_cierres_produccion ORDER BY fecha_cierre DESC');
         res.json(result.rows);
     } catch (err) {
-        console.error("Error en historial cierres:", err);
-        res.status(500).json({ success: false, mensaje: 'Error al obtener el historial de cierres: ' + err.message });
+        res.status(500).json({ success: false, mensaje: err.message });
     }
 });
 

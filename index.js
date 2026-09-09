@@ -357,7 +357,7 @@ app.post('/api/envasado/registrar', async (req, res) => {
     }
 });
 
-// --- LECTOR INTELIGENTE DE PDF PARA SALIDAS (CABECERA + ÍTEMS) ---
+// --- LECTOR INTELIGENTE DE PDF PARA SALIDAS ---
 app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res) => {
     try {
         if (!req.file) {
@@ -387,20 +387,18 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
             }
         }
 
-        // Búsqueda inteligente de productos terminados dentro del texto del PDF
+        // Búsqueda de productos terminados en el texto del PDF
         const ptRes = await pool.query('SELECT * FROM producto_terminado');
         const listaPT = ptRes.rows;
         let itemsDetectados = [];
 
         for (let pt of listaPT) {
-            // Buscamos coincidencias de nombres o fragmentos en el PDF (ej. "Belini 1 Lt")
             const nombreBusq = pt.nombre_producto.toLowerCase().replace('aceite de soya', '').trim();
             if (textoPdf.toLowerCase().includes(nombreBusq)) {
-                // Buscamos un número cercano que represente la cantidad
                 itemsDetectados.push({
                     producto_key: pt.producto_key,
                     nombre: pt.nombre_producto,
-                    cantidad: 1 // Por defecto se asume 1 o se extrae si el patrón es claro
+                    cantidad: 1 // Por defecto 1 caja si se detecta la mención en el PDF
                 });
             }
         }

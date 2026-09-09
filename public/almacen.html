@@ -78,7 +78,7 @@
         </table>
     </div>
 
-    <!-- 4. REGISTRO DE SALIDAS CON LECTOR PDF AUTOMÁTICO -->
+    <!-- 4. REGISTRO DE SALIDAS (PDF INTELIGENTE SIN TRABAS OBLIGATORIAS) -->
     <div class="table-container" style="border-top: 5px solid #dc3545;">
         <h3 style="color: #dc3545;">REGISTRO DE SALIDAS DE ALMACÉN (CON GUÍA PDF O MANUAL)</h3>
         
@@ -136,17 +136,17 @@
                 <input type="text" id="punto_partida" name="punto_partida" value="Planta Principal - Corporación Belcen" style="width: 100%;">
             </div>
 
-            <!-- TABLA DE PRODUCTOS A DESPACHAR -->
+            <!-- TABLA DE PRODUCTOS A DESPACHAR (MANUAL O AUTOMÁTICA) -->
             <div style="grid-column: span 2; background: #eef2f5; padding: 15px; border-radius: 6px; border: 2px dashed #007bff;">
                 <h4 style="margin-top: 0; color: #007bff;">📦 Lista de Productos a Despachar</h4>
-                <p style="font-size: 12px; color: #555; margin-top: -5px;">Si subiste el PDF, los productos se autocompletarán. Si es sin guía, agrégalos manualmente aquí:</p>
+                <p style="font-size: 12px; color: #555; margin-top: -5px;">Si el PDF detecta los productos, aparecerán aquí. Si no, puedes agregarlos manualmente con el selector:</p>
                 
                 <div style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;">
                     <select id="selectProductoSalida" style="flex: 2; min-width: 200px;">
                         <option value="">-- Seleccione un producto o insumo --</option>
                     </select>
                     <input type="number" step="0.01" id="cantidad_temp" placeholder="Cantidad" style="flex: 1; min-width: 100px;">
-                    <button type="button" onclick="agregarItemManual()" style="background: #28a745; color: white; border: none; padding: 8px 15px; font-weight: bold; border-radius: 4px; cursor: pointer;">+ Agregar Ítem Manual</button>
+                    <button type="button" onclick="agregarItemManual()" style="background: #28a745; color: white; border: none; padding: 8px 15px; font-weight: bold; border-radius: 4px; cursor: pointer;">+ Agregar Ítem</button>
                 </div>
 
                 <table style="width: 100%; background: white;">
@@ -312,7 +312,6 @@
                     if (data.datos.ruc) document.getElementById('ruc').value = data.datos.ruc;
                     if (data.datos.empresa) document.getElementById('empresa').value = data.datos.empresa;
 
-                    // Si el lector encontró ítems automáticamente, los cargamos a la lista
                     if (data.datos.items && data.datos.items.length > 0) {
                         itemsDespachoArray = data.datos.items.map(i => ({
                             nombre: i.nombre,
@@ -321,9 +320,9 @@
                             articulo_id: null
                         }));
                         renderTablaItems();
-                        alert('📄 Guía PDF leída: Cabecera e ítems detectados automáticamente.');
+                        alert('📄 Guía PDF leída: Cabecera e ítems detectados.');
                     } else {
-                        alert('📄 Cabecera leída con éxito. Agregue los productos manualmente si el PDF no tenía formato estándar.');
+                        alert('📄 Cabecera leída con éxito. Agregue los productos manualmente abajo si el PDF no tenía formato estándar.');
                     }
                 }
             } catch(e) { console.error(e); }
@@ -379,7 +378,7 @@
         document.getElementById('formSalida').addEventListener('submit', async (e) => {
             e.preventDefault();
             if (itemsDespachoArray.length === 0) {
-                alert('❌ Debe incluir al menos un producto en el despacho.');
+                alert('❌ Debe incluir al menos un producto en el despacho (por PDF o manual).');
                 return;
             }
 

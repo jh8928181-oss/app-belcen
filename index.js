@@ -2,7 +2,7 @@ const express = require('express');
 const pool = require('./db');
 const path = require('path');
 const multer = require('multer');
-const pdfParse = require('pdf-parse');
+const pdfParse = require('pdf-parse/lib/pdf-parse.js');
 const fs = require('fs');
 
 const app = express();

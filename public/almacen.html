@@ -44,7 +44,7 @@
         </table>
     </div>
 
-    <!-- 2. NUEVA SECCIÓN: STOCK DE PRODUCTO TERMINADO (ALIMENTADO DESDE ENVASADO) -->
+    <!-- 2. STOCK DE PRODUCTO TERMINADO (SOLO MAYOR A 0) -->
     <div class="table-container" style="border-top: 5px solid #28a745;">
         <h3 style="color: #28a745; border-bottom: 2px solid #28a745;">STOCK DE PRODUCTO TERMINADO (CAJAS LISTAS PARA DESPACHO)</h3>
         <p style="font-size: 13px; color: #6c757d; text-align: center; margin-top: -5px;">Se incrementa automáticamente con la producción de Envasado y se descuenta al registrar Salidas.</p>
@@ -63,7 +63,7 @@
         </table>
     </div>
 
-    <!-- 3. SECCIÓN DE INVENTARIO GENERAL Y AJUSTE MANUAL (INSUMOS) -->
+    <!-- 3. INVENTARIO DE INSUMOS -->
     <div class="table-container" style="border-top: 5px solid #007bff;">
         <h3 style="color: #007bff;">INVENTARIO DE INSUMOS Y MATERIA PRIMA</h3>
         
@@ -91,7 +91,7 @@
                     <th>ARTÍCULO / INSUMO</th>
                     <th>CATEGORÍA</th>
                     <th class="text-center">STOCK ACTUAL</th>
-                    <th class="text-center" style="background: #17a2b8;">EQUIVALENTE EN CAJAS (Solo Envases)</th>
+                    <th class="text-center" style="background: #17a2b8;">EQUIVALENTE EN CAJAS</th>
                     <th class="text-center">ESTADO</th>
                     <th class="text-center">ACCIÓN MANUAL</th>
                 </tr>
@@ -100,7 +100,7 @@
         </table>
     </div>
 
-    <!-- 4. SECCIÓN DE REGISTRO DE SALIDAS Y LECTOR DE GUÍAS -->
+    <!-- 4. REGISTRO DE SALIDAS MULTIPRODUCTO CON LECTOR DE PDF -->
     <div class="table-container" style="border-top: 5px solid #dc3545;">
         <h3 style="color: #dc3545;">REGISTRO DE SALIDAS DE ALMACÉN (CON / SIN GUÍA)</h3>
         
@@ -108,14 +108,14 @@
             <div>
                 <label><b>Tipo de Salida:</b></label>
                 <select id="tipo_registro" name="tipo_registro" required style="width: 100%;">
-                    <option value="CON GUIA">Con Guía de Remisión (Lector PDF automático)</option>
+                    <option value="CON GUIA">Con Guía de Remisión</option>
                     <option value="SIN GUIA">Sin Guía (Queda pendiente de regularizar)</option>
                 </select>
             </div>
 
             <div>
-                <label><b>Subir Guía de Remisión (PDF):</b></label>
-                <input type="file" id="archivo_guia" name="archivo_guia" accept=".pdf" style="width: 100%;">
+                <label><b>Subir Guía PDF (Auto-completar datos):</b></label>
+                <input type="file" id="archivo_guia" name="archivo_guia" accept=".pdf" onchange="leerPdfPrevio(this)" style="width: 100%;">
             </div>
 
             <div>
@@ -124,19 +124,7 @@
             </div>
 
             <div>
-                <label><b>Seleccionar Producto / Insumo a Despachar:</b></label>
-                <select id="selectProductoSalida" required style="width: 100%;">
-                    <option value="">-- Seleccione un producto o insumo --</option>
-                </select>
-            </div>
-
-            <div>
-                <label><b>Cantidad a Despachar:</b></label>
-                <input type="number" step="0.01" id="cantidad_salida" name="cantidad_salida" placeholder="Ej. 50" required style="width: 100%;">
-            </div>
-
-            <div>
-                <label><b>N° de Guía (Opcional si sube PDF):</b></label>
+                <label><b>N° de Guía de Remisión:</b></label>
                 <input type="text" id="numero_guia" name="numero_guia" placeholder="Ej. F001-000452" style="width: 100%;">
             </div>
 
@@ -165,18 +153,43 @@
                 <input type="text" id="placa" name="placa" placeholder="Ej. ABC-123" required style="width: 100%;">
             </div>
 
-            <div style="grid-column: span 2;">
+            <div>
                 <label><b>Punto de Partida:</b></label>
                 <input type="text" id="punto_partida" name="punto_partida" value="Planta Principal - Corporación Belcen" required style="width: 100%;">
             </div>
 
+            <!-- DETALLE MULTIPRODUCTO -->
+            <div style="grid-column: span 2; background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px solid #ddd;">
+                <h4 style="margin-top: 0; color: #343a40;">📦 Productos e Insumos en esta Guía / Despacho</h4>
+                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <select id="selectProductoSalida" style="flex: 2;">
+                        <option value="">-- Seleccione un producto o insumo --</option>
+                    </select>
+                    <input type="number" step="0.01" id="cantidad_temp" placeholder="Cantidad" style="flex: 1;">
+                    <button type="button" onclick="agregarItemADespacho()" style="background: #28a745; color: white; border: none; padding: 8px 15px; font-weight: bold; border-radius: 4px; cursor: pointer;">+ Agregar Ítem</button>
+                </div>
+
+                <table style="width: 100%; background: white;">
+                    <thead>
+                        <tr style="background: #6c757d; color: white;">
+                            <th>PRODUCTO / INSUMO</th>
+                            <th class="text-center">CANTIDAD</th>
+                            <th class="text-center">QUITAR</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaItemsDespacho">
+                        <tr><td colspan="3" class="text-center" style="color: #6c757d;">No se han agregado productos a este despacho.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
             <div style="grid-column: span 2;">
-                <button type="submit" style="background: #dc3545; color: white; padding: 12px; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; width: 100%;">Registrar Salida en Historial</button>
+                <button type="submit" style="background: #dc3545; color: white; padding: 12px; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; width: 100%;">Registrar Despacho Completo en Historial</button>
             </div>
         </form>
     </div>
 
-    <!-- 5. CUADRO RESUMEN DE HISTORIAL DE SALIDAS -->
+    <!-- 5. HISTORIAL DE SALIDAS -->
     <div class="table-container" style="border-top: 5px solid #6c757d;">
         <h3 style="color: #495057;">HISTORIAL DE SALIDAS REGISTRADAS</h3>
         <table>
@@ -202,6 +215,7 @@
     <script>
         let inventarioGlobal = [];
         let productoTerminadoGlobal = [];
+        let itemsDespachoArray = [];
         document.getElementById('fecha_salida').valueAsDate = new Date();
 
         // --- CARGAR PENDIENTES DE VIGILANCIA ---
@@ -266,13 +280,11 @@
             }
         }
 
-// --- CARGAR PRODUCTO TERMINADO (SOLO STOCK MAYOR A 0) ---
-   async function cargarProductoTerminado() {
+        // --- CARGAR PRODUCTO TERMINADO (SOLO MAYOR A 0) ---
+        async function cargarProductoTerminado() {
             try {
                 const res = await fetch('/api/producto-terminado');
                 const data = await res.json();
-                
-                // Filtrar para mostrar unicamente items con cajas > 0
                 productoTerminadoGlobal = data.filter(item => item.stock_cajas > 0);
                 
                 const tbody = document.getElementById('tablaProductoTerminado');
@@ -329,7 +341,7 @@
             .catch(err => console.error(err));
         }
 
-        // --- CARGAR INVENTARIO DE INSUMOS Y FILTROS ---
+        // --- CARGAR INVENTARIO DE INSUMOS ---
         async function cargarInventarioAlmacen() {
             try {
                 const res = await fetch('/api/inventario');
@@ -439,12 +451,10 @@
             .catch(err => console.error(err));
         }
 
-        // --- UNIFICAR ARTÍCULOS Y PRODUCTO TERMINADO EN SELECTOR DE SALIDAS ---
         function poblarSelectSalida() {
             const select = document.getElementById('selectProductoSalida');
             select.innerHTML = '<option value="">-- Seleccione un producto o insumo --</option>';
 
-            // 1. Grupo Producto Terminado (Cajas listas)
             if (productoTerminadoGlobal.length > 0) {
                 const optgroupPT = document.createElement('optgroup');
                 optgroupPT.label = "📦 PRODUCTO TERMINADO (CAJAS LISTAS)";
@@ -457,7 +467,6 @@
                 select.appendChild(optgroupPT);
             }
 
-            // 2. Grupo Insumos Generales
             if (inventarioGlobal.length > 0) {
                 const optgroupINS = document.createElement('optgroup');
                 optgroupINS.label = "🏭 INSUMOS / MATERIA PRIMA";
@@ -471,7 +480,90 @@
             }
         }
 
-        // --- HISTORIAL DE SALIDAS Y REGULARIZACIÓN ---
+        async function leerPdfPrevio(input) {
+            if (!input.files || !input.files[0]) return;
+
+            const formData = new FormData();
+            formData.append('archivo_guia', input.files[0]);
+
+            try {
+                const res = await fetch('/api/salidas/leer-pdf', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+
+                if (res.ok && data.success) {
+                    if (data.datos.numero_guia) document.getElementById('numero_guia').value = data.datos.numero_guia;
+                    if (data.datos.ruc) document.getElementById('ruc').value = data.datos.ruc;
+                    if (data.datos.empresa) document.getElementById('empresa').value = data.datos.empresa;
+                    alert('📄 Datos de la Guía extraídos desde el PDF correctamente.');
+                }
+            } catch (e) {
+                console.error("Error al procesar PDF:", e);
+            }
+        }
+
+        function agregarItemADespacho() {
+            const select = document.getElementById('selectProductoSalida');
+            const val = select.value;
+            const text = select.options[select.selectedIndex].text;
+            const cant = parseFloat(document.getElementById('cantidad_temp').value);
+
+            if (!val) {
+                alert('❌ Seleccione un producto o insumo.');
+                return;
+            }
+            if (isNaN(cant) || cant <= 0) {
+                alert('❌ Ingrese una cantidad válida mayor a 0.');
+                return;
+            }
+
+            let producto_key = null;
+            let articulo_id = null;
+
+            if (val.startsWith('PT:')) producto_key = val.replace('PT:', '');
+            else if (val.startsWith('INS:')) articulo_id = val.replace('INS:', '');
+
+            itemsDespachoArray.push({
+                val_raw: val,
+                nombre: text,
+                cantidad: cant,
+                producto_key,
+                articulo_id
+            });
+
+            renderTablaItemsDespacho();
+            document.getElementById('cantidad_temp').value = '';
+        }
+
+        function quitarItemDespacho(index) {
+            itemsDespachoArray.splice(index, 1);
+            renderTablaItemsDespacho();
+        }
+
+        function renderTablaItemsDespacho() {
+            const tbody = document.getElementById('tablaItemsDespacho');
+            tbody.innerHTML = '';
+
+            if (itemsDespachoArray.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="3" class="text-center" style="color: #6c757d;">No se han agregado productos a este despacho.</td></tr>`;
+                return;
+            }
+
+            itemsDespachoArray.forEach((item, idx) => {
+                tbody.innerHTML += `
+                    <tr>
+                        <td><b>${item.nombre}</b></td>
+                        <td class="text-center" style="font-weight: bold; color: #dc3545;">${item.cantidad}</td>
+                        <td class="text-center">
+                            <button type="button" onclick="quitarItemDespacho(${idx})" style="background: #dc3545; color: white; border: none; padding: 2px 8px; border-radius: 3px; cursor: pointer;">X</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
         async function cargarHistorialSalidas() {
             try {
                 const res = await fetch('/api/salidas/historial');
@@ -531,20 +623,15 @@
 
         document.getElementById('formSalida').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const selectedVal = document.getElementById('selectProductoSalida').value;
-            if (!selectedVal) {
-                alert('❌ Seleccione un producto o insumo a despachar.');
+
+            if (itemsDespachoArray.length === 0) {
+                alert('❌ Agregue al menos un producto a la lista con el botón "+ Agregar Ítem".');
                 return;
             }
 
             const formData = new FormData(e.target);
             formData.append('usuario', localStorage.getItem('usuario_actual') || 'almacen_user');
-
-            if (selectedVal.startsWith('PT:')) {
-                formData.append('producto_key', selectedVal.replace('PT:', ''));
-            } else if (selectedVal.startsWith('INS:')) {
-                formData.append('articulo_id', selectedVal.replace('INS:', ''));
-            }
+            formData.append('items_json', JSON.stringify(itemsDespachoArray));
 
             try {
                 const res = await fetch('/api/salidas/registrar', {
@@ -553,23 +640,25 @@
                 });
                 const data = await res.json();
 
-                if(res.ok && data.success) {
+                if (res.ok && data.success) {
                     alert('✅ ' + data.mensaje);
                     document.getElementById('formSalida').reset();
                     document.getElementById('fecha_salida').valueAsDate = new Date();
+                    itemsDespachoArray = [];
+                    renderTablaItemsDespacho();
                     cargarHistorialSalidas();
                     cargarProductoTerminado();
                     cargarInventarioAlmacen();
                 } else {
                     alert('❌ ' + (data.mensaje || 'Error al registrar la salida.'));
                 }
-            } catch(err) {
+            } catch (err) {
                 console.error(err);
                 alert('❌ Error de conexión con el servidor.');
             }
         });
 
-        // Inicializar datos en la vista
+        // Cargar todo al iniciar
         cargarPendientes();
         cargarProductoTerminado();
         cargarInventarioAlmacen();

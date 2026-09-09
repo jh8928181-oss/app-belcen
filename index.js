@@ -222,7 +222,6 @@ app.post('/api/envasado/registrar', async (req, res) => {
         await client.query('BEGIN');
 
         let insumosADescontar = [];
-        // Tapa seleccionada manualmente o tapa por defecto
         const tapaProceso = tapa_elegida || 'Tapa dosif. N° 26 blanco / Dorado';
 
         switch (producto_tipo) {
@@ -332,7 +331,6 @@ app.post('/api/envasado/registrar', async (req, res) => {
                 throw new Error('Tipo de producto desconocido para la receta de envasado.');
         }
 
-        // Descontar insumos del inventario
         for (const insumo of insumosADescontar) {
             await client.query(
                 `UPDATE inventario SET stock = stock - $1 WHERE LOWER(nombre) = LOWER($2)`,
@@ -340,7 +338,6 @@ app.post('/api/envasado/registrar', async (req, res) => {
             );
         }
 
-        // Sumar cajas producidas a la tabla producto_terminado
         const nombreLegible = PRODUCTOS_TERMINADOS_MAP[producto_tipo] || producto_tipo;
         await client.query(`
             INSERT INTO producto_terminado (producto_key, nombre_producto, stock_cajas)
@@ -360,71 +357,104 @@ app.post('/api/envasado/registrar', async (req, res) => {
     }
 });
 
-// --- SALIDAS DE ALMACÉN ---
+// --- LECTOR DE PDF PARA PRE-LLENADO EN ALMACÉN ---
+app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, mensaje: 'No se subió ningún archivo PDF.' });
+        }
+
+        const fs = require('fs');
+        const dataBuffer = fs.readFileSync(req.file.path);
+        const pdfData = await pdfParse(dataBuffer);
+        const textoPdf = pdfData.text;
+
+        let numero_guia = '';
+        let ruc = '';
+        let empresa = '';
+
+        const guiaMatch = textoPdf.match(/(?:[F|B]\d{3}-\d{1,8})|(?:\bGUIA\b[\s\S]{0,15}(\d{3,4}-\d{4,8}))/i);
+        if (guiaMatch) numero_guia = guiaMatch[1] || guiaMatch[0];
+
+        const rucMatch = textoPdf.match(/\b(20\d{9})\b/);
+        if (rucMatch) ruc = rucMatch[1];
+
+        const lineas = textoPdf.split('\n');
+        for (let linea of lineas) {
+            if (linea.includes('S.A.C.') || linea.includes('S.A.') || linea.includes('E.I.R.L.')) {
+                empresa = linea.trim();
+                break;
+            }
+        }
+
+        res.json({
+            success: true,
+            datos: {
+                numero_guia,
+                ruc,
+                empresa: empresa || 'Cliente Detectado en PDF'
+            }
+        });
+    } catch (err) {
+        console.error("Error al leer PDF:", err);
+        res.status(500).json({ success: false, mensaje: 'No se pudo leer el PDF: ' + err.message });
+    }
+});
+
+// --- SALIDAS DE ALMACÉN (MULTIPRODUCTO) ---
 app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, res) => {
     const client = await pool.connect();
     try {
         const { 
             tipo_registro, numero_guia, empresa, ruc, destino, 
-            chofer_licencia, placa, punto_partida, articulo_id, producto_key,
-            cantidad_salida, fecha_salida, usuario 
+            chofer_licencia, placa, punto_partida, fecha_salida, 
+            usuario, items_json 
         } = req.body;
+
+        const items = JSON.parse(items_json || '[]');
+
+        if (items.length === 0) {
+            return res.status(400).json({ success: false, mensaje: 'Debe agregar al menos un producto o insumo al despacho.' });
+        }
 
         await client.query('BEGIN');
 
-        let guiaFinal = numero_guia || '';
-        let empresaFinal = empresa;
-        let rucFinal = ruc;
         let estadoGuia = tipo_registro === 'CON GUIA' ? 'REGULARIZADO' : 'PENDIENTE REGULARIZAR';
+        let guiaFinal = numero_guia || 'S/N';
 
-        if (tipo_registro === 'CON GUIA' && req.file) {
-            const fs = require('fs');
-            const dataBuffer = fs.readFileSync(req.file.path);
-            const pdfData = await pdfParse(dataBuffer);
-            const textoPdf = pdfData.text;
+        for (const item of items) {
+            let idArticuloFinal = item.articulo_id ? parseInt(item.articulo_id) : null;
+            let productoKeyFinal = item.producto_key || null;
 
-            const guiaMatch = textoPdf.match(/(?:[F|B]\d{3}-\d{1,8})|(?:\bGUIA\b[\s\S]{0,15}(\d{3,4}-\d{4,8}))/i);
-            if (guiaMatch) {
-                guiaFinal = guiaMatch[1] || guiaMatch[0];
+            if (productoKeyFinal) {
+                await client.query(
+                    `UPDATE producto_terminado SET stock_cajas = stock_cajas - $1 WHERE producto_key = $2`,
+                    [parseFloat(item.cantidad), productoKeyFinal]
+                );
+            } else if (idArticuloFinal) {
+                await client.query(
+                    `UPDATE inventario SET stock = stock - $1 WHERE id = $2`,
+                    [parseFloat(item.cantidad), idArticuloFinal]
+                );
             }
 
-            const rucMatch = textoPdf.match(/\b(20\d{9})\b/);
-            if (rucMatch) rucFinal = rucMatch[1];
-            if (!empresaFinal) empresaFinal = "Extraído de PDF";
+            const querySalida = `
+                INSERT INTO salidas_almacen 
+                (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, articulo_id, producto_key, cantidad_salida, usuario_registro, estado_guia)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);
+            `;
+            const valoresSalida = [
+                fecha_salida || new Date(), tipo_registro, guiaFinal, 
+                empresa || 'N/A', ruc || 'N/A', destino || 'N/A', 
+                chofer_licencia || 'N/A', placa || 'N/A', punto_partida || 'Almacén Principal', 
+                idArticuloFinal, productoKeyFinal, item.cantidad, usuario || 'almacen_user', estadoGuia
+            ];
+
+            await client.query(querySalida, valoresSalida);
         }
 
-        let idArticuloFinal = articulo_id ? parseInt(articulo_id) : null;
-
-        // Si la salida es un Producto Terminado (Cajas)
-        if (producto_key) {
-            await client.query(
-                `UPDATE producto_terminado SET stock_cajas = stock_cajas - $1 WHERE producto_key = $2`,
-                [parseFloat(cantidad_salida), producto_key]
-            );
-        } else if (idArticuloFinal) {
-            // Si es un insumo suelto de la tabla inventario
-            await client.query(
-                `UPDATE inventario SET stock = stock - $1 WHERE id = $2`,
-                [parseFloat(cantidad_salida), idArticuloFinal]
-            );
-        }
-
-        const querySalida = `
-            INSERT INTO salidas_almacen 
-            (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, articulo_id, producto_key, cantidad_salida, usuario_registro, estado_guia)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *;
-        `;
-        const valoresSalida = [
-            fecha_salida || new Date(), tipo_registro, guiaFinal || 'S/N', 
-            empresaFinal || 'N/A', rucFinal || 'N/A', destino || 'N/A', 
-            chofer_licencia || 'N/A', placa || 'N/A', punto_partida || 'Almacén Principal', 
-            idArticuloFinal, producto_key || null, cantidad_salida, usuario || 'almacen_user', estadoGuia
-        ];
-
-        const resultadoSalida = await client.query(querySalida, valoresSalida);
         await client.query('COMMIT');
-
-        res.json({ success: true, mensaje: 'Salida registrada correctamente y stock descontado.', salida: resultadoSalida.rows[0] });
+        res.json({ success: true, mensaje: `Despacho de ${items.length} producto(s) registrado correctamente y stock actualizado.` });
     } catch (err) {
         await client.query('ROLLBACK');
         console.error("Error al registrar salida:", err);

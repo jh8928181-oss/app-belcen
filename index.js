@@ -23,10 +23,10 @@ app.post('/api/login', async (req, res) => {
         } else {
             res.status(401).json({ success: false, mensaje: 'Usuario o contraseña incorrectos' });
         }
-   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, mensaje: 'Error en el servidor' });
-}
+    } catch (err) {
+        console.error("Error en login:", err);
+        res.status(500).json({ success: false, mensaje: 'Error en el servidor: ' + err.message });
+    }
 });
 
 // --- VIGILANCIA (Registro con foto/documento) ---
@@ -39,13 +39,13 @@ app.post('/api/vigilancia/registrar', upload.single('foto_guia'), async (req, re
             INSERT INTO ingresos_vigilancia (tipo_documento, numero_guia, proveedor, lugar_partida, punto_llegada, producto_textual, cantidad, unidad_medida, foto_url, usuario_vigilancia, estado)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PENDIENTE CONFORMIDAD') RETURNING *;
         `;
-        const values = [tipo_documento, numero_guia, proveedor, lugar_partida, punto_llegada, producto_textual, cantidad, unidad_medida, foto_url, usuario];
+        const values = [tipo_documento, numero_guia, proveedor, lugar_partida, punto_llegada, producto_textual, cantidad || 0, unidad_medida, foto_url, usuario];
         
         const nuevoIngreso = await pool.query(query, values);
         res.json({ success: true, mensaje: 'Ingreso registrado por vigilancia correctamente', ingreso: nuevoIngreso.rows[0] });
     } catch (err) {
-        console.error(err);
-        res.status(500).send('Error al registrar en vigilancia');
+        console.error("Error en vigilancia:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al registrar en vigilancia: ' + err.message });
     }
 });
 
@@ -55,8 +55,8 @@ app.get('/api/almacen/pendientes', async (req, res) => {
         const result = await pool.query("SELECT * FROM ingresos_vigilancia WHERE estado = 'PENDIENTE CONFORMIDAD' ORDER BY id DESC");
         res.json(result.rows);
     } catch (err) {
-        console.error(err);
-        res.status(500).send('Error al obtener pendientes');
+        console.error("Error al obtener pendientes:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al obtener pendientes: ' + err.message });
     }
 });
 
@@ -72,12 +72,12 @@ app.post('/api/almacen/conformidad', async (req, res) => {
         let targetArticuloId = articulo_id_inventario;
 
         if (!targetArticuloId && nombre_manual) {
-            const existeRes = await client.query('SELECT id FROM inventario WHERE LOWER(nombre) = LOWER($1)', [nombre_manual]);
+            const existeRes = await client.query('SELECT id FROM articulos WHERE LOWER(nombre) = LOWER($1)', [nombre_manual]);
             if (existeRes.rows.length > 0) {
                 targetArticuloId = existeRes.rows[0].id;
             } else {
                 const nuevoArt = await client.query(
-                    `INSERT INTO inventario (nombre, categoria, stock, unidad_medida, estado) VALUES ($1, 'General', 0, 'UNIDADES', 'STOCK NORMAL') RETURNING id`,
+                    `INSERT INTO articulos (nombre, categoria, stock, unidad_medida, estado) VALUES ($1, 'General', 0, 'UNIDADES', 'STOCK SUFICIENTE') RETURNING id`,
                     [nombre_manual]
                 );
                 targetArticuloId = nuevoArt.rows[0].id;
@@ -85,7 +85,7 @@ app.post('/api/almacen/conformidad', async (req, res) => {
         }
 
         await client.query(
-            `UPDATE inventario SET stock = stock + $1 WHERE id = $2`,
+            `UPDATE articulos SET stock = stock + $1 WHERE id = $2`,
             [ingreso.cantidad, targetArticuloId]
         );
 
@@ -98,8 +98,8 @@ app.post('/api/almacen/conformidad', async (req, res) => {
         res.json({ success: true, mensaje: 'Conformidad aplicada y stock actualizado exitosamente.' });
     } catch (err) {
         await client.query('ROLLBACK');
-        console.error(err);
-        res.status(500).send('Error al procesar conformidad');
+        console.error("Error en conformidad:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al procesar conformidad: ' + err.message });
     } finally {
         client.release();
     }
@@ -111,7 +111,7 @@ app.post('/api/almacen/ajustar-stock', async (req, res) => {
         const { articulo_id, nuevo_stock } = req.body;
         
         await pool.query(
-            `UPDATE inventario 
+            `UPDATE articulos 
              SET stock = $1, 
                  estado = CASE WHEN $1 <= 0 THEN 'REALIZAR PEDIDO' ELSE 'STOCK SUFICIENTE' END 
              WHERE id = $2`,
@@ -121,24 +121,24 @@ app.post('/api/almacen/ajustar-stock', async (req, res) => {
         res.json({ success: true, mensaje: 'Stock ajustado manualmente con éxito.' });
     } catch (err) {
         console.error("Error al ajustar stock:", err);
-        res.status(500).json({ success: false, mensaje: 'Error al actualizar el stock manualmente.' });
+        res.status(500).json({ success: false, mensaje: 'Error al actualizar el stock manualmente: ' + err.message });
     }
 });
 
-// --- INVENTARIO GENERAL (Para el Dashboard) ---
+// --- INVENTARIO GENERAL (Para el Dashboard y Almacén) ---
 app.get('/api/inventario', async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT id, nombre, categoria, stock, 
                    COALESCE(unidad_medida, 'UNIDADES') as unidad_medida, 
-                   COALESCE(estado, 'STOCK NORMAL') as estado 
-            FROM inventario 
+                   COALESCE(estado, 'STOCK SUFICIENTE') as estado 
+            FROM articulos 
             ORDER BY id ASC
         `);
         res.json(result.rows);
     } catch (err) {
-        console.error(err);
-        res.status(500).send('Error al obtener el inventario');
+        console.error("Error al obtener inventario:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al obtener el inventario: ' + err.message });
     }
 });
 
@@ -151,13 +151,13 @@ app.post('/api/soplado/registrar', async (req, res) => {
         await client.query('BEGIN');
 
         if (preforma_id && cantidad_preformas) {
-            await client.query(`UPDATE inventario SET stock = stock - $1 WHERE id = $2`, [cantidad_preformas, preforma_id]);
+            await client.query(`UPDATE articulos SET stock = stock - $1 WHERE id = $2`, [cantidad_preformas, preforma_id]);
         }
         if (etiqueta_id && cantidad_etiquetas) {
-            await client.query(`UPDATE inventario SET stock = stock - $1 WHERE id = $2`, [cantidad_etiquetas, etiqueta_id]);
+            await client.query(`UPDATE articulos SET stock = stock - $1 WHERE id = $2`, [cantidad_etiquetas, etiqueta_id]);
         }
         if (botella_id && cantidad_botellas) {
-            await client.query(`UPDATE inventario SET stock = stock + $1 WHERE id = $2`, [cantidad_botellas, botella_id]);
+            await client.query(`UPDATE articulos SET stock = stock + $1 WHERE id = $2`, [cantidad_botellas, botella_id]);
         }
 
         await client.query('COMMIT');
@@ -165,7 +165,7 @@ app.post('/api/soplado/registrar', async (req, res) => {
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Error al registrar soplado:', error);
-        res.status(500).send('Error al procesar el reporte de soplado');
+        res.status(500).json({ success: false, mensaje: 'Error al procesar el reporte de soplado: ' + error.message });
     } finally {
         client.release();
     }
@@ -289,7 +289,7 @@ app.post('/api/envasado/registrar', async (req, res) => {
 
         for (const insumo of insumosADescontar) {
             await client.query(
-                `UPDATE inventario SET stock = stock - $1 WHERE nombre = $2`,
+                `UPDATE articulos SET stock = stock - $1 WHERE LOWER(nombre) = LOWER($2)`,
                 [insumo.cantidad, insumo.nombre]
             );
         }
@@ -299,13 +299,13 @@ app.post('/api/envasado/registrar', async (req, res) => {
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Error en registro de envasado:', error);
-        res.status(500).json({ success: false, mensaje: 'Error al procesar la producción de envasado.' });
+        res.status(500).json({ success: false, mensaje: 'Error al procesar la producción de envasado: ' + error.message });
     } finally {
         client.release();
     }
 });
 
-// --- SALIDAS DE ALMACÉN (Con lector PDF inteligente y control de estado de guía) ---
+// --- SALIDAS DE ALMACÉN ---
 app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, res) => {
     try {
         const { 
@@ -319,14 +319,12 @@ app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, re
         let rucFinal = ruc;
         let estadoGuia = tipo_registro === 'CON GUIA' ? 'REGULARIZADO' : 'PENDIENTE REGULARIZAR';
 
-        // Lector de PDF si subió archivo con guía
         if (tipo_registro === 'CON GUIA' && req.file) {
             const fs = require('fs');
             const dataBuffer = fs.readFileSync(req.file.path);
             const pdfData = await pdfParse(dataBuffer);
             const textoPdf = pdfData.text;
 
-            // Intentar detectar número de guía en el texto del PDF
             const guiaMatch = textoPdf.match(/(?:[F|B]\d{3}-\d{1,8})|(?:\bGUIA\b[\s\S]{0,15}(\d{3,4}-\d{4,8}))/i);
             if (guiaMatch) {
                 guiaFinal = guiaMatch[1] || guiaMatch[0];
@@ -352,12 +350,11 @@ app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, re
         const resultadoSalida = await pool.query(querySalida, valoresSalida);
         res.json({ success: true, mensaje: 'Salida registrada correctamente.', salida: resultadoSalida.rows[0] });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ success: false, mensaje: 'Error al registrar la salida.' });
+        console.error("Error al registrar salida:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al registrar la salida: ' + err.message });
     }
 });
 
-// Ruta para regularizar guía de un registro sin guía previo
 app.post('/api/salidas/regularizar', async (req, res) => {
     try {
         const { salida_id, nuevo_numero_guia } = req.body;
@@ -367,8 +364,8 @@ app.post('/api/salidas/regularizar', async (req, res) => {
         );
         res.json({ success: true, mensaje: 'Guía regularizada con éxito.' });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ success: false, mensaje: 'Error al regularizar guía.' });
+        console.error("Error al regularizar guía:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al regularizar guía: ' + err.message });
     }
 });
 
@@ -377,13 +374,13 @@ app.get('/api/salidas/historial', async (req, res) => {
         const result = await pool.query(`
             SELECT s.*, i.nombre as articulo_nombre, i.unidad_medida 
             FROM salidas_almacen s
-            JOIN inventario i ON s.articulo_id = i.id
+            JOIN articulos i ON s.articulo_id = i.id
             ORDER BY s.id DESC LIMIT 50
         `);
         res.json(result.rows);
     } catch (err) {
-        console.error(err);
-        res.status(500).send('Error al obtener el historial de salidas');
+        console.error("Error en historial salidas:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al obtener el historial de salidas: ' + err.message });
     }
 });
 
@@ -399,8 +396,8 @@ app.get('/api/auditoria/registros', async (req, res) => {
         `);
         res.json(result.rows);
     } catch (err) {
-        console.error(err);
-        res.status(500).send('Error al obtener los registros de auditoría');
+        console.error("Error en auditoria:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al obtener los registros de auditoría: ' + err.message });
     }
 });
 
@@ -415,8 +412,8 @@ app.post('/api/produccion/reporte', async (req, res) => {
         );
         res.json({ success: true, mensaje: 'Reporte registrado correctamente' });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ success: false, mensaje: 'Error al registrar el reporte de producción' });
+        console.error("Error en reporte producción:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al registrar el reporte de producción: ' + err.message });
     }
 });
 
@@ -425,12 +422,12 @@ app.get('/api/produccion/reportes', async (req, res) => {
         const result = await pool.query('SELECT * FROM reportes_produccion ORDER BY id DESC LIMIT 20');
         res.json(result.rows);
     } catch (err) {
-        console.error(err);
-        res.status(500).send('Error al obtener los reportes');
+        console.error("Error al obtener reportes:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al obtener los reportes: ' + err.message });
     }
 });
 
-// --- BLOQUE DEL BOTÓN DE CIERRE (RUTAS DE ARCHIVADO Y REINICIO) ---
+// --- CIERRE DE PRODUCCIÓN ---
 app.post('/api/produccion/cierre', async (req, res) => {
     const client = await pool.connect();
     try {
@@ -462,8 +459,8 @@ app.post('/api/produccion/cierre', async (req, res) => {
         res.json({ success: true, mensaje: `Cierre de producción del ${fecha_cierre} realizado con éxito. Cuadro reiniciado.` });
     } catch (err) {
         await client.query('ROLLBACK');
-        console.error(err);
-        res.status(500).json({ success: false, mensaje: 'Error al procesar el cierre de producción.' });
+        console.error("Error en cierre:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al procesar el cierre de producción: ' + err.message });
     } finally {
         client.release();
     }
@@ -474,8 +471,8 @@ app.get('/api/produccion/historial-cierres', async (req, res) => {
         const result = await pool.query('SELECT * FROM historial_cierres_produccion ORDER BY fecha_cierre DESC');
         res.json(result.rows);
     } catch (err) {
-        console.error(err);
-        res.status(500).send('Error al obtener el historial de cierres');
+        console.error("Error en historial cierres:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al obtener el historial de cierres: ' + err.message });
     }
 });
 

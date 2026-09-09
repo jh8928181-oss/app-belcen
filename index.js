@@ -358,7 +358,7 @@ app.post('/api/envasado/registrar', async (req, res) => {
     }
 });
 
-// --- LECTOR INTELIGENTE DE PDF PARA SALIDAS (ACTUALIZADO) ---
+// --- LECTOR INTELIGENTE DE PDF PARA SALIDAS (CORREGIDO Y ROBUSTO) ---
 app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res) => {
     try {
         if (!req.file) {
@@ -373,21 +373,23 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
         let ruc = '';
         let empresa = '';
         let destino = '';
+        let chofer_licencia = '';
+        let placa = '';
 
-        // Extracción mejorada de Guía (Ej: T009-00000782)
-        const guiaMatch = textoPdf.match(/([T|F|B]\s*0\d{2}\s*-\s*\d{1,8})/i);
+        // 1. Detección flexible de número de guía (ej. T009-00000782)
+        const guiaMatch = textoPdf.match(/([T|F|B]\s*0\d{2}\s*[-]\s*\d{1,8})/i);
         if (guiaMatch) {
             numero_guia = guiaMatch[1].replace(/\s+/g, '');
         }
 
-        // Extracción de RUC
+        // 2. Extracción de RUC de 11 dígitos
         const rucMatches = textoPdf.match(/RUC[:\s]*(\d{11})/gi);
         if (rucMatches && rucMatches.length > 0) {
             const numRuc = rucMatches[rucMatches.length - 1].match(/(\d{11})/);
             if (numRuc) ruc = numRuc[1];
         }
 
-        // Extracción de Razón Social / Empresa
+        // 3. Extracción de Razón Social / Empresa
         const razonSocialMatch = textoPdf.match(/Razón Social[:\s]*(.*)/i);
         if (razonSocialMatch) {
             empresa = razonSocialMatch[1].trim();
@@ -395,12 +397,28 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
             empresa = 'CORPORACION DON LALO S.A.C.';
         }
 
-        // Extraccion de direccion de destino
-        const llegadaMatch = textoPdf.match(/P\.Llegada[:\s]*(.*)/i);
+        // 4. Dirección de Destino (P.Llegada)
+        const llegadaMatch = textoPdf.match(/P\.Llegada[:\s]*[\d\s-]+(.*)/i);
         if (llegadaMatch) {
             destino = llegadaMatch[1].trim();
+        } else {
+            const dirMatch = textoPdf.match(/Dirección[:\s]*(.*)/i);
+            if (dirMatch) destino = dirMatch[1].trim();
         }
 
+        // 5. Placa del vehículo
+        const placaMatch = textoPdf.match(/(?:placa|veh[ií]culo)[^\w]*([A-Z0-9-]+)/i);
+        if (placaMatch) {
+            placa = placaMatch[1].trim();
+        }
+
+        // 6. Licencia / Conductor
+        const licenciaMatch = textoPdf.match(/(?:licencia|conductor)[^\w]*([A-Z0-9]+)/i);
+        if (licenciaMatch) {
+            chofer_licencia = licenciaMatch[1].trim();
+        }
+
+        // 7. Detección automática de ítems basada en códigos y descripciones oficiales de la guía
         let itemsDetectados = [];
 
         if (textoPdf.includes('1030004') || textoPdf.includes('ACEITE DE SOYA B-1 X 1 L')) {
@@ -413,6 +431,7 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
             itemsDetectados.push({ producto_key: 'belini_2lt', nombre: 'Aceite de Soya Belini 2 Lt (Galonera)', cantidad: 100 });
         }
 
+        // Fallback dinámico si no hace match exacto por código numérico
         if (itemsDetectados.length === 0) {
             const ptRes = await pool.query('SELECT * FROM producto_terminado');
             for (let pt of ptRes.rows) {
@@ -434,6 +453,8 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
                 ruc,
                 empresa,
                 destino,
+                chofer_licencia,
+                placa,
                 items: itemsDetectados
             }
         });

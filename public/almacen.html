@@ -339,34 +339,37 @@
         }
 
         async function leerPdfAutomatico(input) {
-            if (!input.files || !input.files[0]) return;
-            const formData = new FormData();
-            formData.append('archivo_guia', input.files[0]);
+    if (!input.files || !input.files[0]) return;
+    const formData = new FormData();
+    formData.append('archivo_guia', input.files[0]);
 
-            try {
-                const res = await fetch('/api/salidas/leer-pdf', { method: 'POST', body: formData });
-                const data = await res.json();
+    try {
+        const res = await fetch('/api/salidas/leer-pdf', { method: 'POST', body: formData });
+        const data = await res.json();
 
-                if (res.ok && data.success) {
-                    if (data.datos.numero_guia) document.getElementById('numero_guia').value = data.datos.numero_guia;
-                    if (data.datos.ruc) document.getElementById('ruc').value = data.datos.ruc;
-                    if (data.datos.empresa) document.getElementById('empresa').value = data.datos.empresa;
+        if (res.ok && data.success) {
+            if (data.datos.numero_guia) document.getElementById('numero_guia').value = data.datos.numero_guia;
+            if (data.datos.ruc) document.getElementById('ruc').value = data.datos.ruc;
+            if (data.datos.empresa) document.getElementById('empresa').value = data.datos.empresa;
+            if (data.datos.destino) document.getElementById('destino').value = data.datos.destino;
+            if (data.datos.placa) document.getElementById('placa').value = data.datos.placa;
+            if (data.datos.chofer_licencia) document.getElementById('chofer_licencia').value = data.datos.chofer_licencia;
 
-                    if (data.datos.items && data.datos.items.length > 0) {
-                        itemsDespachoArray = data.datos.items.map(i => ({
-                            nombre: i.nombre,
-                            cantidad: i.cantidad,
-                            producto_key: i.producto_key,
-                            articulo_id: null
-                        }));
-                        renderTablaItems();
-                        alert('📄 Guía leída con éxito: Cabecera e ítems cargados automáticamente.');
-                    } else {
-                        alert('📄 Cabecera leída, pero no se reconocieron los ítems automáticamente.');
-                    }
-                }
-            } catch(e) { console.error(e); alert('Error al leer el PDF.'); }
+            if (data.datos.items && data.datos.items.length > 0) {
+                itemsDespachoArray = data.datos.items.map(i => ({
+                    nombre: i.nombre,
+                    cantidad: i.cantidad,
+                    producto_key: i.producto_key,
+                    articulo_id: null
+                }));
+                renderTablaItems();
+                alert('📄 Guía leída con éxito: Cabecera, transporte e ítems cargados automáticamente.');
+            } else {
+                alert('📄 Cabecera leída, pero no se reconocieron los ítems automáticamente.');
+            }
         }
+    } catch(e) { console.error(e); alert('Error al leer el PDF.'); }
+}
 
         function agregarItemManual() {
             const select = document.getElementById('selectProductoSalida');

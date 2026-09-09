@@ -266,28 +266,32 @@
             }
         }
 
-        // --- CARGAR PRODUCTO TERMINADO ---
-        async function cargarProductoTerminado() {
+// --- CARGAR PRODUCTO TERMINADO (SOLO STOCK MAYOR A 0) ---
+   async function cargarProductoTerminado() {
             try {
                 const res = await fetch('/api/producto-terminado');
-                productoTerminadoGlobal = await res.json();
+                const data = await res.json();
+                
+                // Filtrar para mostrar unicamente items con cajas > 0
+                productoTerminadoGlobal = data.filter(item => item.stock_cajas > 0);
+                
                 const tbody = document.getElementById('tablaProductoTerminado');
                 tbody.innerHTML = '';
 
                 if (productoTerminadoGlobal.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="4" class="text-center" style="color: #6c757d;">No hay registros de producto terminado.</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="4" class="text-center" style="color: #6c757d; font-style: italic;">No hay producto terminado en stock actualmente (0 Cajas disponibles).</td></tr>`;
+                    poblarSelectSalida();
                     return;
                 }
 
                 productoTerminadoGlobal.forEach(item => {
-                    const esDisponible = item.stock_cajas > 0;
                     tbody.innerHTML += `
                         <tr>
                             <td><b>${item.nombre_producto}</b></td>
                             <td class="text-center" style="font-weight: bold; color: #28a745; font-size: 15px;">${item.stock_cajas} CAJAS</td>
                             <td class="text-center">
-                                <span style="padding: 3px 8px; border-radius: 4px; font-size: 11px; background: ${esDisponible ? '#d4edda' : '#f8d7da'}; color: ${esDisponible ? '#155724' : '#721c24'}; font-weight: bold;">
-                                    ${esDisponible ? 'DISPONIBLE' : 'SIN STOCK'}
+                                <span style="padding: 3px 8px; border-radius: 4px; font-size: 11px; background: #d4edda; color: #155724; font-weight: bold;">
+                                    DISPONIBLE
                                 </span>
                             </td>
                             <td class="text-center">

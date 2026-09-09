@@ -34,8 +34,8 @@
                     <th>PROVEEDOR</th>
                     <th>PRODUCTO TEXTUAL</th>
                     <th class="text-center">CANTIDAD</th>
-                    <th class="text-center">ACCESORIOS / FOTO</th>
-                    <th class="text-center">DAR CONFORMIDAD</th>
+                    <th class="text-center">FOTO</th>
+                    <th class="text-center">CONFORMIDAD</th>
                 </tr>
             </thead>
             <tbody id="tablaPendientes">
@@ -44,55 +44,75 @@
         </table>
     </div>
 
-    <!-- 2. PRODUCTO TERMINADO -->
+    <!-- 2. PRODUCTO TERMINADO (SOLO > 0) -->
     <div class="table-container" style="border-top: 5px solid #28a745;">
         <h3 style="color: #28a745; border-bottom: 2px solid #28a745;">STOCK DE PRODUCTO TERMINADO (CAJAS LISTAS)</h3>
         <table>
             <thead>
                 <tr>
-                    <th>PRODUCTO / PRESENTACIÓN</th>
-                    <th class="text-center">STOCK ACTUAL (CAJAS)</th>
+                    <th>PRODUCTO</th>
+                    <th class="text-center">STOCK (CAJAS)</th>
                     <th class="text-center">ESTADO</th>
-                    <th class="text-center">AJUSTE MANUAL</th>
+                    <th class="text-center">ACCIONES</th>
                 </tr>
             </thead>
             <tbody id="tablaProductoTerminado">
-                <tr><td colspan="4" class="text-center">Cargando producto terminado...</td></tr>
+                <tr><td colspan="4" class="text-center">Cargando...</td></tr>
             </tbody>
         </table>
     </div>
 
-    <!-- 3. INVENTARIO DE INSUMOS -->
+    <!-- 3. INVENTARIO DE INSUMOS CON FILTROS -->
     <div class="table-container" style="border-top: 5px solid #007bff;">
         <h3 style="color: #007bff;">INVENTARIO DE INSUMOS Y MATERIA PRIMA</h3>
+        
+        <div style="display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 250px;">
+                <label><b>Filtrar por Categoría:</b></label>
+                <select id="filtroCategoria" onchange="aplicarFiltros()" style="width: 100%;">
+                    <option value="TODOS" selected>-- Ver Todas las Categorías --</option>
+                    <option value="BOTELLAS Y GALONERAS">Envases (Botellas / Baldes / Latas)</option>
+                    <option value="CAJAS">Cajas Vacías</option>
+                    <option value="TAPAS Y ACCESORIOS">Tapas y Accesorios</option>
+                    <option value="PREFORMAS Y SERVICIOS">Preformas y Servicios</option>
+                    <option value="ETIQUETAS">Etiquetas</option>
+                </select>
+            </div>
+            <div style="flex: 1; min-width: 250px;">
+                <label><b>Buscar Artículo:</b></label>
+                <input type="text" id="inputBuscador" onkeyup="aplicarFiltros()" placeholder="Escribe para buscar..." style="width: 100%;">
+            </div>
+        </div>
+
         <table>
             <thead>
                 <tr>
-                    <th>ARTÍCULO / INSUMO</th>
+                    <th>ARTÍCULO</th>
                     <th>CATEGORÍA</th>
                     <th class="text-center">STOCK ACTUAL</th>
-                    <th class="text-center">ACCIÓN</th>
+                    <th class="text-center">ESTADO</th>
+                    <th class="text-center">ACCIONES</th>
                 </tr>
             </thead>
             <tbody id="tablaInventarioAlmacen"></tbody>
         </table>
     </div>
 
-    <!-- 4. REGISTRO DE SALIDAS (PDF INTELIGENTE SIN TRABAS OBLIGATORIAS) -->
+    <!-- 4. REGISTRO DE SALIDAS (PDF + MANUAL) -->
     <div class="table-container" style="border-top: 5px solid #dc3545;">
-        <h3 style="color: #dc3545;">REGISTRO DE SALIDAS DE ALMACÉN (CON GUÍA PDF O MANUAL)</h3>
+        <h3 style="color: #dc3545;">REGISTRO DE SALIDAS DE ALMACÉN</h3>
         
         <form id="formSalida" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;" enctype="multipart/form-data">
             <div>
                 <label><b>Tipo de Salida:</b></label>
                 <select id="tipo_registro" name="tipo_registro" style="width: 100%;">
                     <option value="CON GUIA">Con Guía de Remisión (Auto-lectura PDF)</option>
-                    <option value="SIN GUIA">Sin Guía (Carga Manual)</option>
+                    <option value="SIN GUIA">Sin Guía (Manual)</option>
                 </select>
             </div>
 
             <div>
-                <label><b>Subir Guía PDF (Rellena todo automático):</b></label>
+                <label><b>Subir Guía PDF:</b></label>
                 <input type="file" id="archivo_guia" name="archivo_guia" accept=".pdf" onchange="leerPdfAutomatico(this)" style="width: 100%;">
             </div>
 
@@ -103,12 +123,12 @@
 
             <div>
                 <label><b>N° de Guía:</b></label>
-                <input type="text" id="numero_guia" name="numero_guia" placeholder="Ej. F001-000452" style="width: 100%;">
+                <input type="text" id="numero_guia" name="numero_guia" placeholder="Ej. T009-00000782" style="width: 100%;">
             </div>
 
             <div>
                 <label><b>Empresa Cliente:</b></label>
-                <input type="text" id="empresa" name="empresa" placeholder="Nombre de la empresa" style="width: 100%;">
+                <input type="text" id="empresa" name="empresa" placeholder="Razón Social" style="width: 100%;">
             </div>
 
             <div>
@@ -118,7 +138,7 @@
 
             <div>
                 <label><b>Destino:</b></label>
-                <input type="text" id="destino" name="destino" placeholder="Dirección" style="width: 100%;">
+                <input type="text" id="destino" name="destino" placeholder="Dirección de llegada" style="width: 100%;">
             </div>
 
             <div>
@@ -136,14 +156,13 @@
                 <input type="text" id="punto_partida" name="punto_partida" value="Planta Principal - Corporación Belcen" style="width: 100%;">
             </div>
 
-            <!-- TABLA DE PRODUCTOS A DESPACHAR (MANUAL O AUTOMÁTICA) -->
+            <!-- TABLA DE PRODUCTOS A DESPACHAR -->
             <div style="grid-column: span 2; background: #eef2f5; padding: 15px; border-radius: 6px; border: 2px dashed #007bff;">
                 <h4 style="margin-top: 0; color: #007bff;">📦 Lista de Productos a Despachar</h4>
-                <p style="font-size: 12px; color: #555; margin-top: -5px;">Si el PDF detecta los productos, aparecerán aquí. Si no, puedes agregarlos manualmente con el selector:</p>
                 
                 <div style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;">
                     <select id="selectProductoSalida" style="flex: 2; min-width: 200px;">
-                        <option value="">-- Seleccione un producto o insumo --</option>
+                        <option value="">-- Seleccione producto o insumo --</option>
                     </select>
                     <input type="number" step="0.01" id="cantidad_temp" placeholder="Cantidad" style="flex: 1; min-width: 100px;">
                     <button type="button" onclick="agregarItemManual()" style="background: #28a745; color: white; border: none; padding: 8px 15px; font-weight: bold; border-radius: 4px; cursor: pointer;">+ Agregar Ítem</button>
@@ -171,7 +190,7 @@
         </form>
     </div>
 
-    <!-- 5. HISTORIAL -->
+    <!-- 5. HISTORIAL DE SALIDAS -->
     <div class="table-container" style="border-top: 5px solid #6c757d;">
         <h3 style="color: #495057;">HISTORIAL DE SALIDAS REGISTRADAS</h3>
         <table>
@@ -180,13 +199,14 @@
                     <th>FECHA</th>
                     <th>TIPO / ESTADO</th>
                     <th>N° GUÍA</th>
-                    <th>EMPRESA / RUC</th>
+                    <th>EMPRESA</th>
                     <th>PRODUCTO</th>
                     <th class="text-center">CANTIDAD</th>
+                    <th class="text-center">ACCIÓN</th>
                 </tr>
             </thead>
             <tbody id="tablaHistorialSalidas">
-                <tr><td colspan="6" class="text-center">Cargando historial...</td></tr>
+                <tr><td colspan="7" class="text-center">Cargando historial...</td></tr>
             </tbody>
         </table>
         <a href="dashboard.html" class="logout">Volver al Dashboard General</a>
@@ -230,7 +250,7 @@
                 const data = await res.json();
                 productoTerminadoGlobal = data.filter(item => item.stock_cajas > 0);
                 const tbody = document.getElementById('tablaProductoTerminado');
-                tbody.innerHTML = productoTerminadoGlobal.length === 0 ? `<tr><td colspan="4" class="text-center">No hay producto terminado disponible.</td></tr>` : '';
+                tbody.innerHTML = productoTerminadoGlobal.length === 0 ? `<tr><td colspan="4" class="text-center">Sin stock disponible.</td></tr>` : '';
                 productoTerminadoGlobal.forEach(item => {
                     tbody.innerHTML += `<tr><td><b>${item.nombre_producto}</b></td><td class="text-center" style="color: #28a745; font-weight: bold;">${item.stock_cajas} CAJAS</td><td class="text-center"><span style="background: #d4edda; color: #155724; padding: 2px 6px; border-radius: 3px;">DISPONIBLE</span></td><td class="text-center"><button onclick="ajustarPT(${item.id}, '${item.nombre_producto}', ${item.stock_cajas})" class="btn-accion btn-ajustar">Ajustar</button></td></tr>`;
                 });
@@ -252,13 +272,33 @@
             try {
                 const res = await fetch('/api/inventario');
                 inventarioGlobal = await res.json();
-                const tbody = document.getElementById('tablaInventarioAlmacen');
-                tbody.innerHTML = '';
-                inventarioGlobal.forEach(item => {
-                    tbody.innerHTML += `<tr><td><b>${item.nombre}</b></td><td>${item.categoria}</td><td class="text-center">${item.stock} ${item.unidad_medida}</td><td class="text-center"><button onclick="ajustarStock(${item.id}, '${item.nombre}', ${item.stock})" class="btn-accion btn-ajustar">Ajustar</button></td></tr>`;
-                });
+                aplicarFiltros();
                 poblarSelectSalida();
             } catch(e) { console.error(e); }
+        }
+
+        function mostrarInventarioAlmacen(data) {
+            const tbody = document.getElementById('tablaInventarioAlmacen');
+            tbody.innerHTML = data.length === 0 ? `<tr><td colspan="5" class="text-center">No se encontraron artículos.</td></tr>` : '';
+            data.forEach(item => {
+                const estado = item.estado || 'STOCK SUFICIENTE';
+                const esSuficiente = estado === 'STOCK SUFICIENTE';
+                tbody.innerHTML += `<tr><td><b>${item.nombre}</b></td><td>${item.categoria}</td><td class="text-center" style="color: #007bff; font-weight: bold;">${item.stock} ${item.unidad_medida}</td><td class="text-center"><span style="background: ${esSuficiente ? '#d4edda' : '#f8d7da'}; color: ${esSuficiente ? '#155724' : '#721c24'}; padding: 2px 6px; border-radius: 3px;">${estado}</span></td><td class="text-center"><button onclick="ajustarStock(${item.id}, '${item.nombre}', ${item.stock})" class="btn-accion btn-ajustar">Ajustar</button></td></tr>`;
+            });
+        }
+
+        function aplicarFiltros() {
+            const categoria = document.getElementById('filtroCategoria').value;
+            const texto = document.getElementById('inputBuscador').value.toLowerCase().trim();
+            let resultado = inventarioGlobal;
+
+            if (categoria !== 'TODOS') {
+                resultado = resultado.filter(i => i.categoria && i.categoria.toUpperCase().includes(categoria));
+            }
+            if (texto !== '') {
+                resultado = resultado.filter(i => i.nombre.toLowerCase().includes(texto));
+            }
+            mostrarInventarioAlmacen(resultado);
         }
 
         function ajustarStock(id, nombre, stockActual) {
@@ -320,9 +360,9 @@
                             articulo_id: null
                         }));
                         renderTablaItems();
-                        alert('📄 Guía PDF leída: Cabecera e ítems detectados.');
+                        alert('📄 Guía leída con éxito: Cabecera e ítems cargados automáticamente.');
                     } else {
-                        alert('📄 Cabecera leída con éxito. Agregue los productos manualmente abajo si el PDF no tenía formato estándar.');
+                        alert('📄 Cabecera leída. Agregue los productos manualmente abajo.');
                     }
                 }
             } catch(e) { console.error(e); }
@@ -335,7 +375,7 @@
             const cant = parseFloat(document.getElementById('cantidad_temp').value);
 
             if (!val || isNaN(cant) || cant <= 0) {
-                alert('❌ Seleccione un producto e ingrese una cantidad válida.');
+                alert('❌ Seleccione un producto e ingrese una cantidad.');
                 return;
             }
 
@@ -367,18 +407,35 @@
                 const res = await fetch('/api/salidas/historial');
                 const data = await res.json();
                 const tbody = document.getElementById('tablaHistorialSalidas');
-                tbody.innerHTML = data.length === 0 ? `<tr><td colspan="6" class="text-center">No hay salidas registradas.</td></tr>` : '';
+                tbody.innerHTML = data.length === 0 ? `<tr><td colspan="7" class="text-center">Sin registros.</td></tr>` : '';
                 data.forEach(row => {
                     const fecha = row.fecha_salida ? row.fecha_salida.split('T')[0] : '';
-                    tbody.innerHTML += `<tr><td><b>${fecha}</b></td><td>${row.tipo_registro}</td><td><b>${row.numero_guia || 'S/N'}</b></td><td>${row.empresa}</td><td><b>${row.articulo_nombre}</b></td><td class="text-center" style="color: #dc3545; font-weight: bold;">${row.cantidad_salida}</td></tr>`;
+                    const estadoBadge = row.estado_guia === 'REGULARIZADO' 
+                        ? `<span style="background: #28a745; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px;">REGULARIZADO</span>` 
+                        : `<span style="background: #ffc107; color: black; padding: 2px 6px; border-radius: 3px; font-size: 10px;">PENDIENTE</span>`;
+
+                    tbody.innerHTML += `<tr><td><b>${fecha}</b></td><td>${row.tipo_registro}<br>${estadoBadge}</td><td><b>${row.numero_guia || 'S/N'}</b></td><td>${row.empresa}</td><td><b>${row.articulo_nombre}</b></td><td class="text-center" style="color: #dc3545; font-weight: bold;">${row.cantidad_salida}</td><td class="text-center">${row.estado_guia !== 'REGULARIZADO' ? `<button onclick="regularizarGuia(${row.id})" class="btn-accion btn-regularizar">Reg.</button>` : '-'}</td></tr>`;
                 });
             } catch(e) { console.error(e); }
+        }
+
+        async function regularizarGuia(id) {
+            const nuevaGuia = prompt("Ingrese el número de la Guía:");
+            if (!nuevaGuia) return;
+            const res = await fetch('/api/salidas/regularizar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ salida_id: id, nuevo_numero_guia: nuevaGuia.trim() })
+            });
+            const data = await res.json();
+            alert(data.mensaje);
+            cargarHistorialSalidas();
         }
 
         document.getElementById('formSalida').addEventListener('submit', async (e) => {
             e.preventDefault();
             if (itemsDespachoArray.length === 0) {
-                alert('❌ Debe incluir al menos un producto en el despacho (por PDF o manual).');
+                alert('❌ Debe incluir al menos un producto.');
                 return;
             }
 
@@ -399,7 +456,7 @@
                     cargarProductoTerminado();
                     cargarInventarioAlmacen();
                 } else {
-                    alert('❌ ' + (data.mensaje || 'Error al registrar.'));
+                    alert('❌ ' + (data.mensaje || 'Error.'));
                 }
             } catch(err) { console.error(err); alert('Error de conexión.'); }
         });

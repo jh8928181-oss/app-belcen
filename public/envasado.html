@@ -36,7 +36,7 @@
 
             <div class="form-group">
                 <label for="producto_tipo">Seleccionar Producto / Presentación:</label>
-                <select id="producto_tipo" required>
+                <select id="producto_tipo" required onchange="evaluarSeleccionTapa()">
                     <option value="">-- Seleccione una presentación --</option>
                     <option value="b1_200ml">Aceite de Soya B-1 200 ml</option>
                     <option value="b1_500ml">Aceite de Soya B-1 500 ml</option>
@@ -55,6 +55,14 @@
                     <option value="belini_5lt">Aceite de Soya Belini 5 Lt (Galonera)</option>
                     <option value="belini_lata18lt">Aceite de Soya Belini Lata 18 Lt</option>
                     <option value="belini_balde18lt">Aceite de Soya Belini Balde 18 Lt</option>
+                </select>
+            </div>
+
+            <!-- SELECTOR DINÁMICO DE TAPAS (SOLO PARA 500ML, 900ML Y 1LT EN B-1 Y BELINI) -->
+            <div class="form-group" id="grupoTapaOpcional" style="display: none; background: #e9ecef; padding: 15px; border-radius: 6px; border-left: 5px solid #007bff;">
+                <label for="tapa_seleccionada" style="color: #007bff;">Seleccionar Tapa a Utilizar / Descontar:</label>
+                <select id="tapa_seleccionada">
+                    <option value="">Cargando tapas disponibles...</option>
                 </select>
             </div>
 
@@ -118,6 +126,45 @@
 
     <script>
         document.getElementById('fecha_produccion').valueAsDate = new Date();
+        let tapasDisponiblesGlobal = [];
+
+        // Cargar las tapas registradas en el inventario
+        async function cargarTapasDisponibles() {
+            try {
+                const res = await fetch('/api/inventario');
+                const inventario = await res.json();
+                tapasDisponiblesGlobal = inventario.filter(i => 
+                    i.categoria && i.categoria.toUpperCase().includes('TAPAS')
+                );
+
+                const selectTapa = document.getElementById('tapa_seleccionada');
+                selectTapa.innerHTML = '';
+                tapasDisponiblesGlobal.forEach(tapa => {
+                    selectTapa.innerHTML += `<option value="${tapa.nombre}">${tapa.nombre} (Stock: ${tapa.stock} ${tapa.unidad_medida})</option>`;
+                });
+            } catch (e) {
+                console.error("Error al cargar tapas:", e);
+            }
+        }
+
+        function evaluarSeleccionTapa() {
+            const productoSel = document.getElementById('producto_tipo').value;
+            const productosConTapaOpcional = [
+                'b1_500ml', 'b1_900ml', 'b1_1lt',
+                'belini_500ml', 'belini_900ml', 'belini_1lt'
+            ];
+
+            const grupoTapa = document.getElementById('grupoTapaOpcional');
+            const selectTapa = document.getElementById('tapa_seleccionada');
+
+            if (productosConTapaOpcional.includes(productoSel)) {
+                grupoTapa.style.display = 'block';
+                selectTapa.required = true;
+            } else {
+                grupoTapa.style.display = 'none';
+                selectTapa.required = false;
+            }
+        }
 
         async function cargarReportesProduccion() {
             try {
@@ -184,6 +231,7 @@
         document.getElementById('formEnvasado').addEventListener('submit', async (e) => {
             e.preventDefault();
             const producto_tipo = document.getElementById('producto_tipo').value;
+            const tapa_elegida = document.getElementById('tapa_seleccionada').value;
             const numero_lote = document.getElementById('numero_lote').value;
             const cantidad_producida = parseInt(document.getElementById('cantidad_producida').value);
             const fecha_produccion = document.getElementById('fecha_produccion').value;
@@ -193,20 +241,23 @@
             const presentacionTexto = selectProd.options[selectProd.selectedIndex].text;
 
             try {
-                // 1. Descontar insumos en inventario primero
+                // 1. Descontar insumos en inventario
                 const responseEnvasado = await fetch('/api/envasado/registrar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ producto_tipo, cantidad_producida, numero_lote })
+                    body: JSON.stringify({ producto_tipo, cantidad_producida, numero_lote, tapa_elegida })
                 });
                 const dataEnvasado = await responseEnvasado.json();
 
                 if (!responseEnvasado.ok || !dataEnvasado.success) {
                     alert('❌ Error al descontar insumos: ' + (dataEnvasado.mensaje || 'Operación cancelada.'));
-                    return; // Detiene el flujo si falla el descuento
+                    return;
                 }
 
-                // 2. Si el descuento fue exitoso, registra el reporte
+                // 2. Registrar el reporte de producción
+                let obsLote = `Lote: ${numero_lote}`;
+                if (tapa_elegida) obsLote += ` | Tapa: ${tapa_elegida}`;
+
                 const responseReporte = await fetch('/api/produccion/reporte', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -215,7 +266,7 @@
                         presentacion: presentacionTexto,
                         cantidad_cajas: cantidad_producida,
                         toneladas,
-                        observaciones: `Lote: ${numero_lote}`,
+                        observaciones: obsLote,
                         usuario: localStorage.getItem('usuario_actual') || 'envasado_user'
                     })
                 });
@@ -225,6 +276,8 @@
                     alert('✅ ' + dataEnvasado.mensaje);
                     document.getElementById('formEnvasado').reset();
                     document.getElementById('fecha_produccion').valueAsDate = new Date();
+                    document.getElementById('grupoTapaOpcional').style.display = 'none';
+                    cargarTapasDisponibles();
                     cargarReportesProduccion();
                 } else {
                     alert('⚠️ Insumos descontados, pero no se pudo registrar en la tabla activa: ' + dataReporte.mensaje);
@@ -265,6 +318,7 @@
             }
         }
 
+        cargarTapasDisponibles();
         cargarReportesProduccion();
         cargarHistorialCierres();
     </script>

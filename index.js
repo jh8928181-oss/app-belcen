@@ -218,10 +218,12 @@ app.post('/api/soplado/registrar', async (req, res) => {
 app.post('/api/envasado/registrar', async (req, res) => {
     const client = await pool.connect();
     try {
-        const { producto_tipo, cantidad_producida, numero_lote } = req.body; 
+        const { producto_tipo, cantidad_producida, numero_lote, tapa_elegida } = req.body; 
         await client.query('BEGIN');
 
         let insumosADescontar = [];
+        // Tapa seleccionada manualmente o tapa por defecto
+        const tapaProceso = tapa_elegida || 'Tapa dosif. N° 26 blanco / Dorado';
 
         switch (producto_tipo) {
             case 'b1_200ml':
@@ -233,19 +235,19 @@ app.post('/api/envasado/registrar', async (req, res) => {
             case 'b1_500ml':
                 insumosADescontar = [
                     { nombre: 'Botella de 500 ml - B-1', cantidad: cantidad_producida * 12 },
-                    { nombre: 'Tapa dosif. N° 26 blanco / Dorado', cantidad: (cantidad_producida * 12) / 1000 }
+                    { nombre: tapaProceso, cantidad: (cantidad_producida * 12) / 1000 }
                 ];
                 break;
             case 'b1_900ml':
                 insumosADescontar = [
                     { nombre: 'Botella de 900 ml - B-1', cantidad: cantidad_producida * 12 },
-                    { nombre: 'Tapa dosif. N° 26 blanco / Dorado', cantidad: (cantidad_producida * 12) / 1000 }
+                    { nombre: tapaProceso, cantidad: (cantidad_producida * 12) / 1000 }
                 ];
                 break;
             case 'b1_1lt':
                 insumosADescontar = [
                     { nombre: 'Botella de 1 Lt - B-1', cantidad: cantidad_producida * 12 },
-                    { nombre: 'Tapa dosif. N° 26 blanco / Dorado', cantidad: (cantidad_producida * 12) / 1000 }
+                    { nombre: tapaProceso, cantidad: (cantidad_producida * 12) / 1000 }
                 ];
                 break;
             case 'b1_2lt':
@@ -281,19 +283,19 @@ app.post('/api/envasado/registrar', async (req, res) => {
             case 'belini_500ml':
                 insumosADescontar = [
                     { nombre: 'Botella Belini x 500 ml', cantidad: cantidad_producida * 12 },
-                    { nombre: 'Tapa dosif. N° 26 blanco / Dorado', cantidad: (cantidad_producida * 12) / 1000 }
+                    { nombre: tapaProceso, cantidad: (cantidad_producida * 12) / 1000 }
                 ];
                 break;
             case 'belini_900ml':
                 insumosADescontar = [
                     { nombre: 'Botella Belini x 900 ml', cantidad: cantidad_producida * 12 },
-                    { nombre: 'Tapa dosif. N° 26 blanco / Dorado', cantidad: (cantidad_producida * 12) / 1000 }
+                    { nombre: tapaProceso, cantidad: (cantidad_producida * 12) / 1000 }
                 ];
                 break;
             case 'belini_1lt':
                 insumosADescontar = [
                     { nombre: 'Botella Belini x 1 Lt', cantidad: cantidad_producida * 12 },
-                    { nombre: 'Tapa dosif. N° 26 blanco / Dorado', cantidad: (cantidad_producida * 12) / 1000 }
+                    { nombre: tapaProceso, cantidad: (cantidad_producida * 12) / 1000 }
                 ];
                 break;
             case 'belini_2lt':
@@ -348,7 +350,7 @@ app.post('/api/envasado/registrar', async (req, res) => {
         `, [producto_tipo, nombreLegible, cantidad_producida]);
 
         await client.query('COMMIT');
-        res.json({ success: true, mensaje: `Producción del lote ${numero_lote} registrada (+${cantidad_producida} cajas a Producto Terminado). Insumos descontados.` });
+        res.json({ success: true, mensaje: `Producción del lote ${numero_lote} registrada (+${cantidad_producida} cajas a Producto Terminado). Insumo de tapa "${tapaProceso}" descontado.` });
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Error en registro de envasado:', error);

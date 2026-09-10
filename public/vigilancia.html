@@ -13,9 +13,11 @@
         th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
         th { background-color: #343a40; color: white; }
         .text-center { text-align: center; }
-        .logout { display: block; text-align: center; margin-top: 15px; color: #dc3545; text-decoration: none; font-weight: bold; }
+        .logout { display: inline-block; margin-bottom: 10px; color: #dc3545; text-decoration: none; font-weight: bold; }
         .btn-accion { background: #28a745; color: white; border: none; padding: 12px; font-weight: bold; border-radius: 4px; cursor: pointer; width: 100%; font-size: 16px; margin-top: 15px; }
         .btn-accion:hover { background: #218838; }
+        .btn-logout-custom { background: #dc3545; color: white; border: none; padding: 10px 20px; font-weight: bold; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        .btn-logout-custom:hover { background: #c82333; }
     </style>
 </head>
 <body>
@@ -96,11 +98,24 @@
                 <button type="submit" class="btn-accion">🚀 REGISTRAR INGRESO EN VIGILANCIA</button>
             </div>
         </form>
-        <a href="dashboard.html" class="logout">Volver al Dashboard General</a>
+
+        <div style="text-align: center; margin-top: 25px; padding-top: 15px; border-top: 1px solid #ddd;">
+            <a href="dashboard.html" class="logout">Volver al Dashboard General</a>
+            <br>
+            <button onclick="cerrarSesion()" class="btn-logout-custom">🔒 Cerrar Sesión (Salir)</button>
+        </div>
     </div>
 
     <script>
         let itemsVigilanciaArray = [];
+
+        function cerrarSesion() {
+            if (confirm('¿Estás seguro de que deseas cerrar sesión?')) {
+                localStorage.removeItem('usuario_actual');
+                localStorage.removeItem('rol_usuario');
+                window.location.href = 'index.html';
+            }
+        }
 
         function agregarItemVigilancia() {
             const nombre = document.getElementById('prod_textual').value.trim();

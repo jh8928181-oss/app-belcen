@@ -7,11 +7,13 @@
     <style>
         body { font-family: Arial, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; }
         .container { max-width: 1100px; margin: auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        h2 { color: #343a40; text-align: center; }
+        h2 { color: #343a40; text-align: center; border-bottom: 2px solid #343a40; padding-bottom: 8px; margin-top: 0; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         th, td { border: 1px solid #dee2e6; padding: 10px; text-align: left; font-size: 13px; }
         th { background-color: #343a40; color: white; }
-        .logout { background-color: #dc3545; margin-top: 20px; display: inline-block; padding: 10px 20px; text-decoration: none; color: white; border-radius: 4px; font-weight: bold; }
+        .logout { background-color: #dc3545; border: none; padding: 10px 20px; text-decoration: none; color: white; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 14px; }
+        .logout:hover { background-color: #c82333; }
+        .text-center { text-align: center; }
     </style>
 </head>
 <body>
@@ -23,21 +25,33 @@
                     <th>Fecha / Hora</th>
                     <th>Vigilante</th>
                     <th>Documento / N°</th>
-                    <th>Producto & Cantidad</th>
+                    <th>Productos (Guía vs Físico)</th>
                     <th>Proveedor / Ruta</th>
                     <th>Estado / Conformidad</th>
-                    <th>Evidencia</th>
+                    <th class="text-center">Evidencia</th>
                 </tr>
             </thead>
             <tbody id="tablaAuditoria">
-                <!-- Datos dinámicos -->
+                <tr><td colspan="7" class="text-center">Cargando registros de auditoría...</td></tr>
             </tbody>
         </table>
-        <br>
-        <button class="logout" onclick="localStorage.clear(); window.location.href='index.html';">Cerrar Sesión</button>
+
+        <div style="text-align: center; margin-top: 25px; padding-top: 15px; border-top: 1px solid #ddd;">
+            <a href="dashboard.html" style="display: inline-block; margin-bottom: 10px; color: #007bff; text-decoration: none; font-weight: bold;">Volver al Dashboard General</a>
+            <br>
+            <button class="logout" onclick="cerrarSesion()">🔒 Cerrar Sesión (Salir)</button>
+        </div>
     </div>
 
     <script>
+        function cerrarSesion() {
+            if (confirm('¿Estás seguro de que deseas cerrar sesión?')) {
+                localStorage.removeItem('usuario_actual');
+                localStorage.removeItem('rol_usuario');
+                window.location.href = 'index.html';
+            }
+        }
+
         async function cargarRegistrosAuditoria() {
             try {
                 const res = await fetch('/api/auditoria/registros');
@@ -46,26 +60,48 @@
                 tbody.innerHTML = '';
 
                 if(registros.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No hay registros en el sistema.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center">No hay registros en el sistema.</td></tr>';
                     return;
                 }
 
                 registros.forEach(item => {
                     let fotoHtml = item.foto_url ? `<a href="${item.foto_url}" target="_blank">Ver Foto</a>` : 'Sin Foto';
+                    
+                    // Soporte para múltiples productos en JSON o texto antiguo
+                    let productosHtml = '';
+                    try {
+                        const parsed = JSON.parse(item.items_json || '[]');
+                        if (parsed.length > 0) {
+                            parsed.forEach(p => {
+                                let diff = p.cantidad_guia !== p.cantidad_fisica 
+                                    ? `<span style="color:red; font-weight:bold;">(Guía: ${p.cantidad_guia} | Físico: ${p.cantidad_fisica})</span>` 
+                                    : `(Cant: ${p.cantidad_fisica})`;
+                                productosHtml += `<div>• <b>${p.nombre}</b> ${diff}</div>`;
+                            });
+                        } else {
+                            productosHtml = `${item.producto_textual || 'N/D'}<br><b>Cant:</b> ${item.cantidad || 0}`;
+                        }
+                    } catch(e) {
+                        productosHtml = `${item.producto_textual || 'N/D'}<br><b>Cant:</b> ${item.cantidad || 0}`;
+                    }
+
+                    const fechaFormateada = item.fecha_registro ? item.fecha_registro.replace('T', ' ').substring(0, 19) : 'N/D';
+
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
-                        <td>${new Date(item.fecha_ingreso).toLocaleString()}</td>
+                        <td>${fechaFormateada}</td>
                         <td>${item.usuario_vigilancia || 'N/D'}</td>
                         <td><b>${item.tipo_documento}</b><br>${item.numero_guia || 'S/N'}</td>
-                        <td>${item.producto_textual}<br><b>Cant:</b> ${item.cantidad} ${item.unidad_medida || ''}</td>
+                        <td>${productosHtml}</td>
                         <td>${item.proveedor || '-'}<br><small>${item.lugar_partida || ''} -> ${item.punto_llegada || ''}</small></td>
-                        <td><span style="color: ${item.estado.includes('CONFORME') ? 'green' : 'orange'}; font-weight:bold;">${item.estado}</span></td>
-                        <td>${fotoHtml}</td>
+                        <td><span style="color: ${item.estado && item.estado.includes('CONFORME') ? 'green' : 'orange'}; font-weight:bold;">${item.estado || 'PENDIENTE'}</span></td>
+                        <td class="text-center">${fotoHtml}</td>
                     `;
                     tbody.appendChild(tr);
                 });
             } catch(err) {
                 console.error(err);
+                document.getElementById('tablaAuditoria').innerHTML = '<tr><td colspan="7" class="text-center" style="color:red;">Error al cargar los registros de auditoría.</td></tr>';
             }
         }
 

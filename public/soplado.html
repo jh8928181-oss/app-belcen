@@ -9,10 +9,12 @@
         .card { max-width: 700px; margin: auto; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-top: 5px solid #17a2b8; }
         h3 { color: #17a2b8; text-align: center; border-bottom: 2px solid #17a2b8; padding-bottom: 8px; margin-top: 0; }
         select, input { padding: 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; box-sizing: border-box; width: 100%; margin-top: 5px; margin-bottom: 15px; }
-        .logout { display: block; text-align: center; margin-top: 15px; color: #dc3545; text-decoration: none; font-weight: bold; }
+        .logout { display: inline-block; margin-bottom: 10px; color: #dc3545; text-decoration: none; font-weight: bold; }
         .btn-accion { background: #17a2b8; color: white; border: none; padding: 12px; font-weight: bold; border-radius: 4px; cursor: pointer; width: 100%; font-size: 16px; }
         .btn-accion:hover { background: #138496; }
         .info-receta { background: #e8f4f8; padding: 12px; border-radius: 5px; font-size: 13px; color: #0c5460; margin-bottom: 15px; border-left: 4px solid #17a2b8; }
+        .btn-logout-custom { background: #dc3545; color: white; border: none; padding: 10px 20px; font-weight: bold; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        .btn-logout-custom:hover { background: #c82333; }
     </style>
 </head>
 <body>
@@ -72,10 +74,22 @@
             </div>
         </form>
 
-        <a href="dashboard.html" class="logout">Volver al Dashboard General</a>
+        <div style="text-align: center; margin-top: 25px; padding-top: 15px; border-top: 1px solid #ddd;">
+            <a href="dashboard.html" class="logout">Volver al Dashboard General</a>
+            <br>
+            <button onclick="cerrarSesion()" class="btn-logout-custom">🔒 Cerrar Sesión (Salir)</button>
+        </div>
     </div>
 
     <script>
+        function cerrarSesion() {
+            if (confirm('¿Estás seguro de que deseas cerrar sesión?')) {
+                localStorage.removeItem('usuario_actual');
+                localStorage.removeItem('rol_usuario');
+                window.location.href = 'index.html';
+            }
+        }
+
         document.getElementById('formSoplado').addEventListener('submit', async (e) => {
             e.preventDefault();
             const preforma_nombre = document.getElementById('preforma_nombre').value;

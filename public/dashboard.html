@@ -2,23 +2,59 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Dashboard - Control de Inventario</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard General - Control de Inventario Belcen</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f6f9; }
-        .container { max-width: 1000px; margin: auto; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 14px; }
+        body { font-family: Arial, sans-serif; margin: 0; background-color: #f4f6f9; padding: 20px; }
+        .container { max-width: 1100px; margin: auto; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        h2 { color: #343a40; text-align: center; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-top: 0; }
+        .nav-modules { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 25px; }
+        .btn-module { padding: 12px; background: #007bff; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; text-align: center; text-decoration: none; font-size: 14px; transition: background 0.2s; }
+        .btn-module:hover { background: #0056b3; }
+        .btn-vigilancia { background: #ffc107; color: #000; }
+        .btn-vigilancia:hover { background: #e0a800; }
+        .btn-almacen { background: #17a2b8; }
+        .btn-almacen:hover { background: #138496; }
+        .btn-soplado { background: #28a745; }
+        .btn-soplado:hover { background: #218838; }
+        .btn-envasado { background: #6f42c1; }
+        .btn-envasado:hover { background: #5a32a3; }
+        .btn-auditoria { background: #343a40; }
+        .btn-auditoria:hover { background: #23272b; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #dee2e6; padding: 10px; text-align: left; font-size: 14px; }
         th { background-color: #343a40; color: white; }
         .badge { font-weight: bold; padding: 4px 8px; border-radius: 4px; color: white; font-size: 12px; }
         .badge-ok { background-color: #28a745; }
         .badge-low { background-color: #dc3545; }
-        button { background-color: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-actualizar { background-color: #007bff; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .logout { background-color: #dc3545; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px; }
+        .logout:hover { background-color: #c82333; }
+        .text-center { text-align: center; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2>Dashboard - Inventario General en Tiempo Real</h2>
-        <button onclick="cargarInventario()">Actualizar Stock</button>
+        <h2>Dashboard General - Sistema Belcen</h2>
+
+        <!-- ACCESOS RÁPIDOS A MÓDULOS -->
+        <div style="margin-bottom: 20px;">
+            <p style="font-weight: bold; color: #555; margin-bottom: 10px;">📌 Accesos Directos a Módulos Operativos:</p>
+            <div class="nav-modules">
+                <a href="vigilancia.html" class="btn-module btn-vigilancia">🛡️ Vigilancia</a>
+                <a href="almacen.html" class="btn-module btn-almacen">📦 Almacén</a>
+                <a href="soplado.html" class="btn-module btn-soplado">🏭 Soplado</a>
+                <a href="envasado.html" class="btn-module btn-envasado">🧴 Envasado</a>
+                <a href="auditoria.html" class="btn-module btn-auditoria">📋 Auditoría</a>
+            </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 25px;">
+            <h3 style="margin: 0; color: #343a40;">Inventario General en Tiempo Real</h3>
+            <button class="btn-actualizar" onclick="cargarInventario()">🔄 Actualizar Stock</button>
+        </div>
+
         <table>
             <thead>
                 <tr>
@@ -31,12 +67,25 @@
                 </tr>
             </thead>
             <tbody id="tablaInventario">
-                <tr><td colspan="6" style="text-align:center;">Cargando inventario...</td></tr>
+                <tr><td colspan="6" class="text-center">Cargando inventario...</td></tr>
             </tbody>
         </table>
+
+        <!-- BOTÓN CERRAR SESIÓN -->
+        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+            <button class="logout" onclick="cerrarSesion()">🔒 Cerrar Sesión (Salir)</button>
+        </div>
     </div>
 
     <script>
+        function cerrarSesion() {
+            if (confirm('¿Estás seguro de que deseas cerrar sesión?')) {
+                localStorage.removeItem('usuario_actual');
+                localStorage.removeItem('rol_usuario');
+                window.location.href = 'index.html';
+            }
+        }
+
         async function cargarInventario() {
             try {
                 const res = await fetch('/api/inventario');
@@ -44,23 +93,30 @@
                 const tbody = document.getElementById('tablaInventario');
                 tbody.innerHTML = '';
 
+                if (articulos.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">No hay artículos registrados.</td></tr>';
+                    return;
+                }
+
                 articulos.forEach(art => {
                     const tr = document.createElement('tr');
-                    const esBajoStock = art.estado_stock === 'REALIZAR PEDIDO';
+                    const estadoTexto = art.estado || 'STOCK SUFICIENTE';
+                    const esBajoStock = estadoTexto === 'REALIZAR PEDIDO';
                     const estadoClass = esBajoStock ? 'badge-low' : 'badge-ok';
 
                     tr.innerHTML = `
                         <td>${art.id}</td>
                         <td><b>${art.nombre}</b></td>
-                        <td>${art.categoria}</td>
-                        <td>${art.stock}</td>
+                        <td>${art.categoria || 'General'}</td>
+                        <td><b>${art.stock}</b></td>
                         <td>${art.unidad_medida}</td>
-                        <td><span class="badge ${estadoClass}">${art.estado_stock}</span></td>
+                        <td><span class="badge ${estadoClass}">${estadoTexto}</span></td>
                     `;
                     tbody.appendChild(tr);
                 });
             } catch (err) {
                 console.error(err);
+                document.getElementById('tablaInventario').innerHTML = '<tr><td colspan="6" class="text-center" style="color:red;">Error al cargar el inventario.</td></tr>';
             }
         }
 

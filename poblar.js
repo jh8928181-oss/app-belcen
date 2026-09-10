@@ -50,6 +50,22 @@ async function poblarInventarioReal() {
             ON CONFLICT (usuario) DO NOTHING;
         `);
 
+        // 4.1 Asegurar la tabla de historial de cierres de producción con la columna detalle_json
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS historial_cierres_produccion (
+                id SERIAL PRIMARY KEY,
+                fecha_cierre DATE NOT NULL,
+                total_cajas NUMERIC(10,2) NOT NULL,
+                total_toneladas NUMERIC(10,2) NOT NULL,
+                usuario_cierre VARCHAR(50),
+                detalle_json TEXT,
+                fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            ALTER TABLE historial_cierres_produccion 
+            ADD COLUMN IF NOT EXISTS detalle_json TEXT;
+        `);
+
         // 5. Insertar datos de inventario
         const queryInsert = `
             INSERT INTO inventario (nombre, categoria, stock, unidad_medida, estado) 

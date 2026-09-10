@@ -221,25 +221,20 @@
         </form>
     </div>
 
-    <!-- 6. HISTORIAL DE SALIDAS -->
+    <!-- 6. HISTORIAL DE SALIDAS AGRUPADO POR FECHA -->
     <div class="table-container" style="border-top: 5px solid #6c757d;">
-        <h3 style="color: #495057;">HISTORIAL DE SALIDAS REGISTRADAS</h3>
-        <table>
-            <thead>
-                <tr>
-                    <th>FECHA</th>
-                    <th>TIPO / ESTADO</th>
-                    <th>N° GUÍA</th>
-                    <th>EMPRESA</th>
-                    <th>PRODUCTO</th>
-                    <th class="text-center">CANTIDAD</th>
-                    <th class="text-center">ACCIÓN</th>
-                </tr>
-            </thead>
-            <tbody id="tablaHistorialSalidas">
-                <tr><td colspan="7" class="text-center">Cargando historial...</td></tr>
-            </tbody>
-        </table>
+        <h3 style="color: #495057; border-bottom: 2px solid #495057;">HISTORIAL DE SALIDAS REGISTRADAS</h3>
+        
+        <div style="display: flex; gap: 15px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
+            <label><b>Filtrar por Fecha de Salida:</b></label>
+            <input type="date" id="filtroFechaSalida" onchange="buscarSalidaPorFecha()" style="max-width: 250px; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
+            <button onclick="cargarHistorialSalidas()" style="background: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">Ver Todos</button>
+        </div>
+
+        <div id="contenedorHistorialSalidas">
+            <p class="text-center" style="color: #666; font-style: italic;">Cargando historial de salidas...</p>
+        </div>
+
         <a href="dashboard.html" class="logout">Volver al Dashboard General</a>
     </div>
 
@@ -308,6 +303,7 @@
         let itemsDespachoArray = [];
         let itemsPTModalArray = [];
         let ingresosGlobal = [];
+        let historialSalidasGlobal = [];
         document.getElementById('fecha_salida').valueAsDate = new Date();
 
         async function cargarPendientes() {
@@ -634,18 +630,82 @@
         async function cargarHistorialSalidas() {
             try {
                 const res = await fetch('/api/salidas/historial');
-                const data = await res.json();
-                const tbody = document.getElementById('tablaHistorialSalidas');
-                tbody.innerHTML = data.length === 0 ? `<tr><td colspan="7" class="text-center">Sin registros.</td></tr>` : '';
-                data.forEach(row => {
-                    const fecha = row.fecha_salida ? row.fecha_salida.split('T')[0] : '';
+                historialSalidasGlobal = await res.json();
+                renderizarSalidasAgrupadas(historialSalidasGlobal);
+            } catch(e) { console.error(e); }
+        }
+
+        function buscarSalidaPorFecha() {
+            const fechaBuscada = document.getElementById('filtroFechaSalida').value;
+            if (!fechaBuscada) {
+                renderizarSalidasAgrupadas(historialSalidasGlobal);
+                return;
+            }
+            const filtrado = historialSalidasGlobal.filter(s => s.fecha_salida && s.fecha_salida.split('T')[0] === fechaBuscada);
+            renderizarSalidasAgrupadas(filtrado);
+        }
+
+        function renderizarSalidasAgrupadas(lista) {
+            const contenedor = document.getElementById('contenedorHistorialSalidas');
+            if (lista.length === 0) {
+                contenedor.innerHTML = `<p class="text-center" style="color: #dc3545; padding: 15px;">No se encontraron salidas registradas para la fecha seleccionada.</p>`;
+                return;
+            }
+
+            const grupos = {};
+            lista.forEach(row => {
+                const fechaStr = row.fecha_salida ? row.fecha_salida.split('T')[0] : 'Sin Fecha';
+                if (!grupos[fechaStr]) grupos[fechaStr] = [];
+                grupos[fechaStr].push(row);
+            });
+
+            contenedor.innerHTML = '';
+            Object.keys(grupos).sort().reverse().forEach(fecha => {
+                const salidasDia = grupos[fecha];
+                let filasHtml = '';
+                
+                salidasDia.forEach(row => {
                     const estadoBadge = row.estado_guia === 'REGULARIZADO' 
                         ? `<span style="background: #28a745; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px;">REGULARIZADO</span>` 
                         : `<span style="background: #ffc107; color: black; padding: 2px 6px; border-radius: 3px; font-size: 10px;">PENDIENTE</span>`;
 
-                    tbody.innerHTML += `<tr><td><b>${fecha}</b></td><td>${row.tipo_registro}<br>${estadoBadge}</td><td><b>${row.numero_guia || 'S/N'}</b></td><td>${row.empresa}</td><td><b>${row.articulo_nombre}</b></td><td class="text-center" style="color: #dc3545; font-weight: bold;">${row.cantidad_salida}</td><td class="text-center">${row.estado_guia !== 'REGULARIZADO' ? `<button onclick="regularizarGuia(${row.id})" class="btn-accion btn-regularizar">Reg.</button>` : '-'}</td></tr>`;
+                    filasHtml += `
+                        <tr>
+                            <td>${fecha}</td>
+                            <td>${row.tipo_registro}<br>${estadoBadge}</td>
+                            <td><b>${row.numero_guia || 'S/N'}</b></td>
+                            <td>${row.empresa}</td>
+                            <td><b>${row.articulo_nombre}</b></td>
+                            <td class="text-center" style="color: #dc3545; font-weight: bold;">${row.cantidad_salida}</td>
+                            <td class="text-center">${row.estado_guia !== 'REGULARIZADO' ? `<button onclick="regularizarGuia(${row.id})" class="btn-accion btn-regularizar">Reg.</button>` : '-'}</td>
+                        </tr>
+                    `;
                 });
-            } catch(e) { console.error(e); }
+
+                contenedor.innerHTML += `
+                    <div style="border: 1px solid #ddd; border-radius: 6px; margin-bottom: 25px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                        <div style="background: #f8f9fa; padding: 10px 15px; border-bottom: 1px solid #ddd; font-weight: bold; color: #333;">
+                            📅 Fecha de Salida: ${fecha} | Despachos Realizados: ${salidasDia.length}
+                        </div>
+                        <table>
+                            <thead>
+                                <tr style="background-color: #007bff; color: white;">
+                                    <th>FECHA</th>
+                                    <th>TIPO / ESTADO</th>
+                                    <th>N° GUÍA</th>
+                                    <th>EMPRESA</th>
+                                    <th>PRODUCTO</th>
+                                    <th class="text-center">CANTIDAD</th>
+                                    <th class="text-center">ACCIÓN</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${filasHtml}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            });
         }
 
         async function regularizarGuia(id) {

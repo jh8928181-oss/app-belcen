@@ -44,9 +44,14 @@
         </table>
     </div>
 
-    <!-- 2. PRODUCTO TERMINADO (SOLO > 0) -->
+    <!-- 2. PRODUCTO TERMINADO (SOLO > 0) + BOTÓN DE ADICIÓN MANUAL MÚLTIPLE -->
     <div class="table-container" style="border-top: 5px solid #28a745;">
-        <h3 style="color: #28a745; border-bottom: 2px solid #28a745;">STOCK DE PRODUCTO TERMINADO (CAJAS LISTAS)</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #28a745; padding-bottom: 8px; margin-bottom: 15px;">
+            <h3 style="color: #28a745; margin: 0; border: none; padding: 0;">STOCK DE PRODUCTO TERMINADO (CAJAS LISTAS)</h3>
+            <button onclick="abrirModalAgregarPT()" style="background-color: #28a745; color: white; border: none; padding: 8px 14px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 13px;">
+                ➕ Agregar Producto Manual
+            </button>
+        </div>
         <table>
             <thead>
                 <tr>
@@ -212,10 +217,70 @@
         <a href="dashboard.html" class="logout">Volver al Dashboard General</a>
     </div>
 
+    <!-- MODAL PARA ADICIÓN MANUAL DE 1 O MÁS PRODUCTOS TERMINADOS -->
+    <div id="modalAgregarPT" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000;">
+        <div style="background: white; padding: 25px; border-radius: 8px; width: 550px; max-width: 95%; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
+            <h3 style="margin-top: 0; color: #28a745; border-bottom: 2px solid #28a745; padding-bottom: 5px;">Adición Manual de Producto Terminado</h3>
+            
+            <div style="display: flex; gap: 10px; margin-top: 15px; align-items: flex-end;">
+                <div style="flex: 2;">
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px; font-size: 13px;">Seleccionar Producto:</label>
+                    <select id="selectPTModal" style="width: 100%; padding: 8px;">
+                        <option value="b1_200ml">Aceite de Soya B-1 200 ml</option>
+                        <option value="b1_500ml">Aceite de Soya B-1 500 ml</option>
+                        <option value="b1_900ml">Aceite de Soya B-1 900 ml</option>
+                        <option value="b1_1lt">Aceite de Soya B-1 1 Lt</option>
+                        <option value="b1_2lt">Aceite de Soya B-1 2 Lt</option>
+                        <option value="b1_5lt">Aceite de Soya B-1 5 Lt (Galonera)</option>
+                        <option value="donlalo_800ml">Aceite de Soya Don Lalo 800 ml</option>
+                        <option value="donlalo_20lt">Aceite de Soya Don Lalo Balde 20 Lt</option>
+                        <option value="belini_200ml">Aceite de Soya Belini 200 ml</option>
+                        <option value="belini_500ml">Aceite de Soya Belini 500 ml</option>
+                        <option value="belini_900ml">Aceite de Soya Belini 900 ml</option>
+                        <option value="belini_1lt">Aceite de Soya Belini 1 Lt</option>
+                        <option value="belini_2lt">Aceite de Soya Belini 2 Lt (Galonera)</option>
+                        <option value="belini_3lt">Aceite de Soya Belini 3 Lt</option>
+                        <option value="belini_5lt">Aceite de Soya Belini 5 Lt (Galonera)</option>
+                        <option value="belini_lata18lt">Aceite de Soya Belini Lata 18 Lt</option>
+                        <option value="belini_balde18lt">Aceite de Soya Belini Balde 18 Lt</option>
+                    </select>
+                </div>
+                <div style="flex: 1;">
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px; font-size: 13px;">Cantidad Cajas:</label>
+                    <input type="number" id="inputCantidadPTModal" min="1" placeholder="Ej. 50" style="width: 100%;">
+                </div>
+                <div>
+                    <button type="button" onclick="agregarItemPTModal()" style="background: #007bff; color: white; border: none; padding: 9px 12px; border-radius: 4px; font-weight: bold; cursor: pointer;">+ Añadir</button>
+                </div>
+            </div>
+
+            <div style="max-height: 160px; overflow-y: auto; margin-top: 15px; border: 1px solid #ddd; border-radius: 4px;">
+                <table style="width: 100%; margin-top: 0;">
+                    <thead>
+                        <tr style="background: #f1f1f1; color: #333;">
+                            <th style="padding: 6px;">Producto</th>
+                            <th style="padding: 6px; text-align: center;">Cajas</th>
+                            <th style="padding: 6px; text-align: center;">Quitar</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaItemsPTModal">
+                        <tr><td colspan="3" class="text-center" style="color: #888; font-style: italic; font-size: 13px;">No hay productos en la lista temporal.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                <button type="button" onclick="cerrarModalAgregarPT()" style="background-color: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">Cancelar</button>
+                <button type="button" onclick="guardarLotePTManual()" style="background-color: #28a745; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">💾 Guardar Todo en Stock</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let inventarioGlobal = [];
         let productoTerminadoGlobal = [];
         let itemsDespachoArray = [];
+        let itemsPTModalArray = []; // Lista temporal para múltiples productos terminados
         document.getElementById('fecha_salida').valueAsDate = new Date();
 
         async function cargarPendientes() {
@@ -267,6 +332,81 @@
                 body: JSON.stringify({ id, nuevo_stock: parseInt(nuevoStock) })
             }).then(r => r.json()).then(d => { alert(d.mensaje); cargarProductoTerminado(); });
         }
+
+        // --- FUNCIONES DEL MODAL DE ADICIÓN MÚLTIPLE MANUAL PT ---
+        function abrirModalAgregarPT() {
+            itemsPTModalArray = [];
+            renderTablaPTModal();
+            document.getElementById('modalAgregarPT').style.display = 'flex';
+        }
+
+        function cerrarModalAgregarPT() {
+            document.getElementById('modalAgregarPT').style.display = 'none';
+            itemsPTModalArray = [];
+        }
+
+        function agregarItemPTModal() {
+            const select = document.getElementById('selectPTModal');
+            const producto_tipo = select.value;
+            const producto_nombre = select.options[select.selectedIndex].text;
+            const cantidad = parseInt(document.getElementById('inputCantidadPTModal').value);
+
+            if (isNaN(cantidad) || cantidad <= 0) {
+                alert('❌ Ingrese una cantidad válida de cajas.');
+                return;
+            }
+
+            itemsPTModalArray.push({ producto_tipo, producto_nombre, cantidad });
+            renderTablaPTModal();
+            document.getElementById('inputCantidadPTModal').value = '';
+        }
+
+        function quitarItemPTModal(index) {
+            itemsPTModalArray.splice(index, 1);
+            renderTablaPTModal();
+        }
+
+        function renderTablaPTModal() {
+            const tbody = document.getElementById('tablaItemsPTModal');
+            if (itemsPTModalArray.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="3" class="text-center" style="color: #888; font-style: italic; font-size: 13px;">No hay productos en la lista temporal.</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = '';
+            itemsPTModalArray.forEach((item, idx) => {
+                tbody.innerHTML += `<tr><td><b>${item.producto_nombre}</b></td><td class="text-center" style="color: #28a745; font-weight: bold;">${item.cantidad} cjs</td><td class="text-center"><button type="button" onclick="quitarItemPTModal(${idx})" style="background: #dc3545; color: white; border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer;">X</button></td></tr>`;
+            });
+        }
+
+        async function guardarLotePTManual() {
+            if (itemsPTModalArray.length === 0) {
+                alert('❌ Agregue al menos un producto a la lista antes de guardar.');
+                return;
+            }
+
+            try {
+                for (const item of itemsPTModalArray) {
+                    await fetch('/api/envasado/registrar', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            producto_tipo: item.producto_tipo,
+                            cantidad_producida: item.cantidad,
+                            numero_lote: 'MANUAL-' + Date.now(),
+                            tapa_elegida: 'Tapa dosif. N° 26 blanco / Dorado'
+                        })
+                    });
+                }
+
+                alert('✅ Stock de producto terminado actualizado correctamente.');
+                cerrarModalAgregarPT();
+                cargarProductoTerminado();
+            } catch (err) {
+                console.error(err);
+                alert('❌ Error al registrar el stock manual.');
+            }
+        }
+        // --------------------------------------------------------
 
         async function cargarInventarioAlmacen() {
             try {
@@ -339,37 +479,37 @@
         }
 
         async function leerPdfAutomatico(input) {
-    if (!input.files || !input.files[0]) return;
-    const formData = new FormData();
-    formData.append('archivo_guia', input.files[0]);
+            if (!input.files || !input.files[0]) return;
+            const formData = new FormData();
+            formData.append('archivo_guia', input.files[0]);
 
-    try {
-        const res = await fetch('/api/salidas/leer-pdf', { method: 'POST', body: formData });
-        const data = await res.json();
+            try {
+                const res = await fetch('/api/salidas/leer-pdf', { method: 'POST', body: formData });
+                const data = await res.json();
 
-        if (res.ok && data.success) {
-            if (data.datos.numero_guia) document.getElementById('numero_guia').value = data.datos.numero_guia;
-            if (data.datos.ruc) document.getElementById('ruc').value = data.datos.ruc;
-            if (data.datos.empresa) document.getElementById('empresa').value = data.datos.empresa;
-            if (data.datos.destino) document.getElementById('destino').value = data.datos.destino;
-            if (data.datos.placa) document.getElementById('placa').value = data.datos.placa;
-            if (data.datos.chofer_licencia) document.getElementById('chofer_licencia').value = data.datos.chofer_licencia;
+                if (res.ok && data.success) {
+                    if (data.datos.numero_guia) document.getElementById('numero_guia').value = data.datos.numero_guia;
+                    if (data.datos.ruc) document.getElementById('ruc').value = data.datos.ruc;
+                    if (data.datos.empresa) document.getElementById('empresa').value = data.datos.empresa;
+                    if (data.datos.destino) document.getElementById('destino').value = data.datos.destino;
+                    if (data.datos.placa) document.getElementById('placa').value = data.datos.placa;
+                    if (data.datos.chofer_licencia) document.getElementById('chofer_licencia').value = data.datos.chofer_licencia;
 
-            if (data.datos.items && data.datos.items.length > 0) {
-                itemsDespachoArray = data.datos.items.map(i => ({
-                    nombre: i.nombre,
-                    cantidad: i.cantidad,
-                    producto_key: i.producto_key,
-                    articulo_id: null
-                }));
-                renderTablaItems();
-                alert('📄 Guía leída con éxito: Cabecera, transporte e ítems cargados automáticamente.');
-            } else {
-                alert('📄 Cabecera leída, pero no se reconocieron los ítems automáticamente.');
-            }
+                    if (data.datos.items && data.datos.items.length > 0) {
+                        itemsDespachoArray = data.datos.items.map(i => ({
+                            nombre: i.nombre,
+                            cantidad: i.cantidad,
+                            producto_key: i.producto_key,
+                            articulo_id: null
+                        }));
+                        renderTablaItems();
+                        alert('📄 Guía leída con éxito: Cabecera, transporte e ítems cargados automáticamente.');
+                    } else {
+                        alert('📄 Cabecera leída, pero no se reconocieron los ítems automáticamente.');
+                    }
+                }
+            } catch(e) { console.error(e); alert('Error al leer el PDF.'); }
         }
-    } catch(e) { console.error(e); alert('Error al leer el PDF.'); }
-}
 
         function agregarItemManual() {
             const select = document.getElementById('selectProductoSalida');

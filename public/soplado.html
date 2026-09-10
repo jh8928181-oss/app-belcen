@@ -3,112 +3,114 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Soplado - Reporte de Turno</title>
+    <title>Reporte de Soplado - Belcen</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f6f9; }
-        .card { background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 500px; margin: auto; }
-        label { font-weight: bold; display: block; margin-top: 12px; color: #495057; }
-        input, select, button { width: 100%; padding: 10px; margin-top: 5px; box-sizing: border-box; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; }
-        button { background-color: #17a2b8; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 20px; font-size: 16px; }
-        button:hover { background-color: #138496; }
+        body { font-family: Arial, sans-serif; margin: 0; background-color: #f4f6f9; padding: 20px; }
+        .card { max-width: 700px; margin: auto; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-top: 5px solid #17a2b8; }
+        h3 { color: #17a2b8; text-align: center; border-bottom: 2px solid #17a2b8; padding-bottom: 8px; margin-top: 0; }
+        select, input { padding: 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; box-sizing: border-box; width: 100%; margin-top: 5px; margin-bottom: 15px; }
         .logout { display: block; text-align: center; margin-top: 15px; color: #dc3545; text-decoration: none; font-weight: bold; }
+        .btn-accion { background: #17a2b8; color: white; border: none; padding: 12px; font-weight: bold; border-radius: 4px; cursor: pointer; width: 100%; font-size: 16px; }
+        .btn-accion:hover { background: #138496; }
+        .info-receta { background: #e8f4f8; padding: 12px; border-radius: 5px; font-size: 13px; color: #0c5460; margin-bottom: 15px; border-left: 4px solid #17a2b8; }
     </style>
 </head>
 <body>
+
     <div class="card">
-        <h2>Reporte de Turno - Soplado</h2>
+        <h3>REPORTE DE TURNO - SOPLADO</h3>
+        
+        <div class="info-receta">
+            ℹ️ Seleccione la preforma específica utilizada, el tipo de botella a producir y la cantidad. La etiqueta y el stock de botellas se actualizarán automáticamente.
+        </div>
+
         <form id="formSoplado">
-            <label>Preforma a Descontar:</label>
-            <select id="preforma_id">
-                <option value="">-- Seleccione Preforma --</option>
-            </select>
-            <label>Cantidad de Preformas:</label>
-            <input type="number" id="cantidad_preformas" placeholder="Ej. 1000" min="0" value="0">
+            <div>
+                <label><b>Seleccionar Preforma Utilizada:</b></label>
+                <select id="preforma_nombre" name="preforma_nombre" required>
+                    <option value="">-- Seleccione la preforma exacta --</option>
+                    <option value="SERVICIO SAUÑE (1LT-900ML)">SERVICIO SAUÑE (1LT-900ML)</option>
+                    <option value="SERVICIO SAUÑE PREFORMA 09 GR (200ML)">SERVICIO SAUÑE PREFORMA 09 GR (200ML)</option>
+                    <option value="Preforma cristal 23.5 gr (PICO 26MM)">Preforma cristal 23.5 gr (PICO 26MM)</option>
+                    <option value="SERVICIO SOPLADO 500 ML PREF-15.5GR (SAUÑE)">SERVICIO SOPLADO 500 ML PREF-15.5GR (SAUÑE)</option>
+                    <option value="Preforma cristal de 104 gr pico 45mm (3LT)">Preforma cristal de 104 gr pico 45mm (3LT)</option>
+                </select>
+            </div>
 
-            <label>Etiqueta a Descontar (Opcional):</label>
-            <select id="etiqueta_id">
-                <option value="">-- Seleccione Etiqueta --</option>
-            </select>
-            <label>Cantidad de Etiquetas:</label>
-            <input type="number" id="cantidad_etiquetas" placeholder="Ej. 980" min="0" value="0">
+            <div>
+                <label><b>Seleccionar Botella a Producir:</b></label>
+                <select id="botella_tipo" name="botella_tipo" required>
+                    <option value="">-- Seleccione tipo de botella --</option>
+                    <optgroup label="Línea Belini">
+                        <option value="soplado_belini_200ml">Botella Belini x 200 ml</option>
+                        <option value="soplado_belini_500ml">Botella Belini x 500 ml</option>
+                        <option value="soplado_belini_900ml">Botella Belini x 900 ml</option>
+                        <option value="soplado_belini_1lt">Botella Belini x 1 Lt</option>
+                        <option value="soplado_belini_3lt">Botella Belini x 3 Lt</option>
+                    </optgroup>
+                    <optgroup label="Línea B-1">
+                        <option value="soplado_b1_200ml">Botella de 200 ml - B-1</option>
+                        <option value="soplado_b1_500ml">Botella de 500 ml - B-1</option>
+                        <option value="soplado_b1_900ml">Botella de 900 ml - B-1</option>
+                        <option value="soplado_b1_1lt">Botella de 1 Lt - B-1</option>
+                        <option value="soplado_b1_2lt">Botella de 2 Lt - B-1</option>
+                    </optgroup>
+                    <optgroup label="Otras Marcas">
+                        <option value="soplado_donlalo_800ml">Botella de 800ml - Don Lalo</option>
+                        <option value="soplado_vega_900ml">Botella VEGA x 900 ml</option>
+                    </optgroup>
+                </select>
+            </div>
 
-            <label>Botella Producida (Aumentar Stock):</label>
-            <select id="botella_id" required>
-                <option value="">-- Seleccione Botella / Envase --</option>
-            </select>
-            <label>Cantidad de Botellas Producidas:</label>
-            <input type="number" id="cantidad_botellas" placeholder="Ej. 970" min="1" required>
+            <div>
+                <label><b>Cantidad de Botellas Fabricadas:</b></label>
+                <input type="number" id="cantidad_producida" name="cantidad_producida" min="1" placeholder="Ej. 3000" required>
+            </div>
 
-            <button type="submit">Registrar Producción y Actualizar Stock</button>
+            <div>
+                <button type="submit" class="btn-accion">🚀 Registrar Producción y Actualizar Insumos</button>
+            </div>
         </form>
+
         <a href="dashboard.html" class="logout">Volver al Dashboard General</a>
     </div>
 
     <script>
-        async function cargarInventarioSoplado() {
-            try {
-                const res = await fetch('/api/inventario');
-                const inventario = await res.json();
-                
-                const selectPreforma = document.getElementById('preforma_id');
-                const selectEtiqueta = document.getElementById('etiqueta_id');
-                const selectBotella = document.getElementById('botella_id');
-
-                inventario.forEach(item => {
-                    const cat = (item.categoria || '').toUpperCase();
-                    const opt = document.createElement('option');
-                    opt.value = item.id;
-                    opt.textContent = `${item.nombre} (Stock: ${item.stock} ${item.unidad_medida})`;
-
-                    if (cat.includes('PREFORMAS') || cat.includes('SERVICIOS')) {
-                        selectPreforma.appendChild(opt.cloneNode(true));
-                    }
-                    if (cat.includes('ETIQUETAS')) {
-                        selectEtiqueta.appendChild(opt.cloneNode(true));
-                    }
-                    if (cat.includes('BOTELLAS') || cat.includes('GALONERAS') || cat.includes('LATAS') || cat.includes('BALDES')) {
-                        selectBotella.appendChild(opt.cloneNode(true));
-                    }
-                });
-            } catch (e) {
-                console.error("Error al cargar inventario para soplado:", e);
-            }
-        }
-
         document.getElementById('formSoplado').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const preforma_nombre = document.getElementById('preforma_nombre').value;
+            const botella_tipo = document.getElementById('botella_tipo').value;
+            const cantidad_producida = parseInt(document.getElementById('cantidad_producida').value);
 
-            const data = {
-                preforma_id: document.getElementById('preforma_id').value || null,
-                cantidad_preformas: parseFloat(document.getElementById('cantidad_preformas').value) || 0,
-                etiqueta_id: document.getElementById('etique_id').value || null,
-                cantidad_etiquetas: parseFloat(document.getElementById('cantidad_etiquetas').value) || 0,
-                botella_id: document.getElementById('botella_id').value || null,
-                cantidad_botellas: parseFloat(document.getElementById('cantidad_botellas').value) || 0
-            };
+            if (!preforma_nombre || !botella_tipo || isNaN(cantidad_producida) || cantidad_producida <= 0) {
+                alert('❌ Seleccione la preforma, el tipo de botella y una cantidad válida.');
+                return;
+            }
 
-            // Corrección específica para apuntar al endpoint real /api/soplado/registrar
             try {
                 const res = await fetch('/api/soplado/registrar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
+                    body: JSON.stringify({
+                        preforma_nombre,
+                        botella_tipo,
+                        cantidad_producida,
+                        usuario: localStorage.getItem('usuario_actual') || 'soplado_user'
+                    })
                 });
 
-                const result = await res.json();
-                if (res.ok && result.success) {
-                    alert('✅ ' + result.mensaje);
-                    e.target.reset();
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    alert('✅ ' + data.mensaje);
+                    document.getElementById('formSoplado').reset();
                 } else {
-                    alert('❌ Error: ' + (result.mensaje || 'No se pudo registrar'));
+                    alert('❌ ' + (data.mensaje || 'Error al registrar producción.'));
                 }
             } catch (err) {
                 console.error(err);
-                alert('❌ Error de conexión con el servidor.');
+                alert('Error de conexión con el servidor.');
             }
         });
-
-        cargarInventarioSoplado();
     </script>
 </body>
 </html>

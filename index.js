@@ -204,26 +204,97 @@ app.get('/api/inventario', async (req, res) => {
     }
 });
 
-// --- SOPLADO ---
+// --- SOPLADO (CON PREFORMA SELECCIONADA Y ETIQUETA AUTOMÁTICA) ---
 app.post('/api/soplado/registrar', async (req, res) => {
     const client = await pool.connect();
     try {
-        const { preforma_id, cantidad_preformas, etiqueta_id, cantidad_etiquetas, botella_id, cantidad_botellas } = req.body;
-
+        const { preforma_nombre, botella_tipo, cantidad_producida, usuario } = req.body;
         await client.query('BEGIN');
 
-        if (preforma_id && cantidad_preformas) {
-            await client.query(`UPDATE inventario SET stock = stock - $1 WHERE id = $2`, [cantidad_preformas, preforma_id]);
-        }
-        if (etiqueta_id && cantidad_etiquetas) {
-            await client.query(`UPDATE inventario SET stock = stock - $1 WHERE id = $2`, [cantidad_etiquetas, etiqueta_id]);
-        }
-        if (botella_id && cantidad_botellas) {
-            await client.query(`UPDATE inventario SET stock = stock + $1 WHERE id = $2`, [cantidad_botellas, botella_id]);
+        let etiquetaNombre = null;
+        let botellaNombre = '';
+        let cantidadBotellas = parseInt(cantidad_producida);
+
+        switch (botella_tipo) {
+            // LÍNEA BELINI
+            case 'soplado_belini_200ml':
+                botellaNombre = 'Botella Belini x 200 ml';
+                etiquetaNombre = 'Etiqueta couche 90 gr x 200 ml B-1';
+                break;
+            case 'soplado_belini_500ml':
+                botellaNombre = 'Botella Belini x 500 ml';
+                etiquetaNombre = 'Etiqueta couche 90 gr x 500 ml Belini';
+                break;
+            case 'soplado_belini_900ml':
+                botellaNombre = 'Botella Belini x 900 ml';
+                etiquetaNombre = 'Etiqueta couche 90 gr x 900 ml Belini';
+                break;
+            case 'soplado_belini_1lt':
+                botellaNombre = 'Botella Belini x 1 Lt';
+                etiquetaNombre = 'Etiqueta couche 90 gr x 1 lt Belini';
+                break;
+            case 'soplado_belini_3lt':
+                botellaNombre = 'Botella Belini x 3 lt';
+                etiquetaNombre = 'Etiqueta polipropileno blanco x 3 lt Belini';
+                break;
+
+            // LÍNEA B-1
+            case 'soplado_b1_200ml':
+                botellaNombre = 'Botella de 200 ml - B-1';
+                etiquetaNombre = 'Etiqueta couche 90 gr x 200 ml B-1';
+                break;
+            case 'soplado_b1_500ml':
+                botellaNombre = 'Botella de 500 ml - B-1';
+                etiquetaNombre = 'Etiqueta couche 90 gr x 500 ml B-1';
+                break;
+            case 'soplado_b1_900ml':
+                botellaNombre = 'Botella de 900 ml - B-1';
+                etiquetaNombre = 'Etiqueta couche 90 gr x 900 ml B-1';
+                break;
+            case 'soplado_b1_1lt':
+                botellaNombre = 'Botella de 1 Lt - B-1';
+                etiquetaNombre = 'Etiqueta couche 90 gr x 1 lt B-1';
+                break;
+            case 'soplado_b1_2lt':
+                botellaNombre = 'Botella de 2 Lt - B-1';
+                etiquetaNombre = 'Etiqueta couche 90 gr x 2 lt B-1';
+                break;
+
+            // OTRAS MARCAS
+            case 'soplado_donlalo_800ml':
+                botellaNombre = 'Botella de 800ml - Don Lalo';
+                etiquetaNombre = 'Etiqueta couche 90gr x 800 ml Don Lalo';
+                break;
+            case 'soplado_vega_900ml':
+                botellaNombre = 'Botella VEGA x 900 ml';
+                etiquetaNombre = null;
+                break;
+            default:
+                throw new Error('Tipo de botella desconocido.');
         }
 
+        // 1. Descontar la preforma elegida manualmente por el operador
+        await client.query(
+            `UPDATE inventario SET stock = stock - $1 WHERE LOWER(nombre) = LOWER($2)`,
+            [cantidadBotellas, preforma_nombre]
+        );
+
+        // 2. Descontar la etiqueta correspondiente automáticamente
+        if (etiquetaNombre) {
+            await client.query(
+                `UPDATE inventario SET stock = stock - $1 WHERE LOWER(nombre) = LOWER($2)`,
+                [cantidadBotellas / 1000, etiquetaNombre]
+            );
+        }
+
+        // 3. Aumentar stock de la botella fabricada en inventario
+        await client.query(
+            `UPDATE inventario SET stock = stock + $1 WHERE LOWER(nombre) = LOWER($2)`,
+            [cantidadBotellas, botellaNombre]
+        );
+
         await client.query('COMMIT');
-        res.json({ success: true, mensaje: 'Producción de soplado registrada y stock actualizado correctamente.' });
+        res.json({ success: true, mensaje: `Producción de ${cantidadBotellas} unidades de ${botellaNombre} registrada. Se descontó la preforma "${preforma_nombre}" y su etiqueta.` });
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Error al registrar soplado:', error);

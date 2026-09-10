@@ -3,118 +3,173 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vigilancia - Corporación Belcen</title>
+    <title>Control de Vigilancia - Belcen</title>
     <style>
-        body { font-family: Arial, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; }
-        .container { max-width: 600px; margin: auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        h2 { color: #343a40; text-align: center; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; font-weight: bold; margin-bottom: 5px; color: #495057; }
-        input, select { width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 4px; box-sizing: border-box; }
-        button { background-color: #28a745; color: white; border: none; padding: 12px; width: 100%; border-radius: 4px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; }
-        button:hover { background-color: #218838; }
-        .logout { background-color: #dc3545; margin-top: 15px; }
-        .logout:hover { background-color: #c82333; }
+        body { font-family: Arial, sans-serif; margin: 0; background-color: #f4f6f9; padding: 20px; }
+        .card { max-width: 900px; margin: auto; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-top: 5px solid #ffc107; margin-bottom: 25px; }
+        h3 { color: #d39e00; text-align: center; border-bottom: 2px solid #ffc107; padding-bottom: 8px; margin-top: 0; }
+        select, input { padding: 8px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; box-sizing: border-box; width: 100%; margin-top: 5px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        th { background-color: #343a40; color: white; }
+        .text-center { text-align: center; }
+        .logout { display: block; text-align: center; margin-top: 15px; color: #dc3545; text-decoration: none; font-weight: bold; }
+        .btn-accion { background: #28a745; color: white; border: none; padding: 12px; font-weight: bold; border-radius: 4px; cursor: pointer; width: 100%; font-size: 16px; margin-top: 15px; }
+        .btn-accion:hover { background: #218838; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h2>Control de Vigilancia - Ingresos</h2>
-        <form id="formVigilancia">
-            <div class="form-group">
-                <label for="proveedor">Proveedor / Empresa:</label>
-                <input type="text" id="proveedor" placeholder="Ej. Sauñe, Owens, etc." required>
-            </div>
 
-            <div class="form-group">
-                <label for="producto">Producto / Material a Ingresar:</label>
-                <input type="text" id="producto" placeholder="Ej. Botellas 1L B-1, Tapas doradas, etc." required>
-            </div>
-
-            <div style="display: flex; gap: 10px;">
-                <div class="form-group" style="flex: 2;">
-                    <label for="cantidad">Cantidad:</label>
-                    <input type="number" step="0.01" id="cantidad" placeholder="Ingrese cantidad" required>
-                </div>
-                <div class="form-group" style="flex: 1;">
-                    <label for="unidad_medida">Unidad:</label>
-                    <select id="unidad_medida">
-                        <option value="UNIDADES">UNIDADES</option>
-                        <option value="MILL">MILLARES (MILL)</option>
-                        <option value="KG">KILOS (KG)</option>
-                        <option value="CAJAS">CAJAS</option>
+    <div class="card">
+        <h3>REGISTRO DE INGRESO - VIGILANCIA</h3>
+        
+        <form id="formVigilancia" enctype="multipart/form-data">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div>
+                    <label><b>Tipo de Documento:</b></label>
+                    <select id="tipo_documento" name="tipo_documento">
+                        <option value="GUIA DE REMISION">Guía de Remisión</option>
+                        <option value="FACTURA">Factura</option>
+                        <option value="OTRO">Otro Documento</option>
                     </select>
                 </div>
+                <div>
+                    <label><b>N° de Guía / Documento:</b></label>
+                    <input type="text" id="numero_guia" name="numero_guia" placeholder="Ej. T001-000452" required>
+                </div>
+                <div>
+                    <label><b>Proveedor / Empresa:</b></label>
+                    <input type="text" id="proveedor" name="proveedor" placeholder="Razón Social del Proveedor" required>
+                </div>
+                <div>
+                    <label><b>Lugar de Partida:</b></label>
+                    <input type="text" id="lugar_partida" name="lugar_partida" placeholder="Origen de la carga">
+                </div>
+                <div>
+                    <label><b>Punto de Llegada:</b></label>
+                    <input type="text" id="punto_llegada" name="punto_llegada" value="Planta Principal - Corporación Belcen">
+                </div>
+                <div>
+                    <label><b>Foto de Guía / Evidencia:</b></label>
+                    <input type="file" id="foto_guia" name="foto_guia" accept="image/*">
+                </div>
             </div>
 
-            <div class="form-group">
-                <label for="tipo_documento">Tipo de Documento:</label>
-                <select id="tipo_documento" required>
-                    <option value="Guia de Remision">Guía de Remisión</option>
-                    <option value="Otro Documento">Otro Documento</option>
-                    <option value="Sin Documento">Sin Documento (Alerta a Almacén)</option>
-                </select>
+            <!-- SECCIÓN DE MÚLTIPLES PRODUCTOS EN VIGILANCIA -->
+            <div style="margin-top: 20px; background: #fff3cd; padding: 15px; border-radius: 6px; border: 1px solid #ffeeba;">
+                <h4 style="margin-top: 0; color: #856404;">📦 Productos en la Guía</h4>
+                
+                <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: flex-end;">
+                    <div style="flex: 2;">
+                        <label style="font-size: 12px;"><b>Descripción del Producto:</b></label>
+                        <input type="text" id="prod_textual" placeholder="Ej. Botella 1Lt / Cajas / Tapas">
+                    </div>
+                    <div style="flex: 1;">
+                        <label style="font-size: 12px;"><b>Cantidad Guía:</b></label>
+                        <input type="number" step="0.01" id="prod_cant_guia" placeholder="Cant. Guía">
+                    </div>
+                    <div style="flex: 1;">
+                        <label style="font-size: 12px;"><b>Cantidad Física:</b></label>
+                        <input type="number" step="0.01" id="prod_cant_fisica" placeholder="Cant. Real">
+                    </div>
+                    <div>
+                        <button type="button" onclick="agregarItemVigilancia()" style="background: #ffc107; color: #000; border: none; padding: 9px 12px; font-weight: bold; border-radius: 4px; cursor: pointer;">+ Añadir</button>
+                    </div>
+                </div>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>PRODUCTO</th>
+                            <th class="text-center">CANT. GUÍA</th>
+                            <th class="text-center">CANT. FÍSICA</th>
+                            <th class="text-center">QUITAR</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaItemsVigilancia">
+                        <tr><td colspan="4" class="text-center" style="font-style: italic; color: #666;">No hay productos agregados.</td></tr>
+                    </tbody>
+                </table>
             </div>
 
-            <div class="form-group">
-                <label for="numero_guia">Número de Guía / Doc / Observación:</label>
-                <input type="text" id="numero_guia" placeholder="Número de documento o motivo">
+            <div>
+                <button type="submit" class="btn-accion">🚀 REGISTRAR INGRESO EN VIGILANCIA</button>
             </div>
-
-            <div class="form-group" id="grupoFoto">
-                <label for="foto">Foto de la Guía o Documento:</label>
-                <input type="file" id="foto" accept="image/*">
-            </div>
-
-            <button type="submit">Registrar Ingreso en Garita</button>
         </form>
-        <button class="logout" onclick="localStorage.clear(); window.location.href='index.html';">Cerrar Sesión</button>
+        <a href="dashboard.html" class="logout">Volver al Dashboard General</a>
     </div>
 
     <script>
-        document.getElementById('tipo_documento').addEventListener('change', (e) => {
-            const grupoFoto = document.getElementById('grupoFoto');
-            if(e.target.value === 'Sin Documento') {
-                grupoFoto.style.display = 'none';
-            } else {
-                grupoFoto.style.display = 'block';
+        let itemsVigilanciaArray = [];
+
+        function agregarItemVigilancia() {
+            const nombre = document.getElementById('prod_textual').value.trim();
+            const cantidad_guia = parseFloat(document.getElementById('prod_cant_guia').value);
+            const cantidad_fisica = parseFloat(document.getElementById('prod_cant_fisica').value);
+
+            if (!nombre || isNaN(cantidad_guia) || isNaN(cantidad_fisica)) {
+                alert('❌ Complete la descripción y las cantidades (guía y física).');
+                return;
             }
-        });
+
+            itemsVigilanciaArray.push({ nombre, cantidad_guia, cantidad_fisica });
+            renderTablaVigilancia();
+
+            document.getElementById('prod_textual').value = '';
+            document.getElementById('prod_cant_guia').value = '';
+            document.getElementById('prod_cant_fisica').value = '';
+        }
+
+        function quitarItemVigilancia(index) {
+            itemsVigilanciaArray.splice(index, 1);
+            renderTablaVigilancia();
+        }
+
+        function renderTablaVigilancia() {
+            const tbody = document.getElementById('tablaItemsVigilancia');
+            if (itemsVigilanciaArray.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="text-center" style="font-style: italic; color: #666;">No hay productos agregados.</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = '';
+            itemsVigilanciaArray.forEach((item, idx) => {
+                const diffColor = item.cantidad_guia !== item.cantidad_fisica ? 'color: #dc3545; font-weight: bold;' : '';
+                tbody.innerHTML += `
+                    <tr>
+                        <td><b>${item.nombre}</b></td>
+                        <td class="text-center">${item.cantidad_guia}</td>
+                        <td class="text-center" style="${diffColor}">${item.cantidad_fisica}</td>
+                        <td class="text-center"><button type="button" onclick="quitarItemVigilancia(${idx})" style="background:#dc3545; color:white; border:none; padding:2px 6px; border-radius:3px; cursor:pointer;">X</button></td>
+                    </tr>
+                `;
+            });
+        }
 
         document.getElementById('formVigilancia').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const formData = new FormData();
-            formData.append('usuario', localStorage.getItem('usuario_actual') || 'vigilancia1');
-            formData.append('proveedor', document.getElementById('proveedor').value.trim());
-            formData.append('producto_textual', document.getElementById('producto').value.trim());
-            formData.append('cantidad', document.getElementById('cantidad').value);
-            formData.append('unidad_medida', document.getElementById('unidad_medida').value);
-            formData.append('tipo_documento', document.getElementById('tipo_documento').value);
-            formData.append('numero_guia', document.getElementById('numero_guia').value.trim());
-            formData.append('lugar_partida', document.getElementById('proveedor').value.trim() || 'Proveedor Externo');
-            formData.append('punto_llegada', 'Planta Principal - Almacén');
-            
-            const fotoInput = document.getElementById('foto');
-            if(fotoInput.files[0]) {
-                formData.append('foto_guia', fotoInput.files[0]);
+            if (itemsVigilanciaArray.length === 0) {
+                alert('❌ Debe agregar al menos un producto a la guía.');
+                return;
             }
 
+            const formData = new FormData(e.target);
+            formData.append('usuario', localStorage.getItem('usuario_actual') || 'vigilancia1');
+            formData.append('items_json', JSON.stringify(itemsVigilanciaArray));
+
             try {
-                const res = await fetch('/api/vigilancia/registrar', {
-                    method: 'POST',
-                    body: formData
-                });
+                const res = await fetch('/api/vigilancia/registrar', { method: 'POST', body: formData });
                 const data = await res.json();
-                if(res.ok && data.success) {
-                    alert('✅ Ingreso registrado correctamente en garita.');
+                if (res.ok && data.success) {
+                    alert('✅ ' + data.mensaje);
                     document.getElementById('formVigilancia').reset();
-                    document.getElementById('grupoFoto').style.display = 'block';
+                    itemsVigilanciaArray = [];
+                    renderTablaVigilancia();
                 } else {
-                    alert('❌ Error: ' + (data.mensaje || 'No se pudo registrar'));
+                    alert('❌ ' + (data.mensaje || 'Error al registrar.'));
                 }
-            } catch(err) {
+            } catch (err) {
                 console.error(err);
-                alert('❌ Error de conexión con el servidor.');
+                alert('Error de conexión con el servidor.');
             }
         });
     </script>

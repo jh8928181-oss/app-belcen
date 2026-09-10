@@ -24,27 +24,53 @@
 </head>
 <body>
 
-    <!-- 1. PENDIENTES DE VIGILANCIA -->
+    <!-- 1. PENDIENTES DE VIGILANCIA & CONFORMIDAD -->
     <div class="table-container" style="border-top: 5px solid #ffc107;">
-        <h3 style="color: #d39e00; border-bottom: 2px solid #ffc107;">NOTIFICACIONES Y PENDIENTES DE VIGILANCIA</h3>
+        <h3 style="color: #d39e00; border-bottom: 2px solid #ffc107;">NOTIFICACIONES Y PENDIENTES DE VIGILANCIA (CONFORMIDAD)</h3>
         <table>
             <thead>
                 <tr>
                     <th>GUÍA / DOC</th>
                     <th>PROVEEDOR</th>
-                    <th>PRODUCTO TEXTUAL</th>
-                    <th class="text-center">CANTIDAD</th>
+                    <th>PRODUCTOS (GUÍA VS FÍSICO)</th>
                     <th class="text-center">FOTO</th>
-                    <th class="text-center">CONFORMIDAD</th>
+                    <th class="text-center">ACCIÓN / CONFORMIDAD</th>
                 </tr>
             </thead>
             <tbody id="tablaPendientes">
-                <tr><td colspan="6" class="text-center">Cargando pendientes...</td></tr>
+                <tr><td colspan="5" class="text-center">Cargando pendientes...</td></tr>
             </tbody>
         </table>
     </div>
 
-    <!-- 2. PRODUCTO TERMINADO (SOLO > 0) + BOTÓN DE ADICIÓN MANUAL MÚLTIPLE -->
+    <!-- 2. REGISTRO GENERAL DE INGRESOS A ALMACÉN -->
+    <div class="table-container" style="border-top: 5px solid #17a2b8;">
+        <h3 style="color: #17a2b8; border-bottom: 2px solid #17a2b8;">REGISTRO GENERAL DE INGRESOS A ALMACÉN</h3>
+        
+        <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+            <button onclick="filtrarIngresos('TODOS')" style="background: #007bff; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold;">Ver Todos</button>
+            <button onclick="filtrarIngresos('CON GUIA')" style="background: #28a745; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold;">Con Guía Conforme</button>
+            <button onclick="filtrarIngresos('POR REGULARIZAR')" style="background: #ffc107; color: black; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold;">Por Regularizar (Diferencias)</button>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>FECHA</th>
+                    <th>N° GUÍA</th>
+                    <th>PROVEEDOR</th>
+                    <th>PRODUCTO</th>
+                    <th class="text-center">CANTIDAD RECIBIDA</th>
+                    <th class="text-center">ESTADO / CATEGORÍA</th>
+                </tr>
+            </thead>
+            <tbody id="tablaRegistroIngresos">
+                <tr><td colspan="6" class="text-center">Cargando registro de ingresos...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 3. PRODUCTO TERMINADO (SOLO > 0) + BOTÓN DE ADICIÓN MANUAL MÚLTIPLE -->
     <div class="table-container" style="border-top: 5px solid #28a745;">
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #28a745; padding-bottom: 8px; margin-bottom: 15px;">
             <h3 style="color: #28a745; margin: 0; border: none; padding: 0;">STOCK DE PRODUCTO TERMINADO (CAJAS LISTAS)</h3>
@@ -67,7 +93,7 @@
         </table>
     </div>
 
-    <!-- 3. INVENTARIO DE INSUMOS CON FILTROS -->
+    <!-- 4. INVENTARIO DE INSUMOS CON FILTROS -->
     <div class="table-container" style="border-top: 5px solid #007bff;">
         <h3 style="color: #007bff;">INVENTARIO DE INSUMOS Y MATERIA PRIMA</h3>
         
@@ -103,7 +129,7 @@
         </table>
     </div>
 
-    <!-- 4. REGISTRO DE SALIDAS (PDF + MANUAL) -->
+    <!-- 5. REGISTRO DE SALIDAS (PDF + MANUAL) -->
     <div class="table-container" style="border-top: 5px solid #dc3545;">
         <h3 style="color: #dc3545;">REGISTRO DE SALIDAS DE ALMACÉN</h3>
         
@@ -195,7 +221,7 @@
         </form>
     </div>
 
-    <!-- 5. HISTORIAL DE SALIDAS -->
+    <!-- 6. HISTORIAL DE SALIDAS -->
     <div class="table-container" style="border-top: 5px solid #6c757d;">
         <h3 style="color: #495057;">HISTORIAL DE SALIDAS REGISTRADAS</h3>
         <table>
@@ -280,7 +306,8 @@
         let inventarioGlobal = [];
         let productoTerminadoGlobal = [];
         let itemsDespachoArray = [];
-        let itemsPTModalArray = []; // Lista temporal para múltiples productos terminados
+        let itemsPTModalArray = [];
+        let ingresosGlobal = [];
         document.getElementById('fecha_salida').valueAsDate = new Date();
 
         async function cargarPendientes() {
@@ -288,25 +315,86 @@
                 const res = await fetch('/api/almacen/pendientes');
                 const data = await res.json();
                 const tbody = document.getElementById('tablaPendientes');
-                tbody.innerHTML = data.length === 0 ? `<tr><td colspan="6" class="text-center">No hay pendientes.</td></tr>` : '';
+                tbody.innerHTML = data.length === 0 ? `<tr><td colspan="5" class="text-center">No hay pendientes.</td></tr>` : '';
+                
                 data.forEach(item => {
-                    tbody.innerHTML += `<tr><td><b>${item.tipo_documento}:</b> ${item.numero_guia || 'S/N'}</td><td>${item.proveedor}</td><td>${item.producto_textual}</td><td class="text-center">${item.cantidad}</td><td class="text-center">${item.foto_url ? `<a href="${item.foto_url}" target="_blank">Ver</a>` : '-'}</td><td class="text-center"><button onclick="darConformidad(${item.id}, '${item.producto_textual}')" class="btn-accion">Conformidad</button></td></tr>`;
+                    let itemsDetalle = '';
+                    try {
+                        const parsed = JSON.parse(item.items_json || '[]');
+                        parsed.forEach(p => {
+                            let alertaDiff = p.cantidad_guia !== p.cantidad_fisica ? `<span style="color:red; font-weight:bold;">(Guía: ${p.cantidad_guia} | Físico: ${p.cantidad_fisica})</span>` : `(${p.cantidad_fisica})`;
+                            itemsDetalle += `<div>• <b>${p.nombre}</b> ${alertaDiff}</div>`;
+                        });
+                    } catch(e) { itemsDetalle = item.producto_textual || 'Detalle no disponible'; }
+
+                    tbody.innerHTML += `
+                        <tr>
+                            <td><b>${item.tipo_documento}:</b> ${item.numero_guia || 'S/N'}</td>
+                            <td>${item.proveedor}</td>
+                            <td>${itemsDetalle}</td>
+                            <td class="text-center">${item.foto_url ? `<a href="${item.foto_url}" target="_blank">Ver</a>` : '-'}</td>
+                            <td class="text-center">
+                                <button onclick="darConformidad(${item.id})" class="btn-accion">Dar Conformidad</button>
+                            </td>
+                        </tr>
+                    `;
                 });
             } catch(e) { console.error(e); }
         }
 
-        async function darConformidad(id, productoTextual) {
-            const nombreManual = prompt(`Asocie "${productoTextual}" al inventario:`, productoTextual);
-            if (!nombreManual) return;
-            const res = await fetch('/api/almacen/conformidad', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ingreso_id: id, nombre_manual: nombreManual.trim(), usuario_almacen: localStorage.getItem('usuario_actual') || 'almacen_user' })
+        async function darConformidad(id) {
+            if (!confirm('¿Confirma el ingreso de estos productos? Si hay diferencias entre la guía y el físico, se registrarán como pendientes de regularización.')) return;
+            
+            try {
+                const res = await fetch('/api/almacen/conformidad', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ingreso_id: id, usuario_almacen: localStorage.getItem('usuario_actual') || 'almacen1' })
+                });
+                const data = await res.json();
+                alert(data.mensaje);
+                cargarPendientes();
+                cargarInventarioAlmacen();
+                cargarRegistroIngresos();
+            } catch (err) {
+                console.error(err);
+                alert('Error al procesar conformidad.');
+            }
+        }
+
+        async function cargarRegistroIngresos() {
+            try {
+                const res = await fetch('/api/almacen/registro-ingresos');
+                ingresosGlobal = await res.json();
+                renderIngresos(ingresosGlobal);
+            } catch(e) { console.error(e); }
+        }
+
+        function renderIngresos(lista) {
+            const tbody = document.getElementById('tablaRegistroIngresos');
+            tbody.innerHTML = lista.length === 0 ? `<tr><td colspan="6" class="text-center">Sin registros.</td></tr>` : '';
+            lista.forEach(row => {
+                const fecha = row.fecha_registro ? row.fecha_registro.split('T')[0] : '';
+                const badge = row.estado === 'POR REGULARIZAR' 
+                    ? `<span style="background: #ffc107; color: black; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight:bold;">POR REGULARIZAR</span>`
+                    : `<span style="background: #28a745; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px;">CON GUÍA CONFORME</span>`;
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td><b>${fecha}</b></td>
+                        <td>${row.numero_guia}</td>
+                        <td>${row.proveedor}</td>
+                        <td><b>${row.producto_nombre}</b></td>
+                        <td class="text-center" style="color: #007bff; font-weight: bold;">${row.cantidad}</td>
+                        <td class="text-center">${badge}</td>
+                    </tr>
+                `;
             });
-            const data = await res.json();
-            alert(data.mensaje);
-            cargarPendientes();
-            cargarInventarioAlmacen();
+        }
+
+        function filtrarIngresos(tipo) {
+            if (tipo === 'TODOS') renderIngresos(ingresosGlobal);
+            else renderIngresos(ingresosGlobal.filter(i => i.estado === tipo));
         }
 
         async function cargarProductoTerminado() {
@@ -333,7 +421,6 @@
             }).then(r => r.json()).then(d => { alert(d.mensaje); cargarProductoTerminado(); });
         }
 
-        // --- FUNCIONES DEL MODAL DE ADICIÓN MÚLTIPLE MANUAL PT ---
         function abrirModalAgregarPT() {
             itemsPTModalArray = [];
             renderTablaPTModal();
@@ -406,7 +493,6 @@
                 alert('❌ Error al registrar el stock manual.');
             }
         }
-        // --------------------------------------------------------
 
         async function cargarInventarioAlmacen() {
             try {
@@ -605,6 +691,7 @@
         });
 
         cargarPendientes();
+        cargarRegistroIngresos();
         cargarProductoTerminado();
         cargarInventarioAlmacen();
         cargarHistorialSalidas();

@@ -51,20 +51,21 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// --- VIGILANCIA ---
+// --- VIGILANCIA (SOPORTE MÚLTIPLE DE PRODUCTOS) ---
 app.post('/api/vigilancia/registrar', upload.single('foto_guia'), async (req, res) => {
     try {
-        const { tipo_documento, numero_guia, proveedor, lugar_partida, punto_llegada, producto_textual, cantidad, unidad_medida, usuario } = req.body;
+        const { tipo_documento, numero_guia, proveedor, lugar_partida, punto_llegada, usuario, items_json } = req.body;
         const foto_url = req.file ? `/uploads/${req.file.filename}` : null;
+        const items = JSON.parse(items_json || '[]');
 
         const query = `
-            INSERT INTO ingresos_vigilancia (tipo_documento, numero_guia, proveedor, lugar_partida, punto_llegada, producto_textual, cantidad, unidad_medida, foto_url, usuario_vigilancia, estado)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PENDIENTE CONFORMIDAD') RETURNING *;
+            INSERT INTO ingresos_vigilancia (tipo_documento, numero_guia, proveedor, lugar_partida, punto_llegada, foto_url, usuario_vigilancia, items_json, estado)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PENDIENTE CONFORMIDAD') RETURNING *;
         `;
-        const values = [tipo_documento, numero_guia, proveedor, lugar_partida, punto_llegada, producto_textual, cantidad || 0, unidad_medida, foto_url, usuario];
+        const values = [tipo_documento, numero_guia, proveedor, lugar_partida, punto_llegada, foto_url, usuario, JSON.stringify(items)];
         
         const nuevoIngreso = await pool.query(query, values);
-        res.json({ success: true, mensaje: 'Ingreso registrado por vigilancia correctamente', ingreso: nuevoIngreso.rows[0] });
+        res.json({ success: true, mensaje: 'Ingreso registrado con múltiples productos correctamente.', ingreso: nuevoIngreso.rows[0] });
     } catch (err) {
         console.error("Error en vigilancia:", err);
         res.status(500).json({ success: false, mensaje: 'Error al registrar en vigilancia: ' + err.message });
@@ -85,45 +86,62 @@ app.get('/api/almacen/pendientes', async (req, res) => {
 app.post('/api/almacen/conformidad', async (req, res) => {
     const client = await pool.connect();
     try {
-        const { ingreso_id, articulo_id_inventario, nombre_manual, usuario_almacen } = req.body;
+        const { ingreso_id, usuario_almacen } = req.body;
         await client.query('BEGIN');
 
         const ingresoRes = await client.query('SELECT * FROM ingresos_vigilancia WHERE id = $1', [ingreso_id]);
         const ingreso = ingresoRes.rows[0];
+        const items = JSON.parse(ingreso.items_json || '[]');
 
-        let targetArticuloId = articulo_id_inventario;
+        let tieneDiferencias = false;
 
-        if (!targetArticuloId && nombre_manual) {
-            const existeRes = await client.query('SELECT id FROM inventario WHERE LOWER(nombre) = LOWER($1)', [nombre_manual]);
+        for (const item of items) {
+            let estadoItem = 'CON GUIA';
+            if (item.cantidad_guia !== item.cantidad_fisica) {
+                tieneDiferencias = true;
+                estadoItem = 'POR REGULARIZAR';
+            }
+
+            let targetArticuloId = null;
+            const existeRes = await client.query('SELECT id FROM inventario WHERE LOWER(nombre) = LOWER($1)', [item.nombre]);
+            
             if (existeRes.rows.length > 0) {
                 targetArticuloId = existeRes.rows[0].id;
+                await client.query(`UPDATE inventario SET stock = stock + $1 WHERE id = $2`, [item.cantidad_fisica, targetArticuloId]);
             } else {
                 const nuevoArt = await client.query(
-                    `INSERT INTO inventario (nombre, categoria, stock, unidad_medida, estado) VALUES ($1, 'General', 0, 'UNIDADES', 'STOCK SUFICIENTE') RETURNING id`,
-                    [nombre_manual]
+                    `INSERT INTO inventario (nombre, categoria, stock, unidad_medida, estado) VALUES ($1, 'General', $2, 'UNIDADES', 'STOCK SUFICIENTE') RETURNING id`,
+                    [item.nombre, item.cantidad_fisica]
                 );
                 targetArticuloId = nuevoArt.rows[0].id;
             }
+
+            await client.query(`
+                INSERT INTO registro_ingresos_almacen (fecha_registro, numero_guia, proveedor, producto_nombre, cantidad, estado, articulo_id)
+                VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6);
+            `, [ingreso.numero_guia, ingreso.proveedor, item.nombre, item.cantidad_fisica, estadoItem, targetArticuloId]);
         }
 
-        await client.query(
-            `UPDATE inventario SET stock = stock + $1 WHERE id = $2`,
-            [ingreso.cantidad, targetArticuloId]
-        );
-
-        await client.query(
-            `UPDATE ingresos_vigilancia SET estado = 'CONFORME - RECIBIDO POR ${usuario_almacen}' WHERE id = $1`,
-            [ingreso_id]
-        );
+        const estadoFinalIngreso = tieneDiferencias ? 'CONFORME CON DIFERENCIAS (POR REGULARIZAR)' : `RECIBIDO POR ${usuario_almacen}`;
+        await client.query(`UPDATE ingresos_vigilancia SET estado = $1 WHERE id = $2`, [estadoFinalIngreso, ingreso_id]);
 
         await client.query('COMMIT');
-        res.json({ success: true, mensaje: 'Conformidad aplicada y stock actualizado exitosamente.' });
+        res.json({ success: true, mensaje: 'Conformidad procesada y stock actualizado correctamente.' });
     } catch (err) {
         await client.query('ROLLBACK');
         console.error("Error en conformidad:", err);
         res.status(500).json({ success: false, mensaje: 'Error al procesar conformidad: ' + err.message });
     } finally {
         client.release();
+    }
+});
+
+app.get('/api/almacen/registro-ingresos', async (req, res) => {
+    try {
+        const result = await pool.query(`SELECT * FROM registro_ingresos_almacen ORDER BY id DESC LIMIT 100`);
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ success: false, mensaje: err.message });
     }
 });
 
@@ -560,7 +578,6 @@ app.get('/api/produccion/reportes', async (req, res) => {
     }
 });
 
-// CIERRE DE PRODUCCIÓN CON DETALLE JSON PARA CONSERVAR FORMATO IDÉNTICO
 app.post('/api/produccion/cierre', async (req, res) => {
     const client = await pool.connect();
     try {

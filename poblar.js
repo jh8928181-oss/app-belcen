@@ -9,6 +9,11 @@ async function poblarInventarioReal() {
         await client.query('DROP TABLE IF EXISTS inventario CASCADE;');
         await client.query('DROP TABLE IF EXISTS producto_terminado CASCADE;');
         await client.query('DROP TABLE IF EXISTS usuarios_sistema CASCADE;');
+        await client.query('DROP TABLE IF EXISTS ingresos_vigilancia CASCADE;');
+        await client.query('DROP TABLE IF EXISTS registro_ingresos_almacen CASCADE;');
+        await client.query('DROP TABLE IF EXISTS salidas_almacen CASCADE;');
+        await client.query('DROP TABLE IF EXISTS reportes_produccion CASCADE;');
+        await client.query('DROP TABLE IF EXISTS historial_cierres_produccion CASCADE;');
 
         // 2. Crear tabla inventario
         await client.query(`
@@ -32,7 +37,7 @@ async function poblarInventarioReal() {
             );
         `);
 
-        // 4. Crear usuarios
+        // 4. Crear usuarios y sembrarlos
         await client.query(`
             CREATE TABLE usuarios_sistema (
                 id SERIAL PRIMARY KEY,
@@ -50,9 +55,68 @@ async function poblarInventarioReal() {
             ON CONFLICT (usuario) DO NOTHING;
         `);
 
-        // 4.1 Asegurar la tabla de historial de cierres de producción con la columna detalle_json
+        // 5. Crear tablas operativas de Vigilancia, Almacén, Salidas y Producción
         await client.query(`
-            CREATE TABLE IF NOT EXISTS historial_cierres_produccion (
+            CREATE TABLE ingresos_vigilancia (
+                id SERIAL PRIMARY KEY,
+                tipo_documento VARCHAR(50),
+                numero_guia VARCHAR(100),
+                proveedor VARCHAR(150),
+                lugar_partida VARCHAR(150),
+                punto_llegada VARCHAR(150),
+                producto_textual TEXT,
+                cantidad NUMERIC(10,2),
+                unidad_medida VARCHAR(50),
+                foto_url TEXT,
+                usuario_vigilancia VARCHAR(50),
+                estado VARCHAR(50) DEFAULT 'PENDIENTE CONFORMIDAD',
+                items_json TEXT,
+                fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE registro_ingresos_almacen (
+                id SERIAL PRIMARY KEY,
+                fecha_registro DATE DEFAULT CURRENT_DATE,
+                numero_guia VARCHAR(100),
+                proveedor VARCHAR(150),
+                producto_nombre VARCHAR(150),
+                cantidad NUMERIC(10,2),
+                estado VARCHAR(50),
+                articulo_id INT REFERENCES inventario(id)
+            );
+
+            CREATE TABLE salidas_almacen (
+                id SERIAL PRIMARY KEY,
+                fecha_salida DATE DEFAULT CURRENT_DATE,
+                tipo_registro VARCHAR(30) NOT NULL,
+                numero_guia VARCHAR(100),
+                empresa VARCHAR(150),
+                ruc VARCHAR(20),
+                destino VARCHAR(150),
+                chofer_licencia VARCHAR(150),
+                placa VARCHAR(50),
+                punto_partida VARCHAR(150),
+                articulo_id INT REFERENCES inventario(id),
+                cantidad_salida NUMERIC(10,2) NOT NULL,
+                usuario_registro VARCHAR(50),
+                estado_guia VARCHAR(50),
+                producto_key VARCHAR(50),
+                fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE reportes_produccion (
+                id SERIAL PRIMARY KEY,
+                fecha_produccion DATE NOT NULL,
+                presentacion VARCHAR(150) NOT NULL,
+                cantidad_cajas INT NOT NULL,
+                unidad_medida VARCHAR(20) DEFAULT 'CAJAS',
+                toneladas NUMERIC(10,2) NOT NULL,
+                observaciones TEXT,
+                usuario_registro VARCHAR(50),
+                fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE historial_cierres_produccion (
                 id SERIAL PRIMARY KEY,
                 fecha_cierre DATE NOT NULL,
                 total_cajas NUMERIC(10,2) NOT NULL,
@@ -61,12 +125,9 @@ async function poblarInventarioReal() {
                 detalle_json TEXT,
                 fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-
-            ALTER TABLE historial_cierres_produccion 
-            ADD COLUMN IF NOT EXISTS detalle_json TEXT;
         `);
 
-        // 5. Insertar datos de inventario
+        // 6. Insertar datos de inventario
         const queryInsert = `
             INSERT INTO inventario (nombre, categoria, stock, unidad_medida, estado) 
             VALUES ($1, $2, $3, $4, $5);
@@ -146,7 +207,7 @@ async function poblarInventarioReal() {
             await client.query(queryInsert, art);
         }
 
-        // 6. Sembrar Presentaciones de Producto Terminado en 0 cajas
+        // 7. Sembrar Presentaciones de Producto Terminado
         const productosTerminados = [
             ['b1_200ml', 'Aceite de Soya B-1 200 ml'],
             ['b1_500ml', 'Aceite de Soya B-1 500 ml'],
@@ -175,7 +236,7 @@ async function poblarInventarioReal() {
         }
 
         await client.query('COMMIT');
-        console.log('✅ Base de datos "inventario" y "producto_terminado" pobladas exitosamente.');
+        console.log('✅ Base de datos poblada y estructurada exitosamente.');
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Error al poblar base de datos:', error);

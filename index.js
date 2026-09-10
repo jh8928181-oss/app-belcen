@@ -358,7 +358,7 @@ app.post('/api/envasado/registrar', async (req, res) => {
     }
 });
 
-// --- LECTOR INTELIGENTE DE PDF PARA SALIDAS (CORREGIDO Y ROBUSTO) ---
+// --- LECTOR INTELIGENTE DE PDF PARA SALIDAS ---
 app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res) => {
     try {
         if (!req.file) {
@@ -376,20 +376,17 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
         let chofer_licencia = '';
         let placa = '';
 
-        // 1. Detección flexible de número de guía (ej. T009-00000782)
         const guiaMatch = textoPdf.match(/([T|F|B]\s*0\d{2}\s*[-]\s*\d{1,8})/i);
         if (guiaMatch) {
             numero_guia = guiaMatch[1].replace(/\s+/g, '');
         }
 
-        // 2. Extracción de RUC de 11 dígitos
         const rucMatches = textoPdf.match(/RUC[:\s]*(\d{11})/gi);
         if (rucMatches && rucMatches.length > 0) {
             const numRuc = rucMatches[rucMatches.length - 1].match(/(\d{11})/);
             if (numRuc) ruc = numRuc[1];
         }
 
-        // 3. Extracción de Razón Social / Empresa
         const razonSocialMatch = textoPdf.match(/Razón Social[:\s]*(.*)/i);
         if (razonSocialMatch) {
             empresa = razonSocialMatch[1].trim();
@@ -397,7 +394,6 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
             empresa = 'CORPORACION DON LALO S.A.C.';
         }
 
-        // 4. Dirección de Destino (P.Llegada)
         const llegadaMatch = textoPdf.match(/P\.Llegada[:\s]*[\d\s-]+(.*)/i);
         if (llegadaMatch) {
             destino = llegadaMatch[1].trim();
@@ -406,21 +402,17 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
             if (dirMatch) destino = dirMatch[1].trim();
         }
 
-        // 5. Placa del vehículo
         const placaMatch = textoPdf.match(/(?:placa|veh[ií]culo)[^\w]*([A-Z0-9-]+)/i);
         if (placaMatch) {
             placa = placaMatch[1].trim();
         }
 
-        // 6. Licencia / Conductor
         const licenciaMatch = textoPdf.match(/(?:licencia|conductor)[^\w]*([A-Z0-9]+)/i);
         if (licenciaMatch) {
             chofer_licencia = licenciaMatch[1].trim();
         }
 
-        // 7. Detección automática de ítems basada en códigos y descripciones oficiales de la guía
         let itemsDetectados = [];
-
         if (textoPdf.includes('1030004') || textoPdf.includes('ACEITE DE SOYA B-1 X 1 L')) {
             itemsDetectados.push({ producto_key: 'b1_1lt', nombre: 'Aceite de Soya B-1 1 Lt', cantidad: 254 });
         }
@@ -431,7 +423,6 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
             itemsDetectados.push({ producto_key: 'belini_2lt', nombre: 'Aceite de Soya Belini 2 Lt (Galonera)', cantidad: 100 });
         }
 
-        // Fallback dinámico si no hace match exacto por código numérico
         if (itemsDetectados.length === 0) {
             const ptRes = await pool.query('SELECT * FROM producto_terminado');
             for (let pt of ptRes.rows) {
@@ -448,15 +439,7 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
 
         res.json({
             success: true,
-            datos: {
-                numero_guia,
-                ruc,
-                empresa,
-                destino,
-                chofer_licencia,
-                placa,
-                items: itemsDetectados
-            }
+            datos: { numero_guia, ruc, empresa, destino, chofer_licencia, placa, items: itemsDetectados }
         });
     } catch (err) {
         console.error("Error al leer PDF:", err);
@@ -464,16 +447,11 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
     }
 });
 
-// --- SALIDAS DE ALMACÉN (MULTIPRODUCTO) ---
+// --- SALIDAS DE ALMACÉN ---
 app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, res) => {
     const client = await pool.connect();
     try {
-        const { 
-            tipo_registro, numero_guia, empresa, ruc, destino, 
-            chofer_licencia, placa, punto_partida, fecha_salida, 
-            usuario, items_json 
-        } = req.body;
-
+        const { tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, fecha_salida, usuario, items_json } = req.body;
         const items = JSON.parse(items_json || '[]');
 
         if (items.length === 0) {
@@ -481,7 +459,6 @@ app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, re
         }
 
         await client.query('BEGIN');
-
         let estadoGuia = tipo_registro === 'CON GUIA' ? 'REGULARIZADO' : 'PENDIENTE REGULARIZAR';
         let guiaFinal = numero_guia || 'S/N';
 
@@ -490,15 +467,9 @@ app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, re
             let productoKeyFinal = item.producto_key || null;
 
             if (productoKeyFinal) {
-                await client.query(
-                    `UPDATE producto_terminado SET stock_cajas = stock_cajas - $1 WHERE producto_key = $2`,
-                    [parseFloat(item.cantidad), productoKeyFinal]
-                );
+                await client.query(`UPDATE producto_terminado SET stock_cajas = stock_cajas - $1 WHERE producto_key = $2`, [parseFloat(item.cantidad), productoKeyFinal]);
             } else if (idArticuloFinal) {
-                await client.query(
-                    `UPDATE inventario SET stock = stock - $1 WHERE id = $2`,
-                    [parseFloat(item.cantidad), idArticuloFinal]
-                );
+                await client.query(`UPDATE inventario SET stock = stock - $1 WHERE id = $2`, [parseFloat(item.cantidad), idArticuloFinal]);
             }
 
             let targetArticuloId = idArticuloFinal;
@@ -507,19 +478,16 @@ app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, re
                 if (matchInv.rows.length > 0) targetArticuloId = matchInv.rows[0].id;
             }
 
-            const querySalida = `
+            await client.query(`
                 INSERT INTO salidas_almacen 
                 (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, articulo_id, cantidad_salida, usuario_registro, estado_guia)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);
-            `;
-            const valoresSalida = [
+            `, [
                 fecha_salida || new Date(), tipo_registro, guiaFinal, 
                 empresa || 'N/A', ruc || 'N/A', destino || 'N/A', 
                 chofer_licencia || 'N/A', placa || 'N/A', punto_partida || 'Almacén Principal', 
                 targetArticuloId, item.cantidad, usuario || 'almacen_user', estadoGuia
-            ];
-
-            await client.query(querySalida, valoresSalida);
+            ]);
         }
 
         await client.query('COMMIT');
@@ -536,10 +504,7 @@ app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, re
 app.post('/api/salidas/regularizar', async (req, res) => {
     try {
         const { salida_id, nuevo_numero_guia } = req.body;
-        await pool.query(
-            `UPDATE salidas_almacen SET numero_guia = $1, estado_guia = 'REGULARIZADO' WHERE id = $2`,
-            [nuevo_numero_guia, salida_id]
-        );
+        await pool.query(`UPDATE salidas_almacen SET numero_guia = $1, estado_guia = 'REGULARIZADO' WHERE id = $2`, [nuevo_numero_guia, salida_id]);
         res.json({ success: true, mensaje: 'Guía regularizada con éxito.' });
     } catch (err) {
         console.error("Error al regularizar guía:", err);
@@ -550,9 +515,7 @@ app.post('/api/salidas/regularizar', async (req, res) => {
 app.get('/api/salidas/historial', async (req, res) => {
     try {
         const result = await pool.query(`
-            SELECT s.*, 
-                   COALESCE(i.nombre, 'Producto General') as articulo_nombre, 
-                   COALESCE(i.unidad_medida, 'CAJAS') as unidad_medida 
+            SELECT s.*, COALESCE(i.nombre, 'Producto General') as articulo_nombre, COALESCE(i.unidad_medida, 'CAJAS') as unidad_medida 
             FROM salidas_almacen s
             LEFT JOIN inventario i ON s.articulo_id = i.id
             ORDER BY s.id DESC LIMIT 50
@@ -590,26 +553,58 @@ app.post('/api/produccion/reporte', async (req, res) => {
 
 app.get('/api/produccion/reportes', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM reportes_produccion ORDER BY id DESC LIMIT 20');
+        const result = await pool.query('SELECT * FROM reportes_produccion ORDER BY id DESC LIMIT 50');
         res.json(result.rows);
     } catch (err) {
         res.status(500).json({ success: false, mensaje: err.message });
     }
 });
 
+// CIERRE DE PRODUCCIÓN CON DETALLE JSON PARA CONSERVAR FORMATO IDÉNTICO
 app.post('/api/produccion/cierre', async (req, res) => {
     const client = await pool.connect();
     try {
         const { fecha_cierre, usuario } = req.body;
         await client.query('BEGIN');
-        const resumen = await client.query(`SELECT SUM(cantidad_cajas) as total_cajas, SUM(toneladas) as total_tn FROM reportes_produccion WHERE fecha_produccion = $1`, [fecha_cierre]);
-        const { total_cajas, total_tn } = resumen.rows[0];
-        await client.query(`INSERT INTO historial_cierres_produccion (fecha_cierre, total_cajas, total_toneladas, usuario_cierre) VALUES ($1, $2, $3, $4)`, [fecha_cierre, total_cajas || 0, total_tn || 0, usuario || 'envasado_user']);
-        await client.query(`DELETE FROM reportes_produccion WHERE fecha_produccion = $1`, [fecha_cierre]);
+
+        const reportesRes = await client.query(
+            `SELECT * FROM reportes_produccion WHERE fecha_produccion::text LIKE $1`, 
+            [`${fecha_cierre}%`]
+        );
+
+        if (reportesRes.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: 'No hay producciones activas para cerrar en esta fecha.' });
+        }
+
+        let totalCajas = 0;
+        let totalTn = 0;
+        const itemsDetalle = reportesRes.rows.map(row => {
+            totalCajas += parseFloat(row.cantidad_cajas || 0);
+            totalTn += parseFloat(row.toneladas || 0);
+            return {
+                fecha: row.fecha_produccion ? row.fecha_produccion.toISOString().split('T')[0] : fecha_cierre,
+                presentacion: row.presentacion,
+                cant: row.cantidad_cajas,
+                um: row.unidad_medida || 'CAJAS',
+                tn: row.toneladas,
+                obs: row.observaciones
+            };
+        });
+
+        await client.query(
+            `INSERT INTO historial_cierres_produccion (fecha_cierre, total_cajas, total_toneladas, usuario_cierre, detalle_json) 
+             VALUES ($1, $2, $3, $4, $5)`,
+            [fecha_cierre, totalCajas, totalTn, usuario || 'envasado_user', JSON.stringify(itemsDetalle)]
+        );
+
+        await client.query(`DELETE FROM reportes_produccion WHERE fecha_produccion::text LIKE $1`, [`${fecha_cierre}%`]);
+
         await client.query('COMMIT');
         res.json({ success: true, mensaje: 'Cierre de producción realizado con éxito.' });
     } catch (err) {
         await client.query('ROLLBACK');
+        console.error("Error en cierre:", err);
         res.status(500).json({ success: false, mensaje: err.message });
     } finally {
         client.release();

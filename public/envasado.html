@@ -6,90 +6,80 @@
     <title>Reporte de Envasado - Belcen</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 0; background-color: #f4f6f9; padding: 20px; }
-        .container { max-width: 600px; margin: auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        h2, h3 { color: #343a40; text-align: center; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; font-weight: bold; margin-bottom: 8px; color: #495057; }
-        select, input { width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; box-sizing: border-box; }
-        button { background-color: #28a745; color: white; border: none; padding: 12px; width: 100%; border-radius: 4px; font-size: 16px; font-weight: bold; cursor: pointer; }
-        button:hover { background-color: #218838; }
-        .btn-cierre { background-color: #dc3545; margin-top: 10px; }
-        .btn-cierre:hover { background-color: #c82333; }
-        .logout { display: block; text-align: center; margin-top: 15px; color: #dc3545; text-decoration: none; font-weight: bold; }
-        .table-container { max-width: 900px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .card { max-width: 1000px; margin: auto; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 25px; }
+        h3 { color: #343a40; text-align: center; border-bottom: 2px solid #007bff; padding-bottom: 8px; margin-top: 0; }
+        select, input, textarea { padding: 8px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; box-sizing: border-box; width: 100%; margin-top: 5px; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
         th { background-color: #007bff; color: white; }
         .text-center { text-align: center; }
+        .logout { display: block; text-align: center; margin-top: 15px; color: #dc3545; text-decoration: none; font-weight: bold; }
+        .btn-accion { padding: 8px 15px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; font-size: 16px; margin-top: 15px; }
+        .btn-accion:hover { background: #218838; }
+        .btn-cierre { background: #ffc107; color: #000; margin-top: 10px; }
+        .btn-cierre:hover { background: #e0a800; }
     </style>
 </head>
 <body>
 
-    <!-- 1. Cuadro Principal de Envasado -->
-    <div class="container">
-        <h2>Reporte de Producción - Envasado</h2>
-        <form id="formEnvasado">
-            <div class="form-group">
-                <label for="fecha_produccion">Fecha de Producción:</label>
-                <input type="date" id="fecha_produccion" required>
+    <!-- 1. REGISTRO DE PRODUCCIÓN DIARIA -->
+    <div class="card" style="border-top: 5px solid #28a745;">
+        <h3 style="color: #28a745; border-bottom: 2px solid #28a745;">REGISTRO DE PRODUCCIÓN - LÍNEA DE ENVASADO</h3>
+        
+        <form id="formEnvasado" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;">
+            <div>
+                <label><b>Fecha de Producción:</b></label>
+                <input type="date" id="fecha_produccion" name="fecha_produccion" required>
             </div>
 
-            <div class="form-group">
-                <label for="producto_tipo">Seleccionar Producto / Presentación:</label>
-                <select id="producto_tipo" required onchange="evaluarSeleccionTapa()">
-                    <option value="">-- Seleccione una presentación --</option>
-                    <option value="b1_200ml">Aceite de Soya B-1 200 ml</option>
-                    <option value="b1_500ml">Aceite de Soya B-1 500 ml</option>
-                    <option value="b1_900ml">Aceite de Soya B-1 900 ml</option>
-                    <option value="b1_1lt">Aceite de Soya B-1 1 Lt</option>
-                    <option value="b1_2lt">Aceite de Soya B-1 2 Lt</option>
-                    <option value="b1_5lt">Aceite de Soya B-1 5 Lt (Galonera)</option>
-                    <option value="donlalo_800ml">Aceite de Soya Don Lalo 800 ml</option>
-                    <option value="donlalo_20lt">Aceite de Soya Don Lalo Balde 20 Lt</option>
-                    <option value="belini_200ml">Aceite de Soya Belini 200 ml</option>
-                    <option value="belini_500ml">Aceite de Soya Belini 500 ml</option>
-                    <option value="belini_900ml">Aceite de Soya Belini 900 ml</option>
-                    <option value="belini_1lt">Aceite de Soya Belini 1 Lt</option>
-                    <option value="belini_2lt">Aceite de Soya Belini 2 Lt (Galonera)</option>
-                    <option value="belini_3lt">Aceite de Soya Belini 3 Lt</option>
-                    <option value="belini_5lt">Aceite de Soya Belini 5 Lt (Galonera)</option>
-                    <option value="belini_lata18lt">Aceite de Soya Belini Lata 18 Lt</option>
-                    <option value="belini_balde18lt">Aceite de Soya Belini Balde 18 Lt</option>
+            <div>
+                <label><b>Presentación / Producto:</b></label>
+                <select id="presentacion" name="presentacion" required>
+                    <option value="">-- Seleccionar Presentación --</option>
+                    <option value="Aceite de Soya B-1 200 ml">Aceite de Soya B-1 200 ml (Cajas x 24)</option>
+                    <option value="Aceite de Soya B-1 500 ml">Aceite de Soya B-1 500 ml (Cajas x 12)</option>
+                    <option value="Aceite de Soya B-1 900 ml">Aceite de Soya B-1 900 ml (Cajas x 12)</option>
+                    <option value="Aceite de Soya B-1 1 Lt">Aceite de Soya B-1 1 Lt (Cajas x 12)</option>
+                    <option value="Aceite de Soya B-1 2 Lt">Aceite de Soya B-1 2 Lt (Cajas x 6)</option>
+                    <option value="Aceite de Soya B-1 5 Lt (Galonera)">Aceite de Soya B-1 5 Lt (Galonera x 4)</option>
+                    <option value="Aceite de Soya Don Lalo 800 ml">Aceite de Soya Don Lalo 800 ml (Cajas x 12)</option>
+                    <option value="Aceite de Soya Don Lalo Balde 20 Lt">Aceite de Soya Don Lalo Balde 20 Lt</option>
+                    <option value="Aceite de Soya Belini 200 ml">Aceite de Soya Belini 200 ml (Cajas x 24)</option>
+                    <option value="Aceite de Soya Belini 500 ml">Aceite de Soya Belini 500 ml (Cajas x 12)</option>
+                    <option value="Aceite de Soya Belini 900 ml">Aceite de Soya Belini 900 ml (Cajas x 12)</option>
+                    <option value="Aceite de Soya Belini 1 Lt">Aceite de Soya Belini 1 Lt (Cajas x 12)</option>
+                    <option value="Aceite de Soya Belini 2 Lt (Galonera)">Aceite de Soya Belini 2 Lt (Galonera x 6)</option>
+                    <option value="Aceite de Soya Belini 3 Lt">Aceite de Soya Belini 3 Lt (Cajas x 4)</option>
+                    <option value="Aceite de Soya Belini 5 Lt (Galonera)">Aceite de Soya Belini 5 Lt (Galonera x 4)</option>
+                    <option value="Aceite de Soya Belini Lata 18 Lt">Aceite de Soya Belini Lata 18 Lt</option>
+                    <option value="Aceite de Soya Belini Balde 18 Lt">Aceite de Soya Belini Balde 18 Lt</option>
                 </select>
             </div>
 
-            <!-- SELECTOR DINÁMICO DE TAPAS (SOLO PARA 500ML, 900ML Y 1LT EN B-1 Y BELINI) -->
-            <div class="form-group" id="grupoTapaOpcional" style="display: none; background: #e9ecef; padding: 15px; border-radius: 6px; border-left: 5px solid #007bff;">
-                <label for="tapa_seleccionada" style="color: #007bff;">Seleccionar Tapa a Utilizar / Descontar:</label>
-                <select id="tapa_seleccionada">
-                    <option value="">Cargando tapas disponibles...</option>
-                </select>
+            <div>
+                <label><b>Cantidad Producida (Cajas):</b></label>
+                <input type="number" id="cantidad_cajas" name="cantidad_cajas" min="1" placeholder="Ej. 100" required>
             </div>
 
-            <div class="form-group">
-                <label for="numero_lote">Número de Lote:</label>
-                <input type="text" id="numero_lote" placeholder="Ej. LOTE-2026-0907" required>
+            <div>
+                <label><b>Toneladas (TM):</b></label>
+                <input type="number" step="0.01" id="toneladas" name="toneladas" placeholder="Ej. 1.5" required>
             </div>
 
-            <div class="form-group">
-                <label for="cantidad_producida">Cantidad Producida (Cajas):</label>
-                <input type="number" id="cantidad_producida" min="1" placeholder="Ej. 100" required>
+            <div style="grid-column: span 2;">
+                <label><b>Observaciones (N° de Lote / Tapa / Detalles):</b></label>
+                <textarea id="observaciones" name="observaciones" rows="2" placeholder="Ej. Lote: 0885 | Tapa: Tapa dosif. N° 26 blanco / Dorado"></textarea>
             </div>
 
-            <div class="form-group">
-                <label for="toneladas_prod">Toneladas (TN):</label>
-                <input type="number" step="0.01" id="toneladas_prod" placeholder="Ej. 4.5" required>
+            <div style="grid-column: span 2;">
+                <button type="submit" class="btn-accion">💾 REGISTRAR PRODUCCIÓN EN CURSO</button>
             </div>
-
-            <button type="submit">Registrar Producción y Descontar Insumos</button>
-            <button type="button" class="btn-cierre" onclick="ejecutarCierreProduccion()">🔒 Cierre de Producción del Día</button>
         </form>
-        <a href="dashboard.html" class="logout">Ver Dashboard General</a>
     </div>
 
-    <!-- 2. Tabla Dinámica del Día -->
-    <div class="table-container">
-        <h3 style="color: #b71c1c; border-bottom: 2px solid #ffeb3b; padding-bottom: 8px;">PRODUCCIÓN ACTIVA (DÍA EN CURSO)</h3>
+    <!-- 2. PRODUCCIÓN ACTIVA (DÍA EN CURSO) -->
+    <div class="card" style="border-top: 5px solid #007bff;">
+        <h3 style="color: #007bff; border-bottom: 2px solid #007bff;">PRODUCCIÓN ACTIVA (DÍA EN CURSO)</h3>
         <table>
             <thead>
                 <tr>
@@ -101,198 +91,195 @@
                     <th>OBS</th>
                 </tr>
             </thead>
-            <tbody id="tablaReporteProd"></tbody>
+            <tbody id="tablaProduccionActiva">
+                <tr><td colspan="6" class="text-center">Cargando producción...</td></tr>
+            </tbody>
         </table>
-        <div style="margin-top: 15px; text-align: right; font-size: 16px; font-weight: bold;">
-            TOTAL TM: <span id="totalTmGeneral" style="background: #ffeb3b; padding: 5px 15px; border-radius: 4px;">0.00</span>
+        
+        <div style="display: flex; justify-content: flex-end; align-items: center; margin-top: 15px; background: #fafafa; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+            <span style="font-weight: bold; margin-right: 15px;">TOTAL TM ACUMULADO:</span>
+            <span id="totalTmActivo" style="background: #ffeb3b; padding: 6px 14px; font-weight: bold; border-radius: 4px; border: 1px solid #fbc02d;">0.00</span>
+        </div>
+
+        <div style="margin-top: 20px; text-align: right;">
+            <button onclick="realizarCierreDia()" class="btn-accion btn-cierre">🔒 REALIZAR CIERRE DE PRODUCCIÓN DE ESTA FECHA</button>
         </div>
     </div>
 
-    <!-- 3. Tabla Historial de Cierres Anteriores -->
-    <div class="table-container" style="border-top: 5px solid #28a745;">
-        <h3 style="color: #2e7d32; border-bottom: 2px solid #28a745; padding-bottom: 8px;">HISTORIAL DE CIERRES DIARIOS (ARCHIVADOS)</h3>
-        <table>
-            <thead>
-                <tr>
-                    <th>FECHA DE CIERRE</th>
-                    <th class="text-center">TOTAL CAJAS</th>
-                    <th class="text-center">TOTAL TONELADAS (TN)</th>
-                    <th>USUARIO</th>
-                </tr>
-            </thead>
-            <tbody id="tablaHistorialCierres"></tbody>
-        </table>
+    <!-- 3. CONSULTA DE CIERRES ANTERIORES CON EL MISMO FORMATO EXACTO -->
+    <div class="card" style="border-top: 5px solid #6c757d;">
+        <h3 style="color: #495057; border-bottom: 2px solid #495057;">HISTORIAL DE CIERRES DE PRODUCCIÓN</h3>
+        
+        <div style="display: flex; gap: 15px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
+            <label><b>Filtrar por Fecha de Cierre:</b></label>
+            <input type="date" id="filtroFechaCierre" onchange="buscarCierrePorFecha()" style="max-width: 250px;">
+            <button onclick="cargarHistorialCierres()" style="background: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">Ver Todos</button>
+        </div>
+
+        <div id="contenedorReporteCierre">
+            <p class="text-center" style="color: #666; font-style: italic;">Cargando historial de cierres...</p>
+        </div>
+
+        <a href="dashboard.html" class="logout">Volver al Dashboard General</a>
     </div>
 
     <script>
         document.getElementById('fecha_produccion').valueAsDate = new Date();
-        let tapasDisponiblesGlobal = [];
+        let reportesGlobal = [];
+        let historialCierresGlobal = [];
 
-        // Cargar las tapas registradas en el inventario
-        async function cargarTapasDisponibles() {
-            try {
-                const res = await fetch('/api/inventario');
-                const inventario = await res.json();
-                tapasDisponiblesGlobal = inventario.filter(i => 
-                    i.categoria && i.categoria.toUpperCase().includes('TAPAS')
-                );
-
-                const selectTapa = document.getElementById('tapa_seleccionada');
-                selectTapa.innerHTML = '';
-                tapasDisponiblesGlobal.forEach(tapa => {
-                    selectTapa.innerHTML += `<option value="${tapa.nombre}">${tapa.nombre} (Stock: ${tapa.stock} ${tapa.unidad_medida})</option>`;
-                });
-            } catch (e) {
-                console.error("Error al cargar tapas:", e);
-            }
-        }
-
-        function evaluarSeleccionTapa() {
-            const productoSel = document.getElementById('producto_tipo').value;
-            const productosConTapaOpcional = [
-                'b1_500ml', 'b1_900ml', 'b1_1lt',
-                'belini_500ml', 'belini_900ml', 'belini_1lt'
-            ];
-
-            const grupoTapa = document.getElementById('grupoTapaOpcional');
-            const selectTapa = document.getElementById('tapa_seleccionada');
-
-            if (productosConTapaOpcional.includes(productoSel)) {
-                grupoTapa.style.display = 'block';
-                selectTapa.required = true;
-            } else {
-                grupoTapa.style.display = 'none';
-                selectTapa.required = false;
-            }
-        }
-
-        async function cargarReportesProduccion() {
+        async function cargarProduccionActiva() {
             try {
                 const res = await fetch('/api/produccion/reportes');
-                const data = await res.json();
-                const tbody = document.getElementById('tablaReporteProd');
-                tbody.innerHTML = '';
-                let totalTn = 0;
-
-                if (data.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="6" class="text-center" style="color: #6c757d;">No hay registros de producción activa en el turno.</td></tr>`;
-                    document.getElementById('totalTmGeneral').textContent = '0.00';
+                reportesGlobal = await res.json();
+                const tbody = document.getElementById('tablaProduccionActiva');
+                
+                if (reportesGlobal.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="6" class="text-center">No hay registros activos para el día en curso.</td></tr>`;
+                    document.getElementById('totalTmActivo').textContent = '0.00';
                     return;
                 }
 
-                data.forEach(row => {
-                    totalTn += parseFloat(row.toneladas || 0);
-                    const fechaFormateada = row.fecha_produccion ? row.fecha_produccion.split('T')[0] : '';
+                tbody.innerHTML = '';
+                let sumaTn = 0;
+                reportesGlobal.forEach(row => {
+                    const fechaStr = row.fecha_produccion ? row.fecha_produccion.split('T')[0] : '';
+                    sumaTn += parseFloat(row.toneladas || 0);
                     tbody.innerHTML += `
                         <tr>
-                            <td>${fechaFormateada}</td>
-                            <td>${row.presentacion}</td>
+                            <td>${fechaStr}</td>
+                            <td><b>${row.presentacion}</b></td>
                             <td class="text-center">${row.cantidad_cajas}</td>
                             <td class="text-center">${row.unidad_medida || 'CAJAS'}</td>
                             <td class="text-center">${row.toneladas}</td>
-                            <td>${row.observaciones || ''}</td>
+                            <td>${row.observaciones || '-'}</td>
                         </tr>
                     `;
                 });
-                document.getElementById('totalTmGeneral').textContent = totalTn.toFixed(2);
+                document.getElementById('totalTmActivo').textContent = sumaTn.toFixed(2);
             } catch (e) {
-                console.error("Error al cargar reportes:", e);
+                console.error(e);
             }
         }
 
         async function cargarHistorialCierres() {
             try {
                 const res = await fetch('/api/produccion/historial-cierres');
-                const data = await res.json();
-                const tbody = document.getElementById('tablaHistorialCierres');
-                tbody.innerHTML = '';
+                historialCierresGlobal = await res.json();
+                renderizarCierres(historialCierresGlobal);
+            } catch (e) {
+                console.error(e);
+            }
+        }
 
-                if(data.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #6c757d;">No hay cierres de producción archivados aún.</td></tr>`;
-                    return;
+        function buscarCierrePorFecha() {
+            const fechaBuscada = document.getElementById('filtroFechaCierre').value;
+            if (!fechaBuscada) {
+                renderizarCierres(historialCierresGlobal);
+                return;
+            }
+            const filtrado = historialCierresGlobal.filter(c => c.fecha_cierre.split('T')[0] === fechaBuscada);
+            renderizarCierres(filtrado);
+        }
+
+        function renderizarCierres(lista) {
+            const contenedor = document.getElementById('contenedorReporteCierre');
+            if (lista.length === 0) {
+                contenedor.innerHTML = `<p class="text-center" style="color: #dc3545;">No se encontraron registros de cierre para la fecha seleccionada.</p>`;
+                return;
+            }
+
+            contenedor.innerHTML = '';
+            lista.forEach(cierre => {
+                const fechaCierreStr = cierre.fecha_cierre.split('T')[0];
+                let filasHtml = '';
+                let detalleArr = [];
+                
+                try {
+                    detalleArr = JSON.parse(cierre.detalle_json || '[]');
+                } catch(err) { detalleArr = []; }
+
+                if (detalleArr.length > 0) {
+                    detalleArr.forEach(item => {
+                        filasHtml += `
+                            <tr>
+                                <td>${item.fecha || fechaCierreStr}</td>
+                                <td><b>${item.presentacion}</b></td>
+                                <td class="text-center">${item.cant}</td>
+                                <td class="text-center">${item.um}</td>
+                                <td class="text-center">${item.tn}</td>
+                                <td>${item.obs || '-'}</td>
+                            </tr>
+                        `;
+                    });
+                } else {
+                    filasHtml = `<tr><td colspan="6" class="text-center">Cierre consolidado (Total Cajas: ${cierre.total_cajas})</td></tr>`;
                 }
 
-                data.forEach(row => {
-                    const fechaCierre = row.fecha_cierre ? row.fecha_cierre.split('T')[0] : '';
-                    tbody.innerHTML += `
-                        <tr>
-                            <td><b>${fechaCierre}</b></td>
-                            <td class="text-center">${row.total_cajas}</td>
-                            <td class="text-center" style="font-weight: bold; color: #2e7d32;">${row.total_toneladas} TN</td>
-                            <td>${row.usuario_cierre}</td>
-                        </tr>
-                    `;
-                });
-            } catch (e) {
-                console.error("Error al cargar historial de cierres:", e);
-            }
+                contenedor.innerHTML += `
+                    <div style="border: 1px solid #ddd; border-radius: 6px; margin-bottom: 25px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                        <div style="background: #f8f9fa; padding: 10px 15px; border-bottom: 1px solid #ddd; font-weight: bold; color: #333;">
+                            📅 Fecha de Cierre: ${fechaCierreStr} | Usuario: ${cierre.usuario_cierre || 'Sistema'}
+                        </div>
+                        <table>
+                            <thead>
+                                <tr style="background-color: #007bff; color: white;">
+                                    <th>FECHA</th>
+                                    <th>PRESENTACIÓN</th>
+                                    <th class="text-center">CANT</th>
+                                    <th class="text-center">UM</th>
+                                    <th class="text-center">TN</th>
+                                    <th>OBS</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${filasHtml}
+                            </tbody>
+                        </table>
+                        <div style="padding: 12px 15px; text-align: right; background: #fafafa; border-top: 1px solid #ddd;">
+                            <span style="font-weight: bold; margin-right: 10px;">TOTAL TM:</span>
+                            <span style="background: #ffeb3b; padding: 6px 14px; font-weight: bold; border-radius: 4px; border: 1px solid #fbc02d;">${parseFloat(cierre.total_toneladas || 0).toFixed(2)}</span>
+                        </div>
+                    </div>
+                `;
+            });
         }
 
         document.getElementById('formEnvasado').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const producto_tipo = document.getElementById('producto_tipo').value;
-            const tapa_elegida = document.getElementById('tapa_seleccionada').value;
-            const numero_lote = document.getElementById('numero_lote').value;
-            const cantidad_producida = parseInt(document.getElementById('cantidad_producida').value);
-            const fecha_produccion = document.getElementById('fecha_produccion').value;
-            const toneladas = parseFloat(document.getElementById('toneladas_prod').value);
-
-            const selectProd = document.getElementById('producto_tipo');
-            const presentacionTexto = selectProd.options[selectProd.selectedIndex].text;
+            const formData = {
+                fecha_produccion: document.getElementById('fecha_produccion').value,
+                presentacion: document.getElementById('presentacion').value,
+                cantidad_cajas: parseInt(document.getElementById('cantidad_cajas').value),
+                toneladas: parseFloat(document.getElementById('toneladas').value),
+                observaciones: document.getElementById('observaciones').value,
+                usuario: localStorage.getItem('usuario_actual') || 'envasado_user'
+            };
 
             try {
-                // 1. Descontar insumos en inventario
-                const responseEnvasado = await fetch('/api/envasado/registrar', {
+                const res = await fetch('/api/produccion/reporte', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ producto_tipo, cantidad_producida, numero_lote, tapa_elegida })
+                    body: JSON.stringify(formData)
                 });
-                const dataEnvasado = await responseEnvasado.json();
-
-                if (!responseEnvasado.ok || !dataEnvasado.success) {
-                    alert('❌ Error al descontar insumos: ' + (dataEnvasado.mensaje || 'Operación cancelada.'));
-                    return;
-                }
-
-                // 2. Registrar el reporte de producción
-                let obsLote = `Lote: ${numero_lote}`;
-                if (tapa_elegida) obsLote += ` | Tapa: ${tapa_elegida}`;
-
-                const responseReporte = await fetch('/api/produccion/reporte', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        fecha_produccion,
-                        presentacion: presentacionTexto,
-                        cantidad_cajas: cantidad_producida,
-                        toneladas,
-                        observaciones: obsLote,
-                        usuario: localStorage.getItem('usuario_actual') || 'envasado_user'
-                    })
-                });
-                const dataReporte = await responseReporte.json();
-
-                if (responseReporte.ok && dataReporte.success) {
-                    alert('✅ ' + dataEnvasado.mensaje);
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    alert('✅ Producción registrada correctamente.');
                     document.getElementById('formEnvasado').reset();
                     document.getElementById('fecha_produccion').valueAsDate = new Date();
-                    document.getElementById('grupoTapaOpcional').style.display = 'none';
-                    cargarTapasDisponibles();
-                    cargarReportesProduccion();
+                    cargarProduccionActiva();
                 } else {
-                    alert('⚠️ Insumos descontados, pero no se pudo registrar en la tabla activa: ' + dataReporte.mensaje);
+                    alert('❌ ' + (data.mensaje || 'Error al registrar.'));
                 }
             } catch (err) {
                 console.error(err);
-                alert('❌ Error de conexión con el servidor.');
+                alert('Error de conexión con el servidor.');
             }
         });
 
-        async function ejecutarCierreProduccion() {
+        async function realizarCierreDia() {
             const fechaCierre = document.getElementById('fecha_produccion').value;
-            if(!confirm(`⚠️ ¿Estás seguro de realizar el Cierre de Producción para la fecha ${fechaCierre}? Esto archivará el resumen del día y vaciará el cuadro activo.`)) {
-                return;
-            }
+            if (!confirm(`¿Está seguro de realizar el cierre de producción para la fecha ${fechaCierre}? Esta acción consolidará los registros en el historial.`)) return;
 
             try {
                 const res = await fetch('/api/produccion/cierre', {
@@ -304,22 +291,21 @@
                     })
                 });
                 const data = await res.json();
-
-                if(res.ok && data.success) {
-                    alert('🔒 ' + data.mensaje);
-                    cargarReportesProduccion();
+                if (res.ok && data.success) {
+                    alert('✅ ' + data.mensaje);
+                    cargarProduccionActiva();
                     cargarHistorialCierres();
                 } else {
-                    alert('❌ ' + (data.mensaje || 'No se pudo realizar el cierre.'));
+                    alert('❌ ' + (data.mensaje || 'Error al cerrar producción.'));
                 }
-            } catch(e) {
-                console.error(e);
-                alert('❌ Error de conexión con el servidor.');
+            } catch (err) {
+                console.error(err);
+                alert('Error de conexión con el servidor.');
             }
         }
 
-        cargarTapasDisponibles();
-        cargarReportesProduccion();
+        // Cargar datos iniciales al abrir la vista
+        cargarProduccionActiva();
         cargarHistorialCierres();
     </script>
 </body>

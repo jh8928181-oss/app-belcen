@@ -55,23 +55,24 @@ async function poblarInventarioReal() {
             ON CONFLICT (usuario) DO NOTHING;
         `);
 
-        // 5. Crear tablas operativas de Vigilancia, Almacén, Salidas y Producción
+        // 5. Crear tablas operativas (Vigilancia actualizada con chofer, dni, placa y observaciones)
         await client.query(`
             CREATE TABLE ingresos_vigilancia (
                 id SERIAL PRIMARY KEY,
                 tipo_documento VARCHAR(50),
                 numero_guia VARCHAR(100),
                 proveedor VARCHAR(150),
+                chofer VARCHAR(150),
+                dni_chofer VARCHAR(50),
+                placa VARCHAR(50),
                 lugar_partida VARCHAR(150),
                 punto_llegada VARCHAR(150),
-                producto_textual TEXT,
-                cantidad NUMERIC(10,2),
-                unidad_medida VARCHAR(50),
+                observaciones TEXT,
                 foto_url TEXT,
                 usuario_vigilancia VARCHAR(50),
-                estado VARCHAR(50) DEFAULT 'PENDIENTE CONFORMIDAD',
                 items_json TEXT,
-                fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                estado VARCHAR(100) DEFAULT 'PENDIENTE CONFORMIDAD',
+                fecha_ingreso TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
             CREATE TABLE registro_ingresos_almacen (

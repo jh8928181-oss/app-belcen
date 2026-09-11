@@ -10,7 +10,7 @@
         h3 { color: #d39e00; text-align: center; border-bottom: 2px solid #ffc107; padding-bottom: 8px; margin-top: 0; }
         select, input { padding: 8px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; box-sizing: border-box; width: 100%; margin-top: 5px; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; font-size: 13px; }
         th { background-color: #343a40; color: white; }
         .text-center { text-align: center; }
         .logout { display: inline-block; margin-bottom: 10px; color: #dc3545; text-decoration: none; font-weight: bold; }
@@ -40,35 +40,47 @@
                     <input type="text" id="numero_guia" name="numero_guia" placeholder="Ej. T001-000452" required>
                 </div>
                 <div>
-                    <label><b>Proveedor / Empresa:</b></label>
+                    <label><b>Empresa Proveedora:</b></label>
                     <input type="text" id="proveedor" name="proveedor" placeholder="Razón Social del Proveedor" required>
                 </div>
                 <div>
-                    <label><b>Lugar de Partida:</b></label>
-                    <input type="text" id="lugar_partida" name="lugar_partida" placeholder="Origen de la carga">
+                    <label><b>Nombre del Conductor:</b></label>
+                    <input type="text" id="chofer" name="chofer" placeholder="Apellidos y nombres del chofer">
                 </div>
                 <div>
-                    <label><b>Punto de Llegada:</b></label>
-                    <input type="text" id="punto_llegada" name="punto_llegada" value="Planta Principal - Corporación Belcen">
+                    <label><b>Documento de Identidad (DNI):</b></label>
+                    <input type="text" id="dni_chofer" name="dni_chofer" placeholder="N° de DNI / Pasaporte">
+                </div>
+                <div>
+                    <label><b>Placa del Vehículo:</b></label>
+                    <input type="text" id="placa" name="placa" placeholder="Ej. ABC-123">
+                </div>
+                <div>
+                    <label><b>Lugar de Partida / Destino:</b></label>
+                    <input type="text" id="lugar_partida" name="lugar_partida" placeholder="Origen -> Planta Principal Belcen">
                 </div>
                 <div>
                     <label><b>Foto de Guía / Evidencia:</b></label>
                     <input type="file" id="foto_guia" name="foto_guia" accept="image/*">
                 </div>
+                <div style="grid-column: span 2;">
+                    <label><b>Observaciones Especiales (Estado de carga / Precintos / EPP):</b></label>
+                    <input type="text" id="observaciones" name="observaciones" placeholder="Ej. Precinto OK, chofer con EPP completo (casco, botas)">
+                </div>
             </div>
 
-            <!-- SECCIÓN DE MÚLTIPLES PRODUCTOS EN VIGILANCIA -->
+            <!-- SECCIÓN DE MÚLTIPLES PRODUCTOS / INSUMOS (GUÍA VS FÍSICO) -->
             <div style="margin-top: 20px; background: #fff3cd; padding: 15px; border-radius: 6px; border: 1px solid #ffeeba;">
-                <h4 style="margin-top: 0; color: #856404;">📦 Productos en la Guía</h4>
+                <h4 style="margin-top: 0; color: #856404;">📦 Datos de la Carga e Insumos</h4>
                 
                 <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: flex-end;">
                     <div style="flex: 2;">
-                        <label style="font-size: 12px;"><b>Descripción del Producto:</b></label>
-                        <input type="text" id="prod_textual" placeholder="Ej. Botella 1Lt / Cajas / Tapas">
+                        <label style="font-size: 12px;"><b>Descripción del Insumo / Producto:</b></label>
+                        <input type="text" id="prod_textual" placeholder="Ej. Botella Belini x 1 Lt / Cajas / Tapas">
                     </div>
                     <div style="flex: 1;">
                         <label style="font-size: 12px;"><b>Cantidad Guía:</b></label>
-                        <input type="number" step="0.01" id="prod_cant_guia" placeholder="Cant. Guía">
+                        <input type="number" step="0.01" id="prod_cant_guia" placeholder="Cant. Papel">
                     </div>
                     <div style="flex: 1;">
                         <label style="font-size: 12px;"><b>Cantidad Física:</b></label>
@@ -82,7 +94,7 @@
                 <table>
                     <thead>
                         <tr>
-                            <th>PRODUCTO</th>
+                            <th>PRODUCTO / INSUMO</th>
                             <th class="text-center">CANT. GUÍA</th>
                             <th class="text-center">CANT. FÍSICA</th>
                             <th class="text-center">QUITAR</th>
@@ -95,7 +107,7 @@
             </div>
 
             <div>
-                <button type="submit" class="btn-accion">🚀 REGISTRAR INGRESO EN VIGILANCIA</button>
+                <button type="submit" class="btn-accion">🚀 REGISTRAR INGRESO Y ENVIAR NOTIFICACIÓN A ALMACÉN</button>
             </div>
         </form>
 
@@ -163,7 +175,7 @@
         document.getElementById('formVigilancia').addEventListener('submit', async (e) => {
             e.preventDefault();
             if (itemsVigilanciaArray.length === 0) {
-                alert('❌ Debe agregar al menos un producto a la guía.');
+                alert('❌ Debe agregar al menos un producto o insumo a la guía.');
                 return;
             }
 

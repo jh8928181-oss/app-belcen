@@ -51,21 +51,50 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// --- VIGILANCIA (SOPORTE MÚLTIPLE DE PRODUCTOS) ---
+// --- VIGILANCIA (SOPORTE MÚLTIPLE DE PRODUCTOS Y DATOS DE TRANSPORTE) ---
 app.post('/api/vigilancia/registrar', upload.single('foto_guia'), async (req, res) => {
     try {
-        const { tipo_documento, numero_guia, proveedor, lugar_partida, punto_llegada, usuario, items_json } = req.body;
+        const { 
+            tipo_documento, 
+            numero_guia, 
+            proveedor, 
+            chofer, 
+            dni_chofer, 
+            placa, 
+            lugar_partida, 
+            punto_llegada, 
+            observaciones, 
+            usuario, 
+            items_json 
+        } = req.body;
+        
         const foto_url = req.file ? `/uploads/${req.file.filename}` : null;
         const items = JSON.parse(items_json || '[]');
 
         const query = `
-            INSERT INTO ingresos_vigilancia (tipo_documento, numero_guia, proveedor, lugar_partida, punto_llegada, foto_url, usuario_vigilancia, items_json, estado)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PENDIENTE CONFORMIDAD') RETURNING *;
+            INSERT INTO ingresos_vigilancia 
+            (tipo_documento, numero_guia, proveedor, chofer, dni_chofer, placa, lugar_partida, punto_llegada, observaciones, foto_url, usuario_vigilancia, items_json, estado, fecha_ingreso)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'PENDIENTE CONFORMIDAD', NOW()) 
+            RETURNING *;
         `;
-        const values = [tipo_documento, numero_guia, proveedor, lugar_partida, punto_llegada, foto_url, usuario, JSON.stringify(items)];
+        
+        const values = [
+            tipo_documento, 
+            numero_guia, 
+            proveedor, 
+            chofer || '', 
+            dni_chofer || '', 
+            placa || '', 
+            lugar_partida || '', 
+            punto_llegada || 'Planta Principal - Corporación Belcen', 
+            observaciones || '', 
+            foto_url, 
+            usuario || 'vigilancia1', 
+            JSON.stringify(items)
+        ];
         
         const nuevoIngreso = await pool.query(query, values);
-        res.json({ success: true, mensaje: 'Ingreso registrado con múltiples productos correctamente.', ingreso: nuevoIngreso.rows[0] });
+        res.json({ success: true, mensaje: 'Ingreso registrado con múltiples productos y datos de transporte correctamente.', ingreso: nuevoIngreso.rows[0] });
     } catch (err) {
         console.error("Error en vigilancia:", err);
         res.status(500).json({ success: false, mensaje: 'Error al registrar en vigilancia: ' + err.message });

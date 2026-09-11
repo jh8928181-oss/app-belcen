@@ -68,15 +68,21 @@
                 <input type="number" step="0.01" id="toneladas" name="toneladas" placeholder="Ej. 1.5" required>
             </div>
 
-            <!-- SECCIÓN DINÁMICA DE TAPA QUE APARECE PARA 900ML, 500ML, 1LT, 800ML, ETC. -->
+            <!-- SECCIÓN DINÁMICA DE TAPA QUE APARECE SEGÚN EL PRODUCTO -->
             <div id="grupoTapaDinamica" style="display: none; grid-column: span 2; background: #e9ecef; padding: 12px; border-radius: 6px; border: 1px solid #ced4da;">
                 <label style="color: #495057;"><b>⚙️ Tapa Utilizada para este Producto:</b></label>
                 <select id="tapa_elegida" name="tapa_elegida">
                     <option value="Tapa dosif. N° 26 blanco / Dorado">Tapa dosif. N° 26 blanco / Dorado</option>
+                    <option value="Tapa Dosif. N° 26 blanco / Celeste">Tapa Dosif. N° 26 blanco / Celeste</option>
+                    <option value="Tapa dosif. N° 28 blanco / Dorado">Tapa dosif. N° 28 blanco / Dorado</option>
+                    <option value="Tapa Dosf. N° 28 / Celeste">Tapa Dosf. N° 28 / Celeste</option>
+                    <option value="Asas plasticas /Dorado (2LT)">Asas plasticas /Dorado (2LT)</option>
+                    <option value="Tapones Verdes">Tapones Verdes</option>
                     <option value="Tapa Tapon 26mm (200ml)">Tapa Tapón 26mm (200ml)</option>
                     <option value="Tapa color Rojo 2lt">Tapa color Rojo 2lt</option>
                     <option value="Tapa color rojo 5lt">Tapa color rojo 5lt</option>
                     <option value="Tapa color Celeste 3lt">Tapa color Celeste 3lt</option>
+                    <option value="Asas plasticas color celeste pico 45">Asas plasticas color celeste pico 45</option>
                     <option value="Tapa BALDE BELINI color amarillo">Tapa BALDE BELINI color amarillo</option>
                     <option value="TAAAAPA BALDE DON LALO">Tapa BALDE DON LALO</option>
                 </select>
@@ -122,7 +128,7 @@
         </div>
     </div>
 
-    <!-- 3. CONSULTA DE CIERRES ANTERIORES CON EL MISMO FORMATO EXACTO -->
+    <!-- 3. CONSULTA DE CIERRES ANTERIORES -->
     <div class="card" style="border-top: 5px solid #6c757d;">
         <h3 style="color: #495057; border-bottom: 2px solid #495057;">HISTORIAL DE CIERRES DE PRODUCCIÓN</h3>
         
@@ -156,17 +162,15 @@
             }
         }
 
-        // Función para mostrar automáticamente el selector de tapas en formatos de botellas específicos (900ml, 500ml, 1lt, 800ml)
         function verificarSeleccionTapa() {
             const presentacion = document.getElementById('presentacion').value;
             const grupoTapa = document.getElementById('grupoTapaDinamica');
 
-            // Comprobamos si la presentación seleccionada requiere selector explícito de tapa
             const requiereTapa = presentacion.includes('500 ml') || 
-                                 presentacion.includes('900 ml') || 
-                                 presentacion.includes('1 Lt') || 
-                                 presentacion.includes('800 ml') || 
-                                 presentacion.includes('3 Lt');
+                                   presentacion.includes('900 ml') || 
+                                   presentacion.includes('1 Lt') || 
+                                   presentacion.includes('800 ml') || 
+                                   presentacion.includes('3 Lt');
 
             if (requiereTapa) {
                 grupoTapa.style.display = 'block';
@@ -299,7 +303,6 @@
             const observacionesTexto = document.getElementById('observaciones').value;
             const grupoTapaVisible = document.getElementById('grupoTapaDinamica').style.display === 'block';
 
-            // Incluir automáticamente la tapa elegida en las observaciones si el selector está activo
             let observacionesFinales = observacionesTexto;
             if (grupoTapaVisible) {
                 const tapaSeleccionada = document.getElementById('tapa_elegida').value;
@@ -364,7 +367,6 @@
             }
         }
 
-        // Cargar datos iniciales al abrir la vista
         cargarProduccionActiva();
         cargarHistorialCierres();
     </script>

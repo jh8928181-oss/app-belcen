@@ -173,16 +173,20 @@ async function poblarInventarioReal() {
             ['CAJA TIMONEL 900ML X 12 UND', 'CAJAS', 6900, 'UNIDADES', 'STOCK SUFICIENTE'],
             ['CAJA ACEITE VEGA 900ML X 12 UND', 'CAJAS', 13575, 'UNIDADES', 'STOCK SUFICIENTE'],
 
-            // TAPAS Y ACCESORIOS
-            ['Tapa dosif. N° 26 blanco / Dorado', 'TAPAS Y ACCESORIOS', 61.70, 'MILL', 'REALIZAR PEDIDO'],
-            ['Tapa color Rojo 2lt', 'TAPAS Y ACCESORIOS', 3.01, 'MILL', 'STOCK SUFICIENTE'],
-            ['Tapa Tapon 26mm (200ml)', 'TAPAS Y ACCESORIOS', 60.26, 'MILL', 'REALIZAR PEDIDO'],
-            ['Tapa color Celeste 3lt', 'TAPAS Y ACCESORIOS', 7.60, 'MILL', 'REALIZAR PEDIDO'],
-            ['Asas plasticas color celeste pico 45', 'TAPAS Y ACCESORIOS', 7.60, 'MILL', 'STOCK SUFICIENTE'],
-            ['Tapa BALDE BELINI color amarillo', 'TAPAS Y ACCESORIOS', 1786.00, 'UNIDADES', 'STOCK SUFICIENTE'],
-            ['Tapa color rojo 5lt', 'TAPAS Y ACCESORIOS', 1.44, 'MILL', 'STOCK SUFICIENTE'],
-            ['TAAAAPA BALDE DON LALO', 'TAPAS Y ACCESORIOS', 745.00, 'UNIDADES', 'STOCK SUFICIENTE'],
-
+            // TAPAS Y ACCESORIOS (Agregando los faltantes del Excel)
+['Tapa dosif. N° 26 blanco / Dorado', 'TAPAS Y ACCESORIOS', 61.70, 'MILL', 'REALIZAR PEDIDO'],
+['Tapa Dosif. N° 26 blanco / Celeste', 'TAPAS Y ACCESORIOS', 0.00, 'MILL', 'REALIZAR PEDIDO'],
+['Tapa dosif. N° 28 blanco / Dorado', 'TAPAS Y ACCESORIOS', 4.82, 'MILL', 'REALIZAR PEDIDO'],
+['Asas plasticas /Dorado (2LT)', 'TAPAS Y ACCESORIOS', 4.00, 'MILL', 'REALIZAR PEDIDO'],
+['Tapones Verdes', 'TAPAS Y ACCESORIOS', 0.00, 'MILL', 'REALIZAR PEDIDO'],
+['Tapa Dosf. N° 28 / Celeste', 'TAPAS Y ACCESORIOS', 0.00, 'MILL', 'REALIZAR PEDIDO'],
+['Tapa color Rojo 2lt', 'TAPAS Y ACCESORIOS', 3.01, 'MILL', 'STOCK SUFICIENTE'],
+['Tapa Tapon 26mm (200ml)', 'TAPAS Y ACCESORIOS', 60.26, 'MILL', 'REALIZAR PEDIDO'],
+['Tapa color Celeste 3lt', 'TAPAS Y ACCESORIOS', 7.60, 'MILL', 'REALIZAR PEDIDO'],
+['Asas plasticas color celeste pico 45', 'TAPAS Y ACCESORIOS', 7.60, 'MILL', 'STOCK SUFICIENTE'],
+['Tapa BALDE BELINI color amarillo', 'TAPAS Y ACCESORIOS', 1786.00, 'UNIDADES', 'STOCK SUFICIENTE'],
+['Tapa color rojo 5lt', 'TAPAS Y ACCESORIOS', 1.44, 'MILL', 'STOCK SUFICIENTE'],
+['TAAAAPA BALDE DON LALO', 'TAPAS Y ACCESORIOS', 745.00, 'UNIDADES', 'STOCK SUFICIENTE'],
             // PREFORMAS Y SERVICIOS
             ['SERVICIO SAUÑE (1LT-900ML)', 'PREFORMAS Y SERVICIOS', 13.27, 'MILL', 'REALIZAR PEDIDO'],
             ['SERVICIO SAUÑE PREFORMA 09 GR (200ML)', 'PREFORMAS Y SERVICIOS', 41.24, 'MILL', 'STOCK SUFICIENTE'],

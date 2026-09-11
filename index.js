@@ -181,8 +181,8 @@ app.post('/api/almacen/ajustar-stock', async (req, res) => {
         
         await pool.query(
             `UPDATE inventario 
-             SET stock = $1, 
-                 estado = CASE WHEN $1 <= 0 THEN 'REALIZAR PEDIDO' ELSE 'STOCK SUFICIENTE' END 
+             SET stock = $1::numeric, 
+                 estado = CASE WHEN $1::numeric <= 0 THEN 'REALIZAR PEDIDO' ELSE 'STOCK SUFICIENTE' END 
              WHERE id = $2`,
             [nuevo_stock, articulo_id]
         );

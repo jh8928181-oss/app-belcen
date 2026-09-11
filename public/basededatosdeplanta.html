@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Base de Datos y Control de Planta - Belcen</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; background-color: #f4f6f9; padding: 20px; color: #333; }
+        .card { max-width: 1200px; margin: auto; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 25px; }
+        h2, h3 { color: #343a40; border-bottom: 2px solid #007bff; padding-bottom: 8px; margin-top: 0; }
+        select, input { padding: 8px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; box-sizing: border-box; width: 100%; margin-top: 5px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; font-size: 14px; }
+        th { background-color: #007bff; color: white; }
+        .text-center { text-align: center; }
+        .badge-suficiente { background: #d4edda; color: #155724; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; }
+        .badge-pedido { background: #f8d7da; color: #721c24; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; }
+        .btn-accion { padding: 10px 15px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; font-size: 15px; margin-top: 15px; }
+        .btn-accion:hover { background: #218838; }
+        .simulador-box { background: #e9ecef; padding: 15px; border-radius: 6px; border: 1px solid #ced4da; margin-top: 15px; }
+        .logout { display: inline-block; margin-top: 15px; color: #dc3545; text-decoration: none; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="card" style="border-top: 5px solid #007bff;">
+        <h2>📊 BASE DE DATOS Y CONTROL GENERAL DE PLANTA</h2>
+        <p>Vista consolidada en tiempo real de inventarios, productos terminados y simulador inteligente de viabilidad de insumos (Botellas, Galoneras, Baldes y Latas).</p>
+        <a href="dashboard.html" class="logout">⬅ Volver al Dashboard General</a>
+    </div>
+
+    <!-- SIMULADOR INTELIGENTE DE VIABILIDAD DE PRODUCCIÓN -->
+    <div class="card" style="border-top: 5px solid #17a2b8;">
+        <h3 style="color: #17a2b8; border-bottom: 2px solid #17a2b8;">🧮 SIMULADOR DE VIABILIDAD DE INSUMOS</h3>
+        <div class="simulador-box">
+            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 15px;">
+                <div>
+                    <label><b>Seleccionar Presentación a Simular:</b></label>
+                    <select id="sim_producto">
+                        <option value="b1_200ml">Aceite de Soya B-1 200 ml (Cajas x 24 - Botella)</option>
+                        <option value="b1_500ml">Aceite de Soya B-1 500 ml (Cajas x 12 - Botella)</option>
+                        <option value="b1_900ml">Aceite de Soya B-1 900 ml (Cajas x 12 - Botella)</option>
+                        <option value="b1_1lt">Aceite de Soya B-1 1 Lt (Cajas x 12 - Botella)</option>
+                        <option value="b1_2lt">Aceite de Soya B-1 2 Lt (Cajas x 6 - Botella)</option>
+                        <option value="b1_5lt">Aceite de Soya B-1 5 Lt (Cajas x 4 - Galonera)</option>
+                        <option value="donlalo_800ml">Aceite de Soya Don Lalo 800 ml (Cajas x 12 - Botella)</option>
+                        <option value="donlalo_20lt">Aceite de Soya Don Lalo Balde 20 Lt (Balde)</option>
+                        <option value="belini_200ml">Aceite de Soya Belini 200 ml (Cajas x 24 - Botella)</option>
+                        <option value="belini_500ml">Aceite de Soya Belini 500 ml (Cajas x 12 - Botella)</option>
+                        <option value="belini_900ml">Aceite de Soya Belini 900 ml (Cajas x 12 - Botella)</option>
+                        <option value="belini_1lt">Aceite de Soya Belini 1 Lt (Cajas x 12 - Botella)</option>
+                        <option value="belini_2lt">Aceite de Soya Belini 2 Lt (Galonera x 6)</option>
+                        <option value="belini_3lt">Aceite de Soya Belini 3 Lt (Cajas x 4 - Botella + Asas)</option>
+                        <option value="belini_5lt">Aceite de Soya Belini 5 Lt (Galonera x 4)</option>
+                        <option value="belini_lata18lt">Aceite de Soya Belini Lata 18 Lt (Lata)</option>
+                        <option value="belini_balde18lt">Aceite de Soya Belini Balde 18 Lt (Balde)</option>
+                    </select>
+                </div>
+                <div>
+                    <label><b>Cantidad de Cajas / Lotes:</b></label>
+                    <input type="number" id="sim_cajas" placeholder="Ej. 250" min="1" value="100">
+                </div>
+                <div>
+                    <label>&nbsp;</label>
+                    <button onclick="simularProduccion()" class="btn-accion" style="margin-top: 5px;">🔍 Verificar Stock</button>
+                </div>
+            </div>
+            <div id="resultadoSimulacion" style="margin-top: 15px; padding: 12px; background: #fff; border-radius: 4px; border: 1px solid #ddd; display: none;">
+            </div>
+        </div>
+    </div>
+
+    <!-- STOCK DE PRODUCTOS TERMINADOS -->
+    <div class="card" style="border-top: 5px solid #28a745;">
+        <h3 style="color: #28a745; border-bottom: 2px solid #28a745;">📦 STOCK DE PRODUCTO TERMINADO (CAJAS LISTAS)</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>CÓDIGO KEY</th>
+                    <th>PRODUCTO</th>
+                    <th class="text-center">STOCK ACTUAL (CAJAS)</th>
+                </tr>
+            </thead>
+            <tbody id="tablaProductoTerminado">
+                <tr><td colspan="3" class="text-center">Cargando producto terminado...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- INVENTARIO GENERAL DE INSUMOS -->
+    <div class="card" style="border-top: 5px solid #6c757d;">
+        <h3 style="color: #495057; border-bottom: 2px solid #495057;">🛠️ INVENTARIO GENERAL DE INSUMOS Y MATERIA PRIMA</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>ARTÍCULO</th>
+                    <th>CATEGORÍA</th>
+                    <th class="text-center">STOCK ACTUAL</th>
+                    <th class="text-center">UNIDAD</th>
+                    <th class="text-center">ESTADO</th>
+                </tr>
+            </thead>
+            <tbody id="tablaInventarioGeneral">
+                <tr><td colspan="5" class="text-center">Cargando inventario general...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        let inventarioGlobal = [];
+        let ptGlobal = [];
+
+        async function cargarDatosPlanta() {
+            try {
+                // Cargar Inventario Insumos
+                const resInv = await fetch('/api/inventario');
+                inventarioGlobal = await resInv.json();
+                const tbodyInv = document.getElementById('tablaInventarioGeneral');
+                tbodyInv.innerHTML = '';
+                
+                inventarioGlobal.forEach(item => {
+                    const badgeClass = item.estado === 'STOCK SUFICIENTE' ? 'badge-suficiente' : 'badge-pedido';
+                    tbodyInv.innerHTML += `
+                        <tr>
+                            <td><b>${item.nombre}</b></td>
+                            <td>${item.categoria}</td>
+                            <td class="text-center"><b>${parseFloat(item.stock).toFixed(2)}</b></td>
+                            <td class="text-center">${item.unidad_medida}</td>
+                            <td class="text-center"><span class="${badgeClass}">${item.estado}</span></td>
+                        </tr>
+                    `;
+                });
+
+                // Cargar Producto Terminado
+                const resPt = await fetch('/api/producto-terminado');
+                ptGlobal = await resPt.json();
+                const tbodyPt = document.getElementById('tablaProductoTerminado');
+                tbodyPt.innerHTML = '';
+
+                ptGlobal.forEach(pt => {
+                    tbodyPt.innerHTML += `
+                        <tr>
+                            <td><code>${pt.producto_key}</code></td>
+                            <td><b>${pt.nombre_producto}</b></td>
+                            <td class="text-center" style="color: #28a745; font-weight: bold; font-size: 16px;">${pt.stock_cajas} CAJAS</td>
+                        </tr>
+                    `;
+                });
+
+            } catch (err) {
+                console.error("Error al cargar base de datos de planta:", err);
+            }
+        }
+
+        function buscarArticuloEnInventario(nombreBuscado) {
+            return inventarioGlobal.find(i => i.nombre.toLowerCase() === nombreBuscado.toLowerCase());
+        }
+
+        function simularProduccion() {
+            const tipo = document.getElementById('sim_producto').value;
+            const cajas = parseInt(document.getElementById('sim_cajas').value) || 0;
+            const resDiv = document.getElementById('resultadoSimulacion');
+            resDiv.style.display = 'block';
+
+            if (cajas <= 0) {
+                resDiv.innerHTML = `<span style="color: red;">❌ Ingrese una cantidad válida de cajas a producir.</span>`;
+                return;
+            }
+
+            let envaseRequerido = '';
+            let cantEnvases = 0;
+            let tapaRequerida = '';
+            let cantTapasMillares = 0;
+            let requiereTapa = true;
+            let extraRequerido = null;
+            let cantExtra = 0;
+
+            // Definir recetas según tipo (Botellas, Galoneras, Baldes, Latas)
+            switch (tipo) {
+                case 'b1_200ml':
+                    envaseRequerido = 'Botella de 200 ml - B-1';
+                    cantEnvases = cajas * 24;
+                    tapaRequerida = 'Tapa Tapon 26mm (200ml)';
+                    cantTapasMillares = (cajas * 24) / 1000;
+                    break;
+                case 'b1_500ml':
+                    envaseRequerido = 'Botella de 500 ml - B-1';
+                    cantEnvases = cajas * 12;
+                    tapaRequerida = 'Tapa dosif. N° 26 blanco / Dorado';
+                    cantTapasMillares = (cajas * 12) / 1000;
+                    break;
+                case 'b1_900ml':
+                    envaseRequerido = 'Botella de 900 ml - B-1';
+                    cantEnvases = cajas * 12;
+                    tapaRequerida = 'Tapa dosif. N° 26 blanco / Dorado';
+                    cantTapasMillares = (cajas * 12) / 1000;
+                    break;
+                case 'b1_1lt':
+                    envaseRequerido = 'Botella de 1 Lt - B-1';
+                    cantEnvases = cajas * 12;
+                    tapaRequerida = 'Tapa dosif. N° 26 blanco / Dorado';
+                    cantTapasMillares = (cajas * 12) / 1000;
+                    break;
+                case 'b1_2lt':
+                    envaseRequerido = 'Botella de 2 Lt - B-1';
+                    cantEnvases = cajas * 6;
+                    tapaRequerida = 'Tapa color Rojo 2lt';
+                    cantTapasMillares = (cajas * 6) / 1000;
+                    break;
+                case 'b1_5lt':
+                    envaseRequerido = 'Galonera B-1 x 5 lt';
+                    cantEnvases = cajas * 4;
+                    tapaRequerida = 'Tapa color rojo 5lt';
+                    cantTapasMillares = (cajas * 4) / 1000;
+                    break;
+                case 'donlalo_800ml':
+                    envaseRequerido = 'Botella de 800ml - Don Lalo';
+                    cantEnvases = cajas * 12;
+                    tapaRequerida = 'Tapa dosif. N° 26 blanco / Dorado';
+                    cantTapasMillares = (cajas * 12) / 1000;
+                    break;
+                case 'donlalo_20lt':
+                    envaseRequerido = 'Balde Don Lalo x 20lt';
+                    cantEnvases = cajas * 1;
+                    tapaRequerida = 'TAAAAPA BALDE DON LALO';
+                    cantTapasMillares = cajas * 1; // unidades directas
+                    break;
+                case 'belini_200ml':
+                    envaseRequerido = 'Botella Belini x 200 ml';
+                    cantEnvases = cajas * 24;
+                    tapaRequerida = 'Tapa Tapon 26mm (200ml)';
+                    cantTapasMillares = (cajas * 24) / 1000;
+                    break;
+                case 'belini_500ml':
+                    envaseRequerido = 'Botella Belini x 500 ml';
+                    cantEnvases = cajas * 12;
+                    tapaRequerida = 'Tapa dosif. N° 26 blanco / Dorado';
+                    cantTapasMillares = (cajas * 12) / 1000;
+                    break;
+                case 'belini_900ml':
+                    envaseRequerido = 'Botella Belini x 900 ml';
+                    cantEnvases = cajas * 12;
+                    tapaRequerida = 'Tapa dosif. N° 26 blanco / Dorado';
+                    cantTapasMillares = (cajas * 12) / 1000;
+                    break;
+                case 'belini_1lt':
+                    envaseRequerido = 'Botella Belini x 1 Lt';
+                    cantEnvases = cajas * 12;
+                    tapaRequerida = 'Tapa dosif. N° 26 blanco / Dorado';
+                    cantTapasMillares = (cajas * 12) / 1000;
+                    break;
+                case 'belini_2lt':
+                    envaseRequerido = 'Galonera Belini x 2 lt';
+                    cantEnvases = cajas * 6;
+                    tapaRequerida = 'Tapa color Rojo 2lt';
+                    cantTapasMillares = (cajas * 6) / 1000;
+                    break;
+                case 'belini_3lt':
+                    envaseRequerido = 'Botella Belini x 3 lt';
+                    cantEnvases = cajas * 4;
+                    tapaRequerida = 'Tapa dosif. N° 26 blanco / Dorado';
+                    cantTapasMillares = (cajas * 4) / 1000;
+                    extraRequerido = 'Asas plasticas color celeste pico 45';
+                    cantExtra = (cajas * 4) / 1000;
+                    break;
+                case 'belini_5lt':
+                    envaseRequerido = 'Galonera Belini x 5 lt';
+                    cantEnvases = cajas * 4;
+                    tapaRequerida = 'Tapa color rojo 5lt';
+                    cantTapasMillares = (cajas * 4) / 1000;
+                    break;
+                case 'belini_lata18lt':
+                    envaseRequerido = 'Lata Belini 18lt';
+                    cantEnvases = cajas * 1;
+                    requiereTapa = false;
+                    break;
+                case 'belini_balde18lt':
+                    envaseRequerido = 'Balde Belini x 18 lt';
+                    cantEnvases = cajas * 1;
+                    tapaRequerida = 'Tapa BALDE BELINI color amarillo';
+                    cantTapasMillares = cajas * 1; // unidades directas
+                    break;
+            }
+
+            // Buscar en inventario global
+            const invEnvase = buscarArticuloEnInventario(envaseRequerido);
+            const invTapa = requiereTapa ? buscarArticuloEnInventario(tapaRequerida) : null;
+            const invExtra = extraRequerido ? buscarArticuloEnInventario(extraRequerido) : null;
+
+            let stockEnvase = invEnvase ? parseFloat(invEnvase.stock) : 0;
+            let stockTapa = invTapa ? parseFloat(invTapa.stock) : 0;
+            let stockExtra = invExtra ? parseFloat(invExtra.stock) : 0;
+
+            let viableEnvase = stockEnvase >= cantEnvases;
+            let viableTapa = requiereTapa ? (stockTapa >= cantTapasMillares) : true;
+            let viableExtra = extraRequerido ? (stockExtra >= cantExtra) : true;
+
+            let html = `<h4>Resultado de Simulación para ${cajas} Cajas:</h4>`;
+            html += `<ul>`;
+            html += `<li><b>Envase (${envaseRequerido}):</b> Requiere <b>${cantEnvases}</b> | Stock actual: <b>${stockEnvase}</b> ${viableEnvase ? '✅' : '❌ Faltan ' + (cantEnvases - stockEnvase)}</li>`;
+            
+            if (requiereTapa) {
+                let unidadTapaStr = invTapa ? invTapa.unidad_medida : 'MILL';
+                html += `<li><b>Cierre/Tapa (${tapaRequerida}):</b> Requiere <b>${cantTapasMillares.toFixed(2)} ${unidadTapaStr}</b> | Stock actual: <b>${stockTapa}</b> ${viableTapa ? '✅' : '❌ Stock insuficiente'}</li>`;
+            }
+            if (extraRequerido) {
+                html += `<li><b>Accesorio Extra (${extraRequerido}):</b> Requiere <b>${cantExtra.toFixed(2)} MILL</b> | Stock actual: <b>${stockExtra}</b> ${viableExtra ? '✅' : '❌ Stock insuficiente'}</li>`;
+            }
+            html += `</ul>`;
+
+            if (viableEnvase && viableTapa && viableExtra) {
+                html += `<div style="background: #d4edda; color: #155724; padding: 10px; border-radius: 4px; font-weight: bold; text-align: center;">✅ PRODUCCIÓN 100% VIABLE CON EL STOCK ACTUAL</div>`;
+            } else {
+                html += `<div style="background: #f8d7da; color: #721c24; padding: 10px; border-radius: 4px; font-weight: bold; text-align: center;">❌ NO ES VIABLE: FALTAN INSUMOS PARA COMPLETAR ESTE LOTE</div>`;
+            }
+
+            resDiv.innerHTML = html;
+        }
+
+        cargarDatosPlanta();
+    </script>
+</body>
+</html>

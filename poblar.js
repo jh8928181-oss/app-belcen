@@ -39,7 +39,7 @@ async function poblarInventarioReal() {
 
         // 4. Crear usuarios y sembrarlos
         await client.query(`
-            CREATE TABLE usuarios_sistema (
+            CREATE TABLE IF NOT EXISTS usuarios_sistema (
                 id SERIAL PRIMARY KEY,
                 usuario VARCHAR(50) UNIQUE NOT NULL,
                 password VARCHAR(100) NOT NULL,
@@ -51,7 +51,11 @@ async function poblarInventarioReal() {
             ('almacen1', 'almacenpass1', 'almacen'),
             ('soplado_user', 'soplado123', 'soplado'),
             ('envasado_user', 'envasado123', 'envasado'),
-            ('auditor_user', 'auditor123', 'auditoria')
+            ('auditor_user', 'auditor123', 'auditoria'),
+            ('ing_blas', 'Blas2026_Sec', 'produccion'),
+            ('pariona', 'Pariona#987', 'supervisor'),
+            ('acceso_1', 'AccesoOne*01', 'invitado'),
+            ('acceso_2', 'AccesoTwo*02', 'invitado')
             ON CONFLICT (usuario) DO NOTHING;
         `);
 

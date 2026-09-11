@@ -135,25 +135,25 @@ async function poblarInventarioReal() {
         `;
 
         const articulos = [
-            // BOTELLAS Y GALONERAS
-            ['Botella de 200 ml - B-1', 'BOTELLAS Y GALONERAS', 25274, 'UNIDADES', 'STOCK SUFICIENTE'],
+            // BOTELLAS Y GALONERAS (Actualizado según Excel)
+            ['Botella de 200 ml - B-1', 'BOTELLAS Y GALONERAS', 26278, 'UNIDADES', 'STOCK SUFICIENTE'],
             ['Botella de 500 ml - B-1', 'BOTELLAS Y GALONERAS', 10906, 'UNIDADES', 'REALIZAR PEDIDO'],
             ['Botella de 900 ml - B-1', 'BOTELLAS Y GALONERAS', 6126, 'UNIDADES', 'REALIZAR PEDIDO'],
-            ['Botella de 1 Lt - B-1', 'BOTELLAS Y GALONERAS', 30977, 'UNIDADES', 'REALIZAR PEDIDO'],
+            ['Botella de 1 Lt - B-1', 'BOTELLAS Y GALONERAS', 0, 'UNIDADES', 'REALIZAR PEDIDO'],
             ['Botella de 2 Lt - B-1', 'BOTELLAS Y GALONERAS', 665, 'UNIDADES', 'REALIZAR PEDIDO'],
             ['Galonera B-1 x 5 lt', 'BOTELLAS Y GALONERAS', 1438, 'UNIDADES', 'STOCK SUFICIENTE'],
-            ['Botella de 800ml - Don Lalo', 'BOTELLAS Y GALONERAS', 0, 'UNIDADES', 'REALIZAR PEDIDO'],
+            ['Botella de 800ml - Don Lalo', 'BOTELLAS Y GALONERAS', 3642, 'UNIDADES', 'REALIZAR PEDIDO'],
             ['Botella Belini x 3 lt', 'BOTELLAS Y GALONERAS', 1352, 'UNIDADES', 'REALIZAR PEDIDO'],
-            ['Botella Belini x 200 ml', 'BOTELLAS Y GALONERAS', 0, 'UNIDADES', 'REALIZAR PEDIDO'],
-            ['Botella Belini x 500 ml', 'BOTELLAS Y GALONERAS', 19374, 'UNIDADES', 'STOCK SUFICIENTE'],
-            ['Botella Belini x 900 ml', 'BOTELLAS Y GALONERAS', 44137, 'UNIDADES', 'STOCK SUFICIENTE'],
-            ['Botella Belini x 1 Lt', 'BOTELLAS Y GALONERAS', 5368, 'UNIDADES', 'REALIZAR PEDIDO'],
+            ['Botella Belini x 200 ml', 'BOTELLAS Y GALONERAS', 13800, 'UNIDADES', 'REALIZAR PEDIDO'],
+            ['Botella Belini x 500 ml', 'BOTELLAS Y GALONERAS', 23605, 'UNIDADES', 'STOCK SUFICIENTE'],
+            ['Botella Belini x 900 ml', 'BOTELLAS Y GALONERAS', 39793, 'UNIDADES', 'STOCK SUFICIENTE'],
+            ['Botella Belini x 1 Lt', 'BOTELLAS Y GALONERAS', 1956, 'UNIDADES', 'REALIZAR PEDIDO'],
             ['Galonera Belini x 2 lt', 'BOTELLAS Y GALONERAS', 0, 'UNIDADES', 'REALIZAR PEDIDO'],
             ['Galonera Belini x 5 lt', 'BOTELLAS Y GALONERAS', 0, 'UNIDADES', 'REALIZAR PEDIDO'],
             ['Lata Belini 18lt', 'BOTELLAS Y GALONERAS', 700, 'UNIDADES', 'STOCK SUFICIENTE'],
-            ['Balde Belini x 18 lt', 'BOTELLAS Y GALONERAS', 589, 'UNIDADES', 'STOCK SUFICIENTE'],
-            ['Balde Don Lalo x 20lt', 'BOTELLAS Y GALONERAS', 745, 'UNIDADES', 'STOCK SUFICIENTE'],
-            ['Botella VEGA x 900 ml', 'BOTELLAS Y GALONERAS', 25200, 'UNIDADES', 'STOCK SUFICIENTE'],
+            ['Balde Belini x 18 lt', 'BOTELLAS Y GALONERAS', 539, 'UNIDADES', 'STOCK SUFICIENTE'],
+            ['Balde Don Lalo x 20lt', 'BOTELLAS Y GALONERAS', 695, 'UNIDADES', 'STOCK SUFICIENTE'],
+            ['Botella VEGA x 900 ml', 'BOTELLAS Y GALONERAS', 0, 'UNIDADES', 'STOCK SUFICIENTE'],
 
             // CAJAS (Insumo vacío)
             ['Caja B-1 x 200 ml', 'CAJAS', 2437, 'UNIDADES', 'REALIZAR PEDIDO'],

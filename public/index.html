@@ -51,11 +51,10 @@
                 const data = await response.json();
 
                 if (response.ok && data.success) {
-                    // Guardar sesión básica en localStorage
                     localStorage.setItem('usuario_actual', data.usuario);
                     localStorage.setItem('rol_actual', data.rol);
 
-                    // Redirección estricta según el rol del usuario
+                    // Redirección según el rol del usuario
                     switch (data.rol) {
                         case 'auditoria':
                             window.location.href = 'auditoria.html';
@@ -71,6 +70,11 @@
                             break;
                         case 'envasado':
                             window.location.href = 'envasado.html';
+                            break;
+                        case 'produccion':
+                        case 'supervisor':
+                        case 'invitado':
+                            window.location.href = 'dashboard.html';
                             break;
                         default:
                             errorDiv.textContent = 'Rol no autorizado en el sistema.';

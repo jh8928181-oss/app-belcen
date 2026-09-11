@@ -437,7 +437,7 @@ app.post('/api/envasado/registrar', async (req, res) => {
                 break;
             case 'belini_lata18lt':
                 insumosADescontar = [
-                    { nombre: 'Lata Belini 18lt', cantidad: cantidad_producida * 1 }
+                    { nombre: 'Lata Belini 18lt', cantidad: cantidad_cajas * 1 }
                 ];
                 break;
             case 'belini_balde18lt':
@@ -658,26 +658,27 @@ app.get('/api/auditoria/registros', async (req, res) => {
 app.post('/api/produccion/reporte', async (req, res) => {
     const { fecha_produccion, presentacion, cantidad_cajas, toneladas, observaciones, usuario } = req.body;
     try {
-        // Mapear el texto amigable del select a la key oficial del producto que espera /api/envasado/registrar
+        // Mapeo robusto por coincidencia de substrings para todas las presentaciones del select
         let producto_tipo = '';
         const p = presentacion.toLowerCase();
-        if (p.includes('b-1 200 ml')) producto_tipo = 'b1_200ml';
-        else if (p.includes('b-1 500 ml')) producto_tipo = 'b1_500ml';
-        else if (p.includes('b-1 900 ml')) producto_tipo = 'b1_900ml';
-        else if (p.includes('b-1 1 lt')) producto_tipo = 'b1_1lt';
-        else if (p.includes('b-1 2 lt')) producto_tipo = 'b1_2lt';
-        else if (p.includes('b-1 5 lt')) producto_tipo = 'b1_5lt';
-        else if (p.includes('don lalo 800 ml')) producto_tipo = 'donlalo_800ml';
-        else if (p.includes('don lalo balde 20 lt')) producto_tipo = 'donlalo_20lt';
-        else if (p.includes('belini 200 ml')) producto_tipo = 'belini_200ml';
-        else if (p.includes('belini 500 ml')) producto_tipo = 'belini_500ml';
-        else if (p.includes('belini 900 ml')) producto_tipo = 'belini_900ml';
-        else if (p.includes('belini 1 lt')) producto_tipo = 'belini_1lt';
-        else if (p.includes('belini 2 lt')) producto_tipo = 'belini_2lt';
-        else if (p.includes('belini 3 lt')) producto_tipo = 'belini_3lt';
-        else if (p.includes('belini 5 lt')) producto_tipo = 'belini_5lt';
-        else if (p.includes('belini lata 18 lt')) producto_tipo = 'belini_lata18lt';
-        else if (p.includes('belini balde 18 lt')) producto_tipo = 'belini_balde18lt';
+        
+        if (p.includes('b-1 200 ml') || p.includes('b1_200ml')) producto_tipo = 'b1_200ml';
+        else if (p.includes('b-1 500 ml') || p.includes('b1_500ml')) producto_tipo = 'b1_500ml';
+        else if (p.includes('b-1 900 ml') || p.includes('b1_900ml')) producto_tipo = 'b1_900ml';
+        else if (p.includes('b-1 1 lt') || p.includes('b1_1lt')) producto_tipo = 'b1_1lt';
+        else if (p.includes('b-1 2 lt') || p.includes('b1_2lt')) producto_tipo = 'b1_2lt';
+        else if (p.includes('b-1 5 lt') || p.includes('b1_5lt')) producto_tipo = 'b1_5lt';
+        else if (p.includes('don lalo 800 ml') || p.includes('donlalo_800ml')) producto_tipo = 'donlalo_800ml';
+        else if (p.includes('don lalo balde 20 lt') || p.includes('donlalo_20lt')) producto_tipo = 'donlalo_20lt';
+        else if (p.includes('belini 200 ml') || p.includes('belini_200ml')) producto_tipo = 'belini_200ml';
+        else if (p.includes('belini 500 ml') || p.includes('belini_500ml')) producto_tipo = 'belini_500ml';
+        else if (p.includes('belini 900 ml') || p.includes('belini_900ml')) producto_tipo = 'belini_900ml';
+        else if (p.includes('belini 1 lt') || p.includes('belini_1lt')) producto_tipo = 'belini_1lt';
+        else if (p.includes('belini 2 lt') || p.includes('belini_2lt')) producto_tipo = 'belini_2lt';
+        else if (p.includes('belini 3 lt') || p.includes('belini_3lt')) producto_tipo = 'belini_3lt';
+        else if (p.includes('belini 5 lt') || p.includes('belini_5lt')) producto_tipo = 'belini_5lt';
+        else if (p.includes('belini lata 18 lt') || p.includes('belini_lata18lt')) producto_tipo = 'belini_lata18lt';
+        else if (p.includes('belini balde 18 lt') || p.includes('belini_balde18lt')) producto_tipo = 'belini_balde18lt';
 
         // Extraer la tapa elegida de las observaciones si viene mapeada con formato "Tapa: [Nombre]"
         let tapa_elegida = null;

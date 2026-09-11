@@ -31,17 +31,26 @@ const inicializarBaseDeDatos = async () => {
                 id SERIAL PRIMARY KEY,
                 tipo_documento VARCHAR(50),
                 numero_guia VARCHAR(100),
-                proveedor VARCHAR(100),
-                lugar_partida VARCHAR(100),
-                punto_llegada VARCHAR(100),
-                producto_textual VARCHAR(150),
-                cantidad NUMERIC(10,2),
-                unidad_medida VARCHAR(20),
-                foto_url VARCHAR(255),
+                proveedor VARCHAR(150),
+                chofer VARCHAR(150),
+                dni_chofer VARCHAR(50),
+                placa VARCHAR(50),
+                lugar_partida VARCHAR(150),
+                punto_llegada VARCHAR(150),
+                observaciones TEXT,
+                foto_url TEXT,
                 usuario_vigilancia VARCHAR(50),
-                estado VARCHAR(50) DEFAULT 'PENDIENTE CONFORMIDAD',
+                items_json TEXT,
+                estado VARCHAR(100) DEFAULT 'PENDIENTE CONFORMIDAD',
                 fecha_ingreso TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+
+            -- Sincronización automática de columnas para bases de datos existentes en Render
+            ALTER TABLE ingresos_vigilancia ADD COLUMN IF NOT EXISTS chofer VARCHAR(150);
+            ALTER TABLE ingresos_vigilancia ADD COLUMN IF NOT EXISTS dni_chofer VARCHAR(50);
+            ALTER TABLE ingresos_vigilancia ADD COLUMN IF NOT EXISTS placa VARCHAR(50);
+            ALTER TABLE ingresos_vigilancia ADD COLUMN IF NOT EXISTS observaciones TEXT;
+            ALTER TABLE ingresos_vigilancia ADD COLUMN IF NOT EXISTS items_json TEXT;
 
             CREATE TABLE IF NOT EXISTS salidas_almacen (
                 id SERIAL PRIMARY KEY,

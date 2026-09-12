@@ -85,10 +85,10 @@ const inicializarBaseDeDatos = async () => {
             CREATE TABLE IF NOT EXISTS historial_cierres_produccion (
                 id SERIAL PRIMARY KEY,
                 fecha_cierre DATE NOT NULL,
-                total_cajas INT DEFAULT 0,
+                total_cajas NUMERIC(10,2) DEFAULT 0,
                 total_toneladas NUMERIC(10,2) DEFAULT 0,
-                detalle_lotes TEXT,
                 usuario_cierre VARCHAR(50),
+                detalle_json TEXT,
                 fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 

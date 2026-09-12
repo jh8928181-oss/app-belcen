@@ -333,6 +333,120 @@ app.post('/api/soplado/registrar', async (req, res) => {
     }
 });
 
+// --- FUNCIÓN AUXILIAR PARA RECETAS DE ENVASADO ---
+function obtenerInsumosReceta(producto_tipo, cantidad, tapa_elegida) {
+    const tapaProceso = tapa_elegida || 'Tapa dosif. N° 26 blanco / Dorado';
+    let insumos = [];
+
+    switch (producto_tipo) {
+        case 'b1_200ml':
+            insumos = [
+                { nombre: 'Botella de 200 ml - B-1', cantidad: cantidad * 24 },
+                { nombre: 'Tapa Tapon 26mm (200ml)', cantidad: (cantidad * 24) / 1000 }
+            ];
+            break;
+        case 'b1_500ml':
+            insumos = [
+                { nombre: 'Botella de 500 ml - B-1', cantidad: cantidad * 12 },
+                { nombre: tapaProceso, cantidad: (cantidad * 12) / 1000 }
+            ];
+            break;
+        case 'b1_900ml':
+            insumos = [
+                { nombre: 'Botella de 900 ml - B-1', cantidad: cantidad * 12 },
+                { nombre: tapaProceso, cantidad: (cantidad * 12) / 1000 }
+            ];
+            break;
+        case 'b1_1lt':
+            insumos = [
+                { nombre: 'Botella de 1 Lt - B-1', cantidad: cantidad * 12 },
+                { nombre: tapaProceso, cantidad: (cantidad * 12) / 1000 }
+            ];
+            break;
+        case 'b1_2lt':
+            insumos = [
+                { nombre: 'Botella de 2 Lt - B-1', cantidad: cantidad * 6 },
+                { nombre: 'Tapa color Rojo 2lt', cantidad: (cantidad * 6) / 1000 }
+            ];
+            break;
+        case 'b1_5lt':
+            insumos = [
+                { nombre: 'Galonera B-1 x 5 lt', cantidad: cantidad * 4 },
+                { nombre: 'Tapa color rojo 5lt', cantidad: (cantidad * 4) / 1000 }
+            ];
+            break;
+        case 'donlalo_800ml':
+            insumos = [
+                { nombre: 'Botella de 800ml - Don Lalo', cantidad: cantidad * 12 },
+                { nombre: tapaProceso, cantidad: (cantidad * 12) / 1000 }
+            ];
+            break;
+        case 'donlalo_20lt':
+            insumos = [
+                { nombre: 'Balde Don Lalo x 20lt', cantidad: cantidad * 1 },
+                { nombre: 'TAAAAPA BALDE DON LALO', cantidad: cantidad * 1 }
+            ];
+            break;
+        case 'belini_200ml':
+            insumos = [
+                { nombre: 'Botella Belini x 200 ml', cantidad: cantidad * 24 },
+                { nombre: 'Tapa Tapon 26mm (200ml)', cantidad: (cantidad * 24) / 1000 }
+            ];
+            break;
+        case 'belini_500ml':
+            insumos = [
+                { nombre: 'Botella Belini x 500 ml', cantidad: cantidad * 12 },
+                { nombre: tapaProceso, cantidad: (cantidad * 12) / 1000 }
+            ];
+            break;
+        case 'belini_900ml':
+            insumos = [
+                { nombre: 'Botella Belini x 900 ml', cantidad: cantidad * 12 },
+                { nombre: tapaProceso, cantidad: (cantidad * 12) / 1000 }
+            ];
+            break;
+        case 'belini_1lt':
+            insumos = [
+                { nombre: 'Botella Belini x 1 Lt', cantidad: cantidad * 12 },
+                { nombre: tapaProceso, cantidad: (cantidad * 12) / 1000 }
+            ];
+            break;
+        case 'belini_2lt':
+            insumos = [
+                { nombre: 'Galonera Belini x 2 lt', cantidad: cantidad * 6 },
+                { nombre: 'Tapa color Rojo 2lt', cantidad: (cantidad * 6) / 1000 }
+            ];
+            break;
+        case 'belini_3lt':
+            insumos = [
+                { nombre: 'Botella Belini x 3 lt', cantidad: cantidad * 4 },
+                { nombre: tapaProceso, cantidad: (cantidad * 4) / 1000 },
+                { nombre: 'Asas plasticas color celeste pico 45', cantidad: (cantidad * 4) / 1000 }
+            ];
+            break;
+        case 'belini_5lt':
+            insumos = [
+                { nombre: 'Galonera Belini x 5 lt', cantidad: cantidad * 4 },
+                { nombre: 'Tapa color rojo 5lt', cantidad: (cantidad * 4) / 1000 }
+            ];
+            break;
+        case 'belini_lata18lt':
+            insumos = [
+                { nombre: 'Lata Belini 18lt', cantidad: cantidad * 1 }
+            ];
+            break;
+        case 'belini_balde18lt':
+            insumos = [
+                { nombre: 'Balde Belini x 18 lt', cantidad: cantidad * 1 },
+                { nombre: 'Tapa BALDE BELINI color amarillo', cantidad: cantidad * 1 }
+            ];
+            break;
+        default:
+            throw new Error('Tipo de producto desconocido para la receta de envasado.');
+    }
+    return insumos;
+}
+
 // --- ENVASADO ---
 app.post('/api/envasado/registrar', async (req, res) => {
     const client = await pool.connect();
@@ -340,115 +454,7 @@ app.post('/api/envasado/registrar', async (req, res) => {
         const { producto_tipo, cantidad_producida, numero_lote, tapa_elegida } = req.body; 
         await client.query('BEGIN');
 
-        let insumosADescontar = [];
-        const tapaProceso = tapa_elegida || 'Tapa dosif. N° 26 blanco / Dorado';
-
-        switch (producto_tipo) {
-            case 'b1_200ml':
-                insumosADescontar = [
-                    { nombre: 'Botella de 200 ml - B-1', cantidad: cantidad_producida * 24 },
-                    { nombre: 'Tapa Tapon 26mm (200ml)', cantidad: (cantidad_producida * 24) / 1000 }
-                ];
-                break;
-            case 'b1_500ml':
-                insumosADescontar = [
-                    { nombre: 'Botella de 500 ml - B-1', cantidad: cantidad_producida * 12 },
-                    { nombre: tapaProceso, cantidad: (cantidad_producida * 12) / 1000 }
-                ];
-                break;
-            case 'b1_900ml':
-                insumosADescontar = [
-                    { nombre: 'Botella de 900 ml - B-1', cantidad: cantidad_producida * 12 },
-                    { nombre: tapaProceso, cantidad: (cantidad_producida * 12) / 1000 }
-                ];
-                break;
-            case 'b1_1lt':
-                insumosADescontar = [
-                    { nombre: 'Botella de 1 Lt - B-1', cantidad: cantidad_producida * 12 },
-                    { nombre: tapaProceso, cantidad: (cantidad_producida * 12) / 1000 }
-                ];
-                break;
-            case 'b1_2lt':
-                insumosADescontar = [
-                    { nombre: 'Botella de 2 Lt - B-1', cantidad: cantidad_producida * 6 },
-                    { nombre: 'Tapa color Rojo 2lt', cantidad: (cantidad_producida * 6) / 1000 }
-                ];
-                break;
-            case 'b1_5lt':
-                insumosADescontar = [
-                    { nombre: 'Galonera B-1 x 5 lt', cantidad: cantidad_producida * 4 },
-                    { nombre: 'Tapa color rojo 5lt', cantidad: (cantidad_producida * 4) / 1000 }
-                ];
-                break;
-            case 'donlalo_800ml':
-                insumosADescontar = [
-                    { nombre: 'Botella de 800ml - Don Lalo', cantidad: cantidad_producida * 12 },
-                    { nombre: tapaProceso, cantidad: (cantidad_producida * 12) / 1000 }
-                ];
-                break;
-            case 'donlalo_20lt':
-                insumosADescontar = [
-                    { nombre: 'Balde Don Lalo x 20lt', cantidad: cantidad_producida * 1 },
-                    { nombre: 'TAAAAPA BALDE DON LALO', cantidad: cantidad_producida * 1 }
-                ];
-                break;
-            case 'belini_200ml':
-                insumosADescontar = [
-                    { nombre: 'Botella Belini x 200 ml', cantidad: cantidad_producida * 24 },
-                    { nombre: 'Tapa Tapon 26mm (200ml)', cantidad: (cantidad_producida * 24) / 1000 }
-                ];
-                break;
-            case 'belini_500ml':
-                insumosADescontar = [
-                    { nombre: 'Botella Belini x 500 ml', cantidad: cantidad_producida * 12 },
-                    { nombre: tapaProceso, cantidad: (cantidad_producida * 12) / 1000 }
-                ];
-                break;
-            case 'belini_900ml':
-                insumosADescontar = [
-                    { nombre: 'Botella Belini x 900 ml', cantidad: cantidad_producida * 12 },
-                    { nombre: tapaProceso, cantidad: (cantidad_producida * 12) / 1000 }
-                ];
-                break;
-            case 'belini_1lt':
-                insumosADescontar = [
-                    { nombre: 'Botella Belini x 1 Lt', cantidad: cantidad_producida * 12 },
-                    { nombre: tapaProceso, cantidad: (cantidad_producida * 12) / 1000 }
-                ];
-                break;
-            case 'belini_2lt':
-                insumosADescontar = [
-                    { nombre: 'Galonera Belini x 2 lt', cantidad: cantidad_producida * 6 },
-                    { nombre: 'Tapa color Rojo 2lt', cantidad: (cantidad_producida * 6) / 1000 }
-                ];
-                break;
-            case 'belini_3lt':
-                insumosADescontar = [
-                    { nombre: 'Botella Belini x 3 lt', cantidad: cantidad_producida * 4 },
-                    { nombre: tapaProceso, cantidad: (cantidad_producida * 4) / 1000 },
-                    { nombre: 'Asas plasticas color celeste pico 45', cantidad: (cantidad_producida * 4) / 1000 }
-                ];
-                break;
-            case 'belini_5lt':
-                insumosADescontar = [
-                    { nombre: 'Galonera Belini x 5 lt', cantidad: cantidad_producida * 4 },
-                    { nombre: 'Tapa color rojo 5lt', cantidad: (cantidad_producida * 4) / 1000 }
-                ];
-                break;
-            case 'belini_lata18lt':
-                insumosADescontar = [
-                    { nombre: 'Lata Belini 18lt', cantidad: cantidad_cajas * 1 }
-                ];
-                break;
-            case 'belini_balde18lt':
-                insumosADescontar = [
-                    { nombre: 'Balde Belini x 18 lt', cantidad: cantidad_producida * 1 },
-                    { nombre: 'Tapa BALDE BELINI color amarillo', cantidad: cantidad_producida * 1 }
-                ];
-                break;
-            default:
-                throw new Error('Tipo de producto desconocido para la receta de envasado.');
-        }
+        const insumosADescontar = obtenerInsumosReceta(producto_tipo, cantidad_producida, tapa_elegida);
 
         for (const insumo of insumosADescontar) {
             await client.query(
@@ -466,7 +472,7 @@ app.post('/api/envasado/registrar', async (req, res) => {
         `, [producto_tipo, nombreLegible, cantidad_producida]);
 
         await client.query('COMMIT');
-        res.json({ success: true, mensaje: `Producción del lote ${numero_lote} registrada (+${cantidad_producida} cajas a Producto Terminado).` });
+        res.json({ success: true, mensaje: `Producción del lote ${numero_lote || 'S/N'} registrada (+${cantidad_producida} cajas a Producto Terminado).` });
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Error en registro de envasado:', error);
@@ -658,7 +664,6 @@ app.get('/api/auditoria/registros', async (req, res) => {
 app.post('/api/produccion/reporte', async (req, res) => {
     const { fecha_produccion, presentacion, cantidad_cajas, toneladas, observaciones, usuario } = req.body;
     try {
-        // Mapeo robusto por coincidencia de substrings para todas las presentaciones del select
         let producto_tipo = '';
         const p = presentacion.toLowerCase();
         
@@ -680,7 +685,6 @@ app.post('/api/produccion/reporte', async (req, res) => {
         else if (p.includes('belini lata 18 lt') || p.includes('belini_lata18lt')) producto_tipo = 'belini_lata18lt';
         else if (p.includes('belini balde 18 lt') || p.includes('belini_balde18lt')) producto_tipo = 'belini_balde18lt';
 
-        // Extraer la tapa elegida de las observaciones si viene mapeada con formato "Tapa: [Nombre]"
         let tapa_elegida = null;
         if (observaciones && observaciones.includes('Tapa:')) {
             const partes = observaciones.split('|');
@@ -691,118 +695,11 @@ app.post('/api/produccion/reporte', async (req, res) => {
             }
         }
 
-        // Llamar internamente a la lógica de envasado para descontar insumos y actualizar producto terminado
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
 
-            let insumosADescontar = [];
-            const tapaProceso = tapa_elegida || 'Tapa dosif. N° 26 blanco / Dorado';
-
-            switch (producto_tipo) {
-                case 'b1_200ml':
-                    insumosADescontar = [
-                        { nombre: 'Botella de 200 ml - B-1', cantidad: cantidad_cajas * 24 },
-                        { nombre: 'Tapa Tapon 26mm (200ml)', cantidad: (cantidad_cajas * 24) / 1000 }
-                    ];
-                    break;
-                case 'b1_500ml':
-                    insumosADescontar = [
-                        { nombre: 'Botella de 500 ml - B-1', cantidad: cantidad_cajas * 12 },
-                        { nombre: tapaProceso, cantidad: (cantidad_cajas * 12) / 1000 }
-                    ];
-                    break;
-                case 'b1_900ml':
-                    insumosADescontar = [
-                        { nombre: 'Botella de 900 ml - B-1', cantidad: cantidad_cajas * 12 },
-                        { nombre: tapaProceso, cantidad: (cantidad_cajas * 12) / 1000 }
-                    ];
-                    break;
-                case 'b1_1lt':
-                    insumosADescontar = [
-                        { nombre: 'Botella de 1 Lt - B-1', cantidad: cantidad_cajas * 12 },
-                        { nombre: tapaProceso, cantidad: (cantidad_cajas * 12) / 1000 }
-                    ];
-                    break;
-                case 'b1_2lt':
-                    insumosADescontar = [
-                        { nombre: 'Botella de 2 Lt - B-1', cantidad: cantidad_cajas * 6 },
-                        { nombre: 'Tapa color Rojo 2lt', cantidad: (cantidad_cajas * 6) / 1000 }
-                    ];
-                    break;
-                case 'b1_5lt':
-                    insumosADescontar = [
-                        { nombre: 'Galonera B-1 x 5 lt', cantidad: cantidad_cajas * 4 },
-                        { nombre: 'Tapa color rojo 5lt', cantidad: (cantidad_cajas * 4) / 1000 }
-                    ];
-                    break;
-                case 'donlalo_800ml':
-                    insumosADescontar = [
-                        { nombre: 'Botella de 800ml - Don Lalo', cantidad: cantidad_cajas * 12 },
-                        { nombre: tapaProceso, cantidad: (cantidad_cajas * 12) / 1000 }
-                    ];
-                    break;
-                case 'donlalo_20lt':
-                    insumosADescontar = [
-                        { nombre: 'Balde Don Lalo x 20lt', cantidad: cantidad_cajas * 1 },
-                        { nombre: 'TAAAAPA BALDE DON LALO', cantidad: cantidad_cajas * 1 }
-                    ];
-                    break;
-                case 'belini_200ml':
-                    insumosADescontar = [
-                        { nombre: 'Botella Belini x 200 ml', cantidad: cantidad_cajas * 24 },
-                        { nombre: 'Tapa Tapon 26mm (200ml)', cantidad: (cantidad_cajas * 24) / 1000 }
-                    ];
-                    break;
-                case 'belini_500ml':
-                    insumosADescontar = [
-                        { nombre: 'Botella Belini x 500 ml', cantidad: cantidad_cajas * 12 },
-                        { nombre: tapaProceso, cantidad: (cantidad_cajas * 12) / 1000 }
-                    ];
-                    break;
-                case 'belini_900ml':
-                    insumosADescontar = [
-                        { nombre: 'Botella Belini x 900 ml', cantidad: cantidad_cajas * 12 },
-                        { nombre: tapaProceso, cantidad: (cantidad_cajas * 12) / 1000 }
-                    ];
-                    break;
-                case 'belini_1lt':
-                    insumosADescontar = [
-                        { nombre: 'Botella Belini x 1 Lt', cantidad: cantidad_cajas * 12 },
-                        { nombre: tapaProceso, cantidad: (cantidad_cajas * 12) / 1000 }
-                    ];
-                    break;
-                case 'belini_2lt':
-                    insumosADescontar = [
-                        { nombre: 'Galonera Belini x 2 lt', cantidad: cantidad_cajas * 6 },
-                        { nombre: 'Tapa color Rojo 2lt', cantidad: (cantidad_cajas * 6) / 1000 }
-                    ];
-                    break;
-                case 'belini_3lt':
-                    insumosADescontar = [
-                        { nombre: 'Botella Belini x 3 lt', cantidad: cantidad_cajas * 4 },
-                        { nombre: tapaProceso, cantidad: (cantidad_cajas * 4) / 1000 },
-                        { nombre: 'Asas plasticas color celeste pico 45', cantidad: (cantidad_cajas * 4) / 1000 }
-                    ];
-                    break;
-                case 'belini_5lt':
-                    insumosADescontar = [
-                        { nombre: 'Galonera Belini x 5 lt', cantidad: cantidad_cajas * 4 },
-                        { nombre: 'Tapa color rojo 5lt', cantidad: (cantidad_cajas * 4) / 1000 }
-                    ];
-                    break;
-                case 'belini_lata18lt':
-                    insumosADescontar = [
-                        { nombre: 'Lata Belini 18lt', cantidad: cantidad_cajas * 1 }
-                    ];
-                    break;
-                case 'belini_balde18lt':
-                    insumosADescontar = [
-                        { nombre: 'Balde Belini x 18 lt', cantidad: cantidad_cajas * 1 },
-                        { nombre: 'Tapa BALDE BELINI color amarillo', cantidad: cantidad_cajas * 1 }
-                    ];
-                    break;
-            }
+            const insumosADescontar = obtenerInsumosReceta(producto_tipo, cantidad_cajas, tapa_elegida);
 
             for (const insumo of insumosADescontar) {
                 await client.query(

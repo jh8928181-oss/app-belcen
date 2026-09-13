@@ -21,7 +21,6 @@
     </style>
 </head>
 <body>
-
     <div class="card">
         <h3>REGISTRO DE INGRESO - VIGILANCIA</h3>
         
@@ -69,7 +68,6 @@
                 </div>
             </div>
 
-            <!-- SECCIÓN DE MÚLTIPLES PRODUCTOS / INSUMOS (GUÍA VS FÍSICO) -->
             <div style="margin-top: 20px; background: #fff3cd; padding: 15px; border-radius: 6px; border: 1px solid #ffeeba;">
                 <h4 style="margin-top: 0; color: #856404;">📦 Datos de la Carga e Insumos</h4>
                 
@@ -112,19 +110,29 @@
         </form>
 
         <div style="text-align: center; margin-top: 25px; padding-top: 15px; border-top: 1px solid #ddd;">
-            <a href="dashboard.html" class="logout">Volver al Dashboard General</a>
+            <a href="dashboard.html" class="logout" id="linkDashboard">Volver al Dashboard General</a>
             <br>
             <button onclick="cerrarSesion()" class="btn-logout-custom">🔒 Cerrar Sesión (Salir)</button>
         </div>
     </div>
 
     <script>
+        // Control estricto de roles
+        const rolUsuario = localStorage.getItem('rol_actual');
+        if (!rolUsuario || (rolUsuario !== 'vigilancia' && rolUsuario !== 'supervisor' && rolUsuario !== 'produccion')) {
+            alert('❌ Acceso no autorizado.');
+            window.location.href = 'index.html';
+        }
+        if (rolUsuario === 'vigilancia') {
+            document.getElementById('linkDashboard').style.display = 'none'; // Oculta salida al dashboard si es exclusivo
+        }
+
         let itemsVigilanciaArray = [];
 
         function cerrarSesion() {
             if (confirm('¿Estás seguro de que deseas cerrar sesión?')) {
                 localStorage.removeItem('usuario_actual');
-                localStorage.removeItem('rol_usuario');
+                localStorage.removeItem('rol_actual');
                 window.location.href = 'index.html';
             }
         }

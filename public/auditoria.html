@@ -37,17 +37,26 @@
         </table>
 
         <div style="text-align: center; margin-top: 25px; padding-top: 15px; border-top: 1px solid #ddd;">
-            <a href="dashboard.html" style="display: inline-block; margin-bottom: 10px; color: #007bff; text-decoration: none; font-weight: bold;">Volver al Dashboard General</a>
+            <a href="dashboard.html" id="linkDashboard" style="display: inline-block; margin-bottom: 10px; color: #007bff; text-decoration: none; font-weight: bold;">Volver al Dashboard General</a>
             <br>
             <button class="logout" onclick="cerrarSesion()">🔒 Cerrar Sesión (Salir)</button>
         </div>
     </div>
 
     <script>
+        const rolUsuario = localStorage.getItem('rol_actual');
+        if (!rolUsuario || (rolUsuario !== 'auditoria' && rolUsuario !== 'supervisor' && rolUsuario !== 'produccion')) {
+            alert('❌ Acceso no autorizado.');
+            window.location.href = 'index.html';
+        }
+        if (rolUsuario === 'auditoria') {
+            document.getElementById('linkDashboard').style.display = 'none';
+        }
+
         function cerrarSesion() {
             if (confirm('¿Estás seguro de que deseas cerrar sesión?')) {
                 localStorage.removeItem('usuario_actual');
-                localStorage.removeItem('rol_usuario');
+                localStorage.removeItem('rol_actual');
                 window.location.href = 'index.html';
             }
         }
@@ -66,8 +75,6 @@
 
                 registros.forEach(item => {
                     let fotoHtml = item.foto_url ? `<a href="${item.foto_url}" target="_blank">Ver Foto</a>` : 'Sin Foto';
-                    
-                    // Soporte para múltiples productos en JSON o texto antiguo
                     let productosHtml = '';
                     try {
                         const parsed = JSON.parse(item.items_json || '[]');
@@ -85,7 +92,7 @@
                         productosHtml = `${item.producto_textual || 'N/D'}<br><b>Cant:</b> ${item.cantidad || 0}`;
                     }
 
-                    const fechaFormateada = item.fecha_registro ? item.fecha_registro.replace('T', ' ').substring(0, 19) : 'N/D';
+                    const fechaFormateada = item.fecha_ingreso ? item.fecha_ingreso.replace('T', ' ').substring(0, 19) : 'N/D';
 
                     const tr = document.createElement('tr');
                     tr.innerHTML = `

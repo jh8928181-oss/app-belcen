@@ -13,7 +13,7 @@
         th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
         th { background-color: #007bff; color: white; }
         .text-center { text-align: center; }
-        .logout { display: inline-block; margin-bottom: 10px; color: #dc3545; text-decoration: none; font-weight: bold; }
+        .logout { display: inline-block; margin-bottom: 10px; color: #dc3545; text-decoration: none; font-weight: bold; cursor: pointer; }
         .btn-accion { padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
         .btn-accion:hover { background: #218838; }
         .btn-ajustar { background: #ffc107; color: #000; }
@@ -236,7 +236,7 @@
         </div>
 
         <div style="text-align: center; margin-top: 25px; padding-top: 15px; border-top: 1px solid #ddd;">
-            <a href="dashboard.html" class="logout">Volver al Dashboard General</a>
+            <a href="dashboard.html" class="logout" id="linkDashboard">Volver al Dashboard General</a>
             <br>
             <button onclick="cerrarSesion()" style="background: #dc3545; color: white; border: none; padding: 10px 20px; font-weight: bold; border-radius: 4px; cursor: pointer; font-size: 14px;">
                 🔒 Cerrar Sesión (Salir)
@@ -304,6 +304,16 @@
     </div>
 
     <script>
+        // 🔒 Control estricto de roles (Seguridad de Planta)
+        const rolUsuario = localStorage.getItem('rol_actual') || localStorage.getItem('rol_usuario');
+        if (!rolUsuario || (rolUsuario !== 'almacen' && rolUsuario !== 'supervisor' && rolUsuario !== 'produccion')) {
+            alert('❌ Acceso no autorizado para tu rol.');
+            window.location.href = 'index.html';
+        }
+        if (rolUsuario === 'almacen') {
+            document.getElementById('linkDashboard').style.display = 'none'; // Aislar rol operativo
+        }
+
         let inventarioGlobal = [];
         let productoTerminadoGlobal = [];
         let itemsDespachoArray = [];
@@ -315,6 +325,7 @@
         function cerrarSesion() {
             if (confirm('¿Estás seguro de que deseas cerrar sesión?')) {
                 localStorage.removeItem('usuario_actual');
+                localStorage.removeItem('rol_actual');
                 localStorage.removeItem('rol_usuario');
                 window.location.href = 'index.html';
             }

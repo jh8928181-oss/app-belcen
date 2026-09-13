@@ -40,7 +40,6 @@
     <div class="container">
         <h2>Dashboard General - Sistema Belcen</h2>
 
-        <!-- ACCESOS RÁPIDOS A MÓDULOS -->
         <div style="margin-bottom: 20px;">
             <p style="font-weight: bold; color: #555; margin-bottom: 10px;">📌 Accesos Directos a Módulos Operativos:</p>
             <div class="nav-modules">
@@ -74,17 +73,33 @@
             </tbody>
         </table>
 
-        <!-- BOTÓN CERRAR SESIÓN -->
         <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
             <button class="logout" onclick="cerrarSesion()">🔒 Cerrar Sesión (Salir)</button>
         </div>
     </div>
 
     <script>
+        // Control estricto de roles para el Dashboard General
+        function verificarAccesoDashboard() {
+            const rol = localStorage.getItem('rol_actual');
+            const usuario = localStorage.getItem('usuario_actual');
+
+            if (!usuario || !rol) {
+                window.location.href = 'index.html';
+                return;
+            }
+
+            // Operadores específicos son redirigidos directo a su módulo y bloqueados del dashboard general
+            const rolesOperativos = ['vigilancia', 'almacen', 'soplado', 'envasado', 'auditoria'];
+            if (rolesOperativos.includes(rol)) {
+                window.location.href = rol + '.html';
+            }
+        }
+
         function cerrarSesion() {
             if (confirm('¿Estás seguro de que deseas cerrar sesión?')) {
                 localStorage.removeItem('usuario_actual');
-                localStorage.removeItem('rol_usuario');
+                localStorage.removeItem('rol_actual');
                 window.location.href = 'index.html';
             }
         }
@@ -123,6 +138,7 @@
             }
         }
 
+        verificarAccesoDashboard();
         cargarInventario();
     </script>
 </body>

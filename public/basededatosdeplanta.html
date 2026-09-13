@@ -22,14 +22,12 @@
     </style>
 </head>
 <body>
-
     <div class="card" style="border-top: 5px solid #007bff;">
         <h2>📊 BASE DE DATOS Y CONTROL GENERAL DE PLANTA</h2>
         <p>Vista consolidada en tiempo real de inventarios, productos terminados y simulador inteligente de viabilidad de insumos.</p>
         <a href="dashboard.html" class="logout">⬅ Volver al Dashboard General</a>
     </div>
 
-    <!-- SIMULADOR INTELIGENTE DE VIABILIDAD DE PRODUCCIÓN -->
     <div class="card" style="border-top: 5px solid #17a2b8;">
         <h3 style="color: #17a2b8; border-bottom: 2px solid #17a2b8;">🧮 SIMULADOR DE VIABILIDAD DE INSUMOS</h3>
         <div class="simulador-box">
@@ -70,7 +68,6 @@
         </div>
     </div>
 
-    <!-- STOCK DE PRODUCTOS TERMINADOS -->
     <div class="card" style="border-top: 5px solid #28a745;">
         <h3 style="color: #28a745; border-bottom: 2px solid #28a745;">📦 STOCK DE PRODUCTO TERMINADO (CAJAS LISTAS)</h3>
         <table>
@@ -87,7 +84,6 @@
         </table>
     </div>
 
-    <!-- INVENTARIO GENERAL -->
     <div class="card" style="border-top: 5px solid #6c757d;">
         <h3 style="color: #495057; border-bottom: 2px solid #495057;">🛠️ INVENTARIO GENERAL DE INSUMOS Y MATERIA PRIMA</h3>
         <table>
@@ -107,6 +103,12 @@
     </div>
 
     <script>
+        const rolUsuario = localStorage.getItem('rol_actual');
+        if (!rolUsuario || rolUsuario === 'vigilancia') {
+            alert('❌ Acceso no autorizado para este módulo.');
+            window.location.href = 'index.html';
+        }
+
         let inventarioGlobal = [];
         let ptGlobal = [];
 
@@ -174,7 +176,6 @@
             let cantExtra = 0;
             let cajaVaciaBusqueda = '';
 
-            // Mapeo exacto con los nombres de cajas registrados en la base de datos
             switch (tipo) {
                 case 'b1_200ml':
                     envaseRequerido = 'Botella de 200 ml - B-1';

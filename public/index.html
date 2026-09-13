@@ -54,7 +54,6 @@
                     localStorage.setItem('usuario_actual', data.usuario);
                     localStorage.setItem('rol_actual', data.rol);
 
-                    // Redirección según el rol del usuario
                     switch (data.rol) {
                         case 'auditoria':
                             window.location.href = 'auditoria.html';

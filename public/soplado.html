@@ -18,7 +18,6 @@
     </style>
 </head>
 <body>
-
     <div class="card">
         <h3>REPORTE DE TURNO - SOPLADO</h3>
         
@@ -75,17 +74,26 @@
         </form>
 
         <div style="text-align: center; margin-top: 25px; padding-top: 15px; border-top: 1px solid #ddd;">
-            <a href="dashboard.html" class="logout">Volver al Dashboard General</a>
+            <a href="dashboard.html" class="logout" id="linkDashboard">Volver al Dashboard General</a>
             <br>
             <button onclick="cerrarSesion()" class="btn-logout-custom">🔒 Cerrar Sesión (Salir)</button>
         </div>
     </div>
 
     <script>
+        const rolUsuario = localStorage.getItem('rol_actual');
+        if (!rolUsuario || (rolUsuario !== 'soplado' && rolUsuario !== 'supervisor' && rolUsuario !== 'produccion')) {
+            alert('❌ Acceso no autorizado.');
+            window.location.href = 'index.html';
+        }
+        if (rolUsuario === 'soplado') {
+            document.getElementById('linkDashboard').style.display = 'none';
+        }
+
         function cerrarSesion() {
             if (confirm('¿Estás seguro de que deseas cerrar sesión?')) {
                 localStorage.removeItem('usuario_actual');
-                localStorage.removeItem('rol_usuario');
+                localStorage.removeItem('rol_actual');
                 window.location.href = 'index.html';
             }
         }

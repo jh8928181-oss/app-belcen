@@ -107,10 +107,11 @@
                     <th class="text-center">UM</th>
                     <th class="text-center">TN</th>
                     <th>OBS</th>
+                    <th class="text-center">ACCIONES</th>
                 </tr>
             </thead>
             <tbody id="tablaProduccionActiva">
-                <tr><td colspan="6" class="text-center">Cargando producción...</td></tr>
+                <tr><td colspan="7" class="text-center">Cargando producción...</td></tr>
             </tbody>
         </table>
         
@@ -150,7 +151,7 @@
             alert('❌ Acceso no autorizado.');
             window.location.href = 'index.html';
         }
-        if (rolUsuario === 'envasado') {
+        if (rolUsuario !== 'supervisor' && rolUsuario !== 'produccion') {
             document.getElementById('linkDashboard').style.display = 'none';
         }
 
@@ -190,7 +191,7 @@
                 const tbody = document.getElementById('tablaProduccionActiva');
                 
                 if (reportesGlobal.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="6" class="text-center">No hay registros activos para el día en curso.</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="7" class="text-center">No hay registros activos para el día en curso.</td></tr>`;
                     document.getElementById('totalTmActivo').textContent = '0.00';
                     return;
                 }
@@ -200,6 +201,7 @@
                 reportesGlobal.forEach(row => {
                     const fechaStr = row.fecha_produccion ? row.fecha_produccion.split('T')[0] : '';
                     sumaTn += parseFloat(row.toneladas || 0);
+                    const presentacionSegura = String(row.presentacion || '').replace(/'/g, "\\'");
                     tbody.innerHTML += `
                         <tr>
                             <td>${fechaStr}</td>
@@ -208,6 +210,7 @@
                             <td class="text-center">${row.unidad_medida || 'CAJAS'}</td>
                             <td class="text-center">${row.toneladas}</td>
                             <td>${row.observaciones || '-'}</td>
+                            <td class="text-center"><button onclick="eliminarReporte(${row.id}, '${presentacionSegura}')" style="background:#dc3545; color:white; border:none; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:12px;">🗑️ Eliminar</button></td>
                         </tr>
                     `;
                 });
@@ -343,6 +346,27 @@
                 alert('Error de conexión con el servidor.');
             }
         });
+
+        async function eliminarReporte(id, presentacion) {
+            if (!confirm(`¿Eliminar el reporte de "${presentacion}"?\n\nSe devolverán los insumos al inventario y se quitarán las cajas de producto terminado. Podrás volver a reportarlo.`)) return;
+            try {
+                const res = await fetch('/api/produccion/eliminar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reporte_id: id })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    alert('✅ ' + data.mensaje);
+                    cargarProduccionActiva();
+                } else {
+                    alert('❌ ' + (data.mensaje || 'Error al eliminar el reporte.'));
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Error de conexión con el servidor.');
+            }
+        }
 
         async function realizarCierreDia() {
             const fechaCierre = document.getElementById('fecha_produccion').value;

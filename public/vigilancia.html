@@ -123,8 +123,8 @@
             alert('❌ Acceso no autorizado.');
             window.location.href = 'index.html';
         }
-        if (rolUsuario === 'vigilancia') {
-            document.getElementById('linkDashboard').style.display = 'none'; // Oculta salida al dashboard si es exclusivo
+        if (rolUsuario !== 'supervisor' && rolUsuario !== 'produccion') {
+            document.getElementById('linkDashboard').style.display = 'none'; // Solo roles con permiso de dashboard
         }
 
         let itemsVigilanciaArray = [];

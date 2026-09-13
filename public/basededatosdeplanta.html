@@ -25,7 +25,7 @@
     <div class="card" style="border-top: 5px solid #007bff;">
         <h2>📊 BASE DE DATOS Y CONTROL GENERAL DE PLANTA</h2>
         <p>Vista consolidada en tiempo real de inventarios, productos terminados y simulador inteligente de viabilidad de insumos.</p>
-        <a href="dashboard.html" class="logout">⬅ Volver al Dashboard General</a>
+        <a href="dashboard.html" class="logout" id="linkDashboard">⬅ Volver al Dashboard General</a>
     </div>
 
     <div class="card" style="border-top: 5px solid #17a2b8;">
@@ -34,7 +34,7 @@
             <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 15px;">
                 <div>
                     <label><b>Seleccionar Presentación a Simular:</b></label>
-                    <select id="sim_producto">
+                    <select id="sim_producto" onchange="verificarTapaSimulador()">
                         <option value="b1_200ml">Aceite de Soya B-1 200 ml (Cajas x 24 - Botella)</option>
                         <option value="b1_500ml">Aceite de Soya B-1 500 ml (Cajas x 12 - Botella)</option>
                         <option value="b1_900ml">Aceite de Soya B-1 900 ml (Cajas x 12 - Botella)</option>
@@ -63,6 +63,20 @@
                     <button onclick="simularProduccion()" class="btn-accion" style="margin-top: 5px;">🔍 Verificar Stock</button>
                 </div>
             </div>
+            <div id="grupoTapaSimulador" style="display: none; margin-top: 15px; padding: 12px; background: #e9ecef; border-radius: 4px; border: 1px solid #ced4da;">
+                <label style="color: #495057;"><b>⚙️ Tapa / Color que utilizará el operario:</b></label>
+                <select id="sim_tapa" style="width: 100%; margin-top: 5px;">
+                    <option value="Tapa dosif. N° 26 blanco / Dorado">Tapa dosif. N° 26 blanco / Dorado</option>
+                    <option value="Tapa Dosif. N° 26 blanco / Celeste">Tapa Dosif. N° 26 blanco / Celeste</option>
+                    <option value="Tapa dosif. N° 28 blanco / Dorado">Tapa dosif. N° 28 blanco / Dorado</option>
+                    <option value="Tapa Dosf. N° 28 / Celeste">Tapa Dosf. N° 28 / Celeste</option>
+                    <option value="Tapa color Celeste 3lt">Tapa color Celeste 3lt</option>
+                    <option value="Tapa color Rojo 2lt">Tapa color Rojo 2lt</option>
+                    <option value="Tapa color rojo 5lt">Tapa color rojo 5lt</option>
+                    <option value="Tapa Tapon 26mm (200ml)">Tapa Tapón 26mm (200ml)</option>
+                    <option value="Tapones Verdes">Tapones Verdes</option>
+                </select>
+            </div>
             <div id="resultadoSimulacion" style="margin-top: 15px; padding: 12px; background: #fff; border-radius: 4px; border: 1px solid #ddd; display: none;">
             </div>
         </div>
@@ -80,6 +94,39 @@
             </thead>
             <tbody id="tablaProductoTerminado">
                 <tr><td colspan="3" class="text-center">Cargando producto terminado...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card" style="border-top: 5px solid #ffc107;">
+        <h3 style="color: #b8860b; border-bottom: 2px solid #ffc107;">📋 INFORME DE PRODUCCIÓN</h3>
+        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 15px;">
+            <div>
+                <label><b>Fecha de Producción:</b></label>
+                <input type="date" id="informe_fecha">
+            </div>
+            <div>
+                <label>&nbsp;</label>
+                <button onclick="cargarInformes()" class="btn-accion" style="margin-top: 5px;">📋 Generar Informe</button>
+            </div>
+            <div>
+                <label>&nbsp;</label>
+                <button onclick="verTodosInformes()" class="btn-accion" style="margin-top: 5px; background: #6c757d;">Ver Todo</button>
+            </div>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>FECHA</th>
+                    <th>PRODUCTO</th>
+                    <th class="text-center">CANTIDAD (CAJAS)</th>
+                    <th class="text-center">TONELADAS</th>
+                    <th>QUIÉN REPORTÓ</th>
+                    <th>INSUMOS DESCONTADOS</th>
+                </tr>
+            </thead>
+            <tbody id="tablaInformes">
+                <tr><td colspan="6" class="text-center">Cargando informes...</td></tr>
             </tbody>
         </table>
     </div>
@@ -107,6 +154,9 @@
         if (!rolUsuario || rolUsuario === 'vigilancia') {
             alert('❌ Acceso no autorizado para este módulo.');
             window.location.href = 'index.html';
+        }
+        if (rolUsuario !== 'supervisor' && rolUsuario !== 'produccion') {
+            document.getElementById('linkDashboard').style.display = 'none'; // Solo roles con permiso de dashboard
         }
 
         let inventarioGlobal = [];
@@ -150,6 +200,7 @@
             } catch (err) {
                 console.error("Error al cargar base de datos de planta:", err);
             }
+            cargarInformes();
         }
 
         function buscarArticuloEnInventario(nombreBuscado) {
@@ -300,6 +351,10 @@
             }
 
             const invEnvase = buscarArticuloEnInventario(envaseRequerido);
+            const productosConSelector = ['b1_500ml', 'b1_900ml', 'b1_1lt', 'donlalo_800ml', 'belini_500ml', 'belini_900ml', 'belini_1lt', 'belini_3lt'];
+            if (productosConSelector.includes(tipo)) {
+                tapaRequerida = document.getElementById('sim_tapa').value;
+            }
             const invTapa = requiereTapa ? buscarArticuloEnInventario(tapaRequerida) : null;
             const invExtra = extraRequerido ? buscarArticuloEnInventario(extraRequerido) : null;
             const invCaja = cajaVaciaBusqueda ? buscarArticuloEnInventario(cajaVaciaBusqueda) : null;
@@ -340,7 +395,74 @@
             resDiv.innerHTML = html;
         }
 
-        cargarDatosPlanta();
+        function verificarTapaSimulador() {
+            const tipo = document.getElementById('sim_producto').value;
+            const productosConSelector = ['b1_500ml', 'b1_900ml', 'b1_1lt', 'donlalo_800ml', 'belini_500ml', 'belini_900ml', 'belini_1lt', 'belini_3lt'];
+            document.getElementById('grupoTapaSimulador').style.display = productosConSelector.includes(tipo) ? 'block' : 'none';
+        }
+
+        async function cargarInformes() {
+            const fechaEl = document.getElementById('informe_fecha');
+            const fecha = fechaEl.value;
+            try {
+                const url = fecha ? `/api/produccion/informes?fecha=${fecha}` : '/api/produccion/informes';
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('Error en /api/produccion/informes');
+                const informes = await res.json();
+                const tbody = document.getElementById('tablaInformes');
+                tbody.innerHTML = '';
+                if (!informes.length) {
+                    tbody.innerHTML = `<tr><td colspan="6" class="text-center">No hay reportes para esta ${fecha ? 'fecha (' + fecha + ')' : 'fecha.'}.</td></tr>`;
+                    return;
+                }
+                informes.forEach(inf => {
+                    const cant = parseInt(inf.cantidad_cajas, 10) || 0;
+                    const ton = parseFloat(inf.toneladas || 0);
+                    const desglose = inf.desglose || [];
+                    const insumosHtml = desglose.length
+                        ? `<ul style="margin:0; padding-left:18px;">` + desglose.map(d => {
+                              const val = Number(d.cantidad);
+                              const mostrar = d.unidad_medida === 'MILL' ? val.toFixed(2) : Number.isInteger(val) ? val : val.toFixed(2);
+                              return `<li>${d.nombre}: <b>${mostrar} ${d.unidad_medida || ''}</b></li>`;
+                          }).join('') + `</ul>`
+                        : `<span style="color:#adb5bd;">Sin desglose</span>`;
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${inf.fecha_produccion}</td>
+                            <td><b>${inf.presentacion}</b></td>
+                            <td class="text-center">${cant}</td>
+                            <td class="text-center">${ton.toFixed(2)}</td>
+                            <td>${inf.usuario_registro || '-'}</td>
+                            <td>${insumosHtml}</td>
+                        </tr>
+                    `;
+                });
+            } catch (err) {
+                console.error(err);
+                document.getElementById('tablaInformes').innerHTML = `<tr><td colspan="6" class="text-center">Error cargando informes.</td></tr>`;
+            }
+        }
+
+        function verTodosInformes() {
+            document.getElementById('informe_fecha').value = '';
+            cargarInformes();
+        }
+
+        async function refrescarDatosPlanta() {
+            await cargarDatosPlanta();
+            const resDiv = document.getElementById('resultadoSimulacion');
+            if (resDiv.style.display !== 'none') {
+                simularProduccion();
+            }
+        }
+
+document.getElementById('informe_fecha').valueAsDate = new Date();
+
+        refrescarDatosPlanta();
+        setInterval(refrescarDatosPlanta, 15000);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') refrescarDatosPlanta();
+        });
     </script>
 </body>
 </html>

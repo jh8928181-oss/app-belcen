@@ -82,6 +82,8 @@ const inicializarBaseDeDatos = async () => {
                 fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
+            ALTER TABLE reportes_produccion ADD COLUMN IF NOT EXISTS desglose_insumos TEXT;
+
             CREATE TABLE IF NOT EXISTS historial_cierres_produccion (
                 id SERIAL PRIMARY KEY,
                 fecha_cierre DATE NOT NULL,

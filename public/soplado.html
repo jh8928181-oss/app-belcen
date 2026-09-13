@@ -86,7 +86,7 @@
             alert('❌ Acceso no autorizado.');
             window.location.href = 'index.html';
         }
-        if (rolUsuario === 'soplado') {
+        if (rolUsuario !== 'supervisor' && rolUsuario !== 'produccion') {
             document.getElementById('linkDashboard').style.display = 'none';
         }
 

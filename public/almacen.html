@@ -310,7 +310,7 @@
             alert('❌ Acceso no autorizado para tu rol.');
             window.location.href = 'index.html';
         }
-        if (rolUsuario === 'almacen') {
+        if (rolUsuario !== 'supervisor' && rolUsuario !== 'produccion') {
             document.getElementById('linkDashboard').style.display = 'none'; // Aislar rol operativo
         }
 
@@ -494,16 +494,19 @@
 
             try {
                 for (const item of itemsPTModalArray) {
-                    await fetch('/api/envasado/registrar', {
+                    const res = await fetch('/api/producto-terminado/agregar-manual', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             producto_tipo: item.producto_tipo,
-                            cantidad_producida: item.cantidad,
-                            numero_lote: 'MANUAL-' + Date.now(),
-                            tapa_elegida: 'Tapa dosif. N° 26 blanco / Dorado'
+                            cantidad: item.cantidad
                         })
                     });
+                    const data = await res.json();
+                    if (!res.ok || !data.success) {
+                        alert('❌ ' + (data.mensaje || 'Error al registrar el stock manual.'));
+                        return;
+                    }
                 }
 
                 alert('✅ Stock de producto terminado actualizado correctamente.');
@@ -607,12 +610,20 @@
                             nombre: i.nombre,
                             cantidad: i.cantidad,
                             producto_key: i.producto_key,
-                            articulo_id: null
+                            articulo_id: null,
+                            cantidad_auto: i.cantidad_auto
                         }));
                         renderTablaItems();
-                        alert('📄 Guía leída con éxito: Cabecera, transporte e ítems cargados automáticamente.');
+                        if (data.datos.advertencias && data.datos.advertencias.length > 0) {
+                            alert('📄 Guía leída. ADVERTENCIA:\n\n' + data.datos.advertencias.join('\n') + '\n\nRevisa las cantidades ⚠️ antes de registrar.');
+                        } else {
+                            alert('📄 Guía leída con éxito: Cabecera, transporte e ítems cargados automáticamente.');
+                        }
                     } else {
-                        alert('📄 Cabecera leída, pero no se reconocieron los ítems automáticamente.');
+                        let mensaje = data.datos.advertencias && data.datos.advertencias.length > 0
+                            ? '📄 Cabecera leída, pero no se pudieron cargar ítems:\n\n' + data.datos.advertencias.join('\n')
+                            : '📄 Cabecera leída, pero no se reconocieron los ítems automáticamente.';
+                        alert(mensaje);
                     }
                 }
             } catch(e) { console.error(e); alert('Error al leer el PDF.'); }
@@ -648,7 +659,8 @@
             const tbody = document.getElementById('tablaItemsDespacho');
             tbody.innerHTML = itemsDespachoArray.length === 0 ? `<tr><td colspan="3" class="text-center" style="color: #6c757d;">No hay ítems en la lista.</td></tr>` : '';
             itemsDespachoArray.forEach((item, idx) => {
-                tbody.innerHTML += `<tr><td><b>${item.nombre}</b></td><td class="text-center" style="color: #dc3545; font-weight: bold;">${item.cantidad}</td><td class="text-center"><button type="button" onclick="quitarItem(${idx})" style="background: #dc3545; color: white; border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer;">X</button></td></tr>`;
+                const marcaRevisar = item.cantidad_auto === false ? ' <span style="color:#e65100; font-weight:bold;">⚠️ revisar</span>' : '';
+                tbody.innerHTML += `<tr><td><b>${item.nombre}</b>${marcaRevisar}</td><td class="text-center" style="color: #dc3545; font-weight: bold;">${item.cantidad}</td><td class="text-center"><button type="button" onclick="quitarItem(${idx})" style="background: #dc3545; color: white; border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer;">X</button></td></tr>`;
             });
         }
 

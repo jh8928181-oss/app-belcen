@@ -988,6 +988,7 @@ app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, re
     try {
         const { tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, fecha_salida, usuario, items_json } = req.body;
         const items = JSON.parse(items_json || '[]');
+        const despachoId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
         if (items.length === 0) {
             return res.status(400).json({ success: false, mensaje: 'Debe incluir al menos un producto en el despacho.' });
@@ -1017,13 +1018,13 @@ app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, re
 
             await client.query(`
                 INSERT INTO salidas_almacen 
-                (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, articulo_id, cantidad_salida, usuario_registro, estado_guia, guia_url)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);
+                (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, articulo_id, cantidad_salida, usuario_registro, estado_guia, guia_url, despacho_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15);
             `, [
                 fecha_salida || new Date(), tipo_registro, guiaFinal, 
                 empresa || 'N/A', ruc || 'N/A', destino || 'N/A', 
                 chofer_licencia || 'N/A', placa || 'N/A', punto_partida || 'Almacén Principal', 
-                targetArticuloId, item.cantidad, usuario || 'almacen_user', estadoGuia, guia_url
+                targetArticuloId, item.cantidad, usuario || 'almacen_user', estadoGuia, guia_url, despachoId
             ]);
         }
 
@@ -1046,6 +1047,48 @@ app.post('/api/salidas/regularizar', async (req, res) => {
     } catch (err) {
         console.error("Error al regularizar guía:", err);
         res.status(500).json({ success: false, mensaje: 'Error al regularizar guía: ' + err.message });
+    }
+});
+
+app.post('/api/salidas/eliminar', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { despacho_id, salida_id } = req.body;
+        let filas = [];
+        if (despacho_id) {
+            const r = await client.query('SELECT * FROM salidas_almacen WHERE despacho_id = $1', [despacho_id]);
+            filas = r.rows;
+        }
+        if (filas.length === 0 && salida_id) {
+            const r = await client.query('SELECT * FROM salidas_almacen WHERE id = $1', [salida_id]);
+            filas = r.rows;
+        }
+        if (filas.length === 0) {
+            return res.status(404).json({ success: false, mensaje: 'No se encontró el despacho a eliminar.' });
+        }
+
+        await client.query('BEGIN');
+        let borradas = 0;
+        for (const fila of filas) {
+            const cantidad = parseFloat(fila.cantidad_salida) || 0;
+            if (fila.producto_key) {
+                await client.query(`UPDATE producto_terminado SET stock_cajas = stock_cajas + $1 WHERE producto_key = $2`, [cantidad, fila.producto_key]);
+            } else if (fila.articulo_id) {
+                await client.query(`UPDATE inventario SET stock = stock + $1 WHERE id = $2`, [cantidad, fila.articulo_id]);
+                const nombreRow = await client.query('SELECT nombre FROM inventario WHERE id = $1', [fila.articulo_id]);
+                if (nombreRow.rows.length > 0) await actualizarEstadoArticulo(client, nombreRow.rows[0].nombre);
+            }
+            await client.query('DELETE FROM salidas_almacen WHERE id = $1', [fila.id]);
+            borradas++;
+        }
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: `Despacho eliminado y stock restaurado (${borradas} ítem(s)).` });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error("Error al eliminar salida:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al eliminar la salida: ' + err.message });
+    } finally {
+        client.release();
     }
 });
 

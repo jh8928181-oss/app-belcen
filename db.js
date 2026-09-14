@@ -71,6 +71,7 @@ const inicializarBaseDeDatos = async () => {
             );
 
             ALTER TABLE salidas_almacen ADD COLUMN IF NOT EXISTS guia_url TEXT;
+            ALTER TABLE salidas_almacen ADD COLUMN IF NOT EXISTS despacho_id VARCHAR(50);
 
             CREATE TABLE IF NOT EXISTS reportes_produccion (
                 id SERIAL PRIMARY KEY,

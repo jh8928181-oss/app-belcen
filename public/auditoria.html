@@ -63,10 +63,11 @@
                         <th class="rosa text-center">PDF / Foto de la Guía</th>
                         <th class="rosa">A Dónde Va</th>
                         <th class="rosa">N° de Guía</th>
+                        <th class="rosa text-center">Acciones</th>
                     </tr>
                 </thead>
                 <tbody id="tablaSalidas">
-                    <tr><td colspan="6" class="text-center">Cargando salidas...</td></tr>
+                    <tr><td colspan="7" class="text-center">Cargando salidas...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -164,9 +165,10 @@
                 const res = await fetch('/api/auditoria/salidas');
                 const salidas = await res.json();
                 const tbody = document.getElementById('tablaSalidas');
-                tbody.innerHTML = salidas.length === 0 ? '<tr><td colspan="6" class="text-center sin-registros">No hay salidas registradas.</td></tr>' : '';
+                tbody.innerHTML = salidas.length === 0 ? '<tr><td colspan="7" class="text-center sin-registros">No hay salidas registradas.</td></tr>' : '';
 
                 salidas.forEach(item => {
+                    const despachoId = item.despacho_id ? `'${item.despacho_id}'` : 'null';
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
                         <td><b>${formatearFecha(item.fecha_salida)}</b></td>
@@ -175,6 +177,9 @@
                         <td class="text-center">${linkGuia(item.guia_url, 'Ver Guía')}</td>
                         <td>${item.destino || 'N/D'}</td>
                         <td><b>${item.numero_guia || 'S/N'}</b><br><small>${item.tipo_registro || ''}</small></td>
+                        <td class="text-center">
+                            <button onclick="borrarSalida(${despachoId}, ${item.id})" style="background:#dc3545; color:white; border:none; padding:5px 9px; border-radius:4px; cursor:pointer; font-size:13px;" title="Eliminar despacho">🗑</button>
+                        </td>
                     `;
                     tbody.appendChild(tr);
                 });
@@ -220,6 +225,26 @@
             } catch (err) {
                 console.error(err);
                 document.getElementById('tablaProduccion').innerHTML = '<tr><td colspan="6" class="text-center" style="color:red;">Error al cargar la producción.</td></tr>';
+            }
+        }
+
+        async function borrarSalida(despachoId, salidaId) {
+            if (!confirm('¿Eliminar este despacho y restaurar el stock de producto terminado / insumos?')) return;
+            try {
+                const res = await fetch('/api/salidas/eliminar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ despacho_id: despachoId, salida_id: salidaId })
+                });
+                const data = await res.json();
+                alert(data.mensaje || 'Respuesta del servidor.');
+                if (res.ok && data.success) {
+                    cargarSalidas();
+                    cargarEntradas();
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Error al eliminar el despacho.');
             }
         }
 

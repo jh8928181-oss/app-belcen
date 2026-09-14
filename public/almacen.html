@@ -978,7 +978,7 @@
                             <td>${row.empresa}</td>
                             <td><b>${row.articulo_nombre}</b></td>
                             <td class="text-center" style="color: #dc3545; font-weight: bold;">${row.cantidad_salida}</td>
-                            <td class="text-center">${row.estado_guia !== 'REGULARIZADO' ? `<button onclick="regularizarGuia(${row.id})" class="btn-accion btn-regularizar">Reg.</button>` : '-'}</td>
+                            <td class="text-center">${row.estado_guia !== 'REGULARIZADO' ? `<button onclick="regularizarGuia(${row.id})" class="btn-accion btn-regularizar">Reg.</button>` : ''} <button onclick="borrarSalida('${row.despacho_id || ''}', ${row.id})" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 12px;" title="Eliminar despacho">🗑</button></td>
                         </tr>
                     `;
                 });
@@ -1020,6 +1020,27 @@
             const data = await res.json();
             alert(data.mensaje);
             cargarHistorialSalidas();
+        }
+
+        async function borrarSalida(despachoId, salidaId) {
+            if (!confirm('¿Eliminar este despacho y restaurar el stock de producto terminado / insumos?')) return;
+            try {
+                const res = await fetch('/api/salidas/eliminar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ despacho_id: despachoId || null, salida_id: salidaId })
+                });
+                const data = await res.json();
+                alert(data.mensaje || 'Respuesta del servidor.');
+                if (res.ok && data.success) {
+                    cargarHistorialSalidas();
+                    cargarProductoTerminado();
+                    cargarInventarioAlmacen();
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Error al eliminar el despacho.');
+            }
         }
 
         document.getElementById('formSalida').addEventListener('submit', async (e) => {

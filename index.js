@@ -1175,13 +1175,13 @@ app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, re
 
             await client.query(`
                 INSERT INTO salidas_almacen 
-                (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, articulo_id, cantidad_salida, usuario_registro, estado_guia, guia_url, despacho_id)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15);
+                (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, articulo_id, cantidad_salida, usuario_registro, estado_guia, guia_url, despacho_id, producto_key)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16);
             `, [
                 fecha_salida || new Date(), tipo_registro, guiaFinal, 
                 empresa || 'N/A', ruc || 'N/A', destino || 'N/A', 
                 chofer_licencia || 'N/A', placa || 'N/A', punto_partida || 'Almacén Principal', 
-                targetArticuloId, item.cantidad, usuario || 'almacen_user', estadoGuia, guia_url, despachoId
+                targetArticuloId, item.cantidad, usuario || 'almacen_user', estadoGuia, guia_url, despachoId, productoKeyFinal
             ]);
         }
 
@@ -1298,13 +1298,13 @@ app.post('/api/salidas/editar', upload.single('archivo_guia'), async (req, res) 
 
             await client.query(`
                 INSERT INTO salidas_almacen 
-                (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, articulo_id, cantidad_salida, usuario_registro, estado_guia, guia_url, despacho_id)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15);
+                (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, articulo_id, cantidad_salida, usuario_registro, estado_guia, guia_url, despacho_id, producto_key)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16);
             `, [
                 fecha_salida || new Date(), tipo_registro, guiaFinal,
                 empresa || 'N/A', ruc || 'N/A', destino || 'N/A',
                 chofer_licencia || 'N/A', placa || 'N/A', punto_partida || 'Almacén Principal',
-                targetArticuloId, item.cantidad, usuario || 'almacen_user', estadoGuia, guia_url, despacho_id
+                targetArticuloId, item.cantidad, usuario || 'almacen_user', estadoGuia, guia_url, despacho_id, productoKeyFinal
             ]);
         }
 
@@ -1323,7 +1323,9 @@ app.get('/api/salidas/historial', async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT s.*, 
-                   COALESCE(i.nombre, pt.nombre_producto, 'Producto General') as articulo_nombre, 
+                   CASE WHEN s.producto_key IS NOT NULL 
+                        THEN COALESCE(pt.nombre_producto, i.nombre, 'Producto General') 
+                        ELSE COALESCE(i.nombre, pt.nombre_producto, 'Producto General') END as articulo_nombre, 
                    COALESCE(i.unidad_medida, 'CAJAS') as unidad_medida 
             FROM salidas_almacen s
             LEFT JOIN inventario i ON s.articulo_id = i.id
@@ -1402,7 +1404,9 @@ app.get('/api/auditoria/salidas', async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT s.*,
-                   COALESCE(i.nombre, pt.nombre_producto, 'Producto General') as articulo_nombre
+                   CASE WHEN s.producto_key IS NOT NULL 
+                        THEN COALESCE(pt.nombre_producto, i.nombre, 'Producto General') 
+                        ELSE COALESCE(i.nombre, pt.nombre_producto, 'Producto General') END as articulo_nombre
             FROM salidas_almacen s
             LEFT JOIN inventario i ON s.articulo_id = i.id
             LEFT JOIN producto_terminado pt ON s.producto_key = pt.producto_key

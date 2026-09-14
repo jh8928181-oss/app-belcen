@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reporte de Refinado - Corporación Belcen</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; }
+        .container { max-width: 1400px; margin: auto; }
+        .tarjeta { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 25px; }
+        h1 { color: #343a40; text-align: center; margin: 0 0 5px 0; font-size: 26px; }
+        .sub { text-align: center; color: #6c757d; margin: 0 0 20px 0; font-size: 14px; }
+        h3 { color: #343a40; padding-bottom: 8px; margin-top: 0; border-bottom: 2px solid #17a2b8; }
+        h3.aceite { border-bottom-color: #ffc107; color: #8a6d00; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #dee2e6; padding: 6px 8px; text-align: left; font-size: 12px; vertical-align: middle; }
+        th { background-color: #343a40; color: white; }
+        th.azul { background-color: #117a8b; }
+        th.ambar { background-color: #8a6d00; }
+        input[type=number], input[type=text], input[type=date], select {
+            width: 100%; box-sizing: border-box; padding: 4px 6px; font-size: 12px;
+            border: 1px solid #ced4da; border-radius: 3px;
+        }
+        input[type=number]:focus, input[type=text]:focus, input[type=date]:focus, select:focus {
+            outline: none; border-color: #17a2b8; box-shadow: 0 0 0 2px rgba(23,162,184,0.2);
+        }
+        input[readonly] { background: #f1f3f5; color: #495057; }
+        .nombre-insumo { font-weight: bold; color: #212529; }
+        .badge { padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: bold; white-space: nowrap; display: inline-block; }
+        .badge-pedido { background: #f8d7da; color: #842029; border: 1px solid #f5c2c7; }
+        .badge-suficiente { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .badge-disponible { background: #d4edda; color: #155724; }
+        .badge-noche { background: #cce5ff; color: #004085; }
+        .badge-dia { background: #fff3cd; color: #856404; }
+        .filtro-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 15px 0; }
+        .filtro-bar label { font-weight: bold; font-size: 13px; }
+        .btn { background: #17a2b8; border: none; padding: 10px 18px; color: white; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 14px; }
+        .btn:hover { background: #138496; }
+        .btn-verde { background: #28a745; }
+        .btn-verde:hover { background: #1e7e34; }
+        .btn-ambar { background: #ffc107; color: #7a5200; }
+        .btn-ambar:hover { background: #e0a800; }
+        .btn-gris { background: #6c757d; }
+        .btn-gris:hover { background: #5a6268; }
+        .btn-rojo { background: #dc3545; }
+        .btn-rojo:hover { background: #c82333; }
+        .logout { background-color: #dc3545; border: none; padding: 10px 20px; text-decoration: none; color: white; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 14px; }
+        .text-center { text-align: center; }
+        .aviso { padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-top: 12px; }
+        .aviso-info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .aviso-warn { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+        .obs-global { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #ced4da; border-radius: 4px; font-family: Arial; font-size: 13px; resize: vertical; }
+        .total-box { display: flex; flex-wrap: wrap; gap: 15px; margin-top: 15px; }
+        .total-item { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 12px 18px; flex: 1; min-width: 180px; }
+        .total-item label { font-size: 11px; color: #6c757d; text-transform: uppercase; letter-spacing: .5px; }
+        .total-item .valor { font-size: 22px; font-weight: bold; color: #343a40; margin-top: 4px; }
+        .total-item .valor.ambar { color: #8a6d00; }
+        .footer-acciones { text-align: center; margin-top: 10px; padding: 15px; border-top: 1px solid #ddd; }
+        .mensaje { text-align: center; font-weight: bold; margin-top: 12px; min-height: 20px; }
+        .mensaje.ok { color: #1e7e34; }
+        .mensaje.err { color: #bd2130; }
+        .hover-row:hover { background-color: #f8f9fa; }
+        .en-linea-cell { background: #fffaf0; }
+        .clave { display: none; }
+        .turno-btn { border: 2px solid #ced4da; background: white; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; cursor: pointer; transition: all 0.2s; }
+        .turno-dia:hover, .turno-dia.activo-dia { background: #fff3cd; border-color: #ffc107; color: #856404; }
+        .turno-noche:hover, .turno-noche.activo-noche { background: #cce5ff; border-color: #17a2b8; color: #004085; }
+        .turno-actual { display: inline-block; background: #343a40; color: white; padding: 4px 16px; border-radius: 12px; font-size: 14px; font-weight: bold; letter-spacing: 0.5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+
+        <div class="tarjeta" style="border-top: 6px solid #17a2b8; margin-bottom: 20px;">
+            <h1>🏭 REPORTE DE CONTROL E INVENTARIO DE REFINERÍA</h1>
+            <p class="sub">Corporación Belcen S.A.C. — Planta de Refinado de Aceite de Soya</p>
+
+            <div class="filtro-bar">
+                <label for="fechaReporte">📅 Fecha del reporte:</label>
+                <input type="date" id="fechaReporte" value="" style="width:auto; font-size:14px; padding:8px;">
+
+                <div class="turno-switch" style="display:flex; gap:6px; align-items:center;">
+                    <span style="font-weight:bold; font-size:13px;">🕐 Turno:</span>
+                    <button type="button" id="turnoDIA" class="turno-btn turno-dia" onclick="seleccionarTurno('DIA')">☀️ DÍA</button>
+                    <button type="button" id="turnoNOCHE" class="turno-btn turno-noche" onclick="seleccionarTurno('NOCHE')">🌙 NOCHE</button>
+                </div>
+
+                <button class="btn btn-verde" onclick="guardarReporte()">💾 Guardar Reporte</button>
+                <button class="btn btn-gris" onclick="nuevoDia()">➕ Nuevo Día</button>
+
+                <span style="flex:1;"></span>
+                <a href="auditoria.html" style="color:#007bff; font-weight:bold; text-decoration:none; margin-right:12px;">🔍 Ver Auditoría</a>
+                <a href="dashboard.html" id="linkDashboard" style="color:#007bff; font-weight:bold; text-decoration:none; margin-right:12px;">🏠 Dashboard</a>
+                <button class="logout" onclick="cerrarSesion()">🔒 Cerrar Sesión</button>
+            </div>
+            <div style="text-align:center; margin-top:10px;">
+                <span id="lblTurnoActual" class="turno-actual">☀️ TURNO DÍA</span>
+            </div>
+            <div class="mensaje" id="mensaje"></div>
+        </div>
+
+        <!-- SECCIÓN 1: STOCK DE INSUMOS DE REFINADO -->
+        <div class="tarjeta" style="border-top: 5px solid #17a2b8;">
+            <h3>🛢️ STOCK DE INSUMOS DE REFINADO</h3>
+
+            <div class="aviso aviso-info">ℹ️ <b>Considerar stock de crudo del tanque más en línea</b> para calcular la real disponibilidad de aceite crudo.</div>
+            <div class="aviso aviso-warn">⚡ <b>Alerta pedido para 3-4 días:</b> coordinar con los proveedores cuando los días de stock caigan a 3-4 días.</div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th class="azul">Insumo</th>
+                        <th class="azul text-center" style="width:70px;">Inv. Inic.</th>
+                        <th class="azul text-center" style="width:70px;">Ingreso del Día</th>
+                        <th class="azul text-center" style="width:70px;">Consumo del Día</th>
+                        <th class="azul text-center" style="width:70px;">En Línea</th>
+                        <th class="azul text-center" style="width:80px;">Stock en Tanque Crudo</th>
+                        <th class="azul text-center" style="width:55px;">UM</th>
+                        <th class="azul text-center" style="width:70px;">Días de Stock</th>
+                        <th class="azul">Observaciones</th>
+                        <th class="azul text-center" style="width:110px;">Estado</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaInsumos">
+                    <tr><td colspan="10" class="text-center">Cargando insumos...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- SECCIÓN 2: ACEITE REFINADO DE SOYA EN PLANTA -->
+        <div class="tarjeta" style="border-top: 5px solid #ffc107;">
+            <h3 class="aceite">🛢️ ACEITE REFINADO DE SOYA EN PLANTA</h3>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th class="ambar">Producto</th>
+                        <th class="ambar text-center" style="width:100px;">Cantidad (TM)</th>
+                        <th class="ambar text-center" style="width:90px;">Lote Nº</th>
+                        <th class="ambar text-center" style="width:130px;">Fecha de Producción</th>
+                        <th class="ambar" style="width:220px;">Estado / Observaciones</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaAceite">
+                    <tr><td colspan="5" class="text-center">Cargando aceite refinado...</td></tr>
+                </tbody>
+            </table>
+
+            <div class="total-box">
+                <div class="total-item">
+                    <label>Producción para Mañana (TM)</label>
+                    <input type="number" id="produccionManana" step="0.10" min="0" style="font-size:20px; font-weight:bold; margin-top:6px;">
+                </div>
+                <div class="total-item">
+                    <label>Total de Lotes en Planta</label>
+                    <div class="valor" id="totalLotes">0</div>
+                </div>
+                <div class="total-item">
+                    <label>Aceite Refinado Disponible (TM)</label>
+                    <div class="valor" id="totalTM">0.00</div>
+                </div>
+                <div class="total-item">
+                    <label>Fecha de Referencia</label>
+                    <div class="valor" id="fechaRef">-</div>
+                </div>
+            </div>
+
+            <div style="margin-top:18px;">
+                <label for="observaciones" style="font-weight:bold; font-size:13px; display:block; margin-bottom:6px;">📝 Observaciones generales:</label>
+                <textarea class="obs-global" id="observaciones" rows="3" placeholder="Incidencias, notas de producción, coordinaciones de pedido..."></textarea>
+            </div>
+        </div>
+
+        <div class="footer-acciones">
+            <button class="btn btn-verde" onclick="guardarReporte()">💾 Guardar Reporte de Refinado</button>
+            <br><br>
+            <span style="color:#888; font-size:13px;">El reporte se guarda por día y por turno: al guardar otra vez el mismo día+turno se actualiza (no se duplica).</span>
+        </div>
+    </div>
+
+    <script src="/auth-client.js"></script>
+    <script>
+        const rolUsuario = localStorage.getItem('rol_actual') || localStorage.getItem('rol_usuario');
+        if (!rolUsuario || (rolUsuario !== 'auditoria' && rolUsuario !== 'supervisor' && rolUsuario !== 'produccion' && rolUsuario !== 'refinado')) {
+            alert('❌ Acceso no autorizado.');
+            window.location.href = 'index.html';
+        }
+        if (rolUsuario !== 'supervisor' && rolUsuario !== 'produccion') {
+            document.getElementById('linkDashboard').style.display = 'none';
+        }
+
+        const usuarioActual = localStorage.getItem('usuario_actual') || '';
+        function turnoPorUsuario() {
+            const u = String(usuarioActual).toLowerCase();
+            if (u === 'usuario2') return 'NOCHE';
+            if (u === 'usuario1') return 'DIA';
+            return 'DIA';
+        }
+        let turnoSeleccionado = turnoPorUsuario();
+
+        function setTurnoUI() {
+            const seg = document.getElementById('turnoDIA');
+            const nog = document.getElementById('turnoNOCHE');
+            if (turnoSeleccionado === 'NOCHE') {
+                nog.classList.add('activo-noche');
+                seg.classList.remove('activo-dia');
+            } else {
+                seg.classList.add('activo-dia');
+                nog.classList.remove('activo-noche');
+            }
+            const lbl = document.getElementById('lblTurnoActual');
+            if (lbl) lbl.textContent = turnoSeleccionado === 'NOCHE' ? '🌙 TURNO NOCHE' : '☀️ TURNO DÍA';
+        }
+
+        function getTurno() { return turnoSeleccionado; }
+
+        let insumosBase = [];
+
+        function hoyLocal() {
+            const f = new Date();
+            return f.getFullYear() + '-' + String(f.getMonth() + 1).padStart(2, '0') + '-' + String(f.getDate()).padStart(2, '0');
+        }
+
+        function formatearFechaReporte(valor) {
+            if (!valor) return '-';
+            const f = new Date(valor);
+            if (!isNaN(f.getTime())) {
+                return f.getFullYear() + '-' + String(f.getMonth() + 1).padStart(2, '0') + '-' + String(f.getDate()).padStart(2, '0');
+            }
+            return String(valor).slice(0, 10);
+        }
+
+        function cerrarSesion() {
+            if (confirm('¿Estás seguro de que deseas cerrar sesión?')) {
+                limpiarSesion();
+                window.location.href = 'index.html';
+            }
+        }
+
+        function mostrarMensaje(texto, ok) {
+            const el = document.getElementById('mensaje');
+            el.textContent = texto || '';
+            el.className = 'mensaje ' + (ok ? 'ok' : 'err');
+            setTimeout(() => { el.textContent = ''; el.className = 'mensaje'; }, 5000);
+        }
+
+        function estadoBadge(estado) {
+            if (estado === 'REALIZAR PEDIDO') return '<span class="badge badge-pedido">🔴 REALIZAR PEDIDO</span>';
+            return '<span class="badge badge-suficiente">🟢 STOCK SUFICIENTE</span>';
+        }
+
+        function estadoAceiteBadge(estado) {
+            const e = String(estado || 'DISPONIBLE').toUpperCase();
+            if (e.includes('NOCHE')) return '<span class="badge badge-noche">🌙 ENFRÍA DE NOCHE</span>';
+            if (e.includes('DÍA') || e.includes('DIA')) return '<span class="badge badge-dia">☀️ ENFRÍA DÍA</span>';
+            return '<span class="badge badge-disponible">✅ DISPONIBLE</span>';
+        }
+
+        function estadoInsumo(dias) {
+            const d = Number(dias);
+            if (d !== null && !isNaN(d) && d <= 8) return 'REALIZAR PEDIDO';
+            return 'STOCK SUFICIENTE';
+        }
+
+        // --- RENDER: INSUMOS ---
+        function renderInsumos(lista) {
+            const tbody = document.getElementById('tablaInsumos');
+            tbody.innerHTML = '';
+            if (!lista.length) {
+                tbody.innerHTML = '<tr><td colspan="10" class="text-center sin-registros">Sin insumos registrados.</td></tr>';
+                return;
+            }
+            lista.forEach((item, i) => {
+                if (!item) item = {};
+                const base = insumosBase.find(b => (b.nombre || '').toLowerCase() === (item.nombre || '').toLowerCase()) || {};
+                const um = item.um || base.um || 'KG';
+                const tr = document.createElement('tr');
+                tr.className = 'hover-row';
+                tr.dataset.i = i;
+                tr.innerHTML = `
+                    <td><input class="nombre-insumo" type="text" value="${escapeHtml(item.nombre || '')}" data-k="nombre" style="font-weight:bold;"></td>
+                    <td><input class="num" type="number" step="0.01" min="0" value="${item.inv_inic ?? ''}" data-k="inv_inic"></td>
+                    <td><input class="num" type="number" step="0.01" min="0" value="${item.ingreso ?? ''}" data-k="ingreso"></td>
+                    <td><input class="num" type="number" step="0.01" min="0" value="${item.consumo ?? ''}" data-k="consumo"></td>
+                    <td><input class="num en-linea" type="number" step="0.01" min="0" value="${item.en_linea ?? ''}" data-k="en_linea"></td>
+                    <td><input class="num" type="number" step="0.01" min="0" value="${item.stock ?? ''}" data-k="stock"></td>
+                    <td class="text-center"><input type="text" value="${escapeHtml(um)}" data-k="um" style="text-align:center; font-weight:bold;"></td>
+                    <td><input class="num" type="number" step="0.01" min="0" value="${item.dias ?? ''}" data-k="dias"></td>
+                    <td><input type="text" value="${escapeHtml(item.observaciones || '')}" data-k="observaciones"></td>
+                    <td class="text-center"><span class="estado-cell">${estadoBadge(estadoInsumo(item.dias))}</span></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderAceite(lista) {
+            const tbody = document.getElementById('tablaAceite');
+            tbody.innerHTML = '';
+            if (!lista.length) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center sin-registros">Sin lotes registrados.<br><button class="btn btn-gris" onclick="agregarFilaAceite()" style="margin-top:8px; padding:6px 12px; font-size:12px;">➕ Agregar lote</button></td></tr>';
+                return;
+            }
+            lista.forEach((item, i) => {
+                item = item || {};
+                const tr = document.createElement('tr');
+                tr.className = 'hover-row';
+                tr.dataset.i = i;
+                tr.innerHTML = `
+                    <td><input type="text" value="${escapeHtml(item.producto || 'ACEITE REFINADO DE SOYA')}" data-k="producto" style="font-weight:bold;"></td>
+                    <td><input class="num" type="number" step="0.01" min="0" value="${item.cantidad ?? ''}" data-k="cantidad"></td>
+                    <td><input type="text" value="${escapeHtml(item.lote || '')}" data-k="lote"></td>
+                    <td><input type="text" value="${escapeHtml(item.fecha_produccion || '')}" data-k="fecha_produccion" placeholder="10-Set"></td>
+                    <td>
+                        <select data-k="estado">
+                            <option value="DISPONIBLE" ${item.estado === 'DISPONIBLE' ? 'selected' : ''}>✅ Disponible</option>
+                            <option value="ENFRIA DE NOCHE" ${(item.estado || '').toUpperCase().includes('NOCHE') ? 'selected' : ''}>🌙 Enfría de Noche</option>
+                            <option value="ENFRIA DIA" ${(item.estado || '').toUpperCase().includes('DÍA') || (item.estado || '').toUpperCase().includes('DIA') ? 'selected' : ''}>☀️ Enfría Día</option>
+                        </select>
+                        <button onclick="quitarFilaAceite(this)" style="background:#dc3545; color:white; border:none; border-radius:3px; cursor:pointer; padding:3px 8px; margin-top:4px; width:100%; font-size:12px;">🗑 Quitar</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function escapeHtml(str) {
+            return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        // --- LECTURA DE VALORES DESDE LA TABLA ---
+        function leerInsumos() {
+            const filas = document.querySelectorAll('#tablaInsumos tr.hover-row');
+            const lista = [];
+            filas.forEach(tr => {
+                const obj = {};
+                tr.querySelectorAll('input').forEach(inp => {
+                    const k = inp.dataset.k;
+                    obj[k] = (k === 'dias' || k === 'inv_inic' || k === 'ingreso' || k === 'consumo' || k === 'en_linea' || k === 'stock') ? inp.value : inp.value;
+                });
+                if (obj.nombre) {
+                    obj.estado = estadoInsumo(obj.dias);
+                    lista.push(obj);
+                }
+            });
+            return lista;
+        }
+
+        function leerAceite() {
+            const filas = document.querySelectorAll('#tablaAceite tr.hover-row');
+            const lista = [];
+            filas.forEach(tr => {
+                const obj = {};
+                tr.querySelectorAll('input, select').forEach(inp => {
+                    obj[inp.dataset.k] = inp.value;
+                });
+                if (obj.producto) lista.push(obj);
+            });
+            // ordenar por lote ascendente (numérico)
+            lista.sort((a, b) => {
+                const na = parseInt(String(a.lote).replace(/\D/g, ''), 10) || 0;
+                const nb = parseInt(String(b.lote).replace(/\D/g, ''), 10) || 0;
+                return na - nb;
+            });
+            return lista;
+        }
+
+        function actualizarTotales() {
+            const aceite = leerAceite();
+            const totalLotes = aceite.length;
+            const totalTM = aceite.reduce((s, a) => s + (parseFloat(a.cantidad) || 0), 0);
+            document.getElementById('totalLotes').textContent = totalLotes;
+            document.getElementById('totalTM').textContent = totalTM.toFixed(2);
+            const fecha = document.getElementById('fechaReporte').value;
+            document.getElementById('fechaRef').textContent = fecha || '-';
+        }
+
+        // --- AUTO-CÁLCULO DE DÍAS DE STOCK (solo si el campo está vacío) ---
+        function recalcularDias(tr) {
+            const campo = tr.querySelector('[data-k="dias"]');
+            const get = k => parseFloat(tr.querySelector(`[data-k="${k}"]`).value) || 0;
+            const stock = get('stock');
+            const consumo = get('consumo');
+            if ((campo.value === '' || campo.value == null) && stock > 0 && consumo > 0) {
+                const dias = (stock / consumo);
+                campo.value = dias.toFixed(1);
+                tr.querySelector('.estado-cell').innerHTML = estadoBadge(estadoInsumo(dias));
+            } else {
+                tr.querySelector('.estado-cell').innerHTML = estadoBadge(estadoInsumo(campo.value));
+            }
+        }
+
+        // --- DELEGACIÓN DE EVENTOS ---
+        document.addEventListener('input', (e) => {
+            const tr = e.target.closest('tr');
+            if (!tr) return;
+            if (e.target.matches('#tablaInsumos [data-k="stock"]') || e.target.matches('#tablaInsumos [data-k="consumo"]')) {
+                recalcularDias(tr);
+            }
+            if (e.target.matches('#tablaAceite input, #tablaAceite select, #tablaAceite .num')) {
+                actualizarTotales();
+            }
+        });
+
+        document.addEventListener('keydown', (e) => { if (e.target.matches('input[type=number]')) { if (e.key === 'e' || e.key === 'E' || e.key === '+' || e.key === '-') e.preventDefault(); } });
+
+        // --- CARGAR REPORTE POR FECHA + TURNO ---
+        async function cargarReporte() {
+            const fecha = document.getElementById('fechaReporte').value || hoyLocal();
+            document.getElementById('fechaReporte').value = fecha;
+            const turno = getTurno();
+            setTurnoUI();
+            mostrarMensaje('Cargando reporte...', false);
+            try {
+                const res = await fetch('/api/refinado/reporte?fecha=' + fecha + '&turno=' + turno);
+                if (!res.ok) throw new Error('Error del servidor.');
+                const data = await res.json();
+                insumosBase = Array.isArray(data.insumosBase) ? data.insumosBase : [];
+                const rep = data.reporte;
+                if (rep) {
+                    renderInsumos(Array.isArray(rep.insumos) ? rep.insumos : []);
+                    renderAceite(Array.isArray(rep.aceite) ? rep.aceite : []);
+                    let pm = rep.totales && rep.totales.produccion_manana;
+                    if (pm === null || pm === undefined || pm === '') pm = '';
+                    document.getElementById('produccionManana').value = pm;
+                    document.getElementById('observaciones').value = rep.observaciones || '';
+                    document.getElementById('fechaRef').textContent = formatearFechaReporte(rep.fecha_reporte) || fecha;
+                    mostrarMensaje('✅ Reporte cargado — Turno ' + (rep.turno || turno) + ' (registrado por ' + (rep.usuario_registro || '-') + ').', true);
+                } else {
+                    const plantilla = insumosBase.map(b => ({ ...b, inv_inic: '', ingreso: '', consumo: '', en_linea: '', stock: '', dias: '', observaciones: '' }));
+                    renderInsumos(plantilla);
+                    renderAceite([]);
+                    document.getElementById('produccionManana').value = '';
+                    document.getElementById('observaciones').value = '';
+                    document.getElementById('fechaRef').textContent = fecha;
+                    mostrarMensaje('ℹ️ Sin reporte para ' + turno + ': se cargó la plantilla base. Completa y guarda.', false);
+                }
+                actualizarTotales();
+            } catch (err) {
+                console.error(err);
+                mostrarMensaje('❌ Error al cargar el reporte.', false);
+            }
+        }
+
+        function seleccionarTurno(t) {
+            turnoSeleccionado = t;
+            setTurnoUI();
+            cargarReporte();
+        }
+
+        function nuevoDia() {
+            if (!confirm('¿Crear un reporte nuevo para el día seleccionado?')) return;
+            const fecha = document.getElementById('fechaReporte').value || hoyLocal();
+            document.getElementById('fechaReporte').value = fecha;
+            const plantilla = insumosBase.map(b => ({ ...b, inv_inic: '', ingreso: '', consumo: '', en_linea: '', stock: '', dias: '', observaciones: '' }));
+            renderInsumos(plantilla);
+            renderAceite([]);
+            document.getElementById('produccionManana').value = '';
+            document.getElementById('observaciones').value = '';
+            document.getElementById('fechaRef').textContent = fecha;
+            actualizarTotales();
+            mostrarMensaje('✅ Plantilla nueva lista para el ' + fecha, true);
+        }
+
+        function agregarFilaAceite() {
+            const tbody = document.getElementById('tablaAceite');
+            if (tbody.querySelector('.sin-registros')) tbody.innerHTML = '';
+            const tr = document.createElement('tr');
+            tr.className = 'hover-row';
+            tr.innerHTML = `
+                <td><input type="text" value="ACEITE REFINADO DE SOYA" data-k="producto" style="font-weight:bold;"></td>
+                <td><input class="num" type="number" step="0.01" min="0" value="" data-k="cantidad"></td>
+                <td><input type="text" value="" data-k="lote"></td>
+                <td><input type="text" value="" data-k="fecha_produccion" placeholder="10-Set"></td>
+                <td>
+                    <select data-k="estado">
+                        <option value="DISPONIBLE">✅ Disponible</option>
+                        <option value="ENFRIA DE NOCHE">🌙 Enfría de Noche</option>
+                        <option value="ENFRIA DIA">☀️ Enfría Día</option>
+                    </select>
+                    <button onclick="quitarFilaAceite(this)" style="background:#dc3545; color:white; border:none; border-radius:3px; cursor:pointer; padding:3px 8px; margin-top:4px; width:100%; font-size:12px;">🗑 Quitar</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+            actualizarTotales();
+        }
+
+        function quitarFilaAceite(boton) {
+            boton.closest('tr').remove();
+            actualizarTotales();
+        }
+
+        // --- GUARDAR ---
+        async function guardarReporte() {
+            const fecha = document.getElementById('fechaReporte').value;
+            if (!fecha) { mostrarMensaje('❌ Selecciona una fecha.', false); return; }
+            const insumos = leerInsumos();
+            if (!insumos.length) { mostrarMensaje('❌ No hay insumos para guardar.', false); return; }
+            const aceite = leerAceite();
+            const pm = document.getElementById('produccionManana').value;
+            const payload = {
+                fecha_reporte: fecha,
+                turno: getTurno(),
+                insumos,
+                aceite,
+                totales: { produccion_manana: pm === '' ? null : parseInt(pm, 10) || 0 },
+                observaciones: document.getElementById('observaciones').value
+            };
+            try {
+                const res = await fetch('/api/refinado/guardar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                mostrarMensaje(data.mensaje || 'Respuesta del servidor.', !!data.success);
+                if (data.success) cargarReporte();
+            } catch (err) {
+                console.error(err);
+                mostrarMensaje('❌ Error al guardar.', false);
+            }
+        }
+
+        document.getElementById('fechaReporte').addEventListener('change', cargarReporte);
+        document.getElementById('produccionManana').addEventListener('input', () => {
+            const p = document.getElementById('produccionManana').value;
+            document.getElementById('produccionManana').value = p;
+        });
+
+        document.getElementById('fechaReporte').value = hoyLocal();
+        setTurnoUI();
+        cargarReporte();
+    </script>
+</body>
+</html>

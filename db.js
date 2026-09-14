@@ -123,6 +123,34 @@ const inicializarBaseDeDatos = async () => {
             );
 
             ALTER TABLE usuarios_sistema ALTER COLUMN password TYPE VARCHAR(300);
+
+            CREATE TABLE IF NOT EXISTS reportes_refinado (
+                id SERIAL PRIMARY KEY,
+                fecha_reporte DATE NOT NULL,
+                turno VARCHAR(10) NOT NULL DEFAULT 'DIA',
+                insumos_json TEXT NOT NULL,
+                aceite_json TEXT NOT NULL,
+                totales_json TEXT,
+                observaciones TEXT,
+                usuario_registro VARCHAR(50),
+                fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(fecha_reporte, turno)
+            );
+
+            ALTER TABLE reportes_refinado ADD COLUMN IF NOT EXISTS turno VARCHAR(10) NOT NULL DEFAULT 'DIA';
+            ALTER TABLE reportes_refinado DROP CONSTRAINT IF EXISTS reportes_refinado_fecha_reporte_key;
+            DO $$ BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'reportes_refinado_fecha_turno') THEN
+                    ALTER TABLE reportes_refinado ADD CONSTRAINT reportes_refinado_fecha_turno UNIQUE (fecha_reporte, turno);
+                END IF;
+            EXCEPTION WHEN duplicate_object THEN NULL;
+            END $$;
+
+            -- Usuarios de turno de Refinado (idempotente)
+            INSERT INTO usuarios_sistema (usuario, password, rol) VALUES
+                ('usuario1', 'a49a94603f9a105326f880170b9342a6fd3ed71157b4dd16da4fbd46648c7f45721b25e49f83a1038bb333e4af25a59be35725e5e8b3b19e79a87fdb648299f3:8222cb2d385b1216e4e53a27ab34e4eb', 'refinado'),
+                ('usuario2', '92aeb3d6f95d8c376cbe75acb1c1a30b93a08e55461c834125d0ffa5b5075b047f0a5352e5d641625aa9f403372bc0d35e78a7d45929deba8242747da382752e:cd9c611efd774c52e9e7bfa303c8a277', 'refinado')
+            ON CONFLICT (usuario) DO NOTHING;
         `);
 
         console.log("Infraestructura de DB en Render sincronizada correctamente.");

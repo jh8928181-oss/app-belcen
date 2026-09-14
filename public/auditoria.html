@@ -17,9 +17,18 @@
         th { background-color: #343a40; color: white; }
         th.green { background-color: #1e7e34; }
         th.rosa { background-color: #bd2130; }
-        .badge { padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: bold; }
+        .badge { padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: bold; white-space: nowrap; }
         .badge-vig { background: #ffeeba; color: #7a5200; }
         .badge-alm { background: #d4edda; color: #155724; }
+        .badge-pedido { background: #f8d7da; color: #842029; border: 1px solid #f5c2c7; }
+        .badge-suficiente { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .badge-disponible { background: #d4edda; color: #155724; }
+        .badge-noche { background: #cce5ff; color: #004085; }
+        .badge-dia { background: #fff3cd; color: #856404; }
+        .aviso-info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .aviso-warn { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+        .total-refinado { background:#f8f9fa; border:1px solid #dee2e6; border-radius:6px; padding:10px 14px; display:inline-block; margin-right:12px; }
+        .total-refinado b { font-size:18px; color:#343a40; }
         .link-guia { color: #007bff; font-weight: bold; text-decoration: none; }
         .link-guia:hover { text-decoration: underline; }
         .logout { background-color: #dc3545; border: none; padding: 10px 20px; text-decoration: none; color: white; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 14px; }
@@ -97,6 +106,58 @@
             </table>
         </div>
 
+        <!-- REFINERÍA -->
+        <div class="tarjeta" style="border-top: 5px solid #17a2b8;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
+                <h3 style="border-bottom: 2px solid #17a2b8; color: #117a8b; margin-bottom:0;">🛢️ REFINERÍA — Reporte Diario de Control e Inventario</h3>
+                <a href="refinado.html" style="color:#117a8b; font-weight:bold; text-decoration:none; font-size:13px;">✏️ Editar reporte →</a>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:12px;">
+                <input type="date" id="filtroRefinado" class="filtro" value="" style="max-width:220px;" title="Selecciona la fecha del reporte de refinado">
+                <select id="filtroRefinadoTurno" class="filtro" style="max-width:160px;" title="Selecciona el turno del reporte">
+                    <option value="DIA">☀️ Turno DÍA</option>
+                    <option value="NOCHE">🌙 Turno NOCHE</option>
+                </select>
+            </div>
+            <div class="aviso" id="avisoRefinado" style="display:none; padding:12px 14px; border-radius:4px; font-size:13px; margin-top:12px;"></div>
+            <h4 style="margin:18px 0 4px 0; color:#117a8b;">STOCK DE INSUMOS DE REFINADO</h4>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="background-color:#117a8b;">Insumo</th>
+                        <th class="text-center" style="background-color:#117a8b;">Inv. Inic.</th>
+                        <th class="text-center" style="background-color:#117a8b;">Ingreso del Día</th>
+                        <th class="text-center" style="background-color:#117a8b;">Consumo del Día</th>
+                        <th class="text-center" style="background-color:#117a8b;">En Línea</th>
+                        <th class="text-center" style="background-color:#117a8b;">Stock en Tanque</th>
+                        <th class="text-center" style="background-color:#117a8b;">UM</th>
+                        <th class="text-center" style="background-color:#117a8b;">Días de Stock</th>
+                        <th style="background-color:#117a8b;">Observaciones</th>
+                        <th class="text-center" style="background-color:#117a8b;">Estado</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaRefinadoInsumos">
+                    <tr><td colspan="10" class="text-center">Cargando insumos de refinería...</td></tr>
+                </tbody>
+            </table>
+            <h4 style="margin:18px 0 4px 0; color:#8a6d00;">ACEITE REFINADO DE SOYA EN PLANTA</h4>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="background-color:#8a6d00;">Producto</th>
+                        <th class="text-center" style="background-color:#8a6d00;">Cantidad (TM)</th>
+                        <th class="text-center" style="background-color:#8a6d00;">Lote Nº</th>
+                        <th class="text-center" style="background-color:#8a6d00;">Fecha de Producción</th>
+                        <th style="background-color:#8a6d00;">Estado / Observaciones</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaRefinadoAceite">
+                    <tr><td colspan="5" class="text-center">Cargando aceite refinado...</td></tr>
+                </tbody>
+            </table>
+            <div id="totalesRefinado" style="margin-top:15px; font-size:14px; color:#343a40;"></div>
+        </div>
+
         <div style="text-align: center; margin-top: 10px; padding: 15px; border-top: 1px solid #ddd;">
             <a href="dashboard.html" id="linkDashboard" style="display: inline-block; margin-bottom: 10px; color: #007bff; text-decoration: none; font-weight: bold;">Volver al Dashboard General</a>
             <br>
@@ -142,6 +203,24 @@
         let entradasGlobal = [];
         let salidasGlobal = [];
         let informesGlobal = [];
+        let refinadoActual = null;
+
+        function estadoInsumo(dias) {
+            const d = Number(dias);
+            if (d !== null && !isNaN(d) && d <= 8) return 'REALIZAR PEDIDO';
+            return 'STOCK SUFICIENTE';
+        }
+        function badgeEstadoInsumo(dias) {
+            return estadoInsumo(dias) === 'REALIZAR PEDIDO'
+                ? '<span class="badge badge-pedido">🔴 REALIZAR PEDIDO</span>'
+                : '<span class="badge badge-suficiente">🟢 STOCK SUFICIENTE</span>';
+        }
+        function badgeEstadoAceite(estado) {
+            const e = String(estado || 'DISPONIBLE').toUpperCase();
+            if (e.includes('NOCHE')) return '<span class="badge badge-noche">🌙 ENFRÍA DE NOCHE</span>';
+            if (e.includes('DÍA') || e.includes('DIA')) return '<span class="badge badge-dia">☀️ ENFRÍA DÍA</span>';
+            return '<span class="badge badge-disponible">✅ DISPONIBLE</span>';
+        }
 
         function renderEntradas() {
             const q = (document.getElementById('filtroEntradas').value || '').toLowerCase();
@@ -277,6 +356,91 @@
             }
         }
 
+        // 🛢️ REFINERÍA
+        function renderRefinado() {
+            const reporte = refinadoActual;
+            const insumos = (reporte && Array.isArray(reporte.insumos)) ? reporte.insumos : [];
+            const aceite = (reporte && Array.isArray(reporte.aceite)) ? reporte.aceite : [];
+
+            const tIns = document.getElementById('tablaRefinadoInsumos');
+            const tAce = document.getElementById('tablaRefinadoAceite');
+
+            if (!reporte) {
+                tIns.innerHTML = '<tr><td colspan="10" class="text-center sin-registros">No hay reporte de refinería para esta fecha.</td></tr>';
+                tAce.innerHTML = '<tr><td colspan="5" class="text-center sin-registros">Sin registros.</td></tr>';
+                document.getElementById('totalesRefinado').innerHTML = '';
+                const aviso = document.getElementById('avisoRefinado');
+                aviso.style.display = 'block';
+                aviso.className = 'aviso aviso-warn';
+                const turno = document.getElementById('filtroRefinadoTurno').value || 'DIA';
+                aviso.innerHTML = '📋 No existe reporte (turno ' + turno + ') para esta fecha. Ir a <a href="refinado.html" style="color:#856404; font-weight:bold;">refinado.html</a> para crearlo.';
+                return;
+            }
+
+            document.getElementById('avisoRefinado').style.display = 'none';
+
+            tIns.innerHTML = insumos.length === 0 ? '<tr><td colspan="10" class="text-center sin-registros">Sin insumos registrados.</td></tr>' : '';
+            insumos.forEach(it => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><b>${it.nombre || 'N/D'}</b></td>
+                    <td class="text-center">${it.inv_inic ?? '-'}</td>
+                    <td class="text-center">${it.ingreso ?? '-'}</td>
+                    <td class="text-center">${it.consumo ?? '-'}</td>
+                    <td class="text-center">${it.en_linea ?? '-'}</td>
+                    <td class="text-center" style="font-weight:bold;">${it.stock ?? '-'}</td>
+                    <td class="text-center">${it.um || ''}</td>
+                    <td class="text-center" style="font-weight:bold;">${it.dias ?? '-'}</td>
+                    <td>${it.observaciones || ''}</td>
+                    <td class="text-center">${badgeEstadoInsumo(it.dias)}</td>
+                `;
+                tIns.appendChild(tr);
+            });
+
+            tAce.innerHTML = aceite.length === 0 ? '<tr><td colspan="5" class="text-center sin-registros">Sin lotes registrados.</td></tr>' : '';
+            aceite.forEach(it => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><b>${it.producto || 'ACEITE REFINADO DE SOYA'}</b></td>
+                    <td class="text-center" style="font-weight:bold;">${Number(it.cantidad) || 0}</td>
+                    <td class="text-center"><b>${it.lote || '-'}</b></td>
+                    <td class="text-center">${it.fecha_produccion || '-'}</td>
+                    <td>${badgeEstadoAceite(it.estado)}</td>
+                `;
+                tAce.appendChild(tr);
+            });
+
+            const totalTM = aceite.reduce((s, a) => s + (Number(a.cantidad) || 0), 0);
+            const totalLotes = aceite.length;
+            const pm = reporte.totales && reporte.totales.produccion_manana;
+            document.getElementById('totalesRefinado').innerHTML =
+                `<span class="total-refinado">🕐 Turno: <b>${reporte.turno || '-'}</b></span>` +
+                `<span class="total-refinado">🧊 <b>${totalLotes}</b> lotes en planta</span>` +
+                `<span class="total-refinado">🛢️ Aceite refinado: <b>${totalTM.toFixed(2)} TM</b></span>` +
+                (pm != null ? `<span class="total-refinado">📦 Producción para mañana: <b>${Number(pm) || 0} TM</b></span>` : '') +
+                `<span class="total-refinado">👤 Registrado por: <b>${reporte.usuario_registro || '-'}</b></span>`;
+        }
+
+        async function cargarRefinado() {
+            let fecha = document.getElementById('filtroRefinado').value;
+            if (!fecha) {
+                const f = new Date();
+                fecha = f.getFullYear() + '-' + String(f.getMonth() + 1).padStart(2, '0') + '-' + String(f.getDate()).padStart(2, '0');
+                document.getElementById('filtroRefinado').value = fecha;
+            }
+            const turno = document.getElementById('filtroRefinadoTurno').value || 'DIA';
+            try {
+                const res = await fetch('/api/refinado/reporte?fecha=' + fecha + '&turno=' + turno);
+                if (!res.ok) throw new Error('Error del servidor.');
+                const data = await res.json();
+                refinadoActual = data.reporte || null;
+                renderRefinado();
+            } catch (err) {
+                console.error(err);
+                document.getElementById('tablaRefinadoInsumos').innerHTML = '<tr><td colspan="10" class="text-center" style="color:red;">Error al cargar el reporte de refinería.</td></tr>';
+            }
+        }
+
         async function borrarSalida(despachoId, salidaId) {
             if (!confirm('¿Eliminar este despacho y restaurar el stock de producto terminado / insumos?')) return;
             try {
@@ -300,16 +464,20 @@
         cargarEntradas();
         cargarSalidas();
         cargarProduccion();
+        cargarRefinado();
 
         document.getElementById('filtroEntradas').addEventListener('input', renderEntradas);
         document.getElementById('filtroSalidas').addEventListener('input', renderSalidas);
         document.getElementById('filtroProduccion').addEventListener('input', renderProduccion);
+        document.getElementById('filtroRefinado').addEventListener('change', cargarRefinado);
+        document.getElementById('filtroRefinadoTurno').addEventListener('change', cargarRefinado);
 
         setInterval(() => {
             if (document.visibilityState === 'visible') {
                 cargarEntradas();
                 cargarSalidas();
                 cargarProduccion();
+                cargarRefinado();
             }
         }, 15000);
         document.addEventListener('visibilitychange', () => {
@@ -317,6 +485,7 @@
                 cargarEntradas();
                 cargarSalidas();
                 cargarProduccion();
+                cargarRefinado();
             }
         });
     </script>

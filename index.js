@@ -1743,6 +1743,165 @@ app.get('/api/produccion/historial-cierres', async (req, res) => {
     }
 });
 
+// --- REFINERÍA: REPORTE DIARIO DE CONTROL E INVENTARIO ---
+const ROLES_REFINADO = ['auditoria', 'supervisor', 'produccion', 'refinado'];
+
+function requerirRolRefinado(req, res, next) {
+    if (!ROLES_REFINADO.includes(req.rol)) {
+        return res.status(403).json({ success: false, mensaje: 'Acceso no autorizado.' });
+    }
+    next();
+}
+
+const INSUMOS_REFINADO_BASE = [
+    { nombre: 'ACEITE CRUDO DE SOYA TK-1', um: 'TON' },
+    { nombre: 'ACEITE CRUDO DE SOYA TK-2', um: 'TON' },
+    { nombre: 'TONSIL OPTIMUN 363', um: 'KG' },
+    { nombre: 'TONSIL SUPREME 169', um: 'KG' },
+    { nombre: 'ACIDO FOSFORICO', um: 'KG' },
+    { nombre: 'SODA EN SOLUCION AL 50%', um: 'KG' },
+    { nombre: 'SAL', um: 'KG' },
+    { nombre: 'MANGAS FILTRANTES', um: 'UND' },
+    { nombre: 'TELA (para filtro prensa)', um: 'UND' }
+];
+
+function estadoInsumo(dias) {
+    const d = Number(dias);
+    if (d !== null && !isNaN(d) && d <= 8) return 'REALIZAR PEDIDO';
+    return 'STOCK SUFICIENTE';
+}
+
+app.get('/api/refinado/reporte', requerirRolRefinado, async (req, res) => {
+    try {
+        const fecha = String(req.query.fecha || '').trim();
+        const turno = String(req.query.turno || 'DIA').trim().toUpperCase();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+            return res.status(400).json({ success: false, mensaje: 'Indique una fecha válida (AAAA-MM-DD).' });
+        }
+        if (!['DIA', 'NOCHE'].includes(turno)) {
+            return res.status(400).json({ success: false, mensaje: 'Turno inválido. Use DIA o NOCHE.' });
+        }
+        const result = await pool.query('SELECT * FROM reportes_refinado WHERE fecha_reporte = $1 AND turno = $2', [fecha, turno]);
+        let reporte = null;
+        if (result.rows.length) {
+            const r = result.rows[0];
+            let insumos = [], aceite = [], totales = null;
+            try { insumos = JSON.parse(r.insumos_json); } catch (e) {}
+            try { aceite = JSON.parse(r.aceite_json); } catch (e) {}
+            try { totales = JSON.parse(r.totales_json); } catch (e) {}
+            reporte = {
+                id: r.id,
+                fecha_reporte: r.fecha_reporte,
+                turno: r.turno,
+                insumos,
+                aceite,
+                totales,
+                observaciones: r.observaciones,
+                usuario_registro: r.usuario_registro,
+                fecha_registro: r.fecha_registro
+            };
+        }
+        res.json({ success: true, reporte, insumosBase: INSUMOS_REFINADO_BASE });
+    } catch (err) {
+        console.error('Error GET refinado:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+app.post('/api/refinado/guardar', requerirRolRefinado, async (req, res) => {
+    try {
+        const { fecha_reporte, turno, insumos, aceite, totales, observaciones } = req.body || {};
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fecha_reporte || ''))) {
+            return res.status(400).json({ success: false, mensaje: 'Fecha inválida (use AAAA-MM-DD).' });
+        }
+        const turnoVal = String(turno || 'DIA').trim().toUpperCase();
+        if (!['DIA', 'NOCHE'].includes(turnoVal)) {
+            return res.status(400).json({ success: false, mensaje: 'Turno inválido. Use DIA o NOCHE.' });
+        }
+        if (!Array.isArray(insumos) || !insumos.length) {
+            return res.status(400).json({ success: false, mensaje: 'La tabla de insumos no puede estar vacía.' });
+        }
+        if (!Array.isArray(aceite)) {
+            return res.status(400).json({ success: false, mensaje: 'La tabla de aceite refinado es inválida.' });
+        }
+        const sanitizar = (obj) => {
+            const out = {};
+            for (const key of ['nombre', 'inv_inic', 'ingreso', 'consumo', 'en_linea', 'stock', 'um', 'dias', 'observaciones']) {
+                let val = obj[key];
+                if (['inv_inic', 'ingreso', 'consumo', 'en_linea', 'stock', 'dias'].includes(key)) {
+                    val = (val === null || val === undefined || val === '') ? null : Number(val);
+                    if (val !== null && isNaN(val)) val = null;
+                } else {
+                    val = (val === null || val === undefined) ? '' : String(val);
+                }
+                out[key] = val;
+            }
+            return out;
+        };
+        const insumosLimpios = insumos.map(o => {
+            const base = sanitizar(o);
+            base.estado = estadoInsumo(base.dias);
+            return base;
+        });
+        const aceiteLimpio = aceite.map(o => ({
+            producto: String(o.producto || o.nombre || 'ACEITE REFINADO DE SOYA'),
+            cantidad: (o.cantidad === null || o.cantidad === undefined || o.cantidad === '') ? null : Number(o.cantidad),
+            lote: String(o.lote || ''),
+            fecha_produccion: String(o.fecha_produccion || ''),
+            estado: String(o.estado || 'DISPONIBLE')
+        }));
+        const totalesLimpio = {
+            produccion_manana: (totales && totales.produccion_manana !== null && totales.produccion_manana !== undefined && totales.produccion_manana !== '') ? Number(totales.produccion_manana) : null,
+            total_lotes: aceiteLimpio.length,
+            total_tm: aceiteLimpio.reduce((sum, a) => sum + (Number(a.cantidad) || 0), 0)
+        };
+
+        const result = await pool.query(`
+            INSERT INTO reportes_refinado (fecha_reporte, turno, insumos_json, aceite_json, totales_json, observaciones, usuario_registro)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (fecha_reporte, turno) DO UPDATE SET
+                insumos_json = EXCLUDED.insumos_json,
+                aceite_json = EXCLUDED.aceite_json,
+                totales_json = EXCLUDED.totales_json,
+                observaciones = EXCLUDED.observaciones,
+                usuario_registro = EXCLUDED.usuario_registro,
+                fecha_registro = CURRENT_TIMESTAMP
+            RETURNING id, fecha_reporte, turno`, [
+            fecha_reporte, turnoVal, JSON.stringify(insumosLimpios), JSON.stringify(aceiteLimpio),
+            JSON.stringify(totalesLimpio), String(observaciones || ''), req.usuario
+        ]);
+
+        res.json({ success: true, mensaje: 'Reporte de refinado guardado correctamente.', id: result.rows[0].id, turno: result.rows[0].turno });
+    } catch (err) {
+        console.error("Error guardar refinado:", err);
+        res.status(500).json({ success: false, mensaje: 'Error en el servidor: ' + err.message });
+    }
+});
+
+app.get('/api/refinado/historial', requerirRolRefinado, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT fecha_reporte, turno, usuario_registro, fecha_registro, totales_json
+            FROM reportes_refinado ORDER BY fecha_reporte DESC, turno ASC`);
+        const filas = result.rows.map(r => {
+            let totales = null;
+            try { totales = JSON.parse(r.totales_json); } catch (e) {}
+            return {
+                fecha_reporte: r.fecha_reporte,
+                turno: r.turno,
+                usuario_registro: r.usuario_registro,
+                fecha_registro: r.fecha_registro,
+                total_lotes: totales ? totales.total_lotes : null,
+                total_tm: totales ? totales.total_tm : null,
+                produccion_manana: totales ? totales.produccion_manana : null
+            };
+        });
+        res.json({ success: true, historial: filas });
+    } catch (err) {
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`Servidor ejecutándose en http://localhost:${PORT}`);
 });

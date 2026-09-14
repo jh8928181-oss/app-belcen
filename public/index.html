@@ -53,6 +53,7 @@
                 if (response.ok && data.success) {
                     localStorage.setItem('usuario_actual', data.usuario);
                     localStorage.setItem('rol_actual', data.rol);
+                    localStorage.setItem('token_actual', data.token);
 
                     switch (data.rol) {
                         case 'auditoria':

@@ -116,6 +116,7 @@
         </div>
     </div>
 
+    <script src="/auth-client.js"></script>
     <script>
         // Control estricto de roles
         const rolUsuario = localStorage.getItem('rol_actual');
@@ -131,8 +132,7 @@
 
         function cerrarSesion() {
             if (confirm('¿Estás seguro de que deseas cerrar sesión?')) {
-                localStorage.removeItem('usuario_actual');
-                localStorage.removeItem('rol_actual');
+                limpiarSesion();
                 window.location.href = 'index.html';
             }
         }

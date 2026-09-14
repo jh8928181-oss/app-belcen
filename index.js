@@ -5,6 +5,8 @@ const multer = require('multer');
 const { PDFParse } = require('pdf-parse');
 const fs = require('fs');
 const os = require('os');
+const crypto = require('crypto');
+const { promisify } = require('util');
 const tesseract = require('tesseract.js');
 
 const app = express();
@@ -35,23 +37,130 @@ const PRODUCTOS_TERMINADOS_MAP = {
     'belini_balde18lt': 'Aceite de Soya Belini Balde 18 Lt'
 };
 
+// --- SEGURIDAD: TOKEN, HASH Y LIMITADOR DE LOGIN ---
+const TOKEN_SECRET = process.env.TOKEN_SECRET || 'belcen-clave-sesion-cambiar-en-produccion';
+const TOKEN_DURACION_MS = 8 * 60 * 60 * 1000;
+const scryptP = promisify(crypto.scrypt);
+
+function hashPassword(password, salt) {
+    return scryptP(password, salt, 64).then(buf => buf.toString('hex'));
+}
+
+function esPasswordHasheada(stored) {
+    return typeof stored === 'string' && /^[a-f0-9]{128}:[a-f0-9]{32}$/.test(stored);
+}
+
+function generarToken(usuario, rol) {
+    const payload = Buffer.from(JSON.stringify({ usuario, rol, exp: Date.now() + TOKEN_DURACION_MS })).toString('base64url');
+    const sig = crypto.createHmac('sha256', TOKEN_SECRET).update(payload).digest('base64url');
+    return payload + '.' + sig;
+}
+
+function verificarToken(token) {
+    if (typeof token !== 'string' || !token.includes('.')) return null;
+    const [payload, sig] = token.split('.');
+    if (!payload || !sig) return null;
+    const sigEsperado = crypto.createHmac('sha256', TOKEN_SECRET).update(payload).digest('base64url');
+    const a = Buffer.from(sigEsperado);
+    const b = Buffer.from(sig);
+    if (a.length !== b.length) return null;
+    if (!crypto.timingSafeEqual(a, b)) return null;
+    try {
+        const datos = JSON.parse(Buffer.from(payload, 'base64url').toString());
+        if (!datos || Date.now() > datos.exp) return null;
+        return datos;
+    } catch (e) {
+        return null;
+    }
+}
+
+function authMiddleware(req, res, next) {
+    const header = req.headers['authorization'] || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : (req.headers['x-token'] || '');
+    const datos = verificarToken(token);
+    if (!datos) {
+        return res.status(401).json({ success: false, mensaje: 'Sesión no válida o expirada. Inicie sesión nuevamente.' });
+    }
+    req.usuario = datos.usuario;
+    req.rol = datos.rol;
+    next();
+}
+
+const intentosLogin = new Map();
+function ipCliente(req) {
+    const fwd = req.headers['x-forwarded-for'];
+    return (fwd ? fwd.split(',')[0].trim() : (req.ip || 'local')).toString();
+}
+function loginBloqueado(req, usuario) {
+    const clave = `${ipCliente(req)}|${usuario}`;
+    const reg = intentosLogin.get(clave);
+    return reg && reg.falla >= 5 && Date.now() < reg.hasta;
+}
+function registrarFalloLogin(req, usuario) {
+    const clave = `${ipCliente(req)}|${usuario}`;
+    const actual = intentosLogin.get(clave) || { falla: 0, hasta: 0 };
+    const nuevo = { falla: actual.falla + 1, hasta: Date.now() + 5 * 60 * 1000 };
+    intentosLogin.set(clave, nuevo);
+    if (nuevo.falla >= 5) {
+        console.warn(`⚠️ Intentos fallidos de login para ${usuario} desde ${ipCliente(req)}`);
+    }
+}
+setInterval(() => {
+    const ahora = Date.now();
+    for (const [clave, reg] of intentosLogin) {
+        if (reg.hasta < ahora) intentosLogin.delete(clave);
+    }
+}, 60 * 60 * 1000);
+
 // --- LOGIN ---
 app.post('/api/login', async (req, res) => {
     try {
         const { usuario, password } = req.body;
-        const result = await pool.query('SELECT * FROM usuarios_sistema WHERE usuario = $1 AND password = $2', [usuario, password]);
-        
-        if (result.rows.length > 0) {
-            const user = result.rows[0];
-            res.json({ success: true, rol: user.rol, usuario: user.usuario });
-        } else {
-            res.status(401).json({ success: false, mensaje: 'Usuario o contraseña incorrectos' });
+        const usu = String(usuario || '').trim();
+        const pwd = String(password || '');
+
+        if (!usu || !pwd) {
+            return res.status(400).json({ success: false, mensaje: 'Ingrese usuario y contraseña.' });
         }
+        if (loginBloqueado(req, usu)) {
+            return res.status(429).json({ success: false, mensaje: 'Demasiados intentos fallidos. Espere 5 minutos.' });
+        }
+
+        const result = await pool.query('SELECT * FROM usuarios_sistema WHERE usuario = $1', [usu]);
+        const user = result.rows[0];
+        if (!user) {
+            registrarFalloLogin(req, usu);
+            return res.status(401).json({ success: false, mensaje: 'Usuario o contraseña incorrectos' });
+        }
+
+        let ok = false;
+        if (esPasswordHasheada(user.password)) {
+            const [hash, salt] = user.password.split(':');
+            const calculado = await hashPassword(pwd, salt);
+            ok = crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(calculado));
+        } else {
+            ok = user.password === pwd;
+            if (ok) {
+                const salt = crypto.randomBytes(16).toString('hex');
+                const hash = await hashPassword(pwd, salt);
+                await pool.query('UPDATE usuarios_sistema SET password = $1 WHERE id = $2', [`${hash}:${salt}`, user.id]);
+            }
+        }
+
+        if (!ok) {
+            registrarFalloLogin(req, usu);
+            return res.status(401).json({ success: false, mensaje: 'Usuario o contraseña incorrectos' });
+        }
+
+        const token = generarToken(user.usuario, user.rol);
+        res.json({ success: true, rol: user.rol, usuario: user.usuario, token });
     } catch (err) {
         console.error("Error en login:", err);
         res.status(500).json({ success: false, mensaje: 'Error en el servidor: ' + err.message });
     }
 });
+
+app.use('/api', authMiddleware);
 
 // --- VIGILANCIA (SOPORTE MÚLTIPLE DE PRODUCTOS Y DATOS DE TRANSPORTE) ---
 app.post('/api/vigilancia/registrar', upload.single('foto_guia'), async (req, res) => {

@@ -390,6 +390,7 @@
         </div>
     </div>
 
+    <script src="/auth-client.js"></script>
     <script>
         // 🔒 Control estricto de roles (Seguridad de Planta)
         const rolUsuario = localStorage.getItem('rol_actual') || localStorage.getItem('rol_usuario');
@@ -411,9 +412,7 @@
 
         function cerrarSesion() {
             if (confirm('¿Estás seguro de que deseas cerrar sesión?')) {
-                localStorage.removeItem('usuario_actual');
-                localStorage.removeItem('rol_actual');
-                localStorage.removeItem('rol_usuario');
+                limpiarSesion();
                 window.location.href = 'index.html';
             }
         }

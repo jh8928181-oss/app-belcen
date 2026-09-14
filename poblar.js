@@ -1,4 +1,12 @@
 const pool = require('./db');
+const crypto = require('crypto');
+const { promisify } = require('util');
+const scryptP = promisify(crypto.scrypt);
+
+async function hashPassword(password, salt) {
+    const buf = await scryptP(password, salt, 64);
+    return buf.toString('hex');
+}
 
 async function poblarInventarioReal() {
     const client = await pool.connect();
@@ -42,22 +50,30 @@ async function poblarInventarioReal() {
             CREATE TABLE IF NOT EXISTS usuarios_sistema (
                 id SERIAL PRIMARY KEY,
                 usuario VARCHAR(50) UNIQUE NOT NULL,
-                password VARCHAR(100) NOT NULL,
+                password VARCHAR(300) NOT NULL,
                 rol VARCHAR(30) NOT NULL
             );
-
-            INSERT INTO usuarios_sistema (usuario, password, rol) VALUES 
-            ('vigilancia1', 'belcen2026*', 'vigilancia'),
-            ('almacen1', 'almacenpass1', 'almacen'),
-            ('soplado_user', 'soplado123', 'soplado'),
-            ('envasado_user', 'envasado123', 'envasado'),
-            ('auditor_user', 'auditor123', 'auditoria'),
-            ('ing_blas', 'Blas2026_Sec', 'produccion'),
-            ('pariona', 'Pariona#987', 'supervisor'),
-            ('acceso_1', 'AccesoOne*01', 'invitado'),
-            ('acceso_2', 'AccesoTwo*02', 'invitado')
-            ON CONFLICT (usuario) DO NOTHING;
         `);
+
+        const usuariosSeed = [
+            ['vigilancia1', 'belcen2026*', 'vigilancia'],
+            ['almacen1', 'almacenpass1', 'almacen'],
+            ['soplado_user', 'soplado123', 'soplado'],
+            ['envasado_user', 'envasado123', 'envasado'],
+            ['auditor_user', 'auditor123', 'auditoria'],
+            ['ing_blas', 'Blas2026_Sec', 'produccion'],
+            ['pariona', 'Pariona#987', 'supervisor'],
+            ['acceso_1', 'AccesoOne*01', 'invitado'],
+            ['acceso_2', 'AccesoTwo*02', 'invitado']
+        ];
+        for (const [usu, pwd, rol] of usuariosSeed) {
+            const salt = crypto.randomBytes(16).toString('hex');
+            const hash = await hashPassword(pwd, salt);
+            await client.query(
+                `INSERT INTO usuarios_sistema (usuario, password, rol) VALUES ($1, $2, $3) ON CONFLICT (usuario) DO NOTHING;`,
+                [usu, `${hash}:${salt}`, rol]
+            );
+        }
 
         // 5. Crear tablas operativas (Vigilancia actualizada con chofer, dni, placa y observaciones)
         await client.query(`

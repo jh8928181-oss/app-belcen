@@ -114,9 +114,11 @@ const inicializarBaseDeDatos = async () => {
             CREATE TABLE IF NOT EXISTS usuarios_sistema (
                 id SERIAL PRIMARY KEY,
                 usuario VARCHAR(50) UNIQUE NOT NULL,
-                password VARCHAR(50) NOT NULL,
+                password VARCHAR(300) NOT NULL,
                 rol VARCHAR(30) NOT NULL
             );
+
+            ALTER TABLE usuarios_sistema ALTER COLUMN password TYPE VARCHAR(300);
         `);
 
         console.log("Infraestructura de DB en Render sincronizada correctamente.");

@@ -840,23 +840,23 @@ function ultimoNumeroLinea(linea) {
 
 // Claques de productos tal como aparecen en la guía de remisión electrónica SUNAT
 const PRODUCTOS_PDF_KEYWORDS = [
-    { product_key: 'b1_1lt', nombres: ['B-1 X 1 LT', 'B-1 X 1L', 'B-1 1 LT', 'B-1 1L'] },
+    { product_key: 'b1_1lt', nombres: ['B-1 X 1 LT', 'B-1 X 1L', 'B-1 1 LT', 'B-1 1L', 'B-1 X 1 L'] },
     { product_key: 'b1_900ml', nombres: ['B-1 X 900 ML', 'B-1 900ML', 'B-1 900 ML'] },
     { product_key: 'b1_500ml', nombres: ['B-1 X 500 ML', 'B-1 500 ML'] },
     { product_key: 'b1_200ml', nombres: ['B-1 X 200 ML', 'B-1 200 ML'] },
-    { product_key: 'b1_2lt', nombres: ['B-1 X 2 LT', 'B-1 2 LT', 'B-1 2L'] },
-    { product_key: 'b1_5lt', nombres: ['B-1 X 5 LT', 'B-1 5 LT', 'B-1 5L'] },
+    { product_key: 'b1_2lt', nombres: ['B-1 X 2 LT', 'B-1 2 LT', 'B-1 2L', 'B-1 X 2 L'] },
+    { product_key: 'b1_5lt', nombres: ['B-1 X 5 LT', 'B-1 5 LT', 'B-1 5L', 'B-1 X 5 L', 'B-1 X 5 L X 4'] },
     { product_key: 'donlalo_800ml', nombres: ['DON LALO X 800 ML', 'DON LALO 800ML', 'DON LALO 800 ML'] },
-    { product_key: 'donlalo_20lt', nombres: ['DON LALO BALDE 20 LT', 'DON LALO 20 LT'] },
-    { product_key: 'belini_1lt', nombres: ['BELINI X 1 LT', 'BELINI 1 LT', 'BELINI 1L'] },
-    { product_key: 'belini_2lt', nombres: ['BELINI X 2 LT', 'BELINI 2 LT', 'BELINI 2L'] },
+    { product_key: 'donlalo_20lt', nombres: ['DON LALO BALDE 20 LT', 'DON LALO 20 LT', 'DON LALO BALDE X 20 L'] },
+    { product_key: 'belini_1lt', nombres: ['BELINI X 1 LT', 'BELINI 1 LT', 'BELINI 1L', 'BELINI X 1 L'] },
+    { product_key: 'belini_2lt', nombres: ['BELINI X 2 LT', 'BELINI 2 LT', 'BELINI 2L', 'BELINI X 2 L'] },
     { product_key: 'belini_900ml', nombres: ['BELINI X 900 ML', 'BELINI 900ML', 'BELINI 900 ML'] },
     { product_key: 'belini_500ml', nombres: ['BELINI X 500 ML', 'BELINI 500 ML'] },
     { product_key: 'belini_200ml', nombres: ['BELINI X 200 ML', 'BELINI 200 ML'] },
-    { product_key: 'belini_3lt', nombres: ['BELINI X 3 LT', 'BELINI 3 LT'] },
-    { product_key: 'belini_5lt', nombres: ['BELINI X 5 LT', 'BELINI 5 LT'] },
-    { product_key: 'belini_lata18lt', nombres: ['BELINI LATA 18 LT', 'BELINI 18 LT'] },
-    { product_key: 'belini_balde18lt', nombres: ['BELINI BALDE 18 LT'] }
+    { product_key: 'belini_3lt', nombres: ['BELINI X 3 LT', 'BELINI 3 LT', 'BELINI X 3 L'] },
+    { product_key: 'belini_5lt', nombres: ['BELINI X 5 LT', 'BELINI 5 LT', 'BELINI X 5 L'] },
+    { product_key: 'belini_lata18lt', nombres: ['BELINI LATA 18 LT', 'BELINI 18 LT', 'BELINI LATA X 18 L'] },
+    { product_key: 'belini_balde18lt', nombres: ['BELINI BALDE 18 LT', 'BELINI BALDE X 18 L', 'BELINI BALDE X 18 LT'] }
 ];
 
 // Lee la tabla "Bienes por transportar" de la guía SUNAT (una fila por producto, cantidad al final)
@@ -873,7 +873,7 @@ function detectarItemsTabla(textoPdf) {
 
     for (const linea of region) {
         if (linea.length < 10) continue;
-        if (/Peso Bruto|KGM|Indicador|Documentos|Observaci|^NO$|Bien normalizado|Descripci[oó]n Detallada|Partida arancelaria|Unidad de medida|^TOTAL|Datos del traslado|Número de|Principal:|Secundario|Habiltaci|TUCE|Certificado de|de la carga:|^normalizado|^medida$|^Cantidad$|^C[óo]digo$|^GTIN$|^SUNAT$|^Bien$|^Descripci|^Partida$/i.test(linea)) continue;
+        if (/Peso Bruto|KGM|Indicador|Documentos|Observaci|^NO$|Bien normalizado|Descripci[oó]n Detallada|Partida arancelaria|Unidad de medida|^TOTAL|Datos del traslado|Número de|Principal:|Secundario|Habiltaci|TUCE|Certificado de|de la carga:|^normalizado|^medida$|^Cantidad$|^C[óo]digo$|^GTIN$|^SUNAT$|^Bien$|^Descripci|^Partida$|Fecha Emisi[oó]n|Motivo Traslado|Modalidad de Transporte|Número de Bultos|Número de placa|Raz[oó]n Social|Vendedor|Direcci[oó]n|Conductor|Licencia del conductor|^DESTINATARIO$|^ENVIO$|^TRANSPORTE$|^Item\b|^GUIA DE REMISI[OÓ]N|^Para consultar|^P\.?Partida|^P\.?Llegada|^T\d{3}-\d|^\d{1,2} de \d{1,2} de|^CORPORACION DON LALO|CIPRESES|LURIGANCHO|CAJAMARQUILLA/i.test(linea)) continue;
         const normLinea = normalizarGuia(linea);
         if (!normLinea || normLinea.length < 15) continue;
 
@@ -977,6 +977,10 @@ function parsearCabeceraSUNAT(textoPdf) {
         m = textoPdf.match(/RUC\s*N[°º]?\s*(\d{11})/i);
         if (m) res.ruc = m[1];
     }
+    if (!res.ruc) {
+        m = textoPdf.match(/RUC:?\s*(\d{11})/i);
+        if (m) res.ruc = m[1];
+    }
     if (!res.empresa) {
         const seg = textoPdf.match(/N[°º\.]\s*[A-Z]{1,4}\s*[-–]\s*\d{4,8}\s*\r?\n+\s*([A-ZÁÉÍÓÚÑÜ0-9.& ]{4,60})/i);
         if (seg) res.empresa = seg[1].trim();
@@ -985,10 +989,22 @@ function parsearCabeceraSUNAT(textoPdf) {
         const seg2 = textoPdf.match(/Datos del\s+[Rr]emitente\s*:?\s*(.+?)\s*-\s*(?:REGISTRO\s*ÚNICO\s*DE\s*CONTRIBUYENTES|RUC)\s*N[°º]?\s*(\d{11})/);
         if (seg2) res.empresa = seg2[1].trim();
     }
+    if (!res.empresa) {
+        m = textoPdf.match(/Raz[oó]n\s*[Ss]ocial:?\s*([A-ZÁÉÍÓÚÑÜ0-9.& /]{4,60})/i);
+        if (m) res.empresa = m[1].trim();
+    }
 
     const dirs = extraerDireccionSUNAT(lineas);
     res.punto_partida = dirs.partida;
     res.destino = dirs.llegada;
+    if (!res.punto_partida) {
+        const pp = textoPdf.match(/P\.?Partida:?\s*(?:\d{6}\s*-\s*)?([A-ZÁÉÍÓÚÑÜ].*)/i);
+        if (pp) res.punto_partida = pp[1].trim();
+    }
+    if (!res.destino) {
+        const ll = textoPdf.match(/P\.?Llegada:?\s*(?:\d{6}\s*-\s*)?([A-ZÁÉÍÓÚÑÜ].*)/i);
+        if (ll) res.destino = ll[1].trim();
+    }
     if (!res.destino) {
         const lleg = textoPdf.match(/P\.?Llegada[:\s]*[\d\s-]+(.*)/i);
         if (lleg) res.destino = lleg[1].trim();
@@ -998,17 +1014,20 @@ function parsearCabeceraSUNAT(textoPdf) {
         }
     }
 
-    let pm = textoPdf.match(/Número de placa[^\n]*Principal[:\s]+([A-Z0-9][A-Z0-9\-]*[0-9])/i);
+    let pm = textoPdf.match(/Número de placa del vehículo[:\s]+([A-Z0-9][A-Z0-9\-]*[0-9])/i);
+    if (!pm) pm = textoPdf.match(/Número de placa[^\n]*Principal[:\s]+([A-Z0-9][A-Z0-9\-]*[0-9])/i);
     if (!pm) pm = textoPdf.match(/Principal[:\s]+([A-Z0-9][A-Z0-9\-]*[0-9])/i);
     if (!pm) pm = textoPdf.match(/(?:placa|veh[ií]culo)[^\w]*([A-Z0-9][A-Z0-9\-]+)/i);
     if (pm) res.placa = pm[1].trim().toUpperCase();
 
     let cm = textoPdf.match(/Principal[:\s]+([A-ZÁÉÍÓÚÑÜ .]{3,}?)\s*-\s*DOCUMENTO NACIONAL/i);
     if (!cm) cm = textoPdf.match(/Conductor[:\s]*([A-ZÁÉÍÓÚÑÜ .]{3,}?)(?=\s*(?:DNI|Licencia|LIC|Brevete|Placa|Veh[ií]culo|RUC)[:\s]|$)/i);
+    if (!cm) cm = textoPdf.match(/Conductor[:\s]*(\d{8})/i);
     if (cm) res.chofer = cm[1].trim().replace(/\s+/g, ' ');
 
-    let lm = textoPdf.match(/Número de lincencia de conducir[:\s]*([A-Z0-9][A-Z0-9\-]*[0-9])/i)
-        || textoPdf.match(/Número de licencia de conducir[:\s]*([A-Z0-9][A-Z0-9\-]*[0-9])/i)
+    let lm = textoPdf.match(/Número de licencia de conducir[:\s]*([A-Z0-9][A-Z0-9\-]*[0-9])/i)
+        || textoPdf.match(/Número de lincencia de conducir[:\s]*([A-Z0-9][A-Z0-9\-]*[0-9])/i)
+        || textoPdf.match(/Licencia del conductor[:\s]*([A-Z0-9][A-Z0-9\-]*[0-9])/i)
         || textoPdf.match(/Licencia[:\s]*([A-Z0-9][A-Z0-9\-]*[0-9])/i);
     if (lm) res.licencia = lm[1].trim().toUpperCase();
 

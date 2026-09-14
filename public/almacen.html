@@ -26,7 +26,10 @@
 
     <!-- 1. PENDIENTES DE VIGILANCIA & CONFORMIDAD -->
     <div class="table-container" style="border-top: 5px solid #ffc107;">
-        <h3 style="color: #d39e00; border-bottom: 2px solid #ffc107;">NOTIFICACIONES Y PENDIENTES DE VIGILANCIA (CONFORMIDAD)</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #ffc107; padding-bottom: 8px; margin-bottom: 15px; flex-wrap: wrap;">
+            <h3 style="color: #d39e00; margin: 0; border: none; padding: 0;">NOTIFICACIONES Y PENDIENTES DE VIGILANCIA (CONFORMIDAD)</h3>
+            <span id="pendientesContador" style="background: #dc3545; color: white; font-weight: bold; padding: 6px 14px; border-radius: 20px; font-size: 13px;">🔔 0 PENDIENTES</span>
+        </div>
         <table>
             <thead>
                 <tr>
@@ -95,7 +98,12 @@
 
     <!-- 4. INVENTARIO DE INSUMOS CON FILTROS -->
     <div class="table-container" style="border-top: 5px solid #007bff;">
-        <h3 style="color: #007bff;">INVENTARIO DE INSUMOS Y MATERIA PRIMA</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #007bff; padding-bottom: 8px; margin-bottom: 15px; flex-wrap: wrap;">
+            <h3 style="color: #007bff; margin: 0; border: none; padding: 0;">INVENTARIO DE INSUMOS Y MATERIA PRIMA</h3>
+            <button onclick="abrirModalNuevoProducto()" style="background-color: #007bff; color: white; border: none; padding: 8px 14px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 13px;">
+                ➕ Agregar Nuevo Producto
+            </button>
+        </div>
         
         <div style="display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap;">
             <div style="flex: 1; min-width: 250px;">
@@ -303,6 +311,85 @@
         </div>
     </div>
 
+    <!-- MODAL: AGREGAR NUEVO PRODUCTO AL INVENTARIO -->
+    <div id="modalNuevoProducto" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1001;">
+        <div style="background: white; padding: 25px; border-radius: 8px; width: 520px; max-width: 95%; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
+            <h3 style="margin-top: 0; color: #007bff; border-bottom: 2px solid #007bff; padding-bottom: 5px;">➕ Agregar Nuevo Producto al Inventario</h3>
+
+            <div style="margin-top: 15px;">
+                <label style="font-weight: bold; display: block; margin-bottom: 5px; font-size: 13px;">Nombre del Producto *</label>
+                <input type="text" id="inputNuevoNombre" list="datalistInsumosNombres" placeholder="Ej. Botella Belini x 500 ml" style="width: 100%;">
+                <datalist id="datalistInsumosNombres"></datalist>
+            </div>
+
+            <div style="display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap;">
+                <div style="flex: 2; min-width: 180px;">
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px; font-size: 13px;">Categoría</label>
+                    <select id="selectNuevaCategoria" style="width: 100%;">
+                        <option value="BOTELLAS Y GALONERAS">Envases (Botellas / Baldes / Latas)</option>
+                        <option value="CAJAS">Cajas Vacías</option>
+                        <option value="TAPAS Y ACCESORIOS">Tapas y Accesorios</option>
+                        <option value="PREFORMAS Y SERVICIOS">Preformas y Servicios</option>
+                        <option value="ETIQUETAS">Etiquetas</option>
+                        <option value="General">General</option>
+                    </select>
+                </div>
+                <div style="flex: 1; min-width: 110px;">
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px; font-size: 13px;">Unidad</label>
+                    <select id="selectNuevaUnidad" style="width: 100%;">
+                        <option value="UNIDADES">UNIDADES</option>
+                        <option value="MILL">MILL</option>
+                        <option value="CAJAS">CAJAS</option>
+                    </select>
+                </div>
+                <div style="flex: 1; min-width: 110px;">
+                    <label style="font-weight: bold; display: block; margin-bottom: 5px; font-size: 13px;">Stock Inicial</label>
+                    <input type="number" step="0.01" id="inputNuevoStock" value="0" min="0" style="width: 100%;">
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                <button type="button" onclick="cerrarModalNuevoProducto()" style="background-color: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">Cancelar</button>
+                <button type="button" onclick="guardarNuevoProducto()" style="background-color: #007bff; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">💾 Registrar Producto</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: REVISAR Y AJUSTAR CONFORMIDAD -->
+    <div id="modalRevisarAjuste" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1002;">
+        <div style="background: white; padding: 25px; border-radius: 8px; width: 820px; max-width: 95%; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
+            <h3 style="margin-top: 0; color: #17a2b8; border-bottom: 2px solid #17a2b8; padding-bottom: 5px;">🔧 Revisar y Ajustar Ingreso</h3>
+
+            <p style="font-size: 13px; color: #555;">Corrige cada producto: nombre, cantidad que llegó, categoría destino (tapas, botellas, cajas, etiquetas o preformas) y unidad. Si el producto ya existe solo se suma el stock; si no, se crea con estos datos.</p>
+
+            <div style="max-height: 320px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; margin-top: 10px;">
+                <table style="width: 100%; margin-top: 0;">
+                    <thead>
+                        <tr style="background: #f1f1f1; color: #333;">
+                            <th style="padding: 6px;">Producto (que llegó)</th>
+                            <th style="padding: 6px; width: 110px;">Cantidad</th>
+                            <th style="padding: 6px; width: 150px;">Categoría</th>
+                            <th style="padding: 6px; width: 100px;">Unidad</th>
+                            <th style="padding: 6px; width: 50px; text-align: center;">Quitar</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaAjusteManual">
+                        <tr><td colspan="5" class="text-center" style="color: #888; font-style: italic; font-size: 13px;">Cargando productos...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="margin-top: 12px;">
+                <button type="button" onclick="agregarFilaAjuste()" style="background: #ffc107; color: #000; border: none; padding: 8px 14px; border-radius: 4px; font-weight: bold; cursor: pointer;">➕ Agregar ítem</button>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
+                <button type="button" onclick="cerrarModalRevisarAjuste()" style="background-color: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">Cancelar</button>
+                <button type="button" onclick="guardarAjusteManual()" style="background-color: #17a2b8; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">📦 Confirmar y Registrar en Inventario</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // 🔒 Control estricto de roles (Seguridad de Planta)
         const rolUsuario = localStorage.getItem('rol_actual') || localStorage.getItem('rol_usuario');
@@ -331,22 +418,36 @@
             }
         }
 
+        let pendientesMap = {};
+        let ingresoAjusteActual = null;
+
         async function cargarPendientes() {
             try {
                 const res = await fetch('/api/almacen/pendientes');
                 const data = await res.json();
                 const tbody = document.getElementById('tablaPendientes');
                 tbody.innerHTML = data.length === 0 ? `<tr><td colspan="5" class="text-center">No hay pendientes.</td></tr>` : '';
-                
+
+                const contador = document.getElementById('pendientesContador');
+                if (data.length > 0) {
+                    contador.textContent = `🔔 ${data.length} PENDIENTE${data.length > 1 ? 'S' : ''}`;
+                    contador.style.background = '#dc3545';
+                } else {
+                    contador.textContent = '✔ Sin pendientes';
+                    contador.style.background = '#28a745';
+                }
+
                 data.forEach(item => {
                     let itemsDetalle = '';
+                    let parsedItems = [];
                     try {
-                        const parsed = JSON.parse(item.items_json || '[]');
-                        parsed.forEach(p => {
+                        parsedItems = JSON.parse(item.items_json || '[]');
+                        parsedItems.forEach(p => {
                             let alertaDiff = p.cantidad_guia !== p.cantidad_fisica ? `<span style="color:red; font-weight:bold;">(Guía: ${p.cantidad_guia} | Físico: ${p.cantidad_fisica})</span>` : `(${p.cantidad_fisica})`;
                             itemsDetalle += `<div>• <b>${p.nombre}</b> ${alertaDiff}</div>`;
                         });
                     } catch(e) { itemsDetalle = item.producto_textual || 'Detalle no disponible'; }
+                    pendientesMap[item.id] = parsedItems;
 
                     tbody.innerHTML += `
                         <tr>
@@ -356,6 +457,7 @@
                             <td class="text-center">${item.foto_url ? `<a href="${item.foto_url}" target="_blank">Ver</a>` : '-'}</td>
                             <td class="text-center">
                                 <button onclick="darConformidad(${item.id})" class="btn-accion">Dar Conformidad</button>
+                                <button onclick="abrirModalRevisarAjuste(${item.id})" class="btn-accion btn-regularizar" style="margin-left: 5px;">Revisar y Ajustar</button>
                             </td>
                         </tr>
                     `;
@@ -383,6 +485,148 @@
             }
         }
 
+        // ➕ Agregar Nuevo Producto al inventario
+        function abrirModalNuevoProducto() {
+            const datalist = document.getElementById('datalistInsumosNombres');
+            datalist.innerHTML = inventarioGlobal.map(i => `<option value="${i.nombre}"></option>`).join('');
+            document.getElementById('inputNuevoNombre').value = '';
+            document.getElementById('inputNuevoStock').value = 0;
+            document.getElementById('modalNuevoProducto').style.display = 'flex';
+        }
+
+        function cerrarModalNuevoProducto() {
+            document.getElementById('modalNuevoProducto').style.display = 'none';
+        }
+
+        async function guardarNuevoProducto() {
+            const nombre = document.getElementById('inputNuevoNombre').value.trim();
+            const categoria = document.getElementById('selectNuevaCategoria').value;
+            const unidad_medida = document.getElementById('selectNuevaUnidad').value;
+            const stock = document.getElementById('inputNuevoStock').value;
+            if (!nombre) { alert('❌ Ingresa el nombre del producto.'); return; }
+            try {
+                const res = await fetch('/api/inventario/nuevo', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nombre, categoria, unidad_medida, stock })
+                });
+                const data = await res.json();
+                alert(data.mensaje || 'Respuesta del servidor.');
+                if (res.ok && data.success) {
+                    cerrarModalNuevoProducto();
+                    cargarInventarioAlmacen();
+                }
+            } catch (err) { console.error(err); alert('Error de conexión.'); }
+        }
+
+        // 🔧 Revisar y Ajustar conformidad (manual)
+        function abrirModalRevisarAjuste(id) {
+            const parsed = pendientesMap[id] || [];
+            ingresoAjusteActual = id;
+            const datalist = document.getElementById('datalistInsumosNombres');
+            datalist.innerHTML = inventarioGlobal.map(i => `<option value="${i.nombre}"></option>`).join('');
+            const tbody = document.getElementById('tablaAjusteManual');
+            tbody.innerHTML = '';
+            if (parsed.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center" style="color:#888;">Este ingreso no tiene productos detallados. Agrega uno manualmente.</td></tr>`;
+            } else {
+                parsed.forEach(p => agregarFilaAjusteVals(p.nombre || '', p.cantidad_fisica ?? p.cantidad, p.cantidad_guia, p.categoria || ''));
+            }
+            document.getElementById('modalRevisarAjuste').style.display = 'flex';
+        }
+
+        function agregarFilaAjusteVals(nombre, cantidad, cantidadGuia, categoria) {
+            const tbody = document.getElementById('tablaAjusteManual');
+            const emptyMsg = tbody.querySelector('td[colspan="5"]');
+            if (emptyMsg) tbody.innerHTML = '';
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>
+                    <input type="text" class="filaAjusteNombre" list="datalistInsumosNombres" value="${nombre}" placeholder="Nombre del producto" style="width: 100%;">
+                </td>
+                <td><input type="number" step="0.01" min="0" class="filaAjusteCantidad" value="${cantidad !== undefined && cantidad !== null ? cantidad : ''}" style="width: 100%;" title="Cantidad recibida"></td>
+                <td>
+                    <select class="filaAjusteCategoria" style="width: 100%;">
+                        <option value="BOTELLAS Y GALONERAS">Envases</option>
+                        <option value="CAJAS">Cajas</option>
+                        <option value="TAPAS Y ACCESORIOS">Tapas</option>
+                        <option value="PREFORMAS Y SERVICIOS">Preformas</option>
+                        <option value="ETIQUETAS">Etiquetas</option>
+                        <option value="General">General</option>
+                    </select>
+                </td>
+                <td>
+                    <select class="filaAjusteUnidad" style="width: 100%;">
+                        <option value="UNIDADES">UNIDADES</option>
+                        <option value="MILL">MILL</option>
+                        <option value="CAJAS">CAJAS</option>
+                    </select>
+                </td>
+                <td class="text-center"><button type="button" onclick="this.closest('tr').remove()" style="background:#dc3545; color:white; border:none; padding:4px 8px; border-radius:3px; cursor:pointer;">X</button></td>
+            `;
+            if (categoria) row.querySelector('.filaAjusteCategoria').value = categoria;
+            if (cantidadGuia !== undefined && cantidadGuia !== null && cantidadGuia !== '') {
+                const tdNombre = row.querySelector('td');
+                const nota = document.createElement('small');
+                nota.textContent = `guía: ${cantidadGuia}`;
+                nota.style.cssText = 'color:#e65100; font-size:11px; display:block;';
+                tdNombre.appendChild(nota);
+            }
+            tbody.appendChild(row);
+        }
+
+        function agregarFilaAjuste() {
+            agregarFilaAjusteVals('', '', null, '');
+        }
+
+        function cerrarModalRevisarAjuste() {
+            document.getElementById('modalRevisarAjuste').style.display = 'none';
+            ingresoAjusteActual = null;
+        }
+
+        async function guardarAjusteManual() {
+            if (!ingresoAjusteActual) return;
+            const filas = document.querySelectorAll('#tablaAjusteManual tr');
+            const items = [];
+            filas.forEach(f => {
+                const inputNombre = f.querySelector('.filaAjusteNombre');
+                const inputCantidad = f.querySelector('.filaAjusteCantidad');
+                const nota = f.querySelector('small');
+                let cantidadGuia = null;
+                if (nota) {
+                    const m = nota.textContent.match(/guía:\s*([\d.]+)/);
+                    if (m) cantidadGuia = m[1];
+                }
+                if (inputNombre && inputNombre.value.trim()) {
+                    items.push({
+                        nombre: inputNombre.value.trim(),
+                        cantidad: inputCantidad ? parseFloat(inputCantidad.value) || 0 : 0,
+                        cantidad_guia: cantidadGuia,
+                        categoria: (f.querySelector('.filaAjusteCategoria') || {}).value || 'General',
+                        unidad_medida: (f.querySelector('.filaAjusteUnidad') || {}).value || 'UNIDADES'
+                    });
+                }
+            });
+            if (items.length === 0) { alert('❌ Agrega al menos un producto con nombre válido.'); return; }
+            if (!confirm(`¿Confirmar el ajuste de ${items.length} producto(s)? Se sumará el stock indicado al inventario.`)) return;
+
+            try {
+                const res = await fetch('/api/almacen/conformidad-ajustada', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ingreso_id: ingresoAjusteActual, usuario_almacen: localStorage.getItem('usuario_actual') || 'almacen1', items })
+                });
+                const data = await res.json();
+                alert(data.mensaje || 'Respuesta del servidor.');
+                if (res.ok && data.success) {
+                    cerrarModalRevisarAjuste();
+                    cargarPendientes();
+                    cargarInventarioAlmacen();
+                    cargarRegistroIngresos();
+                }
+            } catch (err) { console.error(err); alert('Error de conexión.'); }
+        }
+
         async function cargarRegistroIngresos() {
             try {
                 const res = await fetch('/api/almacen/registro-ingresos');
@@ -407,7 +651,7 @@
                         <td>${row.proveedor}</td>
                         <td><b>${row.producto_nombre}</b></td>
                         <td class="text-center" style="color: #007bff; font-weight: bold;">${row.cantidad}</td>
-                        <td class="text-center">${badge}</td>
+                        <td class="text-center">${badge}${row.categoria ? `<div style="margin-top:3px; font-size:11px; color:#495057;">${row.categoria} · ${row.unidad_medida || 'UNIDADES'}</div>` : ''}</td>
                     </tr>
                 `;
             });
@@ -792,6 +1036,21 @@
         cargarProductoTerminado();
         cargarInventarioAlmacen();
         cargarHistorialSalidas();
+
+        setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                cargarPendientes();
+                cargarRegistroIngresos();
+                cargarInventarioAlmacen();
+            }
+        }, 15000);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                cargarPendientes();
+                cargarRegistroIngresos();
+                cargarInventarioAlmacen();
+            }
+        });
     </script>
 </body>
 </html>

@@ -84,6 +84,20 @@ const inicializarBaseDeDatos = async () => {
 
             ALTER TABLE reportes_produccion ADD COLUMN IF NOT EXISTS desglose_insumos TEXT;
 
+            CREATE TABLE IF NOT EXISTS registro_ingresos_almacen (
+                id SERIAL PRIMARY KEY,
+                fecha_registro DATE,
+                numero_guia VARCHAR(100),
+                proveedor VARCHAR(150),
+                producto_nombre VARCHAR(150),
+                cantidad NUMERIC(10,2),
+                estado VARCHAR(50),
+                articulo_id INT REFERENCES inventario(id)
+            );
+
+            ALTER TABLE registro_ingresos_almacen ADD COLUMN IF NOT EXISTS categoria VARCHAR(100);
+            ALTER TABLE registro_ingresos_almacen ADD COLUMN IF NOT EXISTS unidad_medida VARCHAR(20);
+
             CREATE TABLE IF NOT EXISTS historial_cierres_produccion (
                 id SERIAL PRIMARY KEY,
                 fecha_cierre DATE NOT NULL,

@@ -175,6 +175,110 @@ app.get('/api/almacen/registro-ingresos', async (req, res) => {
     }
 });
 
+app.post('/api/almacen/conformidad-ajustada', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { ingreso_id, usuario_almacen, items } = req.body;
+        if (!Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ success: false, mensaje: 'Debe especificar al menos un producto para ajustar.' });
+        }
+        await client.query('BEGIN');
+
+        const ingresoRes = await client.query('SELECT * FROM ingresos_vigilancia WHERE id = $1', [ingreso_id]);
+        if (ingresoRes.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'El ingreso no existe.' });
+        }
+        const ingreso = ingresoRes.rows[0];
+
+        let tieneDiferencias = false;
+
+        for (const item of items) {
+            const nombre = (item.nombre || '').trim();
+            const cantidad = parseFloat(item.cantidad);
+            if (!nombre || isNaN(cantidad) || cantidad < 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: `Producto inválido: "${item.nombre || ''}" con cantidad ${item.cantidad}.` });
+            }
+            const categoria = (item.categoria || 'General').trim();
+            const unidad_medida = (item.unidad_medida || 'UNIDADES').trim();
+            const cantidadGuia = parseFloat(item.cantidad_guia);
+            let estadoItem = 'CON GUIA';
+            if (!isNaN(cantidadGuia) && cantidad !== cantidadGuia) {
+                tieneDiferencias = true;
+                estadoItem = 'POR REGULARIZAR';
+            }
+
+            const existeRes = await client.query('SELECT id FROM inventario WHERE LOWER(nombre) = LOWER($1)', [nombre]);
+            let targetArticuloId;
+            if (existeRes.rows.length > 0) {
+                targetArticuloId = existeRes.rows[0].id;
+                await client.query(
+                    `UPDATE inventario SET stock = stock + $1 WHERE id = $2`,
+                    [cantidad, targetArticuloId]
+                );
+            } else {
+                const nuevoArt = await client.query(
+                    `INSERT INTO inventario (nombre, categoria, stock, unidad_medida, estado)
+                     VALUES ($1, $2, $3, $4, CASE WHEN $3 <= 0 THEN 'REALIZAR PEDIDO' ELSE 'STOCK SUFICIENTE' END)
+                     RETURNING id`,
+                    [nombre, categoria, cantidad, unidad_medida]
+                );
+                targetArticuloId = nuevoArt.rows[0].id;
+            }
+            await actualizarEstadoArticulo(client, nombre);
+
+            await client.query(`
+                INSERT INTO registro_ingresos_almacen (fecha_registro, numero_guia, proveedor, producto_nombre, cantidad, estado, articulo_id, categoria, unidad_medida)
+                VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6, $7, $8);
+            `, [ingreso.numero_guia, ingreso.proveedor, nombre, cantidad, estadoItem, targetArticuloId, categoria, unidad_medida]);
+        }
+
+        const estadoFinalIngreso = tieneDiferencias ? 'CONFORME CON DIFERENCIAS (POR REGULARIZAR)' : `RECIBIDO POR ${usuario_almacen || 'almacen1'}`;
+        await client.query(`UPDATE ingresos_vigilancia SET estado = $1 WHERE id = $2`, [estadoFinalIngreso, ingreso_id]);
+
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: 'Ingreso ajustado y stock actualizado correctamente.' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error("Error en conformidad ajustada:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al procesar la conformidad ajustada: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// --- ALMACÉN: CREAR NUEVO PRODUCTO EN INVENTARIO ---
+app.post('/api/inventario/nuevo', async (req, res) => {
+    try {
+        const { nombre, categoria, unidad_medida, stock } = req.body;
+        const nom = (nombre || '').trim();
+        if (!nom) {
+            return res.status(400).json({ success: false, mensaje: 'El nombre del producto es obligatorio.' });
+        }
+        const cat = (categoria || 'General').trim();
+        const uni = (unidad_medida || 'UNIDADES').trim();
+        const stockInicial = parseFloat(stock);
+        const stockValido = isNaN(stockInicial) || stockInicial < 0 ? 0 : stockInicial;
+
+        const existe = await pool.query('SELECT id FROM inventario WHERE LOWER(nombre) = LOWER($1)', [nom]);
+        if (existe.rows.length > 0) {
+            return res.status(400).json({ success: false, mensaje: `Ya existe "${nom}" en el inventario. Usa el botón Ajustar para corregir su stock.` });
+        }
+
+        const nuevo = await pool.query(
+            `INSERT INTO inventario (nombre, categoria, stock, unidad_medida, estado)
+             VALUES ($1, $2, $3, $4, CASE WHEN $3 <= 0 THEN 'REALIZAR PEDIDO' ELSE 'STOCK SUFICIENTE' END)
+             RETURNING id, nombre`,
+            [nom, cat, stockValido, uni]
+        );
+        res.json({ success: true, mensaje: 'Producto registrado en el inventario.', articulo_id: nuevo.rows[0].id });
+    } catch (err) {
+        console.error("Error al crear producto:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al crear producto: ' + err.message });
+    }
+});
+
 // --- ALMACÉN: AJUSTE MANUAL DE INVENTARIO INSUMOS ---
 app.post('/api/almacen/ajustar-stock', async (req, res) => {
     try {

@@ -26,6 +26,8 @@
         .logout:hover { background-color: #c82333; }
         .text-center { text-align: center; }
         .sin-registros { color: #888; font-style: italic; }
+        .filtro { width: 100%; padding: 9px 12px; border: 1px solid #ced4da; border-radius: 4px; margin-top: 10px; font-size: 13px; box-sizing: border-box; }
+        .filtro:focus { outline: none; border-color: #007bff; box-shadow: 0 0 0 2px rgba(0,123,255,0.2); }
     </style>
 </head>
 <body>
@@ -34,6 +36,7 @@
         <!-- ENTRADAS -->
         <div class="tarjeta" style="border-top: 5px solid #28a745;">
             <h3 class="entradas">📥 ENTRADAS / INGRESOS — Vigilancia y Almacén</h3>
+            <input id="filtroEntradas" class="filtro" placeholder="🔍 Buscar por producto, proveedor, fecha u origen...">
             <table>
                 <thead>
                     <tr>
@@ -54,6 +57,7 @@
         <!-- SALIDAS -->
         <div class="tarjeta" style="border-top: 5px solid #dc3545;">
             <h3 class="salidas">📤 SALIDAS / DESPACHOS — Almacén</h3>
+            <input id="filtroSalidas" class="filtro" placeholder="🔍 Buscar por producto, destino, N° de guía o fecha...">
             <table>
                 <thead>
                     <tr>
@@ -75,6 +79,7 @@
         <!-- PRODUCCIÓN -->
         <div class="tarjeta" style="border-top: 5px solid #ffc107;">
             <h3 style="border-bottom: 2px solid #ffc107; color: #8a6d00;">🏭 PRODUCCIÓN (ENVASADO)</h3>
+            <input id="filtroProduccion" class="filtro" placeholder="🔍 Buscar por producto, usuario o fecha...">
             <table>
                 <thead>
                     <tr>
@@ -130,29 +135,43 @@
         }
 
         // 📥 ENTRADAS (Vigilancia + Almacén)
+        let entradasGlobal = [];
+        let salidasGlobal = [];
+        let informesGlobal = [];
+
+        function renderEntradas() {
+            const q = (document.getElementById('filtroEntradas').value || '').toLowerCase();
+            const filtradas = entradasGlobal.filter(it =>
+                (it.producto || '').toLowerCase().includes(q) ||
+                (it.proveedor || '').toLowerCase().includes(q) ||
+                (it.origen || '').toLowerCase().includes(q) ||
+                formatearFecha(it.fecha).toLowerCase().includes(q) ||
+                String(it.cantidad).toLowerCase().includes(q)
+            );
+            const tbody = document.getElementById('tablaEntradas');
+            tbody.innerHTML = filtradas.length === 0 ? '<tr><td colspan="6" class="text-center sin-registros">No hay entradas que coincidan con la búsqueda.</td></tr>' : '';
+            filtradas.forEach(item => {
+                const badgeOrigen = item.origen === 'ALMACEN'
+                    ? '<span class="badge badge-alm">ALMACÉN</span>'
+                    : '<span class="badge badge-vig">VIGILANCIA</span>';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><b>${formatearFecha(item.fecha)}</b></td>
+                    <td>${item.producto || 'N/D'}</td>
+                    <td class="text-center" style="color:#1e7e34; font-weight:bold;">${item.cantidad}</td>
+                    <td class="text-center">${linkGuia(item.foto_url, 'Ver Foto')}</td>
+                    <td>${item.proveedor || 'N/D'}</td>
+                    <td class="text-center">${badgeOrigen}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
         async function cargarEntradas() {
             try {
                 const res = await fetch('/api/auditoria/entradas');
-                const entradas = await res.json();
-                const tbody = document.getElementById('tablaEntradas');
-                tbody.innerHTML = entradas.length === 0 ? '<tr><td colspan="6" class="text-center sin-registros">No hay entradas registradas.</td></tr>' : '';
-
-                entradas.forEach(item => {
-                    const badgeOrigen = item.origen === 'ALMACEN'
-                        ? '<span class="badge badge-alm">ALMACÉN</span>'
-                        : '<span class="badge badge-vig">VIGILANCIA</span>';
-
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td><b>${formatearFecha(item.fecha)}</b></td>
-                        <td>${item.producto || 'N/D'}</td>
-                        <td class="text-center" style="color:#1e7e34; font-weight:bold;">${item.cantidad}</td>
-                        <td class="text-center">${linkGuia(item.foto_url, 'Ver Foto')}</td>
-                        <td>${item.proveedor || 'N/D'}</td>
-                        <td class="text-center">${badgeOrigen}</td>
-                    `;
-                    tbody.appendChild(tr);
-                });
+                entradasGlobal = await res.json();
+                renderEntradas();
             } catch (err) {
                 console.error(err);
                 document.getElementById('tablaEntradas').innerHTML = '<tr><td colspan="6" class="text-center" style="color:red;">Error al cargar las entradas.</td></tr>';
@@ -160,68 +179,88 @@
         }
 
         // 📤 SALIDAS (Almacén)
+        function renderSalidas() {
+            const q = (document.getElementById('filtroSalidas').value || '').toLowerCase();
+            const filtradas = salidasGlobal.filter(it =>
+                (it.articulo_nombre || '').toLowerCase().includes(q) ||
+                (it.destino || '').toLowerCase().includes(q) ||
+                (it.numero_guia || '').toLowerCase().includes(q) ||
+                (it.chofer_licencia || '').toLowerCase().includes(q) ||
+                formatearFecha(it.fecha_salida).toLowerCase().includes(q)
+            );
+            const tbody = document.getElementById('tablaSalidas');
+            tbody.innerHTML = filtradas.length === 0 ? '<tr><td colspan="7" class="text-center sin-registros">No hay salidas que coincidan con la búsqueda.</td></tr>' : '';
+            filtradas.forEach(item => {
+                const despachoId = item.despacho_id ? `'${item.despacho_id}'` : 'null';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><b>${formatearFecha(item.fecha_salida)}</b></td>
+                    <td>${item.articulo_nombre || 'Producto General'}</td>
+                    <td class="text-center" style="color:#bd2130; font-weight:bold;">${item.cantidad_salida}</td>
+                    <td class="text-center">${linkGuia(item.guia_url, 'Ver Guía')}</td>
+                    <td>${item.destino || 'N/D'}</td>
+                    <td><b>${item.numero_guia || 'S/N'}</b><br><small>${item.tipo_registro || ''}</small></td>
+                    <td class="text-center">
+                        <button onclick="borrarSalida(${despachoId}, ${item.id})" style="background:#dc3545; color:white; border:none; padding:5px 9px; border-radius:4px; cursor:pointer; font-size:13px;" title="Eliminar despacho">🗑</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
         async function cargarSalidas() {
             try {
                 const res = await fetch('/api/auditoria/salidas');
-                const salidas = await res.json();
-                const tbody = document.getElementById('tablaSalidas');
-                tbody.innerHTML = salidas.length === 0 ? '<tr><td colspan="7" class="text-center sin-registros">No hay salidas registradas.</td></tr>' : '';
-
-                salidas.forEach(item => {
-                    const despachoId = item.despacho_id ? `'${item.despacho_id}'` : 'null';
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td><b>${formatearFecha(item.fecha_salida)}</b></td>
-                        <td>${item.articulo_nombre || 'Producto General'}</td>
-                        <td class="text-center" style="color:#bd2130; font-weight:bold;">${item.cantidad_salida}</td>
-                        <td class="text-center">${linkGuia(item.guia_url, 'Ver Guía')}</td>
-                        <td>${item.destino || 'N/D'}</td>
-                        <td><b>${item.numero_guia || 'S/N'}</b><br><small>${item.tipo_registro || ''}</small></td>
-                        <td class="text-center">
-                            <button onclick="borrarSalida(${despachoId}, ${item.id})" style="background:#dc3545; color:white; border:none; padding:5px 9px; border-radius:4px; cursor:pointer; font-size:13px;" title="Eliminar despacho">🗑</button>
-                        </td>
-                    `;
-                    tbody.appendChild(tr);
-                });
+                salidasGlobal = await res.json();
+                renderSalidas();
             } catch (err) {
                 console.error(err);
-                document.getElementById('tablaSalidas').innerHTML = '<tr><td colspan="6" class="text-center" style="color:red;">Error al cargar las salidas.</td></tr>';
+                document.getElementById('tablaSalidas').innerHTML = '<tr><td colspan="7" class="text-center" style="color:red;">Error al cargar las salidas.</td></tr>';
             }
         }
 
         // 🏭 PRODUCCIÓN (ENVASADO)
+        function renderProduccion() {
+            const q = (document.getElementById('filtroProduccion').value || '').toLowerCase();
+            const filtradas = informesGlobal.filter(it =>
+                (it.presentacion || '').toLowerCase().includes(q) ||
+                (it.usuario_registro || '').toLowerCase().includes(q) ||
+                (it.fecha_produccion || '').toLowerCase().includes(q)
+            );
+            const tbody = document.getElementById('tablaProduccion');
+            tbody.innerHTML = filtradas.length === 0 ? '<tr><td colspan="6" class="text-center sin-registros">No hay producciones que coincidan con la búsqueda.</td></tr>' : '';
+            filtradas.forEach(inf => {
+                const cant = parseInt(inf.cantidad_cajas, 10) || 0;
+                const ton = parseFloat(inf.toneladas || 0);
+                const desglose = inf.desglose || [];
+
+                let insumosHtml = '<span style="color:#adb5bd;">Sin desglose</span>';
+                if (desglose.length) {
+                    insumosHtml = '<ul style="margin:0; padding-left:18px;">' + desglose.map(d => {
+                        const val = Number(d.cantidad) || 0;
+                        const mostrar = d.unidad_medida === 'MILL' ? val.toFixed(2) : (Number.isInteger(val) ? val : val.toFixed(2));
+                        return `<li>${d.nombre}: <b>${mostrar} ${d.unidad_medida || ''}</b></li>`;
+                    }).join('') + '</ul>';
+                }
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><b>${inf.fecha_produccion}</b></td>
+                    <td>${inf.presentacion || 'N/D'}</td>
+                    <td class="text-center" style="color:#8a6d00; font-weight:bold;">${cant}</td>
+                    <td class="text-center">${ton.toFixed(2)}</td>
+                    <td>${inf.usuario_registro || '-'}</td>
+                    <td>${insumosHtml}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
         async function cargarProduccion() {
             try {
                 const res = await fetch('/api/produccion/informes');
-                const informes = await res.json();
-                const tbody = document.getElementById('tablaProduccion');
-                tbody.innerHTML = informes.length === 0 ? '<tr><td colspan="6" class="text-center sin-registros">No hay producciones registradas.</td></tr>' : '';
-
-                informes.forEach(inf => {
-                    const cant = parseInt(inf.cantidad_cajas, 10) || 0;
-                    const ton = parseFloat(inf.toneladas || 0);
-                    const desglose = inf.desglose || [];
-
-                    let insumosHtml = '<span style="color:#adb5bd;">Sin desglose</span>';
-                    if (desglose.length) {
-                        insumosHtml = '<ul style="margin:0; padding-left:18px;">' + desglose.map(d => {
-                            const val = Number(d.cantidad) || 0;
-                            const mostrar = d.unidad_medida === 'MILL' ? val.toFixed(2) : (Number.isInteger(val) ? val : val.toFixed(2));
-                            return `<li>${d.nombre}: <b>${mostrar} ${d.unidad_medida || ''}</b></li>`;
-                        }).join('') + '</ul>';
-                    }
-
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td><b>${inf.fecha_produccion}</b></td>
-                        <td>${inf.presentacion || 'N/D'}</td>
-                        <td class="text-center" style="color:#8a6d00; font-weight:bold;">${cant}</td>
-                        <td class="text-center">${ton.toFixed(2)}</td>
-                        <td>${inf.usuario_registro || '-'}</td>
-                        <td>${insumosHtml}</td>
-                    `;
-                    tbody.appendChild(tr);
-                });
+                informesGlobal = await res.json();
+                renderProduccion();
             } catch (err) {
                 console.error(err);
                 document.getElementById('tablaProduccion').innerHTML = '<tr><td colspan="6" class="text-center" style="color:red;">Error al cargar la producción.</td></tr>';
@@ -251,6 +290,10 @@
         cargarEntradas();
         cargarSalidas();
         cargarProduccion();
+
+        document.getElementById('filtroEntradas').addEventListener('input', renderEntradas);
+        document.getElementById('filtroSalidas').addEventListener('input', renderSalidas);
+        document.getElementById('filtroProduccion').addEventListener('input', renderProduccion);
 
         setInterval(() => {
             if (document.visibilityState === 'visible') {

@@ -41,7 +41,8 @@ async function poblarInventarioReal() {
                 id SERIAL PRIMARY KEY,
                 producto_key VARCHAR(100) UNIQUE NOT NULL,
                 nombre_producto VARCHAR(150) NOT NULL,
-                stock_cajas INT DEFAULT 0
+                stock_cajas INT DEFAULT 0,
+                stock_minimo INT DEFAULT 0
             );
         `);
 

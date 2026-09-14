@@ -413,7 +413,16 @@ app.post('/api/almacen/ajustar-stock', async (req, res) => {
 // --- PRODUCTO TERMINADO: CONSULTA Y AJUSTE ---
 app.get('/api/producto-terminado', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM producto_terminado ORDER BY nombre_producto ASC');
+        const result = await pool.query(`
+            SELECT *, 
+                   CASE 
+                       WHEN stock_minimo > 0 AND stock_cajas <= stock_minimo THEN 'REALIZAR PEDIDO'
+                       WHEN stock_cajas <= 0 THEN 'REALIZAR PEDIDO'
+                       ELSE 'STOCK SUFICIENTE'
+                   END AS estado
+            FROM producto_terminado 
+            ORDER BY nombre_producto ASC
+        `);
         res.json(result.rows);
     } catch (err) {
         console.error("Error al obtener productos terminados:", err);
@@ -429,6 +438,20 @@ app.post('/api/producto-terminado/ajustar', async (req, res) => {
     } catch (err) {
         console.error("Error al ajustar producto terminado:", err);
         res.status(500).json({ success: false, mensaje: 'Error al ajustar stock de producto terminado' });
+    }
+});
+
+app.post('/api/producto-terminado/minimo', async (req, res) => {
+    try {
+        const { id, stock_minimo } = req.body;
+        if (!id || isNaN(parseInt(stock_minimo))) {
+            return res.status(400).json({ success: false, mensaje: 'Producto y stock mínimo válido son requeridos.' });
+        }
+        await pool.query('UPDATE producto_terminado SET stock_minimo = $1 WHERE id = $2', [parseInt(stock_minimo), id]);
+        res.json({ success: true, mensaje: 'Stock mínimo del producto actualizado.' });
+    } catch (err) {
+        console.error("Error al actualizar stock mínimo:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al actualizar el stock mínimo: ' + err.message });
     }
 });
 
@@ -1196,6 +1219,76 @@ app.post('/api/salidas/eliminar', async (req, res) => {
         await client.query('ROLLBACK');
         console.error("Error al eliminar salida:", err);
         res.status(500).json({ success: false, mensaje: 'Error al eliminar la salida: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
+app.post('/api/salidas/editar', upload.single('archivo_guia'), async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { despacho_id, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, fecha_salida, usuario, items_json } = req.body;
+        const items = JSON.parse(items_json || '[]');
+
+        if (!despacho_id) return res.status(400).json({ success: false, mensaje: 'Falta el identificador del despacho.' });
+        if (items.length === 0) return res.status(400).json({ success: false, mensaje: 'Debe incluir al menos un producto.' });
+
+        const filas = (await client.query('SELECT * FROM salidas_almacen WHERE despacho_id = $1', [despacho_id])).rows;
+        if (filas.length === 0) return res.status(404).json({ success: false, mensaje: 'No se encontró el despacho a editar.' });
+
+        await client.query('BEGIN');
+
+        for (const fila of filas) {
+            const cantidad = parseFloat(fila.cantidad_salida) || 0;
+            if (fila.producto_key) {
+                await client.query(`UPDATE producto_terminado SET stock_cajas = stock_cajas + $1 WHERE producto_key = $2`, [cantidad, fila.producto_key]);
+            } else if (fila.articulo_id) {
+                await client.query(`UPDATE inventario SET stock = stock + $1 WHERE id = $2`, [cantidad, fila.articulo_id]);
+                const nombreRow = await client.query('SELECT nombre FROM inventario WHERE id = $1', [fila.articulo_id]);
+                if (nombreRow.rows.length > 0) await actualizarEstadoArticulo(client, nombreRow.rows[0].nombre);
+            }
+            await client.query('DELETE FROM salidas_almacen WHERE id = $1', [fila.id]);
+        }
+
+        const estadoGuia = tipo_registro === 'CON GUIA' ? 'REGULARIZADO' : 'PENDIENTE REGULARIZAR';
+        const guiaFinal = numero_guia || 'S/N';
+        const guia_url = req.file ? `/uploads/${req.file.filename}` : (filas[0].guia_url || null);
+
+        for (const item of items) {
+            let idArticuloFinal = item.articulo_id ? parseInt(item.articulo_id) : null;
+            let productoKeyFinal = item.producto_key || null;
+
+            if (productoKeyFinal) {
+                await client.query(`UPDATE producto_terminado SET stock_cajas = stock_cajas - $1 WHERE producto_key = $2`, [parseFloat(item.cantidad), productoKeyFinal]);
+            } else if (idArticuloFinal) {
+                await client.query(`UPDATE inventario SET stock = stock - $1 WHERE id = $2`, [parseFloat(item.cantidad), idArticuloFinal]);
+                if (item.nombre) await actualizarEstadoArticulo(client, item.nombre);
+            }
+
+            let targetArticuloId = idArticuloFinal;
+            if (!targetArticuloId && productoKeyFinal) {
+                const matchInv = await client.query('SELECT id FROM inventario WHERE LOWER(nombre) = LOWER($1)', [item.nombre]);
+                if (matchInv.rows.length > 0) targetArticuloId = matchInv.rows[0].id;
+            }
+
+            await client.query(`
+                INSERT INTO salidas_almacen 
+                (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, articulo_id, cantidad_salida, usuario_registro, estado_guia, guia_url, despacho_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15);
+            `, [
+                fecha_salida || new Date(), tipo_registro, guiaFinal,
+                empresa || 'N/A', ruc || 'N/A', destino || 'N/A',
+                chofer_licencia || 'N/A', placa || 'N/A', punto_partida || 'Almacén Principal',
+                targetArticuloId, item.cantidad, usuario || 'almacen_user', estadoGuia, guia_url, despacho_id
+            ]);
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: `Despacho actualizado (${items.length} ítem(s)) y stock recalculado.` });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error("Error al editar salida:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al editar la salida: ' + err.message });
     } finally {
         client.release();
     }

@@ -24,8 +24,11 @@ const inicializarBaseDeDatos = async () => {
                 id SERIAL PRIMARY KEY,
                 producto_key VARCHAR(100) UNIQUE NOT NULL,
                 nombre_producto VARCHAR(150) NOT NULL,
-                stock_cajas INT DEFAULT 0
+                stock_cajas INT DEFAULT 0,
+                stock_minimo INT DEFAULT 0
             );
+
+            ALTER TABLE producto_terminado ADD COLUMN IF NOT EXISTS stock_minimo INT DEFAULT 0;
 
             CREATE TABLE IF NOT EXISTS ingresos_vigilancia (
                 id SERIAL PRIMARY KEY,

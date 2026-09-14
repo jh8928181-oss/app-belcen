@@ -16,7 +16,7 @@
             }
         }
 
-        return origFetch.apply(this, arguments).then(function (resp) {
+        return origFetch.call(this, url, opts).then(function (resp) {
             if (resp.status === 401 && !isLoginUrl(url)) {
                 localStorage.removeItem(TOKEN_KEY);
                 window.location.href = 'index.html';

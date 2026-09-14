@@ -71,6 +71,26 @@
             </table>
         </div>
 
+        <!-- PRODUCCIÓN -->
+        <div class="tarjeta" style="border-top: 5px solid #ffc107;">
+            <h3 style="border-bottom: 2px solid #ffc107; color: #8a6d00;">🏭 PRODUCCIÓN (ENVASADO)</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="background-color:#8a6d00;">Fecha</th>
+                        <th style="background-color:#8a6d00;">Producto</th>
+                        <th class="text-center" style="background-color:#8a6d00;">Cantidad (CAJAS)</th>
+                        <th class="text-center" style="background-color:#8a6d00;">Toneladas</th>
+                        <th style="background-color:#8a6d00;">Quién Reportó</th>
+                        <th style="background-color:#8a6d00;">Insumos Usados</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaProduccion">
+                    <tr><td colspan="6" class="text-center">Cargando producción...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
         <div style="text-align: center; margin-top: 10px; padding: 15px; border-top: 1px solid #ddd;">
             <a href="dashboard.html" id="linkDashboard" style="display: inline-block; margin-bottom: 10px; color: #007bff; text-decoration: none; font-weight: bold;">Volver al Dashboard General</a>
             <br>
@@ -164,19 +184,61 @@
             }
         }
 
+        // 🏭 PRODUCCIÓN (ENVASADO)
+        async function cargarProduccion() {
+            try {
+                const res = await fetch('/api/produccion/informes');
+                const informes = await res.json();
+                const tbody = document.getElementById('tablaProduccion');
+                tbody.innerHTML = informes.length === 0 ? '<tr><td colspan="6" class="text-center sin-registros">No hay producciones registradas.</td></tr>' : '';
+
+                informes.forEach(inf => {
+                    const cant = parseInt(inf.cantidad_cajas, 10) || 0;
+                    const ton = parseFloat(inf.toneladas || 0);
+                    const desglose = inf.desglose || [];
+
+                    let insumosHtml = '<span style="color:#adb5bd;">Sin desglose</span>';
+                    if (desglose.length) {
+                        insumosHtml = '<ul style="margin:0; padding-left:18px;">' + desglose.map(d => {
+                            const val = Number(d.cantidad) || 0;
+                            const mostrar = d.unidad_medida === 'MILL' ? val.toFixed(2) : (Number.isInteger(val) ? val : val.toFixed(2));
+                            return `<li>${d.nombre}: <b>${mostrar} ${d.unidad_medida || ''}</b></li>`;
+                        }).join('') + '</ul>';
+                    }
+
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><b>${inf.fecha_produccion}</b></td>
+                        <td>${inf.presentacion || 'N/D'}</td>
+                        <td class="text-center" style="color:#8a6d00; font-weight:bold;">${cant}</td>
+                        <td class="text-center">${ton.toFixed(2)}</td>
+                        <td>${inf.usuario_registro || '-'}</td>
+                        <td>${insumosHtml}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                console.error(err);
+                document.getElementById('tablaProduccion').innerHTML = '<tr><td colspan="6" class="text-center" style="color:red;">Error al cargar la producción.</td></tr>';
+            }
+        }
+
         cargarEntradas();
         cargarSalidas();
+        cargarProduccion();
 
         setInterval(() => {
             if (document.visibilityState === 'visible') {
                 cargarEntradas();
                 cargarSalidas();
+                cargarProduccion();
             }
         }, 15000);
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
                 cargarEntradas();
                 cargarSalidas();
+                cargarProduccion();
             }
         });
     </script>

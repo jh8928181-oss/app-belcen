@@ -4,6 +4,8 @@ const path = require('path');
 const multer = require('multer');
 const { PDFParse } = require('pdf-parse');
 const fs = require('fs');
+const os = require('os');
+const tesseract = require('tesseract.js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -677,6 +679,228 @@ function extraerCantidadPdf(textoPdf, claves) {
     return null;
 }
 
+// ------------------ FUNCIONES AUXILIARES DEL LECTOR DE GUÍAS SUNAT ------------------
+
+// Normaliza un texto para comparaciones: minúsculas y solo alfanumérico
+function normalizarGuia(txt) {
+    return (txt || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+// Último número con sentido de una línea (quita separadores de miles y usa coma como decimal cuando aplica)
+function ultimoNumeroLinea(linea) {
+    const nums = (linea || '').match(/\d[\d.,]*/g);
+    if (!nums || nums.length === 0) return null;
+    for (let i = nums.length - 1; i >= 0; i--) {
+        const raw = nums[i].replace(/,/g, '');
+        if (/^\d+(\.\d+)?$/.test(raw)) {
+            const v = parseFloat(raw);
+            if (v > 0 && v < 100000) return v;
+        }
+    }
+    return null;
+}
+
+// Claques de productos tal como aparecen en la guía de remisión electrónica SUNAT
+const PRODUCTOS_PDF_KEYWORDS = [
+    { product_key: 'b1_1lt', nombres: ['B-1 X 1 LT', 'B-1 X 1L', 'B-1 1 LT', 'B-1 1L'] },
+    { product_key: 'b1_900ml', nombres: ['B-1 X 900 ML', 'B-1 900ML', 'B-1 900 ML'] },
+    { product_key: 'b1_500ml', nombres: ['B-1 X 500 ML', 'B-1 500 ML'] },
+    { product_key: 'b1_200ml', nombres: ['B-1 X 200 ML', 'B-1 200 ML'] },
+    { product_key: 'b1_2lt', nombres: ['B-1 X 2 LT', 'B-1 2 LT', 'B-1 2L'] },
+    { product_key: 'b1_5lt', nombres: ['B-1 X 5 LT', 'B-1 5 LT', 'B-1 5L'] },
+    { product_key: 'donlalo_800ml', nombres: ['DON LALO X 800 ML', 'DON LALO 800ML', 'DON LALO 800 ML'] },
+    { product_key: 'donlalo_20lt', nombres: ['DON LALO BALDE 20 LT', 'DON LALO 20 LT'] },
+    { product_key: 'belini_1lt', nombres: ['BELINI X 1 LT', 'BELINI 1 LT', 'BELINI 1L'] },
+    { product_key: 'belini_2lt', nombres: ['BELINI X 2 LT', 'BELINI 2 LT', 'BELINI 2L'] },
+    { product_key: 'belini_900ml', nombres: ['BELINI X 900 ML', 'BELINI 900ML', 'BELINI 900 ML'] },
+    { product_key: 'belini_500ml', nombres: ['BELINI X 500 ML', 'BELINI 500 ML'] },
+    { product_key: 'belini_200ml', nombres: ['BELINI X 200 ML', 'BELINI 200 ML'] },
+    { product_key: 'belini_3lt', nombres: ['BELINI X 3 LT', 'BELINI 3 LT'] },
+    { product_key: 'belini_5lt', nombres: ['BELINI X 5 LT', 'BELINI 5 LT'] },
+    { product_key: 'belini_lata18lt', nombres: ['BELINI LATA 18 LT', 'BELINI 18 LT'] },
+    { product_key: 'belini_balde18lt', nombres: ['BELINI BALDE 18 LT'] }
+];
+
+// Lee la tabla "Bienes por transportar" de la guía SUNAT (una fila por producto, cantidad al final)
+function detectarItemsTabla(textoPdf) {
+    const lineas = textoPdf.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const idxIni = lineas.findIndex(l => /Bienes por [Tt]ransportar/i.test(l));
+    const idxFin = lineas.findIndex(l => /Indicador de traslado|Datos del traslado|Datos de los veh[ií]culos|Datos de los conductores|representaci[óo]n impresa/i.test(l));
+    const region = idxIni !== -1 ? lineas.slice(idxIni + 1, idxFin !== -1 ? idxFin : lineas.length) : lineas;
+
+    const items = [];
+    const advertencias = [];
+    const emparejados = new Set();
+    let noReconocidas = 0;
+
+    for (const linea of region) {
+        if (linea.length < 10) continue;
+        if (/Peso Bruto|KGM|Indicador|Documentos|Observaci|^NO$|Bien normalizado|Descripci[oó]n Detallada|Partida arancelaria|Unidad de medida|^TOTAL|Datos del traslado|Número de|Principal:|Secundario|Habiltaci|TUCE|Certificado de|de la carga:|^normalizado|^medida$|^Cantidad$|^C[óo]digo$|^GTIN$|^SUNAT$|^Bien$|^Descripci|^Partida$/i.test(linea)) continue;
+        const normLinea = normalizarGuia(linea);
+        if (!normLinea || normLinea.length < 15) continue;
+
+        const cantidad = ultimoNumeroLinea(linea);
+        let reconocida = false;
+        for (const prod of PRODUCTOS_PDF_KEYWORDS) {
+            if (emparejados.has(prod.product_key)) continue;
+            if (prod.nombres.some(n => normLinea.includes(normalizarGuia(n)))) {
+                reconocida = true;
+                emparejados.add(prod.product_key);
+                const nombre = PRODUCTOS_TERMINADOS_MAP[prod.product_key] || prod.product_key;
+                items.push({ product_key: prod.product_key, nombre, cantidad, cantidad_auto: cantidad !== null });
+                if (cantidad === null) {
+                    advertencias.push(`Se detectó "${nombre}" en el PDF sin una cantidad clara. Revísala en la lista.`);
+                }
+                break;
+            }
+        }
+        if (!reconocida) {
+            noReconocidas++;
+            if (noReconocidas <= 5) {
+                advertencias.push(`Línea del PDF sin reconocer (revísala): "${linea.slice(0, 80)}..."`);
+            }
+        }
+    }
+    return { items, advertencias };
+}
+
+// Extrae las direcciones de partida y llegada de la guía SUNAT (bloque antes de "Punto de ...")
+function extraerDireccionSUNAT(lineas) {
+    const finAddr = /-\s*([A-ZÁÉÍÓÚÑÜ]{3,})\s+-\s+([A-ZÁÉÍÓÚÑÜ\s]{3,}?)\s*$/i;
+    const esPlantaBelcen = (d) => /LOS CIPRESES|CAJAMARQUILLA|LURIGANCHO/i.test(d);
+    const idxLabel = lineas.findIndex(l => /^Punto de (llegada|partida)/i.test(l));
+    if (idxLabel === -1) return { partida: '', llegada: '' };
+
+    let idxStart = -1;
+    for (let i = 0; i < idxLabel; i++) {
+        const l = lineas[i];
+        if (/Fecha de inicio de Traslado/i.test(l) || /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(l.trim())) {
+            idxStart = i;
+            break;
+        }
+    }
+
+    // La dirección puede empezar en la mismísima línea "Fecha de inicio de Traslado: 13/05/2026 <dirección>"
+    let buf = '';
+    if (idxStart !== -1) {
+        const m0 = lineas[idxStart].match(/Fecha de inicio de Traslado.*?\d{1,2}\/\d{1,2}\/\d{4}\s*(.*)$/i);
+        if (m0 && m0[1].trim()) buf = m0[1].replace(/^Venta\s+/i, '').trim();
+    }
+
+    const direcciones = [];
+    const inicio = idxStart !== -1 ? idxStart + 1 : 0;
+    for (let i = inicio; i < idxLabel; i++) {
+        let l = lineas[i].replace(/^Venta\s+/i, '').trim();
+        if (l.length < 8 || !/[A-ZÁÉÍÓÚÑÜ]/.test(l)) continue;
+        if (/^\d{1,2}\/\d{1,2}\/\d{4}\s*$/.test(l)) continue;
+        if (/[:]/.test(l) && !/-/.test(l)) continue;
+        buf = buf ? buf + ' ' + l : l;
+        if (finAddr.test(buf)) {
+            direcciones.push(buf.trim());
+            buf = '';
+        }
+    }
+    if (buf.trim() && direcciones.length < 2) direcciones.push(buf.trim());
+
+    if (direcciones.length === 0) return { partida: '', llegada: '' };
+    if (direcciones.length === 1) return { partida: '', llegada: direcciones[0] };
+
+    let partida = direcciones[0];
+    let llegada = direcciones[1];
+    const d0Belcen = esPlantaBelcen(direcciones[0]);
+    const d1Belcen = esPlantaBelcen(direcciones[1]);
+    if (d0Belcen !== d1Belcen) {
+        partida = d0Belcen ? direcciones[0] : direcciones[1];
+        llegada = d0Belcen ? direcciones[1] : direcciones[0];
+    }
+    return { partida, llegada };
+}
+
+// Cabecera y transporte de la guía de remisión (emisión SUNAT o formato anterior)
+function parsearCabeceraSUNAT(textoPdf) {
+    const lineas = textoPdf.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const res = { numero_guia: '', ruc: '', empresa: '', destino: '', punto_partida: '', placa: '', chofer: '', licencia: '' };
+
+    let m = textoPdf.match(/N[°º\.]?\s*([A-Z0-9]{2,8})\s*[-–]\s*(\d{4,8})/i);
+    if (m) {
+        res.numero_guia = (m[1] + '-' + m[2]).toUpperCase();
+    } else {
+        m = textoPdf.match(/([T|F|B]\s*0\d{2}\s*[-]\s*\d{1,8})/i);
+        if (m) res.numero_guia = m[1].replace(/\s+/g, '').toUpperCase();
+    }
+
+    m = textoPdf.match(/Datos del\s+[Dd]estinatario\s*:?\s*(.+?)\s*-\s*REGISTRO\s*ÚNICO\s*DE\s*CONTRIBUYENTES\s*N[°º]?\s*(\d{11})/i);
+    if (m) {
+        res.empresa = m[1].trim();
+        res.ruc = m[2];
+    }
+
+    if (!res.ruc) {
+        m = textoPdf.match(/RUC\s*N[°º]?\s*(\d{11})/i);
+        if (m) res.ruc = m[1];
+    }
+    if (!res.empresa) {
+        const seg = textoPdf.match(/N[°º\.]\s*[A-Z]{1,4}\s*[-–]\s*\d{4,8}\s*\r?\n+\s*([A-ZÁÉÍÓÚÑÜ0-9.& ]{4,60})/i);
+        if (seg) res.empresa = seg[1].trim();
+    }
+    if (!res.empresa) {
+        const seg2 = textoPdf.match(/Datos del\s+[Rr]emitente\s*:?\s*(.+?)\s*-\s*(?:REGISTRO\s*ÚNICO\s*DE\s*CONTRIBUYENTES|RUC)\s*N[°º]?\s*(\d{11})/);
+        if (seg2) res.empresa = seg2[1].trim();
+    }
+
+    const dirs = extraerDireccionSUNAT(lineas);
+    res.punto_partida = dirs.partida;
+    res.destino = dirs.llegada;
+    if (!res.destino) {
+        const lleg = textoPdf.match(/P\.?Llegada[:\s]*[\d\s-]+(.*)/i);
+        if (lleg) res.destino = lleg[1].trim();
+        else {
+            const dir = textoPdf.match(/Direcci[oó]n[:\s]*(.*)/i);
+            if (dir) res.destino = dir[1].trim();
+        }
+    }
+
+    let pm = textoPdf.match(/Número de placa[^\n]*Principal[:\s]+([A-Z0-9][A-Z0-9\-]*[0-9])/i);
+    if (!pm) pm = textoPdf.match(/Principal[:\s]+([A-Z0-9][A-Z0-9\-]*[0-9])/i);
+    if (!pm) pm = textoPdf.match(/(?:placa|veh[ií]culo)[^\w]*([A-Z0-9][A-Z0-9\-]+)/i);
+    if (pm) res.placa = pm[1].trim().toUpperCase();
+
+    let cm = textoPdf.match(/Principal[:\s]+([A-ZÁÉÍÓÚÑÜ .]{3,}?)\s*-\s*DOCUMENTO NACIONAL/i);
+    if (!cm) cm = textoPdf.match(/Conductor[:\s]*([A-ZÁÉÍÓÚÑÜ .]{3,}?)(?=\s*(?:DNI|Licencia|LIC|Brevete|Placa|Veh[ií]culo|RUC)[:\s]|$)/i);
+    if (cm) res.chofer = cm[1].trim().replace(/\s+/g, ' ');
+
+    let lm = textoPdf.match(/Número de lincencia de conducir[:\s]*([A-Z0-9][A-Z0-9\-]*[0-9])/i)
+        || textoPdf.match(/Número de licencia de conducir[:\s]*([A-Z0-9][A-Z0-9\-]*[0-9])/i)
+        || textoPdf.match(/Licencia[:\s]*([A-Z0-9][A-Z0-9\-]*[0-9])/i);
+    if (lm) res.licencia = lm[1].trim().toUpperCase();
+
+    return res;
+}
+
+// OCR de guías escaneadas (worker único de tesseract.js en español)
+let workerTesseractPromise = null;
+function obtenerWorkerOCR() {
+    if (!workerTesseractPromise) {
+        workerTesseractPromise = tesseract.createWorker('spa', undefined, {
+            cachePath: path.join(os.tmpdir(), 'tesseract-cache')
+        });
+    }
+    return workerTesseractPromise;
+}
+
+async function ocrPdf(dataBuffer) {
+    const pdfData = await new PDFParse({ data: dataBuffer });
+    const screens = await pdfData.getScreenshot({ imageBuffer: true, scale: 2.5 });
+    let texto = '';
+    const worker = await obtenerWorkerOCR();
+    for (const page of screens.pages) {
+        if (!page || !page.data) continue;
+        const { data } = await worker.recognize(Buffer.from(page.data));
+        texto += (data.text || '') + '\n';
+    }
+    return texto.trim();
+}
+
 // --- LECTOR INTELIGENTE DE PDF PARA SALIDAS ---
 app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res) => {
     try {
@@ -686,75 +910,30 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
 
         const dataBuffer = fs.readFileSync(req.file.path);
         const pdfData = await new PDFParse({ data: dataBuffer }).getText();
-        const textoPdf = pdfData.text;
+        let textoPdf = pdfData.text || '';
+        let metodo = 'texto';
 
-        let numero_guia = '';
-        let ruc = '';
-        let empresa = '';
-        let destino = '';
-        let chofer_licencia = '';
-        let placa = '';
-
-        const guiaMatch = textoPdf.match(/([T|F|B]\s*0\d{2}\s*[-]\s*\d{1,8})/i);
-        if (guiaMatch) {
-            numero_guia = guiaMatch[1].replace(/\s+/g, '');
-        }
-
-        const rucMatches = textoPdf.match(/RUC[:\s]*(\d{11})/gi);
-        if (rucMatches && rucMatches.length > 0) {
-            const numRuc = rucMatches[rucMatches.length - 1].match(/(\d{11})/);
-            if (numRuc) ruc = numRuc[1];
-        }
-
-        const razonSocialMatch = textoPdf.match(/Razón Social[:\s]*(.*)/i);
-        if (razonSocialMatch) {
-            empresa = razonSocialMatch[1].trim();
-        } else {
-            empresa = 'CORPORACION DON LALO S.A.C.';
-        }
-
-        const llegadaMatch = textoPdf.match(/P\.Llegada[:\s]*[\d\s-]+(.*)/i);
-        if (llegadaMatch) {
-            destino = llegadaMatch[1].trim();
-        } else {
-            const dirMatch = textoPdf.match(/Dirección[:\s]*(.*)/i);
-            if (dirMatch) destino = dirMatch[1].trim();
-        }
-
-        const placaMatch = textoPdf.match(/(?:placa|veh[ií]culo)[^\w]*([A-Z0-9-]+)/i);
-        if (placaMatch) {
-            placa = placaMatch[1].trim();
-        }
-
-        const conductorMatch = textoPdf.match(/Conductor[:\s]*([A-ZÁÉÍÓÚÑÜ .]{3,}?)(?=\s*(?:DNI|Licencia|LIC|Brevete|Placa|Veh[ií]culo|RUC)[:\s]|$)/i);
-        const licenciaMatch = textoPdf.match(/Licencia[:\s]*([A-Z0-9][A-Z0-9\-]*[0-9])/i);
-        if (conductorMatch) chofer_licencia = conductorMatch[1].trim();
-        if (licenciaMatch) chofer_licencia = (chofer_licencia ? chofer_licencia + ' - ' : '') + 'Lic: ' + licenciaMatch[1].trim();
-
-        let itemsDetectados = [];
-        const advertencias = [];
-
-        const productosGuia = [
-            { product_key: 'b1_1lt', nombre: 'Aceite de Soya B-1 1 Lt', claves: ['1030004', 'ACEITE DE SOYA B-1 X 1 L'], cantidadBase: 254 },
-            { product_key: 'donlalo_800ml', nombre: 'Aceite de Soya Don Lalo 800 ml', claves: ['1040003', 'DON LALO X 800ML'], cantidadBase: 400 },
-            { product_key: 'belini_2lt', nombre: 'Aceite de Soya Belini 2 Lt (Galonera)', claves: ['1050005', 'BELINI X 2 L'], cantidadBase: 100 }
-        ];
-
-        for (const prod of productosGuia) {
-            if (prod.claves.some(c => textoPdf.includes(c))) {
-                const cantidadDetectada = extraerCantidadPdf(textoPdf, prod.claves);
-                const cantidad = cantidadDetectada || prod.cantidadBase;
-                itemsDetectados.push({
-                    product_key: prod.product_key,
-                    nombre: prod.nombre,
-                    cantidad,
-                    cantidad_auto: !!cantidadDetectada
-                });
-                if (!cantidadDetectada) {
-                    advertencias.push(`No se pudo confirmar la cantidad de "${prod.nombre}" en el PDF; se usó la base ${prod.cantidadBase}. Revísala antes de registrar.`);
+        const esEscaneo = textoPdf.trim().length < 30;
+        if (esEscaneo) {
+            try {
+                const textoOCR = await ocrPdf(dataBuffer);
+                if (textoOCR.trim().length < 15) {
+                    return res.json({ success: false, mensaje: 'El PDF es un escaneo (imagen) y no se pudo reconocer su contenido por OCR. Carga los datos manualmente.' });
                 }
+                textoPdf = textoOCR;
+                metodo = 'ocr';
+            } catch (err) {
+                console.error('Error OCR:', err);
+                return res.json({ success: false, mensaje: 'El PDF parecía un escaneo y el OCR falló (' + err.message + '). Carga los datos manualmente.' });
             }
         }
+
+        const cabecera = parsearCabeceraSUNAT(textoPdf);
+        const chofer_licencia = [cabecera.chofer, cabecera.licencia ? 'Lic: ' + cabecera.licencia : ''].filter(Boolean).join(' - ');
+
+        const { items: itemsTabla, advertencias: advertenciasTabla } = detectarItemsTabla(textoPdf);
+        let itemsDetectados = itemsTabla;
+        const advertencias = advertenciasTabla.slice();
 
         if (itemsDetectados.length === 0) {
             const ptRes = await pool.query('SELECT * FROM producto_terminado');
@@ -762,23 +941,40 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
                 const nombreBusq = pt.nombre_producto.toLowerCase().replace('aceite de soya', '').trim();
                 if (!nombreBusq) continue;
                 if (!textoPdf.toLowerCase().includes(nombreBusq)) continue;
-                const cantidadDetectada = extraerCantidadPdf(textoPdf, [pt.nombre_producto, pt.nombre_producto.toLowerCase()]);
-                if (cantidadDetectada) {
-                    itemsDetectados.push({
-                        product_key: pt.producto_key,
-                        nombre: pt.nombre_producto,
-                        cantidad: cantidadDetectada,
-                        cantidad_auto: true
-                    });
-                } else {
-                    advertencias.push(`Se detectó "${pt.nombre_producto}" en el PDF pero no se pudo leer su cantidad automáticamente. Agrégala manualmente en la lista.`);
+                const cantidadDetectada = extraerCantidadPdf(textoPdf, [pt.nombre_producto, pt.nombre_producto.toLowerCase(), nombreBusq]);
+                itemsDetectados.push({
+                    product_key: pt.producto_key,
+                    nombre: pt.nombre_producto,
+                    cantidad: cantidadDetectada,
+                    cantidad_auto: !!cantidadDetectada
+                });
+                if (!cantidadDetectada) {
+                    advertencias.push(`Se detectó "${pt.nombre_producto}" en el PDF pero no se pudo leer su cantidad. Agrega la cantidad manualmente en la lista.`);
                 }
             }
+            if (itemsDetectados.length === 0) {
+                advertencias.push('No se reconocieron productos del catálogo en el PDF. Si la guía trae ítems, agrégalos manualmente en la lista.');
+            }
+        }
+
+        if (metodo === 'ocr') {
+            advertencias.unshift('Datos leídos mediante OCR (la guía era un escaneo). Revisa cantidades y campos antes de registrar.');
         }
 
         res.json({
             success: true,
-            datos: { numero_guia, ruc, empresa, destino, chofer_licencia, placa, items: itemsDetectados, advertencias }
+            metodo,
+            datos: {
+                numero_guia: cabecera.numero_guia,
+                ruc: cabecera.ruc,
+                empresa: cabecera.empresa,
+                destino: cabecera.destino,
+                punto_partida: cabecera.punto_partida,
+                chofer_licencia,
+                placa: cabecera.placa,
+                items: itemsDetectados,
+                advertencias
+            }
         });
     } catch (err) {
         console.error("Error al leer PDF:", err);
@@ -1230,3 +1426,5 @@ app.get('/api/produccion/historial-cierres', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`Servidor ejecutándose en http://localhost:${PORT}`);
 });
+
+module.exports = { app, parsearCabeceraSUNAT, detectarItemsTabla, extraerDireccionSUNAT };

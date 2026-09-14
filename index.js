@@ -14,7 +14,13 @@ const PORT = process.env.PORT || 3000;
 const upload = multer({ dest: 'public/uploads/' });
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html') || filePath.endsWith('.js')) {
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        }
+    }
+}));
 
 // Mapeo oficial de keys y nombres legibles
 const PRODUCTOS_TERMINADOS_MAP = {

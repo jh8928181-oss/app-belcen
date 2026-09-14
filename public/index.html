@@ -34,6 +34,16 @@
     </div>
 
     <script>
+        // 🔄 Limpieza de sesión residual: descarta cualquier token/rol viejo de versiones anteriores
+        (function () {
+            try {
+                localStorage.removeItem('token_actual');
+                localStorage.removeItem('usuario_actual');
+                localStorage.removeItem('rol_actual');
+                localStorage.removeItem('rol_usuario');
+            } catch (e) { /* almacenamiento no disponible */ }
+        })();
+
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const usuario = document.getElementById('usuario').value.trim();

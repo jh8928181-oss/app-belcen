@@ -172,11 +172,13 @@
                 
                 inventarioGlobal.forEach(item => {
                     const badgeClass = item.estado === 'STOCK SUFICIENTE' ? 'badge-suficiente' : 'badge-pedido';
-                    tbodyInv.innerHTML += `
+                    const stockN = parseFloat(item.stock);
+                            const stockTexto = isNaN(stockN) ? '0.00' : stockN.toFixed(2);
+                            tbodyInv.innerHTML += `
                         <tr>
                             <td><b>${item.nombre}</b></td>
                             <td>${item.categoria}</td>
-                            <td class="text-center"><b>${parseFloat(item.stock).toFixed(2)}</b></td>
+                            <td class="text-center"><b>${stockTexto}</b></td>
                             <td class="text-center">${item.unidad_medida}</td>
                             <td class="text-center"><span class="${badgeClass}">${item.estado}</span></td>
                         </tr>

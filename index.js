@@ -9,6 +9,10 @@ const crypto = require('crypto');
 const { promisify } = require('util');
 const tesseract = require('tesseract.js');
 
+process.on('unhandledRejection', (reason) => {
+    console.error('Rechazo no manejado:', reason);
+});
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const upload = multer({ dest: 'public/uploads/' });
@@ -236,6 +240,10 @@ app.post('/api/almacen/conformidad', async (req, res) => {
         await client.query('BEGIN');
 
         const ingresoRes = await client.query('SELECT * FROM ingresos_vigilancia WHERE id = $1', [ingreso_id]);
+        if (ingresoRes.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'El ingreso no existe.' });
+        }
         const ingreso = ingresoRes.rows[0];
         const items = JSON.parse(ingreso.items_json || '[]');
 
@@ -243,7 +251,7 @@ app.post('/api/almacen/conformidad', async (req, res) => {
 
         for (const item of items) {
             let estadoItem = 'CON GUIA';
-            if (item.cantidad_guia !== item.cantidad_fisica) {
+            if (Number(item.cantidad_guia) !== Number(item.cantidad_fisica)) {
                 tieneDiferencias = true;
                 estadoItem = 'POR REGULARIZAR';
             }
@@ -319,9 +327,12 @@ app.post('/api/almacen/conformidad-ajustada', async (req, res) => {
             }
             const categoria = (item.categoria || 'General').trim();
             const unidad_medida = (item.unidad_medida || 'UNIDADES').trim();
-            const cantidadGuia = parseFloat(item.cantidad_guia);
+            const cantidadGuiaRaw = item.cantidad_guia;
+            const cantidadGuia = cantidadGuiaRaw === undefined || cantidadGuiaRaw === null || cantidadGuiaRaw === ''
+                ? cantidad
+                : parseFloat(cantidadGuiaRaw);
             let estadoItem = 'CON GUIA';
-            if (!isNaN(cantidadGuia) && cantidad !== cantidadGuia) {
+            if (isNaN(cantidadGuia) || Math.abs(cantidad - cantidadGuia) > 0.0001) {
                 tieneDiferencias = true;
                 estadoItem = 'POR REGULARIZAR';
             }
@@ -505,11 +516,18 @@ app.post('/api/soplado/registrar', async (req, res) => {
     const client = await pool.connect();
     try {
         const { preforma_nombre, botella_tipo, cantidad_producida, usuario } = req.body;
+        const cantidadBotellas = parseInt(cantidad_producida, 10);
+        if (!cantidadBotellas || cantidadBotellas <= 0 || cantidadBotellas > 1000000) {
+            return res.status(400).json({ success: false, mensaje: 'Cantidad producida inválida. Debe ser un número entero mayor a 0.' });
+        }
+        if (!preforma_nombre || !String(preforma_nombre).trim()) {
+            return res.status(400).json({ success: false, mensaje: 'Debe seleccionar cuál preforma se usó.' });
+        }
+
         await client.query('BEGIN');
 
         let etiquetaNombre = null;
         let botellaNombre = '';
-        let cantidadBotellas = parseInt(cantidad_producida);
 
         switch (botella_tipo) {
             // LÍNEA BELINI
@@ -570,26 +588,38 @@ app.post('/api/soplado/registrar', async (req, res) => {
         }
 
         // 1. Descontar la preforma elegida manualmente por el operador (stock en MILL)
-        await client.query(
+        const updPreforma = await client.query(
             `UPDATE inventario SET stock = stock - $1 WHERE LOWER(nombre) = LOWER($2)`,
             [cantidadBotellas / 1000, preforma_nombre]
         );
+        if (updPreforma.rowCount === 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: `La preforma "${preforma_nombre}" no existe en el inventario.` });
+        }
         await actualizarEstadoArticulo(client, preforma_nombre);
 
         // 2. Descontar la etiqueta correspondiente automáticamente (stock en MILL)
         if (etiquetaNombre) {
-            await client.query(
+            const updEtiqueta = await client.query(
                 `UPDATE inventario SET stock = stock - $1 WHERE LOWER(nombre) = LOWER($2)`,
                 [cantidadBotellas / 1000, etiquetaNombre]
             );
+            if (updEtiqueta.rowCount === 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: `La etiqueta "${etiquetaNombre}" no existe en el inventario.` });
+            }
             await actualizarEstadoArticulo(client, etiquetaNombre);
         }
 
         // 3. Aumentar stock de la botella fabricada en inventario
-        await client.query(
+        const updBotella = await client.query(
             `UPDATE inventario SET stock = stock + $1 WHERE LOWER(nombre) = LOWER($2)`,
             [cantidadBotellas, botellaNombre]
         );
+        if (updBotella.rowCount === 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: `La botella "${botellaNombre}" no existe en el inventario. Crea el artículo primero.` });
+        }
         await actualizarEstadoArticulo(client, botellaNombre);
 
         await client.query('COMMIT');
@@ -739,57 +769,7 @@ function obtenerInsumosReceta(producto_tipo, cantidad, tapa_elegida) {
     return insumos;
 }
 
-// --- ENVASADO ---
-app.post('/api/envasado/registrar', async (req, res) => {
-    const client = await pool.connect();
-    try {
-        const { producto_tipo, cantidad_producida, numero_lote, tapa_elegida } = req.body; 
-        await client.query('BEGIN');
-
-        const insumosADescontar = obtenerInsumosReceta(producto_tipo, cantidad_producida, tapa_elegida);
-
-        const faltantes = [];
-        for (const insumo of insumosADescontar) {
-            const stockRes = await client.query('SELECT stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [insumo.nombre]);
-            const stockActual = stockRes.rows.length > 0 ? Number(stockRes.rows[0].stock || 0) : 0;
-            if (stockActual < insumo.cantidad) {
-                faltantes.push(`${insumo.nombre}: requiere ${insumo.cantidad} | stock: ${stockActual}`);
-            }
-        }
-        if (faltantes.length > 0) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({
-                success: false,
-                mensaje: 'Stock insuficiente. No se registró nada:\n- ' + faltantes.join('\n- ')
-            });
-        }
-
-        for (const insumo of insumosADescontar) {
-            await client.query(
-                `UPDATE inventario SET stock = stock - $1 WHERE LOWER(nombre) = LOWER($2)`,
-                [insumo.cantidad, insumo.nombre]
-            );
-            await actualizarEstadoArticulo(client, insumo.nombre);
-        }
-
-        const nombreLegible = PRODUCTOS_TERMINADOS_MAP[producto_tipo] || producto_tipo;
-        await client.query(`
-            INSERT INTO producto_terminado (producto_key, nombre_producto, stock_cajas)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (producto_key) 
-            DO UPDATE SET stock_cajas = producto_terminado.stock_cajas + EXCLUDED.stock_cajas;
-        `, [producto_tipo, nombreLegible, cantidad_producida]);
-
-        await client.query('COMMIT');
-        res.json({ success: true, mensaje: `Producción del lote ${numero_lote || 'S/N'} registrada (+${cantidad_producida} cajas a Producto Terminado).` });
-    } catch (error) {
-        await client.query('ROLLBACK');
-        console.error('Error en registro de envasado:', error);
-        res.status(500).json({ success: false, mensaje: 'Error al procesar la producción: ' + error.message });
-    } finally {
-        client.release();
-    }
-});
+// --- ENVASADO: la producción de envasado se registra por /api/produccion/reporte ---
 
 // --- FUNCIÓN AUXILIAR: EXTRAER CANTIDAD DE UN PDF CERCANA A UNA CLAVE DE PRODUCTO ---
 function extraerCantidadPdf(textoPdf, claves) {
@@ -868,7 +848,7 @@ function detectarItemsTabla(textoPdf) {
 
     const items = [];
     const advertencias = [];
-    const emparejados = new Set();
+    const contadorKeys = {};
     let noReconocidas = 0;
 
     for (const linea of region) {
@@ -880,10 +860,11 @@ function detectarItemsTabla(textoPdf) {
         const cantidad = ultimoNumeroLinea(linea);
         let reconocida = false;
         for (const prod of PRODUCTOS_PDF_KEYWORDS) {
-            if (emparejados.has(prod.product_key)) continue;
+            const veces = contadorKeys[prod.product_key] || 0;
+            if (veces >= 4) continue;
             if (prod.nombres.some(n => normLinea.includes(normalizarGuia(n)))) {
                 reconocida = true;
-                emparejados.add(prod.product_key);
+                contadorKeys[prod.product_key] = veces + 1;
                 const nombre = PRODUCTOS_TERMINADOS_MAP[prod.product_key] || prod.product_key;
                 items.push({ product_key: prod.product_key, nombre, cantidad, cantidad_auto: cantidad !== null });
                 if (cantidad === null) {
@@ -1159,11 +1140,36 @@ app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, re
         for (const item of items) {
             let idArticuloFinal = item.articulo_id ? parseInt(item.articulo_id) : null;
             let productoKeyFinal = item.producto_key || null;
+            const cantidad = parseFloat(item.cantidad);
+            const nombreItem = (item.nombre || productoKeyFinal || 'producto sin nombre').toString();
+
+            if (!cantidad || isNaN(cantidad) || cantidad <= 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: `Cantidad inválida para "${nombreItem}". Verifica cada ítem antes de registrar.` });
+            }
+            if (!productoKeyFinal && !idArticuloFinal) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: `El ítem "${nombreItem}" no tiene producto asociado. Vuelve a seleccionarlo.` });
+            }
 
             if (productoKeyFinal) {
-                await client.query(`UPDATE producto_terminado SET stock_cajas = stock_cajas - $1 WHERE producto_key = $2`, [parseFloat(item.cantidad), productoKeyFinal]);
+                const ptRes = await client.query('SELECT stock_cajas FROM producto_terminado WHERE producto_key = $1', [productoKeyFinal]);
+                if (ptRes.rows.length === 0 || Number(ptRes.rows[0].stock_cajas) < cantidad) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, mensaje: `Stock insuficiente de producto terminado para "${nombreItem}" (disponible: ${ptRes.rows.length ? ptRes.rows[0].stock_cajas : 0}).` });
+                }
             } else if (idArticuloFinal) {
-                await client.query(`UPDATE inventario SET stock = stock - $1 WHERE id = $2`, [parseFloat(item.cantidad), idArticuloFinal]);
+                const invRes = await client.query('SELECT stock FROM inventario WHERE id = $1', [idArticuloFinal]);
+                if (invRes.rows.length === 0 || Number(invRes.rows[0].stock) < cantidad) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, mensaje: `Stock insuficiente de "${nombreItem}" (disponible: ${invRes.rows.length ? invRes.rows[0].stock : 0}).` });
+                }
+            }
+
+            if (productoKeyFinal) {
+                await client.query(`UPDATE producto_terminado SET stock_cajas = stock_cajas - $1 WHERE producto_key = $2`, [cantidad, productoKeyFinal]);
+            } else if (idArticuloFinal) {
+                await client.query(`UPDATE inventario SET stock = stock - $1 WHERE id = $2`, [cantidad, idArticuloFinal]);
                 if (item.nombre) await actualizarEstadoArticulo(client, item.nombre);
             }
 
@@ -1181,7 +1187,7 @@ app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, re
                 fecha_salida || new Date(), tipo_registro, guiaFinal, 
                 empresa || 'N/A', ruc || 'N/A', destino || 'N/A', 
                 chofer_licencia || 'N/A', placa || 'N/A', punto_partida || 'Almacén Principal', 
-                targetArticuloId, item.cantidad, usuario || 'almacen_user', estadoGuia, guia_url, despachoId, productoKeyFinal
+                targetArticuloId, cantidad, usuario || 'almacen_user', estadoGuia, guia_url, despachoId, productoKeyFinal
             ]);
         }
 
@@ -1282,11 +1288,36 @@ app.post('/api/salidas/editar', upload.single('archivo_guia'), async (req, res) 
         for (const item of items) {
             let idArticuloFinal = item.articulo_id ? parseInt(item.articulo_id) : null;
             let productoKeyFinal = item.producto_key || null;
+            const cantidad = parseFloat(item.cantidad);
+            const nombreItem = (item.nombre || productoKeyFinal || 'producto sin nombre').toString();
+
+            if (!cantidad || isNaN(cantidad) || cantidad <= 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: `Cantidad inválida para "${nombreItem}". Verifica cada ítem antes de guardar.` });
+            }
+            if (!productoKeyFinal && !idArticuloFinal) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: `El ítem "${nombreItem}" no tiene producto asociado. Vuelve a seleccionarlo.` });
+            }
 
             if (productoKeyFinal) {
-                await client.query(`UPDATE producto_terminado SET stock_cajas = stock_cajas - $1 WHERE producto_key = $2`, [parseFloat(item.cantidad), productoKeyFinal]);
+                const ptRes = await client.query('SELECT stock_cajas FROM producto_terminado WHERE producto_key = $1', [productoKeyFinal]);
+                if (ptRes.rows.length === 0 || Number(ptRes.rows[0].stock_cajas) < cantidad) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, mensaje: `Stock insuficiente de producto terminado para "${nombreItem}" (disponible: ${ptRes.rows.length ? ptRes.rows[0].stock_cajas : 0}).` });
+                }
             } else if (idArticuloFinal) {
-                await client.query(`UPDATE inventario SET stock = stock - $1 WHERE id = $2`, [parseFloat(item.cantidad), idArticuloFinal]);
+                const invRes = await client.query('SELECT stock FROM inventario WHERE id = $1', [idArticuloFinal]);
+                if (invRes.rows.length === 0 || Number(invRes.rows[0].stock) < cantidad) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, mensaje: `Stock insuficiente de "${nombreItem}" (disponible: ${invRes.rows.length ? invRes.rows[0].stock : 0}).` });
+                }
+            }
+
+            if (productoKeyFinal) {
+                await client.query(`UPDATE producto_terminado SET stock_cajas = stock_cajas - $1 WHERE producto_key = $2`, [cantidad, productoKeyFinal]);
+            } else if (idArticuloFinal) {
+                await client.query(`UPDATE inventario SET stock = stock - $1 WHERE id = $2`, [cantidad, idArticuloFinal]);
                 if (item.nombre) await actualizarEstadoArticulo(client, item.nombre);
             }
 
@@ -1304,7 +1335,7 @@ app.post('/api/salidas/editar', upload.single('archivo_guia'), async (req, res) 
                 fecha_salida || new Date(), tipo_registro, guiaFinal,
                 empresa || 'N/A', ruc || 'N/A', destino || 'N/A',
                 chofer_licencia || 'N/A', placa || 'N/A', punto_partida || 'Almacén Principal',
-                targetArticuloId, item.cantidad, usuario || 'almacen_user', estadoGuia, guia_url, despacho_id, productoKeyFinal
+                targetArticuloId, cantidad, usuario || 'almacen_user', estadoGuia, guia_url, despacho_id, productoKeyFinal
             ]);
         }
 
@@ -1459,16 +1490,28 @@ function safeParseJson(str) {
 }
 
 app.post('/api/produccion/reporte', async (req, res) => {
-    const { fecha_produccion, presentacion, cantidad_cajas, toneladas, observaciones, usuario } = req.body;
     try {
-        const producto_tipo = detectarProductoTipo(presentacion);
+        const { fecha_produccion, presentacion, cantidad_cajas, toneladas, observaciones, usuario } = req.body;
+        const producto_tipo = detectarProductoTipo(presentacion || '');
+        const cajas = Number(cantidad_cajas);
+
+        if (!presentacion || !String(presentacion).trim()) {
+            return res.status(400).json({ success: false, mensaje: 'Debe seleccionar la presentación de la producción.' });
+        }
+        if (!producto_tipo) {
+            return res.status(400).json({ success: false, mensaje: `La presentación "${presentacion}" no está en el catálogo de productos terminados.` });
+        }
+        if (!cajas || isNaN(cajas) || cajas <= 0 || cajas > 1000000) {
+            return res.status(400).json({ success: false, mensaje: 'Cantidad de cajas inválida. Debe ser un número mayor a 0.' });
+        }
+
         const tapa_elegida = extraerTapaDeObservaciones(observaciones);
 
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
 
-            const insumosADescontar = obtenerInsumosReceta(producto_tipo, cantidad_cajas, tapa_elegida);
+            const insumosADescontar = obtenerInsumosReceta(producto_tipo, cajas, tapa_elegida);
 
             const faltantes = [];
             for (const insumo of insumosADescontar) {
@@ -1513,13 +1556,13 @@ app.post('/api/produccion/reporte', async (req, res) => {
                     VALUES ($1, $2, $3)
                     ON CONFLICT (producto_key) 
                     DO UPDATE SET stock_cajas = producto_terminado.stock_cajas + EXCLUDED.stock_cajas;
-                `, [producto_tipo, nombreLegible, cantidad_cajas]);
+                `, [producto_tipo, nombreLegible, cajas]);
             }
 
             await client.query(
                 `INSERT INTO reportes_produccion (fecha_produccion, presentacion, cantidad_cajas, unidad_medida, toneladas, observaciones, usuario_registro, desglose_insumos) 
                  VALUES ($1, $2, $3, 'CAJAS', $4, $5, $6, $7)`,
-                [fecha_produccion, presentacion, cantidad_cajas, toneladas, observaciones || '', usuario || 'envasado_user', desgloseJson]
+                [fecha_produccion || new Date(), presentacion, cajas, toneladas, observaciones || '', usuario || 'envasado_user', desgloseJson]
             );
 
             await client.query('COMMIT');
@@ -1642,6 +1685,9 @@ app.post('/api/produccion/cierre', async (req, res) => {
     const client = await pool.connect();
     try {
         const { fecha_cierre, usuario } = req.body;
+        if (!fecha_cierre || !String(fecha_cierre).trim() || !/^\d{4}-\d{2}-\d{2}/.test(String(fecha_cierre))) {
+            return res.status(400).json({ success: false, mensaje: 'Debe indicar una fecha de cierre válida (AAAA-MM-DD).' });
+        }
         await client.query('BEGIN');
 
         const reportesRes = await client.query(

@@ -184,10 +184,19 @@
             }
         }
 
+        function fechaLocalISO(iso) {
+            if (!iso) return '';
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return String(iso).substring(0, 10);
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+
         async function cargarProduccionActiva() {
             try {
                 const res = await fetch('/api/produccion/reportes');
-                reportesGlobal = await res.json();
+                if (!res.ok) throw new Error('Error del servidor al cargar producción.');
+                const datos = await res.json();
+                reportesGlobal = Array.isArray(datos) ? datos : [];
                 const tbody = document.getElementById('tablaProduccionActiva');
                 
                 if (reportesGlobal.length === 0) {
@@ -199,7 +208,7 @@
                 tbody.innerHTML = '';
                 let sumaTn = 0;
                 reportesGlobal.forEach(row => {
-                    const fechaStr = row.fecha_produccion ? row.fecha_produccion.split('T')[0] : '';
+                    const fechaStr = row.fecha_produccion ? fechaLocalISO(row.fecha_produccion) : '';
                     sumaTn += parseFloat(row.toneladas || 0);
                     const presentacionSegura = String(row.presentacion || '').replace(/'/g, "\\'");
                     tbody.innerHTML += `
@@ -223,7 +232,9 @@
         async function cargarHistorialCierres() {
             try {
                 const res = await fetch('/api/produccion/historial-cierres');
-                historialCierresGlobal = await res.json();
+                if (!res.ok) throw new Error('Error del servidor al cargar cierres.');
+                const datos = await res.json();
+                historialCierresGlobal = Array.isArray(datos) ? datos : [];
                 renderizarCierres(historialCierresGlobal);
             } catch (e) {
                 console.error(e);
@@ -236,7 +247,7 @@
                 renderizarCierres(historialCierresGlobal);
                 return;
             }
-            const filtrado = historialCierresGlobal.filter(c => c.fecha_cierre.split('T')[0] === fechaBuscada);
+            const filtrado = historialCierresGlobal.filter(c => c.fecha_cierre && fechaLocalISO(c.fecha_cierre) === fechaBuscada);
             renderizarCierres(filtrado);
         }
 
@@ -249,7 +260,7 @@
 
             contenedor.innerHTML = '';
             lista.forEach(cierre => {
-                const fechaCierreStr = cierre.fecha_cierre.split('T')[0];
+                const fechaCierreStr = cierre.fecha_cierre ? fechaLocalISO(cierre.fecha_cierre) : 'Sin Fecha';
                 let filasHtml = '';
                 let detalleArr = [];
                 

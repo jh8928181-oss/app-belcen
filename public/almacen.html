@@ -479,10 +479,14 @@
                     body: JSON.stringify({ ingreso_id: id, usuario_almacen: localStorage.getItem('usuario_actual') || 'almacen1' })
                 });
                 const data = await res.json();
-                alert(data.mensaje);
-                cargarPendientes();
-                cargarInventarioAlmacen();
-                cargarRegistroIngresos();
+                alert(data.mensaje || 'Respuesta del servidor.');
+                if (res.ok && data.success) {
+                    cargarPendientes();
+                    cargarInventarioAlmacen();
+                    cargarRegistroIngresos();
+                } else {
+                    await cargarPendientes();
+                }
             } catch (err) {
                 console.error(err);
                 alert('Error al procesar conformidad.');
@@ -643,7 +647,7 @@
             const tbody = document.getElementById('tablaRegistroIngresos');
             tbody.innerHTML = lista.length === 0 ? `<tr><td colspan="6" class="text-center">Sin registros.</td></tr>` : '';
             lista.forEach(row => {
-                const fecha = row.fecha_registro ? row.fecha_registro.split('T')[0] : '';
+                const fecha = row.fecha_registro ? fechaLocalISO(row.fecha_registro) : '';
                 const badge = row.estado === 'POR REGULARIZAR' 
                     ? `<span style="background: #ffc107; color: black; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight:bold;">POR REGULARIZAR</span>`
                     : `<span style="background: #28a745; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px;">CON GUÍA CONFORME</span>`;
@@ -700,7 +704,10 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id, nuevo_stock: parseInt(nuevoStock) })
-            }).then(r => r.json()).then(d => { alert(d.mensaje); cargarProductoTerminado(); });
+            }).then(r => r.json()).then(d => {
+                alert(d.mensaje || 'Respuesta del servidor.');
+                cargarProductoTerminado();
+            }).catch(err => { console.error(err); alert('Error de conexión.'); });
         }
 
         function ajustarPTMinimo(id, nombre, minimoActual) {
@@ -710,7 +717,10 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id, stock_minimo: parseInt(nuevoMinimo) })
-            }).then(r => r.json()).then(d => { alert(d.mensaje); cargarProductoTerminado(); });
+            }).then(r => r.json()).then(d => {
+                alert(d.mensaje || 'Respuesta del servidor.');
+                cargarProductoTerminado();
+            }).catch(err => { console.error(err); alert('Error de conexión.'); });
         }
 
         function abrirModalAgregarPT() {
@@ -829,7 +839,10 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ articulo_id: id, nuevo_stock: parseFloat(nuevoStock) })
-            }).then(r => r.json()).then(d => { alert(d.mensaje); cargarInventarioAlmacen(); });
+            }).then(r => r.json()).then(d => {
+                alert(d.mensaje || 'Respuesta del servidor.');
+                cargarInventarioAlmacen();
+            }).catch(err => { console.error(err); alert('Error de conexión.'); });
         }
 
         function poblarSelectSalida() {
@@ -946,12 +959,18 @@
             renderTablaItems();
         }
 
+        function cambiarCantidadItem(index, valor) {
+            const cant = parseFloat(valor);
+            itemsDespachoArray[index].cantidad = isNaN(cant) ? null : cant;
+        }
+
         function renderTablaItems() {
             const tbody = document.getElementById('tablaItemsDespacho');
             tbody.innerHTML = itemsDespachoArray.length === 0 ? `<tr><td colspan="3" class="text-center" style="color: #6c757d;">No hay ítems en la lista.</td></tr>` : '';
             itemsDespachoArray.forEach((item, idx) => {
-                const marcaRevisar = item.cantidad_auto === false ? ' <span style="color:#e65100; font-weight:bold;">⚠️ revisar</span>' : '';
-                tbody.innerHTML += `<tr><td><b>${item.nombre}</b>${marcaRevisar}</td><td class="text-center" style="color: #dc3545; font-weight: bold;">${item.cantidad}</td><td class="text-center"><button type="button" onclick="quitarItem(${idx})" style="background: #dc3545; color: white; border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer;">X</button></td></tr>`;
+                const marcaRevisar = (item.cantidad === null || item.cantidad === undefined || isNaN(parseFloat(item.cantidad))) ? ' <span style="color:#e65100; font-weight:bold;">⚠️ indicar cantidad</span>' : '';
+                const valCant = (item.cantidad !== null && item.cantidad !== undefined && !isNaN(parseFloat(item.cantidad))) ? item.cantidad : '';
+                tbody.innerHTML += `<tr><td><b>${item.nombre}</b>${marcaRevisar}</td><td class="text-center"><input type="number" min="0.01" step="any" style="width:90px; text-align:center; padding:3px; border:1px solid #ccc; border-radius:3px;" value="${valCant}" oninput="cambiarCantidadItem(${idx}, this.value)"></td><td class="text-center"><button type="button" onclick="quitarItem(${idx})" style="background: #dc3545; color: white; border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer;">X</button></td></tr>`;
             });
         }
 
@@ -963,13 +982,20 @@
             } catch(e) { console.error(e); }
         }
 
+        function fechaLocalISO(iso) {
+            if (!iso) return '';
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return String(iso).substring(0, 10);
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+
         function buscarSalidaPorFecha() {
             const fechaBuscada = document.getElementById('filtroFechaSalida').value;
             if (!fechaBuscada) {
                 renderizarSalidasAgrupadas(historialSalidasGlobal);
                 return;
             }
-            const filtrado = historialSalidasGlobal.filter(s => s.fecha_salida && s.fecha_salida.split('T')[0] === fechaBuscada);
+            const filtrado = historialSalidasGlobal.filter(s => s.fecha_salida && fechaLocalISO(s.fecha_salida) === fechaBuscada);
             renderizarSalidasAgrupadas(filtrado);
         }
 
@@ -982,7 +1008,7 @@
 
             const grupos = {};
             lista.forEach(row => {
-                const fechaStr = row.fecha_salida ? row.fecha_salida.split('T')[0] : 'Sin Fecha';
+                const fechaStr = row.fecha_salida ? fechaLocalISO(row.fecha_salida) : 'Sin Fecha';
                 if (!grupos[fechaStr]) grupos[fechaStr] = [];
                 grupos[fechaStr].push(row);
             });
@@ -1039,14 +1065,16 @@
         async function regularizarGuia(id) {
             const nuevaGuia = prompt("Ingrese el número de la Guía:");
             if (!nuevaGuia) return;
-            const res = await fetch('/api/salidas/regularizar', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ salida_id: id, nuevo_numero_guia: nuevaGuia.trim() })
-            });
-            const data = await res.json();
-            alert(data.mensaje);
-            cargarHistorialSalidas();
+            try {
+                const res = await fetch('/api/salidas/regularizar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ salida_id: id, nuevo_numero_guia: nuevaGuia.trim() })
+                });
+                const data = await res.json();
+                alert(data.mensaje || 'Respuesta del servidor.');
+                cargarHistorialSalidas();
+            } catch (err) { console.error(err); alert('Error de conexión.'); }
         }
 
         function editarDespacho(despachoId) {
@@ -1116,6 +1144,11 @@
             e.preventDefault();
             if (itemsDespachoArray.length === 0) {
                 alert('❌ Debe incluir al menos un producto.');
+                return;
+            }
+            const invalido = itemsDespachoArray.find(it => it.cantidad === null || it.cantidad === undefined || isNaN(parseFloat(it.cantidad)) || parseFloat(it.cantidad) <= 0);
+            if (invalido) {
+                alert('❌ El producto "' + (invalido.nombre || '?') + '" no tiene una cantidad válida. Escríbela en la casilla de cantidad.');
                 return;
             }
 

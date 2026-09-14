@@ -125,8 +125,12 @@
         function formatearFecha(fecha) {
             if (!fecha) return 'N/D';
             const f = new Date(fecha);
-            if (isNaN(f)) return String(fecha);
-            return f.toISOString().replace('T', ' ').substring(0, 16);
+            if (isNaN(f.getTime())) return String(fecha);
+            const dia = String(f.getDate()).padStart(2, '0');
+            const mes = String(f.getMonth() + 1).padStart(2, '0');
+            const hora = String(f.getHours()).padStart(2, '0');
+            const min = String(f.getMinutes()).padStart(2, '0');
+            return `${f.getFullYear()}-${mes}-${dia} ${hora}:${min}`;
         }
 
         function linkGuia(url, texto) {
@@ -170,7 +174,9 @@
         async function cargarEntradas() {
             try {
                 const res = await fetch('/api/auditoria/entradas');
-                entradasGlobal = await res.json();
+                if (!res.ok) throw new Error('Error del servidor.');
+                const datos = await res.json();
+                entradasGlobal = Array.isArray(datos) ? datos : [];
                 renderEntradas();
             } catch (err) {
                 console.error(err);
@@ -211,7 +217,9 @@
         async function cargarSalidas() {
             try {
                 const res = await fetch('/api/auditoria/salidas');
-                salidasGlobal = await res.json();
+                if (!res.ok) throw new Error('Error del servidor.');
+                const datos = await res.json();
+                salidasGlobal = Array.isArray(datos) ? datos : [];
                 renderSalidas();
             } catch (err) {
                 console.error(err);
@@ -259,7 +267,9 @@
         async function cargarProduccion() {
             try {
                 const res = await fetch('/api/produccion/informes');
-                informesGlobal = await res.json();
+                if (!res.ok) throw new Error('Error del servidor.');
+                const datos = await res.json();
+                informesGlobal = Array.isArray(datos) ? datos : [];
                 renderProduccion();
             } catch (err) {
                 console.error(err);

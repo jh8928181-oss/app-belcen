@@ -70,6 +70,8 @@ const inicializarBaseDeDatos = async () => {
                 estado_guia VARCHAR(50) DEFAULT 'REGULARIZADO'
             );
 
+            ALTER TABLE salidas_almacen ADD COLUMN IF NOT EXISTS guia_url TEXT;
+
             CREATE TABLE IF NOT EXISTS reportes_produccion (
                 id SERIAL PRIMARY KEY,
                 fecha_produccion DATE DEFAULT CURRENT_DATE,

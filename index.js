@@ -2,7 +2,7 @@ const express = require('express');
 const pool = require('./db');
 const path = require('path');
 const multer = require('multer');
-const pdfParse = require('pdf-parse');
+const { PDFParse } = require('pdf-parse');
 const fs = require('fs');
 
 const app = express();
@@ -653,16 +653,26 @@ app.post('/api/envasado/registrar', async (req, res) => {
 
 // --- FUNCIÓN AUXILIAR: EXTRAER CANTIDAD DE UN PDF CERCANA A UNA CLAVE DE PRODUCTO ---
 function extraerCantidadPdf(textoPdf, claves) {
+    const lineas = textoPdf.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const regexU = /(\d{1,6}(?:[.,]\d{1,3})?)\s*(?:UNIDADES?|UNID|UNI|UND|UN|U\.|UA|U|CAJAS?|CJ|PAQUETES?|PACKS?|BULTOS?|BALDES?)\b/i;
+    const regexCant = /(?:CANT|CANTIDAD|TOTAL|P\.?CANT)[\s.:]*(\d{1,6}(?:[.,]\d{1,3})?)/i;
+    const regexParen = /\(\s*(\d{1,6}(?:[.,]\d{1,3})?)\s*\)/;
+    const capturar = (texto) => {
+        if (!texto) return null;
+        let m = texto.match(regexU);
+        if (!m) m = texto.match(regexCant);
+        if (!m) m = texto.match(regexParen);
+        if (m) { const v = parseFloat(m[1].replace(',', '.')); if (v > 0 && v < 100000) return v; }
+        return null;
+    };
     for (const clave of claves) {
-        const idx = textoPdf.indexOf(clave);
+        const idx = lineas.findIndex(l => l.includes(clave));
         if (idx === -1) continue;
-        const ventana = textoPdf.slice(Math.max(0, idx - 300), idx + 300);
-        let m = ventana.match(/(\d{1,6}(?:[.,]\d{1,3})?)\s*(?:UNID|UNI|UND|U\.|UA|CAJAS?|CJ|PAQUETES?|PACKS?|BULTOS?)\b/i);
-        if (m) { const v = parseFloat(m[1].replace(',', '.')); if (v > 0 && v < 100000) return v; }
-        m = ventana.match(/(?:CANT|CANTIDAD|TOTAL|P\.?CANT)[\s.:]*(\d{1,6}(?:[.,]\d{1,3})?)/i);
-        if (m) { const v = parseFloat(m[1].replace(',', '.')); if (v > 0 && v < 100000) return v; }
-        m = ventana.match(/\(\s*(\d{1,6}(?:[.,]\d{1,3})?)\s*\)/);
-        if (m) { const v = parseFloat(m[1].replace(',', '.')); if (v > 0 && v < 100000) return v; }
+        for (const i of [idx, idx - 1, idx + 1]) {
+            if (i < 0 || i >= lineas.length) continue;
+            const v = capturar(lineas[i]);
+            if (v !== null) return v;
+        }
     }
     return null;
 }
@@ -675,7 +685,7 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
         }
 
         const dataBuffer = fs.readFileSync(req.file.path);
-        const pdfData = await pdfParse(dataBuffer);
+        const pdfData = await new PDFParse({ data: dataBuffer }).getText();
         const textoPdf = pdfData.text;
 
         let numero_guia = '';
@@ -716,10 +726,10 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
             placa = placaMatch[1].trim();
         }
 
-        const licenciaMatch = textoPdf.match(/(?:licencia|conductor)[^\w]*([A-Z0-9]+)/i);
-        if (licenciaMatch) {
-            chofer_licencia = licenciaMatch[1].trim();
-        }
+        const conductorMatch = textoPdf.match(/Conductor[:\s]*([A-ZÁÉÍÓÚÑÜ .]{3,}?)(?=\s*(?:DNI|Licencia|LIC|Brevete|Placa|Veh[ií]culo|RUC)[:\s]|$)/i);
+        const licenciaMatch = textoPdf.match(/Licencia[:\s]*([A-Z0-9][A-Z0-9\-]*[0-9])/i);
+        if (conductorMatch) chofer_licencia = conductorMatch[1].trim();
+        if (licenciaMatch) chofer_licencia = (chofer_licencia ? chofer_licencia + ' - ' : '') + 'Lic: ' + licenciaMatch[1].trim();
 
         let itemsDetectados = [];
         const advertencias = [];
@@ -790,6 +800,7 @@ app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, re
         await client.query('BEGIN');
         let estadoGuia = tipo_registro === 'CON GUIA' ? 'REGULARIZADO' : 'PENDIENTE REGULARIZAR';
         let guiaFinal = numero_guia || 'S/N';
+        const guia_url = req.file ? `/uploads/${req.file.filename}` : null;
 
         for (const item of items) {
             let idArticuloFinal = item.articulo_id ? parseInt(item.articulo_id) : null;
@@ -810,13 +821,13 @@ app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, re
 
             await client.query(`
                 INSERT INTO salidas_almacen 
-                (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, articulo_id, cantidad_salida, usuario_registro, estado_guia)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);
+                (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, articulo_id, cantidad_salida, usuario_registro, estado_guia, guia_url)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);
             `, [
                 fecha_salida || new Date(), tipo_registro, guiaFinal, 
                 empresa || 'N/A', ruc || 'N/A', destino || 'N/A', 
                 chofer_licencia || 'N/A', placa || 'N/A', punto_partida || 'Almacén Principal', 
-                targetArticuloId, item.cantidad, usuario || 'almacen_user', estadoGuia
+                targetArticuloId, item.cantidad, usuario || 'almacen_user', estadoGuia, guia_url
             ]);
         }
 
@@ -860,10 +871,77 @@ app.get('/api/salidas/historial', async (req, res) => {
     }
 });
 
-// --- AUDITORÍA Y PRODUCCIÓN ---
-app.get('/api/auditoria/registros', async (req, res) => {
+// --- AUDITORÍA: ENTRADAS (VIGILANCIA + ALMACÉN) Y SALIDAS ---
+app.get('/api/auditoria/entradas', async (req, res) => {
     try {
-        const result = await pool.query(`SELECT * FROM ingresos_vigilancia ORDER BY id DESC`);
+        const vig = await pool.query(`SELECT * FROM ingresos_vigilancia ORDER BY fecha_ingreso DESC`);
+        const alm = await pool.query(`SELECT * FROM registro_ingresos_almacen ORDER BY fecha_registro DESC, id DESC`);
+
+        const fotoPorGuia = {};
+        vig.rows.forEach(v => {
+            const g = (v.numero_guia || '').trim();
+            if (g && v.foto_url && !fotoPorGuia[g]) fotoPorGuia[g] = v.foto_url;
+        });
+
+        const entradas = [];
+        vig.rows.forEach(v => {
+            let items = [];
+            try { items = JSON.parse(v.items_json || '[]'); } catch (e) { items = []; }
+            if (items.length > 0) {
+                items.forEach(p => {
+                    entradas.push({
+                        fecha: v.fecha_ingreso,
+                        numero_guia: v.numero_guia,
+                        proveedor: v.proveedor,
+                        producto: p.nombre || 'N/D',
+                        cantidad: p.cantidad_fisica !== undefined && p.cantidad_fisica !== null ? p.cantidad_fisica : 0,
+                        foto_url: v.foto_url,
+                        origen: 'VIGILANCIA'
+                    });
+                });
+            } else {
+                entradas.push({
+                    fecha: v.fecha_ingreso,
+                    numero_guia: v.numero_guia,
+                    proveedor: v.proveedor,
+                    producto: v.producto_textual || 'N/D',
+                    cantidad: v.cantidad || 0,
+                    foto_url: v.foto_url,
+                    origen: 'VIGILANCIA'
+                });
+            }
+        });
+
+        alm.rows.forEach(a => {
+            const g = (a.numero_guia || '').trim();
+            entradas.push({
+                fecha: a.fecha_registro,
+                numero_guia: a.numero_guia,
+                proveedor: a.proveedor || 'N/D',
+                producto: a.producto_nombre || 'N/D',
+                cantidad: a.cantidad !== undefined && a.cantidad !== null ? a.cantidad : 0,
+                foto_url: fotoPorGuia[g] || null,
+                origen: 'ALMACEN'
+            });
+        });
+
+        entradas.sort((x, y) => new Date(y.fecha || 0) - new Date(x.fecha || 0));
+        res.json(entradas);
+    } catch (err) {
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+app.get('/api/auditoria/salidas', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT s.*,
+                   COALESCE(i.nombre, pt.nombre_producto, 'Producto General') as articulo_nombre
+            FROM salidas_almacen s
+            LEFT JOIN inventario i ON s.articulo_id = i.id
+            LEFT JOIN producto_terminado pt ON s.producto_key = pt.producto_key
+            ORDER BY s.id DESC LIMIT 300
+        `);
         res.json(result.rows);
     } catch (err) {
         res.status(500).json({ success: false, mensaje: err.message });

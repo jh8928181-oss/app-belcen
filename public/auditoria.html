@@ -6,37 +6,72 @@
     <title>Auditoría - Corporación Belcen</title>
     <style>
         body { font-family: Arial, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; }
-        .container { max-width: 1100px; margin: auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .container { max-width: 1200px; margin: auto; }
+        .tarjeta { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 25px; }
         h2 { color: #343a40; text-align: center; border-bottom: 2px solid #343a40; padding-bottom: 8px; margin-top: 0; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        h3 { color: #343a40; padding-bottom: 8px; margin-top: 0; border-bottom: 2px solid #007bff; }
+        h3.entradas { border-bottom: 2px solid #28a745; color: #1e7e34; }
+        h3.salidas { border-bottom: 2px solid #dc3545; color: #bd2130; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { border: 1px solid #dee2e6; padding: 10px; text-align: left; font-size: 13px; }
         th { background-color: #343a40; color: white; }
+        th.green { background-color: #1e7e34; }
+        th.rosa { background-color: #bd2130; }
+        .badge { padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: bold; }
+        .badge-vig { background: #ffeeba; color: #7a5200; }
+        .badge-alm { background: #d4edda; color: #155724; }
+        .link-guia { color: #007bff; font-weight: bold; text-decoration: none; }
+        .link-guia:hover { text-decoration: underline; }
         .logout { background-color: #dc3545; border: none; padding: 10px 20px; text-decoration: none; color: white; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 14px; }
         .logout:hover { background-color: #c82333; }
         .text-center { text-align: center; }
+        .sin-registros { color: #888; font-style: italic; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2>Panel de Auditoría - Registros de Vigilancia y Almacén</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Fecha / Hora</th>
-                    <th>Vigilante</th>
-                    <th>Documento / N°</th>
-                    <th>Productos (Guía vs Físico)</th>
-                    <th>Proveedor / Ruta</th>
-                    <th>Estado / Conformidad</th>
-                    <th class="text-center">Evidencia</th>
-                </tr>
-            </thead>
-            <tbody id="tablaAuditoria">
-                <tr><td colspan="7" class="text-center">Cargando registros de auditoría...</td></tr>
-            </tbody>
-        </table>
 
-        <div style="text-align: center; margin-top: 25px; padding-top: 15px; border-top: 1px solid #ddd;">
+        <!-- ENTRADAS -->
+        <div class="tarjeta" style="border-top: 5px solid #28a745;">
+            <h3 class="entradas">📥 ENTRADAS / INGRESOS — Vigilancia y Almacén</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th class="green">Fecha</th>
+                        <th class="green">Producto</th>
+                        <th class="green text-center">Cantidad</th>
+                        <th class="green text-center">Foto de la Guía</th>
+                        <th class="green">Proveedor</th>
+                        <th class="green text-center">Origen</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaEntradas">
+                    <tr><td colspan="6" class="text-center">Cargando entradas...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- SALIDAS -->
+        <div class="tarjeta" style="border-top: 5px solid #dc3545;">
+            <h3 class="salidas">📤 SALIDAS / DESPACHOS — Almacén</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th class="rosa">Fecha</th>
+                        <th class="rosa">Producto</th>
+                        <th class="rosa text-center">Cantidad</th>
+                        <th class="rosa text-center">PDF / Foto de la Guía</th>
+                        <th class="rosa">A Dónde Va</th>
+                        <th class="rosa">N° de Guía</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaSalidas">
+                    <tr><td colspan="6" class="text-center">Cargando salidas...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div style="text-align: center; margin-top: 10px; padding: 15px; border-top: 1px solid #ddd;">
             <a href="dashboard.html" id="linkDashboard" style="display: inline-block; margin-bottom: 10px; color: #007bff; text-decoration: none; font-weight: bold;">Volver al Dashboard General</a>
             <br>
             <button class="logout" onclick="cerrarSesion()">🔒 Cerrar Sesión (Salir)</button>
@@ -44,7 +79,7 @@
     </div>
 
     <script>
-        const rolUsuario = localStorage.getItem('rol_actual');
+        const rolUsuario = localStorage.getItem('rol_actual') || localStorage.getItem('rol_usuario');
         if (!rolUsuario || (rolUsuario !== 'auditoria' && rolUsuario !== 'supervisor' && rolUsuario !== 'produccion')) {
             alert('❌ Acceso no autorizado.');
             window.location.href = 'index.html';
@@ -61,58 +96,89 @@
             }
         }
 
-        async function cargarRegistrosAuditoria() {
+        function formatearFecha(fecha) {
+            if (!fecha) return 'N/D';
+            const f = new Date(fecha);
+            if (isNaN(f)) return String(fecha);
+            return f.toISOString().replace('T', ' ').substring(0, 16);
+        }
+
+        function linkGuia(url, texto) {
+            if (!url) return '<span style="color:#999;">Sin foto</span>';
+            return `<a class="link-guia" href="${url}" target="_blank">👁️ ${texto}</a>`;
+        }
+
+        // 📥 ENTRADAS (Vigilancia + Almacén)
+        async function cargarEntradas() {
             try {
-                const res = await fetch('/api/auditoria/registros');
-                const registros = await res.json();
-                const tbody = document.getElementById('tablaAuditoria');
-                tbody.innerHTML = '';
+                const res = await fetch('/api/auditoria/entradas');
+                const entradas = await res.json();
+                const tbody = document.getElementById('tablaEntradas');
+                tbody.innerHTML = entradas.length === 0 ? '<tr><td colspan="6" class="text-center sin-registros">No hay entradas registradas.</td></tr>' : '';
 
-                if(registros.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-center">No hay registros en el sistema.</td></tr>';
-                    return;
-                }
-
-                registros.forEach(item => {
-                    let fotoHtml = item.foto_url ? `<a href="${item.foto_url}" target="_blank">Ver Foto</a>` : 'Sin Foto';
-                    let productosHtml = '';
-                    try {
-                        const parsed = JSON.parse(item.items_json || '[]');
-                        if (parsed.length > 0) {
-                            parsed.forEach(p => {
-                                let diff = p.cantidad_guia !== p.cantidad_fisica 
-                                    ? `<span style="color:red; font-weight:bold;">(Guía: ${p.cantidad_guia} | Físico: ${p.cantidad_fisica})</span>` 
-                                    : `(Cant: ${p.cantidad_fisica})`;
-                                productosHtml += `<div>• <b>${p.nombre}</b> ${diff}</div>`;
-                            });
-                        } else {
-                            productosHtml = `${item.producto_textual || 'N/D'}<br><b>Cant:</b> ${item.cantidad || 0}`;
-                        }
-                    } catch(e) {
-                        productosHtml = `${item.producto_textual || 'N/D'}<br><b>Cant:</b> ${item.cantidad || 0}`;
-                    }
-
-                    const fechaFormateada = item.fecha_ingreso ? item.fecha_ingreso.replace('T', ' ').substring(0, 19) : 'N/D';
+                entradas.forEach(item => {
+                    const badgeOrigen = item.origen === 'ALMACEN'
+                        ? '<span class="badge badge-alm">ALMACÉN</span>'
+                        : '<span class="badge badge-vig">VIGILANCIA</span>';
 
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
-                        <td>${fechaFormateada}</td>
-                        <td>${item.usuario_vigilancia || 'N/D'}</td>
-                        <td><b>${item.tipo_documento}</b><br>${item.numero_guia || 'S/N'}</td>
-                        <td>${productosHtml}</td>
-                        <td>${item.proveedor || '-'}<br><small>${item.lugar_partida || ''} -> ${item.punto_llegada || ''}</small></td>
-                        <td><span style="color: ${item.estado && item.estado.includes('CONFORME') ? 'green' : 'orange'}; font-weight:bold;">${item.estado || 'PENDIENTE'}</span></td>
-                        <td class="text-center">${fotoHtml}</td>
+                        <td><b>${formatearFecha(item.fecha)}</b></td>
+                        <td>${item.producto || 'N/D'}</td>
+                        <td class="text-center" style="color:#1e7e34; font-weight:bold;">${item.cantidad}</td>
+                        <td class="text-center">${linkGuia(item.foto_url, 'Ver Foto')}</td>
+                        <td>${item.proveedor || 'N/D'}</td>
+                        <td class="text-center">${badgeOrigen}</td>
                     `;
                     tbody.appendChild(tr);
                 });
-            } catch(err) {
+            } catch (err) {
                 console.error(err);
-                document.getElementById('tablaAuditoria').innerHTML = '<tr><td colspan="7" class="text-center" style="color:red;">Error al cargar los registros de auditoría.</td></tr>';
+                document.getElementById('tablaEntradas').innerHTML = '<tr><td colspan="6" class="text-center" style="color:red;">Error al cargar las entradas.</td></tr>';
             }
         }
 
-        cargarRegistrosAuditoria();
+        // 📤 SALIDAS (Almacén)
+        async function cargarSalidas() {
+            try {
+                const res = await fetch('/api/auditoria/salidas');
+                const salidas = await res.json();
+                const tbody = document.getElementById('tablaSalidas');
+                tbody.innerHTML = salidas.length === 0 ? '<tr><td colspan="6" class="text-center sin-registros">No hay salidas registradas.</td></tr>' : '';
+
+                salidas.forEach(item => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><b>${formatearFecha(item.fecha_salida)}</b></td>
+                        <td>${item.articulo_nombre || 'Producto General'}</td>
+                        <td class="text-center" style="color:#bd2130; font-weight:bold;">${item.cantidad_salida}</td>
+                        <td class="text-center">${linkGuia(item.guia_url, 'Ver Guía')}</td>
+                        <td>${item.destino || 'N/D'}</td>
+                        <td><b>${item.numero_guia || 'S/N'}</b><br><small>${item.tipo_registro || ''}</small></td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                console.error(err);
+                document.getElementById('tablaSalidas').innerHTML = '<tr><td colspan="6" class="text-center" style="color:red;">Error al cargar las salidas.</td></tr>';
+            }
+        }
+
+        cargarEntradas();
+        cargarSalidas();
+
+        setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                cargarEntradas();
+                cargarSalidas();
+            }
+        }, 15000);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                cargarEntradas();
+                cargarSalidas();
+            }
+        });
     </script>
 </body>
 </html>

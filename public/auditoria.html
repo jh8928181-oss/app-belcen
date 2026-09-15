@@ -441,8 +441,11 @@
             }
         }
 
+        let guardBorrarSalidaAuditoria = false;
         async function borrarSalida(despachoId, salidaId) {
+            if (guardBorrarSalidaAuditoria) return;
             if (!confirm('¿Eliminar este despacho y restaurar el stock de producto terminado / insumos?')) return;
+            guardBorrarSalidaAuditoria = true;
             try {
                 const res = await fetch('/api/salidas/eliminar', {
                     method: 'POST',
@@ -458,6 +461,8 @@
             } catch (err) {
                 console.error(err);
                 alert('Error al eliminar el despacho.');
+            } finally {
+                guardBorrarSalidaAuditoria = false;
             }
         }
 
@@ -472,22 +477,12 @@
         document.getElementById('filtroRefinado').addEventListener('change', cargarRefinado);
         document.getElementById('filtroRefinadoTurno').addEventListener('change', cargarRefinado);
 
-        setInterval(() => {
-            if (document.visibilityState === 'visible') {
-                cargarEntradas();
-                cargarSalidas();
-                cargarProduccion();
-                cargarRefinado();
-            }
+        registrarAutoRefresco(() => {
+            cargarEntradas();
+            cargarSalidas();
+            cargarProduccion();
+            cargarRefinado();
         }, 15000);
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') {
-                cargarEntradas();
-                cargarSalidas();
-                cargarProduccion();
-                cargarRefinado();
-            }
-        });
     </script>
 </body>
 </html>

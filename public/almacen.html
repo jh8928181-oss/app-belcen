@@ -469,9 +469,11 @@
             } catch(e) { console.error(e); }
         }
 
+        let guardConformidad = false;
         async function darConformidad(id) {
+            if (guardConformidad) return;
             if (!confirm('¿Confirma el ingreso de estos productos? Si hay diferencias entre la guía y el físico, se registrarán como pendientes de regularización.')) return;
-            
+            guardConformidad = true;
             try {
                 const res = await fetch('/api/almacen/conformidad', {
                     method: 'POST',
@@ -490,6 +492,8 @@
             } catch (err) {
                 console.error(err);
                 alert('Error al procesar conformidad.');
+            } finally {
+                guardConformidad = false;
             }
         }
 
@@ -506,12 +510,15 @@
             document.getElementById('modalNuevoProducto').style.display = 'none';
         }
 
+        let guardNuevoProducto = false;
         async function guardarNuevoProducto() {
+            if (guardNuevoProducto) return;
             const nombre = document.getElementById('inputNuevoNombre').value.trim();
             const categoria = document.getElementById('selectNuevaCategoria').value;
             const unidad_medida = document.getElementById('selectNuevaUnidad').value;
             const stock = document.getElementById('inputNuevoStock').value;
             if (!nombre) { alert('❌ Ingresa el nombre del producto.'); return; }
+            guardNuevoProducto = true;
             try {
                 const res = await fetch('/api/inventario/nuevo', {
                     method: 'POST',
@@ -525,6 +532,7 @@
                     cargarInventarioAlmacen();
                 }
             } catch (err) { console.error(err); alert('Error de conexión.'); }
+            finally { guardNuevoProducto = false; }
         }
 
         // 🔧 Revisar y Ajustar conformidad (manual)
@@ -592,7 +600,9 @@
             ingresoAjusteActual = null;
         }
 
+        let guardAjusteManual = false;
         async function guardarAjusteManual() {
+            if (guardAjusteManual) return;
             if (!ingresoAjusteActual) return;
             const filas = document.querySelectorAll('#tablaAjusteManual tr');
             const items = [];
@@ -617,6 +627,7 @@
             });
             if (items.length === 0) { alert('❌ Agrega al menos un producto con nombre válido.'); return; }
             if (!confirm(`¿Confirmar el ajuste de ${items.length} producto(s)? Se sumará el stock indicado al inventario.`)) return;
+            guardAjusteManual = true;
 
             try {
                 const res = await fetch('/api/almacen/conformidad-ajustada', {
@@ -633,6 +644,7 @@
                     cargarRegistroIngresos();
                 }
             } catch (err) { console.error(err); alert('Error de conexión.'); }
+            finally { guardAjusteManual = false; }
         }
 
         async function cargarRegistroIngresos() {
@@ -804,7 +816,6 @@
                 const res = await fetch('/api/inventario');
                 inventarioGlobal = await res.json();
                 aplicarFiltros();
-                poblarSelectSalida();
             } catch(e) { console.error(e); }
         }
 
@@ -832,9 +843,12 @@
             mostrarInventarioAlmacen(resultado);
         }
 
+        let guardAjustarStock = false;
         function ajustarStock(id, nombre, stockActual) {
+            if (guardAjustarStock) return;
             const nuevoStock = prompt(`Ajustar stock de insumo ${nombre}:`, stockActual);
             if (nuevoStock === null) return;
+            guardAjustarStock = true;
             fetch('/api/almacen/ajustar-stock', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -842,7 +856,8 @@
             }).then(r => r.json()).then(d => {
                 alert(d.mensaje || 'Respuesta del servidor.');
                 cargarInventarioAlmacen();
-            }).catch(err => { console.error(err); alert('Error de conexión.'); });
+            }).catch(err => { console.error(err); alert('Error de conexión.'); })
+            .finally(() => { guardAjustarStock = false; });
         }
 
         function poblarSelectSalida() {
@@ -1062,9 +1077,12 @@
             });
         }
 
+        let guardRegularizar = false;
         async function regularizarGuia(id) {
+            if (guardRegularizar) return;
             const nuevaGuia = prompt("Ingrese el número de la Guía:");
             if (!nuevaGuia) return;
+            guardRegularizar = true;
             try {
                 const res = await fetch('/api/salidas/regularizar', {
                     method: 'POST',
@@ -1075,6 +1093,7 @@
                 alert(data.mensaje || 'Respuesta del servidor.');
                 cargarHistorialSalidas();
             } catch (err) { console.error(err); alert('Error de conexión.'); }
+            finally { guardRegularizar = false; }
         }
 
         function editarDespacho(despachoId) {
@@ -1119,8 +1138,11 @@
             renderTablaItems();
         }
 
+        let guardBorrarSalida = false;
         async function borrarSalida(despachoId, salidaId) {
+            if (guardBorrarSalida) return;
             if (!confirm('¿Eliminar este despacho y restaurar el stock de producto terminado / insumos?')) return;
+            guardBorrarSalida = true;
             try {
                 const res = await fetch('/api/salidas/eliminar', {
                     method: 'POST',
@@ -1137,18 +1159,29 @@
             } catch (err) {
                 console.error(err);
                 alert('Error al eliminar el despacho.');
+            } finally {
+                guardBorrarSalida = false;
             }
         }
 
+        let enviandoSalida = false;
         document.getElementById('formSalida').addEventListener('submit', async (e) => {
             e.preventDefault();
+            if (enviandoSalida) return;
+            enviandoSalida = true;
+            const btnEnviar = e.submitter || document.querySelector('#formSalida button[type="submit"]');
+            if (btnEnviar) btnEnviar.disabled = true;
             if (itemsDespachoArray.length === 0) {
                 alert('❌ Debe incluir al menos un producto.');
+                enviandoSalida = false;
+                if (btnEnviar) btnEnviar.disabled = false;
                 return;
             }
             const invalido = itemsDespachoArray.find(it => it.cantidad === null || it.cantidad === undefined || isNaN(parseFloat(it.cantidad)) || parseFloat(it.cantidad) <= 0);
             if (invalido) {
                 alert('❌ El producto "' + (invalido.nombre || '?') + '" no tiene una cantidad válida. Escríbela en la casilla de cantidad.');
+                enviandoSalida = false;
+                if (btnEnviar) btnEnviar.disabled = false;
                 return;
             }
 
@@ -1171,6 +1204,10 @@
                     alert('❌ ' + (data.mensaje || 'Error.'));
                 }
             } catch(err) { console.error(err); alert('Error de conexión.'); }
+            finally {
+                enviandoSalida = false;
+                if (btnEnviar) btnEnviar.disabled = false;
+            }
         });
 
         cargarPendientes();
@@ -1179,20 +1216,11 @@
         cargarInventarioAlmacen();
         cargarHistorialSalidas();
 
-        setInterval(() => {
-            if (document.visibilityState === 'visible') {
-                cargarPendientes();
-                cargarRegistroIngresos();
-                cargarInventarioAlmacen();
-            }
+        registrarAutoRefresco(() => {
+            cargarPendientes();
+            cargarRegistroIngresos();
+            cargarInventarioAlmacen();
         }, 15000);
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') {
-                cargarPendientes();
-                cargarRegistroIngresos();
-                cargarInventarioAlmacen();
-            }
-        });
     </script>
 </body>
 </html>

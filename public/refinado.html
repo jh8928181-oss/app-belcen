@@ -249,13 +249,6 @@
             return '<span class="badge badge-suficiente">🟢 STOCK SUFICIENTE</span>';
         }
 
-        function estadoAceiteBadge(estado) {
-            const e = String(estado || 'DISPONIBLE').toUpperCase();
-            if (e.includes('NOCHE')) return '<span class="badge badge-noche">🌙 ENFRÍA DE NOCHE</span>';
-            if (e.includes('DÍA') || e.includes('DIA')) return '<span class="badge badge-dia">☀️ ENFRÍA DÍA</span>';
-            return '<span class="badge badge-disponible">✅ DISPONIBLE</span>';
-        }
-
         function estadoInsumo(dias) {
             const d = Number(dias);
             if (d !== null && !isNaN(d) && d <= 8) return 'REALIZAR PEDIDO';
@@ -490,7 +483,9 @@
         }
 
         // --- GUARDAR ---
+        let guardGuardarRefinado = false;
         async function guardarReporte() {
+            if (guardGuardarRefinado) return;
             const fecha = document.getElementById('fechaReporte').value;
             if (!fecha) { mostrarMensaje('❌ Selecciona una fecha.', false); return; }
             const insumos = leerInsumos();
@@ -505,6 +500,7 @@
                 totales: { produccion_manana: pm === '' ? null : parseInt(pm, 10) || 0 },
                 observaciones: document.getElementById('observaciones').value
             };
+            guardGuardarRefinado = true;
             try {
                 const res = await fetch('/api/refinado/guardar', {
                     method: 'POST',
@@ -517,6 +513,8 @@
             } catch (err) {
                 console.error(err);
                 mostrarMensaje('❌ Error al guardar.', false);
+            } finally {
+                guardGuardarRefinado = false;
             }
         }
 

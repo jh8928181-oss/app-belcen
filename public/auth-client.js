@@ -38,4 +38,20 @@
         localStorage.removeItem('rol_actual');
         localStorage.removeItem('rol_usuario');
     };
+
+    // Auto-refresco único: evita que setInterval y visibilitychange disparen
+    // llamadas duplicadas cuando el tab vuelve a primer plano.
+    window.registrarAutoRefresco = function (fn, intervaloMs) {
+        var ultimo = 0;
+        var ejecutar = function () {
+            if (Date.now() - ultimo > 1500) {
+                ultimo = Date.now();
+                fn();
+            }
+        };
+        setInterval(ejecutar, intervaloMs || 15000);
+        document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'visible') ejecutar();
+        });
+    };
 })();

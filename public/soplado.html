@@ -98,14 +98,21 @@
             }
         }
 
+        let enviandoSoplado = false;
         document.getElementById('formSoplado').addEventListener('submit', async (e) => {
             e.preventDefault();
+            if (enviandoSoplado) return;
+            enviandoSoplado = true;
+            const btnEnviar = e.submitter || document.querySelector('#formSoplado button[type="submit"]');
+            if (btnEnviar) btnEnviar.disabled = true;
             const preforma_nombre = document.getElementById('preforma_nombre').value;
             const botella_tipo = document.getElementById('botella_tipo').value;
             const cantidad_producida = parseInt(document.getElementById('cantidad_producida').value);
 
             if (!preforma_nombre || !botella_tipo || isNaN(cantidad_producida) || cantidad_producida <= 0) {
                 alert('❌ Seleccione la preforma, el tipo de botella y una cantidad válida.');
+                enviandoSoplado = false;
+                if (btnEnviar) btnEnviar.disabled = false;
                 return;
             }
 
@@ -131,6 +138,9 @@
             } catch (err) {
                 console.error(err);
                 alert('Error de conexión con el servidor.');
+            } finally {
+                enviandoSoplado = false;
+                if (btnEnviar) btnEnviar.disabled = false;
             }
         });
     </script>

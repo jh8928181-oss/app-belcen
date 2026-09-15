@@ -314,8 +314,13 @@
             });
         }
 
+        let enviandoEnvasado = false;
         document.getElementById('formEnvasado').addEventListener('submit', async (e) => {
             e.preventDefault();
+            if (enviandoEnvasado) return;
+            enviandoEnvasado = true;
+            const btnEnviar = e.submitter || document.querySelector('#formEnvasado button[type="submit"]');
+            if (btnEnviar) btnEnviar.disabled = true;
 
             const presentacionSeleccionada = document.getElementById('presentacion').value;
             const observacionesTexto = document.getElementById('observaciones').value;
@@ -355,6 +360,9 @@
             } catch (err) {
                 console.error(err);
                 alert('Error de conexión con el servidor.');
+            } finally {
+                enviandoEnvasado = false;
+                if (btnEnviar) btnEnviar.disabled = false;
             }
         });
 

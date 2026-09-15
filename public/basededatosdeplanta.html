@@ -210,7 +210,28 @@
             return inventarioGlobal.find(i => i.nombre.toLowerCase().includes(nombreBuscado.toLowerCase()));
         }
 
-        function simularProduccion() {
+        let catalogoRecetas = { productos_tapa_dinamica: [], tapa_por_defecto: 'Tapa dosif. N° 26 blanco / Dorado' };
+
+        async function cargarCatalogoRecetas() {
+            try {
+                const res = await fetch('/api/recetas');
+                if (!res.ok) throw new Error('Error del servidor al obtener el catálogo de recetas.');
+                const data = await res.json();
+                if (data && data.success && Array.isArray(data.productos_tapa_dinamica)) {
+                    catalogoRecetas = data;
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        function formatoCantidad(valor, unidad) {
+            const n = Number(valor) || 0;
+            if (unidad === 'MILL' || unidad === 'TON' || unidad === 'KG') return n.toFixed(2);
+            return Number.isInteger(n) ? String(n) : n.toFixed(2);
+        }
+
+        async function simularProduccion() {
             const tipo = document.getElementById('sim_producto').value;
             const cajas = parseInt(document.getElementById('sim_cajas').value) || 0;
             const resDiv = document.getElementById('resultadoSimulacion');
@@ -221,187 +242,67 @@
                 return;
             }
 
-            let envaseRequerido = '';
-            let cantEnvases = 0;
-            let tapaRequerida = '';
-            let cantTapasMillares = 0;
-            let requiereTapa = true;
-            let extraRequerido = null;
-            let cantExtra = 0;
-            let cajaVaciaBusqueda = '';
-
-            switch (tipo) {
-                case 'b1_200ml':
-                    envaseRequerido = 'Botella de 200 ml - B-1';
-                    cantEnvases = cajas * 24;
-                    tapaRequerida = 'Tapa Tapon 26mm (200ml)';
-                    cantTapasMillares = (cajas * 24) / 1000;
-                    cajaVaciaBusqueda = 'Caja B-1 x 200 ml';
-                    break;
-                case 'b1_500ml':
-                    envaseRequerido = 'Botella de 500 ml - B-1';
-                    cantEnvases = cajas * 12;
-                    tapaRequerida = 'Tapa dosif. N° 26 blanco / Dorado';
-                    cantTapasMillares = (cajas * 12) / 1000;
-                    cajaVaciaBusqueda = 'Caja B-1 x 500 ml';
-                    break;
-                case 'b1_900ml':
-                    envaseRequerido = 'Botella de 900 ml - B-1';
-                    cantEnvases = cajas * 12;
-                    tapaRequerida = 'Tapa dosif. N° 26 blanco / Dorado';
-                    cantTapasMillares = (cajas * 12) / 1000;
-                    cajaVaciaBusqueda = 'Caja B-1 x 900 ml';
-                    break;
-                case 'b1_1lt':
-                    envaseRequerido = 'Botella de 1 Lt - B-1';
-                    cantEnvases = cajas * 12;
-                    tapaRequerida = 'Tapa dosif. N° 26 blanco / Dorado';
-                    cantTapasMillares = (cajas * 12) / 1000;
-                    cajaVaciaBusqueda = 'Caja B-1 x 1 lt';
-                    break;
-                case 'b1_2lt':
-                    envaseRequerido = 'Botella de 2 Lt - B-1';
-                    cantEnvases = cajas * 6;
-                    tapaRequerida = 'Tapa color Rojo 2lt';
-                    cantTapasMillares = (cajas * 6) / 1000;
-                    cajaVaciaBusqueda = 'Caja B-1 x 2 lt';
-                    break;
-                case 'b1_5lt':
-                    envaseRequerido = 'Galonera B-1 x 5 lt';
-                    cantEnvases = cajas * 4;
-                    tapaRequerida = 'Tapa color rojo 5lt';
-                    cantTapasMillares = (cajas * 4) / 1000;
-                    cajaVaciaBusqueda = 'Caja B-1 x 5 lt';
-                    break;
-                case 'donlalo_800ml':
-                    envaseRequerido = 'Botella de 800ml - Don Lalo';
-                    cantEnvases = cajas * 12;
-                    tapaRequerida = 'Tapa dosif. N° 26 blanco / Dorado';
-                    cantTapasMillares = (cajas * 12) / 1000;
-                    cajaVaciaBusqueda = 'Caja Don Lalo x 800ml';
-                    break;
-                case 'donlalo_20lt':
-                    envaseRequerido = 'Balde Don Lalo x 20lt';
-                    cantEnvases = cajas * 1;
-                    tapaRequerida = 'TAAAAPA BALDE DON LALO';
-                    cantTapasMillares = cajas * 1;
-                    cajaVaciaBusqueda = '';
-                    break;
-                case 'belini_200ml':
-                    envaseRequerido = 'Botella Belini x 200 ml';
-                    cantEnvases = cajas * 24;
-                    tapaRequerida = 'Tapa Tapon 26mm (200ml)';
-                    cantTapasMillares = (cajas * 24) / 1000;
-                    cajaVaciaBusqueda = 'Caja Belini x 200 ml';
-                    break;
-                case 'belini_500ml':
-                    envaseRequerido = 'Botella Belini x 500 ml';
-                    cantEnvases = cajas * 12;
-                    tapaRequerida = 'Tapa dosif. N° 26 blanco / Dorado';
-                    cantTapasMillares = (cajas * 12) / 1000;
-                    cajaVaciaBusqueda = 'Caja Belini x 500 ml';
-                    break;
-                case 'belini_900ml':
-                    envaseRequerido = 'Botella Belini x 900 ml';
-                    cantEnvases = cajas * 12;
-                    tapaRequerida = 'Tapa dosif. N° 26 blanco / Dorado';
-                    cantTapasMillares = (cajas * 12) / 1000;
-                    cajaVaciaBusqueda = 'Caja Belini x 900 ml';
-                    break;
-                case 'belini_1lt':
-                    envaseRequerido = 'Botella Belini x 1 Lt';
-                    cantEnvases = cajas * 12;
-                    tapaRequerida = 'Tapa dosif. N° 26 blanco / Dorado';
-                    cantTapasMillares = (cajas * 12) / 1000;
-                    cajaVaciaBusqueda = 'CAJA BELINI X 1 LITRO';
-                    break;
-                case 'belini_2lt':
-                    envaseRequerido = 'Galonera Belini x 2 lt';
-                    cantEnvases = cajas * 6;
-                    tapaRequerida = 'Tapa color Rojo 2lt';
-                    cantTapasMillares = (cajas * 6) / 1000;
-                    cajaVaciaBusqueda = 'Caja Belini x 2 lt';
-                    break;
-                case 'belini_3lt':
-                    envaseRequerido = 'Botella Belini x 3 lt';
-                    cantEnvases = cajas * 4;
-                    tapaRequerida = 'Tapa dosif. N° 26 blanco / Dorado';
-                    cantTapasMillares = (cajas * 4) / 1000;
-                    extraRequerido = 'Asas plasticas color celeste pico 45';
-                    cantExtra = (cajas * 4) / 1000;
-                    cajaVaciaBusqueda = 'CAJA BELINI X 3 LITROS';
-                    break;
-                case 'belini_5lt':
-                    envaseRequerido = 'Galonera Belini x 5 lt';
-                    cantEnvases = cajas * 4;
-                    tapaRequerida = 'Tapa color rojo 5lt';
-                    cantTapasMillares = (cajas * 4) / 1000;
-                    cajaVaciaBusqueda = 'Caja Belini x 5 lt';
-                    break;
-                case 'belini_lata18lt':
-                    envaseRequerido = 'Lata Belini 18lt';
-                    cantEnvases = cajas * 1;
-                    requiereTapa = false;
-                    cajaVaciaBusqueda = '';
-                    break;
-                case 'belini_balde18lt':
-                    envaseRequerido = 'Balde Belini x 18 lt';
-                    cantEnvases = cajas * 1;
-                    tapaRequerida = 'Tapa BALDE BELINI color amarillo';
-                    cantTapasMillares = cajas * 1;
-                    cajaVaciaBusqueda = '';
-                    break;
+            let data;
+            try {
+                const res = await fetch('/api/recetas/' + encodeURIComponent(tipo) + '?cajas=' + cajas);
+                const body = await res.json();
+                if (!res.ok || !body.success) throw new Error(body.mensaje || 'No se pudo obtener la receta.');
+                data = body;
+            } catch (err) {
+                console.error(err);
+                resDiv.innerHTML = `<span style="color: red;">❌ ${String(err.message || 'Error al consultar la receta.')}</span>`;
+                return;
             }
 
-            const invEnvase = buscarArticuloEnInventario(envaseRequerido);
-            const productosConSelector = ['b1_500ml', 'b1_900ml', 'b1_1lt', 'donlalo_800ml', 'belini_500ml', 'belini_900ml', 'belini_1lt', 'belini_3lt'];
-            if (productosConSelector.includes(tipo)) {
-                tapaRequerida = document.getElementById('sim_tapa').value;
-            }
-            const invTapa = requiereTapa ? buscarArticuloEnInventario(tapaRequerida) : null;
-            const invExtra = extraRequerido ? buscarArticuloEnInventario(extraRequerido) : null;
-            const invCaja = cajaVaciaBusqueda ? buscarArticuloEnInventario(cajaVaciaBusqueda) : null;
+            const tapaSeleccionada = document.getElementById('sim_tapa').value || data.tapa_por_defecto;
+            const filas = (data.insumos || []).map(ins => {
+                let nombre = ins.nombre;
+                if (ins.tapa_dinamica) nombre = tapaSeleccionada;
+                const inv = buscarArticuloEnInventario(nombre);
+                const stock = inv ? (parseFloat(inv.stock) || 0) : 0;
+                const unidad = inv && inv.unidad_medida ? inv.unidad_medida : (ins.unidad_medida || 'UNIDADES');
+                const requerido = Number(ins.cantidad_por_caja) * cajas;
+                const ok = stock >= requerido - 1e-9;
+                return { nombre, requerido, stock, unidad, ok };
+            });
 
-            let stockEnvase = invEnvase ? parseFloat(invEnvase.stock) : 0;
-            let stockTapa = invTapa ? parseFloat(invTapa.stock) : 0;
-            let stockExtra = invExtra ? parseFloat(invExtra.stock) : 0;
-            let stockCaja = invCaja ? parseFloat(invCaja.stock) : 0;
-
-            let viableEnvase = stockEnvase >= cantEnvases;
-            let viableTapa = requiereTapa ? (stockTapa >= cantTapasMillares) : true;
-            let viableExtra = extraRequerido ? (stockExtra >= cantExtra) : true;
-            let viableCaja = cajaVaciaBusqueda ? (stockCaja >= cajas) : true;
-
-            let html = `<h4>Resultado de Simulación para ${cajas} Cajas:</h4>`;
-            html += `<ul>`;
-            html += `<li><b>Envase (${envaseRequerido}):</b> Requiere <b>${cantEnvases}</b> | Stock actual: <b>${stockEnvase}</b> ${viableEnvase ? '✅' : '❌ Faltan ' + (cantEnvases - stockEnvase)}</li>`;
-            
-            if (requiereTapa) {
-                let unidadTapaStr = invTapa ? invTapa.unidad_medida : 'MILL';
-                html += `<li><b>Cierre/Tapa (${tapaRequerida}):</b> Requiere <b>${cantTapasMillares.toFixed(2)} ${unidadTapaStr}</b> | Stock actual: <b>${stockTapa}</b> ${viableTapa ? '✅' : '❌ Stock insuficiente'}</li>`;
-            }
-            if (extraRequerido) {
-                html += `<li><b>Accesorio Extra (${extraRequerido}):</b> Requiere <b>${cantExtra.toFixed(2)} MILL</b> | Stock actual: <b>${stockExtra}</b> ${viableExtra ? '✅' : '❌ Stock insuficiente'}</li>`;
-            }
-            if (cajaVaciaBusqueda) {
-                let nombreCajaReal = invCaja ? invCaja.nombre : cajaVaciaBusqueda;
-                html += `<li><b>Caja Vacía (${nombreCajaReal}):</b> Requiere <b>${cajas} unidades</b> | Stock actual: <b>${stockCaja}</b> ${viableCaja ? '✅' : '❌ Faltan ' + (cajas - stockCaja)}</li>`;
-            }
-            html += `</ul>`;
-
-            if (viableEnvase && viableTapa && viableExtra && viableCaja) {
-                html += `<div style="background: #d4edda; color: #155724; padding: 10px; border-radius: 4px; font-weight: bold; text-align: center;">✅ PRODUCCIÓN 100% VIABLE CON EL STOCK ACTUAL</div>`;
-            } else {
-                html += `<div style="background: #f8d7da; color: #721c24; padding: 10px; border-radius: 4px; font-weight: bold; text-align: center;">❌ NO ES VIABLE: FALTAN INSUMOS PARA COMPLETAR ESTE LOTE</div>`;
-            }
-
+            const html = `
+                <h4>Resultado de Simulación para ${cajas} ${cajas === 1 ? 'Caja' : 'Cajas'} (${data.producto_tipo}):</h4>
+                <table style="width:100%; border-collapse:collapse; font-size:13px; margin-top:8px;">
+                    <thead>
+                        <tr style="background:#007bff; color:#fff;">
+                            <th style="padding:6px; text-align:left; border:1px solid #ddd;">INSUMO</th>
+                            <th style="padding:6px; text-align:center; border:1px solid #ddd;">REQUIERE</th>
+                            <th style="padding:6px; text-align:center; border:1px solid #ddd;">STOCK ACTUAL</th>
+                            <th style="padding:6px; text-align:center; border:1px solid #ddd;">ESTADO</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${filas.map(f => `
+                            <tr>
+                                <td style="padding:6px; border:1px solid #ddd;"><b>${f.nombre}</b></td>
+                                <td style="padding:6px; text-align:center; border:1px solid #ddd;">${formatoCantidad(f.requerido, f.unidad)} ${f.unidad}</td>
+                                <td style="padding:6px; text-align:center; border:1px solid #ddd;">${formatoCantidad(f.stock, f.unidad)}</td>
+                                <td style="padding:6px; text-align:center; border:1px solid #ddd;">${f.ok
+                                    ? '<span style="color:#155724; font-weight:bold;">✅ OK</span>'
+                                    : '<span style="color:#721c24; font-weight:bold;">❌ Faltan ' + formatoCantidad(f.requerido - f.stock, f.unidad) + '</span>'}</td>
+                            </tr>`).join('')}
+                    </tbody>
+                </table>
+                ${filas.length > 0 && filas.every(f => f.ok)
+                    ? `<div style="background: #d4edda; color: #155724; padding: 10px; border-radius: 4px; font-weight: bold; text-align: center; margin-top:10px;">✅ PRODUCCIÓN 100% VIABLE CON EL STOCK ACTUAL</div>`
+                    : `<div style="background: #f8d7da; color: #721c24; padding: 10px; border-radius: 4px; font-weight: bold; text-align: center; margin-top:10px;">❌ NO ES VIABLE: FALTAN INSUMOS PARA COMPLETAR ESTE LOTE</div>`}
+            `;
             resDiv.innerHTML = html;
         }
 
         function verificarTapaSimulador() {
             const tipo = document.getElementById('sim_producto').value;
-            const productosConSelector = ['b1_500ml', 'b1_900ml', 'b1_1lt', 'donlalo_800ml', 'belini_500ml', 'belini_900ml', 'belini_1lt', 'belini_3lt'];
-            document.getElementById('grupoTapaSimulador').style.display = productosConSelector.includes(tipo) ? 'block' : 'none';
+            const usaSelector = catalogoRecetas.productos_tapa_dinamica.includes(tipo);
+            document.getElementById('grupoTapaSimulador').style.display = usaSelector ? 'block' : 'none';
+            if (!usaSelector) {
+                document.getElementById('sim_tapa').value = catalogoRecetas.tapa_por_defecto;
+            }
         }
 
         async function cargarInformes() {
@@ -461,11 +362,9 @@
 
 document.getElementById('informe_fecha').valueAsDate = new Date();
 
+cargarCatalogoRecetas();
         refrescarDatosPlanta();
-        setInterval(refrescarDatosPlanta, 15000);
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') refrescarDatosPlanta();
-        });
+        registrarAutoRefresco(refrescarDatosPlanta, 15000);
     </script>
 </body>
 </html>

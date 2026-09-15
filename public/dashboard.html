@@ -140,10 +140,7 @@
 
         verificarAccesoDashboard();
         cargarInventario();
-        setInterval(cargarInventario, 15000);
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') cargarInventario();
-        });
+        registrarAutoRefresco(cargarInventario, 15000);
     </script>
 </body>
 </html>

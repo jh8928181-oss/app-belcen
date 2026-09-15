@@ -740,7 +740,7 @@ function obtenerInsumosReceta(producto_tipo, cantidad, tapa_elegida) {
         case 'belini_3lt':
             insumos = [
                 { nombre: 'Botella Belini x 3 lt', cantidad: cantidad * 4 },
-                { nombre: tapaProceso, cantidad: (cantidad * 4) / 1000 },
+                { nombre: 'Tapa color Celeste 3lt', cantidad: (cantidad * 4) / 1000 },
                 { nombre: 'Asas plasticas color celeste pico 45', cantidad: (cantidad * 4) / 1000 },
                 { nombre: 'Caja BELINI X 3 LITROS', cantidad: cantidad }
             ];
@@ -768,6 +768,69 @@ function obtenerInsumosReceta(producto_tipo, cantidad, tapa_elegida) {
     }
     return insumos;
 }
+
+// Productos cuya receta descuenta la tapa dinámica (el operario elige el color/modelo en el formulario)
+const PRODUCTOS_TAPA_DINAMICA = ['b1_500ml', 'b1_900ml', 'b1_1lt', 'donlalo_800ml', 'belini_500ml', 'belini_900ml', 'belini_1lt'];
+
+const TAPA_DEFECTO_RECETA = 'Tapa dosif. N° 26 blanco / Dorado';
+
+// --- RECETAS: EXPONE LA FÓRMULA DE INSUMOS POR PRODUCTO (FUENTE ÚNICA DE VERDAD PARA EL SIMULADOR) ---
+app.get('/api/recetas', async (req, res) => {
+    try {
+        res.json({
+            success: true,
+            productos_tapa_dinamica: PRODUCTOS_TAPA_DINAMICA,
+            tapa_por_defecto: TAPA_DEFECTO_RECETA
+        });
+    } catch (err) {
+        console.error("Error en /api/recetas catálogo:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al obtener el catálogo de recetas: ' + err.message });
+    }
+});
+
+app.get('/api/recetas/:producto_tipo', async (req, res) => {
+    try {
+        const producto_tipo = String(req.params.producto_tipo || '').trim();
+        const cajasRaw = parseFloat(req.query.cajas);
+        const cajas = (!isNaN(cajasRaw) && cajasRaw > 0) ? cajasRaw : 1;
+
+        let insumos;
+        try {
+            insumos = obtenerInsumosReceta(producto_tipo, cajas);
+        } catch (e) {
+            return res.status(400).json({ success: false, mensaje: String(e.message || 'Tipo de producto desconocido.') });
+        }
+
+        const requiereSelectorTapa = PRODUCTOS_TAPA_DINAMICA.includes(producto_tipo);
+
+        const conUnidad = await Promise.all(insumos.map(async (ins) => {
+            let unidad_medida = 'UNIDADES';
+            try {
+                const uRes = await pool.query('SELECT unidad_medida FROM inventario WHERE LOWER(nombre) = LOWER($1)', [ins.nombre]);
+                if (uRes.rows.length > 0) unidad_medida = uRes.rows[0].unidad_medida || 'UNIDADES';
+            } catch (e) { /* si no hay stock del artículo se deja UNIDADES */ }
+            return {
+                nombre: ins.nombre,
+                cantidad: Number(ins.cantidad),
+                cantidad_por_caja: Number(ins.cantidad) / cajas,
+                unidad_medida,
+                tapa_dinamica: requiereSelectorTapa && ins.nombre === TAPA_DEFECTO_RECETA
+            };
+        }));
+
+        res.json({
+            success: true,
+            producto_tipo,
+            cajas,
+            requiere_selector_tapa: requiereSelectorTapa,
+            tapa_por_defecto: TAPA_DEFECTO_RECETA,
+            insumos: conUnidad
+        });
+    } catch (err) {
+        console.error("Error en /api/recetas:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al obtener la receta: ' + err.message });
+    }
+});
 
 // --- ENVASADO: la producción de envasado se registra por /api/produccion/reporte ---
 

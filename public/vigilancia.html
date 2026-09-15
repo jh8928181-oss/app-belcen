@@ -180,10 +180,17 @@
             });
         }
 
+        let enviandoVigilancia = false;
         document.getElementById('formVigilancia').addEventListener('submit', async (e) => {
             e.preventDefault();
+            if (enviandoVigilancia) return;
+            enviandoVigilancia = true;
+            const btnEnviar = e.submitter || document.querySelector('#formVigilancia button[type="submit"]');
+            if (btnEnviar) btnEnviar.disabled = true;
             if (itemsVigilanciaArray.length === 0) {
                 alert('❌ Debe agregar al menos un producto o insumo a la guía.');
+                enviandoVigilancia = false;
+                if (btnEnviar) btnEnviar.disabled = false;
                 return;
             }
 
@@ -205,6 +212,9 @@
             } catch (err) {
                 console.error(err);
                 alert('Error de conexión con el servidor.');
+            } finally {
+                enviandoVigilancia = false;
+                if (btnEnviar) btnEnviar.disabled = false;
             }
         });
     </script>

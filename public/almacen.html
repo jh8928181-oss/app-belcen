@@ -81,19 +81,16 @@
                 ➕ Agregar Producto Manual
             </button>
         </div>
-        <div id="alertaPTBajo" style="display:none; background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; padding:10px; border-radius:5px; margin-bottom:12px; font-weight:bold;"></div>
         <table>
             <thead>
                 <tr>
                     <th>PRODUCTO</th>
                     <th class="text-center">STOCK (CAJAS)</th>
-                    <th class="text-center">STOCK MÍN</th>
-                    <th class="text-center">ESTADO</th>
                     <th class="text-center">ACCIONES</th>
                 </tr>
             </thead>
             <tbody id="tablaProductoTerminado">
-                <tr><td colspan="5" class="text-center">Cargando...</td></tr>
+                <tr><td colspan="3" class="text-center">Cargando...</td></tr>
             </tbody>
         </table>
     </div>
@@ -688,23 +685,11 @@
                 const data = await res.json();
                 productoTerminadoGlobal = data.filter(item => item.stock_cajas > 0);
                 const tbody = document.getElementById('tablaProductoTerminado');
-                tbody.innerHTML = productoTerminadoGlobal.length === 0 ? `<tr><td colspan="5" class="text-center">Sin stock disponible.</td></tr>` : '';
+                tbody.innerHTML = productoTerminadoGlobal.length === 0 ? `<tr><td colspan="3" class="text-center">Sin stock disponible.</td></tr>` : '';
                 productoTerminadoGlobal.forEach(item => {
-                    const bajo = item.estado === 'REALIZAR PEDIDO';
-                    const badge = bajo
-                        ? `<span style="background: #f8d7da; color: #721c24; padding: 2px 6px; border-radius: 3px; font-weight:bold;">BAJO STOCK</span>`
-                        : `<span style="background: #d4edda; color: #155724; padding: 2px 6px; border-radius: 3px;">DISPONIBLE</span>`;
-                    tbody.innerHTML += `<tr><td><b>${item.nombre_producto}</b></td><td class="text-center" style="color: ${bajo ? '#dc3545' : '#28a745'}; font-weight: bold;">${item.stock_cajas} CAJAS</td><td class="text-center">${item.stock_minimo || 0}</td><td class="text-center">${badge}</td><td class="text-center"><button onclick="ajustarPT(${item.id}, '${item.nombre_producto}', ${item.stock_cajas})" class="btn-accion btn-ajustar">Ajustar</button> <button onclick="ajustarPTMinimo(${item.id}, '${item.nombre_producto}', ${item.stock_minimo || 0})" class="btn-accion btn-ajustar" title="Definir stock mínimo para alerta">Mín.</button></td></tr>`;
+                    tbody.innerHTML += `<tr><td><b>${item.nombre_producto}</b></td><td class="text-center" style="color: #28a745; font-weight: bold;">${item.stock_cajas} CAJAS</td><td class="text-center"><button onclick="ajustarPT(${item.id}, '${item.nombre_producto}', ${item.stock_cajas})" class="btn-accion btn-ajustar">Ajustar</button></td></tr>`;
                 });
 
-                const bajos = data.filter(it => it.estado === 'REALIZAR PEDIDO');
-                const alertaEl = document.getElementById('alertaPTBajo');
-                if (bajos.length > 0) {
-                    alertaEl.style.display = 'block';
-                    alertaEl.innerHTML = `⚠️ <b>${bajos.length}</b> producto(s) terminado(s) con stock bajo o agotado: ${bajos.map(b => b.nombre_producto).join(', ')}.`;
-                } else {
-                    alertaEl.style.display = 'none';
-                }
                 poblarSelectSalida();
             } catch(e) { console.error(e); }
         }
@@ -716,19 +701,6 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id, nuevo_stock: parseInt(nuevoStock) })
-            }).then(r => r.json()).then(d => {
-                alert(d.mensaje || 'Respuesta del servidor.');
-                cargarProductoTerminado();
-            }).catch(err => { console.error(err); alert('Error de conexión.'); });
-        }
-
-        function ajustarPTMinimo(id, nombre, minimoActual) {
-            const nuevoMinimo = prompt(`Stock mínimo de alerta para ${nombre}:`, minimoActual);
-            if (nuevoMinimo === null) return;
-            fetch('/api/producto-terminado/minimo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id, stock_minimo: parseInt(nuevoMinimo) })
             }).then(r => r.json()).then(d => {
                 alert(d.mensaje || 'Respuesta del servidor.');
                 cargarProductoTerminado();

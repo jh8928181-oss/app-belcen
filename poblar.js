@@ -65,7 +65,8 @@ async function poblarInventarioReal() {
             ['ing_blas', 'Blas2026_Sec', 'produccion'],
             ['pariona', 'Pariona#987', 'supervisor'],
             ['acceso_1', 'AccesoOne*01', 'invitado'],
-            ['acceso_2', 'AccesoTwo*02', 'invitado']
+            ['acceso_2', 'AccesoTwo*02', 'invitado'],
+            ['admin1', 'gYz4-UBK5mkkeYpF', 'admin']
         ];
         for (const [usu, pwd, rol] of usuariosSeed) {
             const salt = crypto.randomBytes(16).toString('hex');

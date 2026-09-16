@@ -151,6 +151,11 @@ const inicializarBaseDeDatos = async () => {
                 ('usuario1', 'a49a94603f9a105326f880170b9342a6fd3ed71157b4dd16da4fbd46648c7f45721b25e49f83a1038bb333e4af25a59be35725e5e8b3b19e79a87fdb648299f3:8222cb2d385b1216e4e53a27ab34e4eb', 'refinado'),
                 ('usuario2', '92aeb3d6f95d8c376cbe75acb1c1a30b93a08e55461c834125d0ffa5b5075b047f0a5352e5d641625aa9f403372bc0d35e78a7d45929deba8242747da382752e:cd9c611efd774c52e9e7bfa303c8a277', 'refinado')
             ON CONFLICT (usuario) DO NOTHING;
+
+            -- Usuario administrador inicial (idempotente); cambia su clave desde admin.html
+            INSERT INTO usuarios_sistema (usuario, password, rol) VALUES
+                ('admin1', '4068cf56e3974d0a6c6b6e4537dc5b538b74f3b0a9c99bea308cece234451af9f370ac108adf177a7823c9f92c4c541446fd8244cf933879d9de017ad1667752:49e5f7703daa241b99dfda3df52fe916', 'admin')
+            ON CONFLICT (usuario) DO NOTHING;
         `);
 
         console.log("Infraestructura de DB en Render sincronizada correctamente.");

@@ -172,6 +172,149 @@ app.post('/api/login', async (req, res) => {
 
 app.use('/api', authMiddleware);
 
+// --- GESTIÓN DE USUARIOS (SOLO ADMIN) ---
+const ROLES_PERMITIDOS = ['admin', 'supervisor', 'produccion', 'auditoria', 'vigilancia', 'almacen', 'soplado', 'envasado', 'refinado', 'invitado'];
+
+function requerirRolAdmin(req, res, next) {
+    if (req.rol !== 'admin') {
+        return res.status(403).json({ success: false, mensaje: 'Solo el administrador puede gestionar usuarios.' });
+    }
+    next();
+}
+
+app.get('/api/usuarios', requerirRolAdmin, async (req, res) => {
+    try {
+        const result = await pool.query('SELECT id, usuario, rol FROM usuarios_sistema ORDER BY usuario ASC');
+        res.json(result.rows);
+    } catch (err) {
+        console.error("Error al listar usuarios:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al listar usuarios: ' + err.message });
+    }
+});
+
+app.post('/api/usuarios', requerirRolAdmin, async (req, res) => {
+    try {
+        const { usuario, password, rol } = req.body;
+        const usu = String(usuario || '').trim();
+        const pwd = String(password || '');
+        const rolOk = String(rol || '').trim();
+
+        if (!/^[A-Za-z0-9_]{3,50}$/.test(usu)) {
+            return res.status(400).json({ success: false, mensaje: 'El usuario debe tener entre 3 y 50 caracteres (letras, números y guión bajo).' });
+        }
+        if (pwd.length < 6) {
+            return res.status(400).json({ success: false, mensaje: 'La contraseña debe tener al menos 6 caracteres.' });
+        }
+        if (!ROLES_PERMITIDOS.includes(rolOk)) {
+            return res.status(400).json({ success: false, mensaje: 'Rol no válido.' });
+        }
+
+        const existe = await pool.query('SELECT id FROM usuarios_sistema WHERE LOWER(usuario) = LOWER($1)', [usu]);
+        if (existe.rows.length) {
+            return res.status(409).json({ success: false, mensaje: 'El usuario ya existe.' });
+        }
+
+        const salt = crypto.randomBytes(16).toString('hex');
+        const hash = await hashPassword(pwd, salt);
+        const result = await pool.query(
+            'INSERT INTO usuarios_sistema (usuario, password, rol) VALUES ($1, $2, $3) RETURNING id, usuario, rol',
+            [usu, `${hash}:${salt}`, rolOk]
+        );
+        res.json({ success: true, mensaje: 'Usuario creado correctamente.', usuario: result.rows[0] });
+    } catch (err) {
+        console.error("Error al crear usuario:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al crear usuario: ' + err.message });
+    }
+});
+
+app.post('/api/usuarios/:id/editar', requerirRolAdmin, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        const { usuario, rol, password } = req.body;
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ success: false, mensaje: 'ID de usuario no válido.' });
+        }
+
+        const target = await pool.query('SELECT * FROM usuarios_sistema WHERE id = $1', [id]);
+        if (!target.rows.length) {
+            return res.status(404).json({ success: false, mensaje: 'El usuario no existe.' });
+        }
+        const targetUser = target.rows[0];
+
+        const nuevoUsuario = (usuario !== undefined && usuario !== null) ? String(usuario).trim() : targetUser.usuario;
+        const nuevoRol = (rol !== undefined && rol !== null) ? String(rol).trim() : targetUser.rol;
+        const nuevoPassword = (password !== undefined && password !== null) ? String(password) : '';
+
+        if (!/^[A-Za-z0-9_]{3,50}$/.test(nuevoUsuario)) {
+            return res.status(400).json({ success: false, mensaje: 'El usuario debe tener entre 3 y 50 caracteres (letras, números y guión bajo).' });
+        }
+        if (!ROLES_PERMITIDOS.includes(nuevoRol)) {
+            return res.status(400).json({ success: false, mensaje: 'Rol no válido.' });
+        }
+        if (nuevoPassword && nuevoPassword.length < 6) {
+            return res.status(400).json({ success: false, mensaje: 'La contraseña debe tener al menos 6 caracteres.' });
+        }
+        if (nuevoUsuario.toLowerCase() !== targetUser.usuario.toLowerCase()) {
+            const duplicado = await pool.query('SELECT id FROM usuarios_sistema WHERE LOWER(usuario) = LOWER($1) AND id <> $2', [nuevoUsuario, id]);
+            if (duplicado.rows.length) {
+                return res.status(409).json({ success: false, mensaje: 'Ya existe otro usuario con ese nombre.' });
+            }
+        }
+
+        // Anti-lockout: no quitar el rol 'admin' al último administrador
+        if (targetUser.rol === 'admin' && nuevoRol !== 'admin') {
+            const admins = await pool.query("SELECT COUNT(*)::int AS total FROM usuarios_sistema WHERE rol = 'admin'");
+            if (admins.rows[0].total <= 1) {
+                return res.status(400).json({ success: false, mensaje: 'Debe existir al menos un administrador. No puedes quitar el rol de admin al último administrador.' });
+            }
+        }
+
+        if (nuevoPassword) {
+            const salt = crypto.randomBytes(16).toString('hex');
+            const hash = await hashPassword(nuevoPassword, salt);
+            await pool.query('UPDATE usuarios_sistema SET usuario = $1, rol = $2, password = $3 WHERE id = $4', [nuevoUsuario, nuevoRol, `${hash}:${salt}`, id]);
+        } else {
+            await pool.query('UPDATE usuarios_sistema SET usuario = $1, rol = $2 WHERE id = $3', [nuevoUsuario, nuevoRol, id]);
+        }
+
+        res.json({ success: true, mensaje: 'Usuario actualizado correctamente.' });
+    } catch (err) {
+        console.error("Error al editar usuario:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al editar usuario: ' + err.message });
+    }
+});
+
+app.post('/api/usuarios/:id/eliminar', requerirRolAdmin, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ success: false, mensaje: 'ID de usuario no válido.' });
+        }
+
+        const target = await pool.query('SELECT * FROM usuarios_sistema WHERE id = $1', [id]);
+        if (!target.rows.length) {
+            return res.status(404).json({ success: false, mensaje: 'El usuario no existe.' });
+        }
+        const targetUser = target.rows[0];
+
+        if (targetUser.usuario === req.usuario) {
+            return res.status(400).json({ success: false, mensaje: 'No puedes eliminar tu propio usuario.' });
+        }
+        if (targetUser.rol === 'admin') {
+            const admins = await pool.query("SELECT COUNT(*)::int AS total FROM usuarios_sistema WHERE rol = 'admin'");
+            if (admins.rows[0].total <= 1) {
+                return res.status(400).json({ success: false, mensaje: 'Debe existir al menos un administrador. No puedes eliminar al último administrador.' });
+            }
+        }
+
+        await pool.query('DELETE FROM usuarios_sistema WHERE id = $1', [id]);
+        res.json({ success: true, mensaje: 'Usuario eliminado correctamente.' });
+    } catch (err) {
+        console.error("Error al eliminar usuario:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al eliminar usuario: ' + err.message });
+    }
+});
+
 // --- VIGILANCIA (SOPORTE MÚLTIPLE DE PRODUCTOS Y DATOS DE TRANSPORTE) ---
 app.post('/api/vigilancia/registrar', upload.single('foto_guia'), async (req, res) => {
     try {

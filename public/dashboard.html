@@ -23,6 +23,8 @@
         .btn-auditoria:hover { background: #23272b; }
         .btn-simulador { background: #17a2b8; color: white; }
         .btn-simulador:hover { background: #117a8b; }
+        .btn-admin { background: #e83e8c; color: white; }
+        .btn-admin:hover { background: #d63384; }
         
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { border: 1px solid #dee2e6; padding: 10px; text-align: left; font-size: 14px; }
@@ -49,6 +51,7 @@
                 <a href="envasado.html" class="btn-module btn-envasado">🧴 Envasado</a>
                 <a href="auditoria.html" class="btn-module btn-auditoria">📋 Auditoría</a>
                 <a href="basededatosdeplanta.html" class="btn-module btn-simulador">🧮 Simulador de Insumos</a>
+                <a href="admin.html" id="btnModuloUsuarios" class="btn-module btn-admin" style="display: none;">👮 Usuarios</a>
             </div>
         </div>
 
@@ -94,6 +97,11 @@
             const rolesOperativos = ['vigilancia', 'almacen', 'soplado', 'envasado', 'auditoria'];
             if (rolesOperativos.includes(rol)) {
                 window.location.href = rol + '.html';
+            }
+
+            // Módulo de administración visible solo para el rol admin
+            if (rol === 'admin') {
+                document.getElementById('btnModuloUsuarios').style.display = 'block';
             }
         }
 

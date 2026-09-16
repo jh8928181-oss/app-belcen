@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administración de Usuarios - Corporación Belcen</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; background-color: #f4f6f9; padding: 20px; }
+        .container { max-width: 1100px; margin: auto; }
+        .tarjeta { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 25px; }
+        h2 { color: #343a40; text-align: center; border-bottom: 2px solid #6f42c1; padding-bottom: 8px; margin-top: 0; }
+        h3 { color: #343a40; padding-bottom: 8px; margin-top: 0; border-bottom: 2px solid #007bff; }
+        h3.admin { border-bottom: 2px solid #6f42c1; color: #6f42c1; }
+        h3.crear { border-bottom: 2px solid #28a745; color: #1e7e34; }
+        select, input { padding: 9px 12px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; box-sizing: border-box; width: 100%; }
+        select:focus, input:focus { outline: none; border-color: #6f42c1; box-shadow: 0 0 0 2px rgba(111,66,193,0.2); }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #dee2e6; padding: 10px; text-align: left; font-size: 14px; }
+        th { background-color: #343a40; color: white; }
+        .text-center { text-align: center; }
+        .badge { padding: 4px 10px; border-radius: 4px; color: white; font-weight: bold; font-size: 12px; white-space: nowrap; }
+        .btn-accion { padding: 9px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px; }
+        .btn-accion:hover { background: #218838; }
+        .btn-editar { background: #ffc107; color: #000; }
+        .btn-editar:hover { background: #e0a800; }
+        .btn-eliminar { background: #dc3545; color: white; }
+        .btn-eliminar:hover { background: #c82333; }
+        .logout { background-color: #dc3545; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px; }
+        .logout:hover { background-color: #c82333; }
+        .filtro { width: 100%; padding: 9px 12px; border: 1px solid #ced4da; border-radius: 4px; margin-top: 10px; font-size: 13px; box-sizing: border-box; }
+        .sin-registros { color: #888; font-style: italic; }
+        .botones-accion { display: flex; gap: 6px; justify-content: center; }
+        .botones-accion button { border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; }
+        .aviso-info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-top: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+
+        <!-- CERRAR / EDITAR USUARIO -->
+        <div id="panelEditar" class="tarjeta" style="border-top: 5px solid #ffc107; display: none;">
+            <h3 style="border-bottom: 2px solid #ffc107; color: #856404;">✏️ EDITAR USUARIO</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-top: 15px;">
+                <div>
+                    <label><b>Usuario:</b></label>
+                    <input type="text" id="editUsuario" placeholder="Nombre de usuario" style="margin-top:5px;">
+                </div>
+                <div>
+                    <label><b>Contraseña (dejar vacío = no cambiar):</b></label>
+                    <input type="text" id="editPassword" placeholder="Nueva contraseña (mín. 6)" style="margin-top:5px;">
+                </div>
+                <div>
+                    <label><b>Rol:</b></label>
+                    <select id="editRol" style="margin-top:5px;"></select>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 18px;">
+                <button onclick="guardarEditarUsuario()" id="btnGuardarEditar" class="btn-editar" style="padding:9px 16px; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">💾 GUARDAR CAMBIOS</button>
+                <button onclick="cerrarPanelEditar()" class="btn-eliminar" style="border:none; border-radius:4px; cursor:pointer; padding:9px 16px; font-weight:bold;">✖ Cancelar</button>
+            </div>
+        </div>
+
+        <!-- CREAR USUARIO -->
+        <div class="tarjeta" style="border-top: 5px solid #28a745;">
+            <h3 class="crear">➕ CREAR NUEVO USUARIO</h3>
+            <form id="formCrearUsuario" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-top: 15px;">
+                <div>
+                    <label><b>Usuario:</b></label>
+                    <input type="text" id="nuevoUsuario" placeholder="Ej. almacen1" style="margin-top:5px;" required>
+                </div>
+                <div>
+                    <label><b>Contraseña:</b></label>
+                    <input type="text" id="nuevaPassword" placeholder="Mínimo 6 caracteres" style="margin-top:5px;" required>
+                </div>
+                <div>
+                    <label><b>Rol:</b></label>
+                    <select id="nuevoRol" style="margin-top:5px;" required>
+                        <option value="">-- Seleccionar rol --</option>
+                    </select>
+                </div>
+                <div style="grid-column: span 3;">
+                    <button type="submit" class="btn-accion">👤 CREAR USUARIO</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- LISTADO DE USUARIOS -->
+        <div class="tarjeta" style="border-top: 5px solid #6f42c1;">
+            <h3 class="admin">👥 USUARIOS REGISTRADOS (<span id="totalUsuarios">0</span>)</h3>
+            <input id="filtroUsuarios" class="filtro" placeholder="🔍 Buscar por usuario o rol...">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Usuario</th>
+                        <th>Rol</th>
+                        <th class="text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaUsuarios">
+                    <tr><td colspan="4" class="text-center">Cargando usuarios...</td></tr>
+                </tbody>
+            </table>
+            <div class="aviso-info">ℹ️ No puedes eliminar tu propio usuario ni quitar el rol "admin" al último administrador.</div>
+        </div>
+
+        <div style="text-align: center; margin-top: 10px; padding: 15px; border-top: 1px solid #ddd;">
+            <a href="dashboard.html" style="display: inline-block; margin-bottom: 10px; color: #007bff; text-decoration: none; font-weight: bold;">Volver al Dashboard General</a>
+            <br>
+            <button class="logout" onclick="cerrarSesion()">🔒 Cerrar Sesión (Salir)</button>
+        </div>
+    </div>
+
+    <script src="/auth-client.js"></script>
+    <script>
+        const rolUsuario = localStorage.getItem('rol_actual') || localStorage.getItem('rol_usuario');
+        if (rolUsuario !== 'admin') {
+            alert('❌ Acceso no autorizado. Solo el administrador puede gestionar usuarios.');
+            window.location.href = 'index.html';
+        }
+
+        const ROLES = ['admin', 'supervisor', 'produccion', 'auditoria', 'vigilancia', 'almacen', 'soplado', 'envasado', 'refinado', 'invitado'];
+        const COLORES_ROL = {
+            admin: '#dc3545',
+            supervisor: '#6f42c1',
+            produccion: '#28a745',
+            auditoria: '#343a40',
+            vigilancia: '#ffc107',
+            almacen: '#17a2b8',
+            soplado: '#28a745',
+            envasado: '#6f42c1',
+            refinado: '#117a8b',
+            invitado: '#6c757d'
+        };
+
+        let usuariosGlobal = [];
+        let editarId = null;
+        let enviandoCrear = false;
+        let enviandoEditar = false;
+
+        function llenarSelectRoles() {
+            const selCrear = document.getElementById('nuevoRol');
+            const selEditar = document.getElementById('editRol');
+            ROLES.forEach(r => {
+                selCrear.innerHTML += `<option value="${r}">${r.toUpperCase()}</option>`;
+                selEditar.innerHTML += `<option value="${r}">${r.toUpperCase()}</option>`;
+            });
+        }
+
+        function cerrarSesion() {
+            if (confirm('¿Estás seguro de que deseas cerrar sesión?')) {
+                limpiarSesion();
+                window.location.href = 'index.html';
+            }
+        }
+
+        function badgeRol(rol) {
+            const color = COLORES_ROL[rol] || '#6c757d';
+            return `<span class="badge" style="background:${color};">${String(rol || '').toUpperCase()}</span>`;
+        }
+
+        async function cargarUsuarios() {
+            try {
+                const res = await fetch('/api/usuarios');
+                if (!res.ok) throw new Error('Error del servidor.');
+                const datos = await res.json();
+                usuariosGlobal = Array.isArray(datos) ? datos : [];
+                renderUsuarios();
+            } catch (err) {
+                console.error(err);
+                document.getElementById('tablaUsuarios').innerHTML = '<tr><td colspan="4" class="text-center" style="color:red;">Error al cargar los usuarios.</td></tr>';
+            }
+        }
+
+        function renderUsuarios() {
+            const q = (document.getElementById('filtroUsuarios').value || '').toLowerCase();
+            const filtrados = usuariosGlobal.filter(u =>
+                (u.usuario || '').toLowerCase().includes(q) ||
+                (u.rol || '').toLowerCase().includes(q)
+            );
+            document.getElementById('totalUsuarios').textContent = usuariosGlobal.length;
+            const tbody = document.getElementById('tablaUsuarios');
+            tbody.innerHTML = filtrados.length === 0
+                ? '<tr><td colspan="4" class="text-center sin-registros">No hay usuarios que coincidan con la búsqueda.</td></tr>'
+                : '';
+            filtrados.forEach(u => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${u.id}</td>
+                    <td><b>${u.usuario}</b></td>
+                    <td>${badgeRol(u.rol)}</td>
+                    <td class="text-center">
+                        <div class="botones-accion">
+                            <button onclick="abrirEditarUsuario(${u.id})" style="background:#ffc107; color:#000;" title="Editar">✏️</button>
+                            <button onclick="eliminarUsuario(${u.id}, '${String(u.usuario).replace(/'/g, "\\'")}')" style="background:#dc3545; color:white;" title="Eliminar">🗑️</button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function abrirEditarUsuario(id) {
+            const u = usuariosGlobal.find(x => x.id === id);
+            if (!u) return;
+            editarId = id;
+            document.getElementById('editUsuario').value = u.usuario;
+            document.getElementById('editPassword').value = '';
+            document.getElementById('editRol').value = u.rol || '';
+            document.getElementById('panelEditar').style.display = 'block';
+            document.getElementById('panelEditar').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function cerrarPanelEditar() {
+            editarId = null;
+            document.getElementById('panelEditar').style.display = 'none';
+        }
+
+        document.getElementById('formCrearUsuario').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (enviandoCrear) return;
+            const btn = e.submitter || document.querySelector('#formCrearUsuario button[type="submit"]');
+            const usuario = document.getElementById('nuevoUsuario').value.trim();
+            const password = document.getElementById('nuevaPassword').value;
+            const rol = document.getElementById('nuevoRol').value;
+
+            if (!/^[A-Za-z0-9_]{3,50}$/.test(usuario)) {
+                alert('❌ El usuario debe tener entre 3 y 50 caracteres (letras, números y guión bajo).');
+                return;
+            }
+            if (password.length < 6) {
+                alert('❌ La contraseña debe tener al menos 6 caracteres.');
+                return;
+            }
+            if (!ROLES.includes(rol)) {
+                alert('❌ Selecciona un rol válido.');
+                return;
+            }
+
+            enviandoCrear = true;
+            if (btn) btn.disabled = true;
+            try {
+                const res = await fetch('/api/usuarios', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ usuario, password, rol })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    alert('✅ ' + data.mensaje);
+                    document.getElementById('formCrearUsuario').reset();
+                    cargarUsuarios();
+                } else {
+                    alert('❌ ' + (data.mensaje || 'Error al crear el usuario.'));
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Error de conexión con el servidor.');
+            } finally {
+                enviandoCrear = false;
+                if (btn) btn.disabled = false;
+            }
+        });
+
+        async function guardarEditarUsuario() {
+            if (enviandoEditar) return;
+            if (editarId === null) {
+                alert('❌ No hay un usuario en edición.');
+                return;
+            }
+            const usuario = document.getElementById('editUsuario').value.trim();
+            const rol = document.getElementById('editRol').value;
+            const password = document.getElementById('editPassword').value;
+
+            if (!/^[A-Za-z0-9_]{3,50}$/.test(usuario)) {
+                alert('❌ El usuario debe tener entre 3 y 50 caracteres (letras, números y guión bajo).');
+                return;
+            }
+            if (!ROLES.includes(rol)) {
+                alert('❌ Selecciona un rol válido.');
+                return;
+            }
+            if (password && password.length < 6) {
+                alert('❌ La contraseña debe tener al menos 6 caracteres.');
+                return;
+            }
+
+            enviandoEditar = true;
+            const btn = document.getElementById('btnGuardarEditar');
+            if (btn) btn.disabled = true;
+            try {
+                const res = await fetch('/api/usuarios/' + editarId + '/editar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ usuario, rol, password })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    alert('✅ ' + data.mensaje);
+                    cerrarPanelEditar();
+                    cargarUsuarios();
+                } else {
+                    alert('❌ ' + (data.mensaje || 'Error al editar el usuario.'));
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Error de conexión con el servidor.');
+            } finally {
+                enviandoEditar = false;
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        async function eliminarUsuario(id, nombreUsuario) {
+            if (!confirm(`¿Eliminar el usuario "${nombreUsuario}"? Esta acción no se puede deshacer.`)) return;
+            try {
+                const res = await fetch('/api/usuarios/' + id + '/eliminar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    alert('✅ ' + data.mensaje);
+                    cargarUsuarios();
+                } else {
+                    alert('❌ ' + (data.mensaje || 'Error al eliminar el usuario.'));
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Error de conexión con el servidor.');
+            }
+        }
+
+        llenarSelectRoles();
+        cargarUsuarios();
+
+        document.getElementById('filtroUsuarios').addEventListener('input', renderUsuarios);
+
+        registrarAutoRefresco(cargarUsuarios, 15000);
+    </script>
+</body>
+</html>

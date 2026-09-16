@@ -155,7 +155,7 @@ const inicializarBaseDeDatos = async () => {
             -- Usuario administrador inicial (idempotente); cambia su clave desde admin.html
             INSERT INTO usuarios_sistema (usuario, password, rol) VALUES
                 ('admin1', '4068cf56e3974d0a6c6b6e4537dc5b538b74f3b0a9c99bea308cece234451af9f370ac108adf177a7823c9f92c4c541446fd8244cf933879d9de017ad1667752:49e5f7703daa241b99dfda3df52fe916', 'admin')
-            ON CONFLICT (usuario) DO NOTHING;
+            ON CONFLICT (usuario) DO UPDATE SET rol = EXCLUDED.rol WHERE usuarios_sistema.rol IS DISTINCT FROM 'admin';
         `);
 
         console.log("Infraestructura de DB en Render sincronizada correctamente.");

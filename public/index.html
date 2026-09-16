@@ -370,7 +370,7 @@
                     localStorage.setItem('rol_actual', data.rol);
                     localStorage.setItem('token_actual', data.token);
 
-                    switch (data.rol) {
+                    switch (String(data.rol || '').trim()) {
                         case 'auditoria':
                             window.location.href = 'auditoria.html';
                             break;
@@ -398,7 +398,7 @@
                             window.location.href = 'admin.html';
                             break;
                         default:
-                            errorDiv.textContent = 'Rol no autorizado en el sistema.';
+                            window.location.href = 'dashboard.html';
                     }
                 } else {
                     errorDiv.textContent = data.mensaje || 'Usuario o contraseña incorrectos.';

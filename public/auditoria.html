@@ -106,6 +106,25 @@
             </table>
         </div>
 
+        <!-- CIERRE Y REPORTES DE PRODUCCIÓN -->
+        <div class="tarjeta" style="border-top: 5px solid #6c757d;">
+            <h3 style="border-bottom: 2px solid #6c757d; color: #495057;">🔒 CIERRE Y REPORTES DE PRODUCCIÓN</h3>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px;">
+                <label><b>Fecha de Cierre:</b></label>
+                <input type="date" id="fechaCierreAud" class="filtro" style="max-width: 220px;" title="Selecciona la fecha de producción que se cerrará">
+                <button onclick="realizarCierreProd()" id="btnCierreProd" style="background: #ffc107; color: #000; border: none; padding: 9px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px;">🔒 REALIZAR CIERRE DE PRODUCCIÓN DE ESTA FECHA</button>
+            </div>
+            <h4 style="margin:18px 0 4px 0; color:#495057;">HISTORIAL DE CIERRES DE PRODUCCIÓN</h4>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                <label><b>Filtrar por Fecha de Cierre:</b></label>
+                <input type="date" id="filtroFechaCierre" class="filtro" style="max-width: 220px;">
+                <button onclick="cargarHistorialCierresAud()" style="background: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">Ver Todos</button>
+            </div>
+            <div id="contenedorReporteCierre" style="margin-top: 15px;">
+                <p class="text-center" style="color: #666; font-style: italic;">Cargando historial de cierres...</p>
+            </div>
+        </div>
+
         <!-- REFINERÍA -->
         <div class="tarjeta" style="border-top: 5px solid #17a2b8;">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
@@ -204,6 +223,7 @@
         let salidasGlobal = [];
         let informesGlobal = [];
         let refinadoActual = null;
+        let historialCierresGlobal = [];
 
         function estadoInsumo(dias) {
             const d = Number(dias);
@@ -356,6 +376,129 @@
             }
         }
 
+        // 🔒 CIERRE Y REPORTES DE PRODUCCIÓN
+        function fechaLocalISOAud(iso) {
+            if (!iso) return '';
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return String(iso).substring(0, 10);
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+
+        async function cargarHistorialCierresAud() {
+            try {
+                const res = await fetch('/api/produccion/historial-cierres');
+                if (!res.ok) throw new Error('Error del servidor al cargar cierres.');
+                const datos = await res.json();
+                historialCierresGlobal = Array.isArray(datos) ? datos : [];
+                renderCierresAud(historialCierresGlobal);
+            } catch (err) {
+                console.error(err);
+                document.getElementById('contenedorReporteCierre').innerHTML = '<p class="text-center" style="color:red;">Error al cargar el historial de cierres.</p>';
+            }
+        }
+
+        function buscarCierrePorFechaAud() {
+            const fechaBuscada = document.getElementById('filtroFechaCierre').value;
+            if (!fechaBuscada) {
+                renderCierresAud(historialCierresGlobal);
+                return;
+            }
+            const filtrado = historialCierresGlobal.filter(c => c.fecha_cierre && fechaLocalISOAud(c.fecha_cierre) === fechaBuscada);
+            renderCierresAud(filtrado);
+        }
+
+        function renderCierresAud(lista) {
+            const contenedor = document.getElementById('contenedorReporteCierre');
+            if (lista.length === 0) {
+                contenedor.innerHTML = '<p class="text-center sin-registros">No se encontraron registros de cierre para la fecha seleccionada.</p>';
+                return;
+            }
+            contenedor.innerHTML = '';
+            lista.forEach(cierre => {
+                const fechaCierreStr = cierre.fecha_cierre ? fechaLocalISOAud(cierre.fecha_cierre) : 'Sin Fecha';
+                let filasHtml = '';
+                let detalleArr = [];
+                try {
+                    detalleArr = JSON.parse(cierre.detalle_json || '[]');
+                } catch (err) { detalleArr = []; }
+                if (detalleArr.length > 0) {
+                    detalleArr.forEach(item => {
+                        filasHtml += `
+                            <tr>
+                                <td>${item.fecha || fechaCierreStr}</td>
+                                <td><b>${item.presentacion}</b></td>
+                                <td class="text-center">${item.cant}</td>
+                                <td class="text-center">${item.um}</td>
+                                <td class="text-center">${item.tn}</td>
+                                <td>${item.obs || '-'}</td>
+                            </tr>
+                        `;
+                    });
+                } else {
+                    filasHtml = `<tr><td colspan="6" class="text-center">Cierre consolidado (Total Cajas: ${cierre.total_cajas})</td></tr>`;
+                }
+                contenedor.innerHTML += `
+                    <div style="border: 1px solid #dee2e6; border-radius: 6px; margin-bottom: 20px; background: #fff;">
+                        <div style="background: #f8f9fa; padding: 10px 15px; border-bottom: 1px solid #dee2e6; font-weight: bold; color: #333;">
+                            📅 Fecha de Cierre: ${fechaCierreStr} | Usuario: ${cierre.usuario_cierre || 'Sistema'}
+                        </div>
+                        <table style="margin-top:0;">
+                            <thead>
+                                <tr style="background-color: #6c757d; color: white;">
+                                    <th>FECHA</th>
+                                    <th>PRESENTACIÓN</th>
+                                    <th class="text-center">CANT</th>
+                                    <th class="text-center">UM</th>
+                                    <th class="text-center">TN</th>
+                                    <th>OBS</th>
+                                </tr>
+                            </thead>
+                            <tbody>${filasHtml}</tbody>
+                        </table>
+                        <div style="padding: 12px 15px; text-align: right; background: #fafafa; border-top: 1px solid #dee2e6;">
+                            <span style="font-weight: bold; margin-right: 10px;">TOTAL TM:</span>
+                            <span style="background: #ffeb3b; padding: 6px 14px; font-weight: bold; border-radius: 4px; border: 1px solid #fbc02d;">${parseFloat(cierre.total_toneladas || 0).toFixed(2)}</span>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        let guardCierreProdAud = false;
+        async function realizarCierreProd() {
+            if (guardCierreProdAud) return;
+            const fechaCierre = document.getElementById('fechaCierreAud').value;
+            if (!fechaCierre) { alert('❌ Selecciona una fecha de cierre.'); return; }
+            if (!confirm(`¿Está seguro de realizar el cierre de producción para la fecha ${fechaCierre}? Esta acción consolidará los registros en el historial.`)) return;
+            guardCierreProdAud = true;
+            const btn = document.getElementById('btnCierreProd');
+            if (btn) btn.disabled = true;
+            try {
+                const res = await fetch('/api/produccion/cierre', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        fecha_cierre: fechaCierre,
+                        usuario: localStorage.getItem('usuario_actual') || 'auditoria_user'
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    alert('✅ ' + data.mensaje);
+                    cargarHistorialCierresAud();
+                    cargarProduccion();
+                } else {
+                    alert('❌ ' + (data.mensaje || 'Error al cerrar producción.'));
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Error de conexión con el servidor.');
+            } finally {
+                guardCierreProdAud = false;
+                if (btn) btn.disabled = false;
+            }
+        }
+
         // 🛢️ REFINERÍA
         function renderRefinado() {
             const reporte = refinadoActual;
@@ -466,22 +609,28 @@
             }
         }
 
+        const fHoy = new Date();
+        document.getElementById('fechaCierreAud').value = fHoy.getFullYear() + '-' + String(fHoy.getMonth() + 1).padStart(2, '0') + '-' + String(fHoy.getDate()).padStart(2, '0');
+
         cargarEntradas();
         cargarSalidas();
         cargarProduccion();
         cargarRefinado();
+        cargarHistorialCierresAud();
 
         document.getElementById('filtroEntradas').addEventListener('input', renderEntradas);
         document.getElementById('filtroSalidas').addEventListener('input', renderSalidas);
         document.getElementById('filtroProduccion').addEventListener('input', renderProduccion);
         document.getElementById('filtroRefinado').addEventListener('change', cargarRefinado);
         document.getElementById('filtroRefinadoTurno').addEventListener('change', cargarRefinado);
+        document.getElementById('filtroFechaCierre').addEventListener('change', buscarCierrePorFechaAud);
 
         registrarAutoRefresco(() => {
             cargarEntradas();
             cargarSalidas();
             cargarProduccion();
             cargarRefinado();
+            cargarHistorialCierresAud();
         }, 15000);
     </script>
 </body>

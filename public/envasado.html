@@ -16,17 +16,36 @@
         .logout { display: inline-block; margin-bottom: 10px; color: #dc3545; text-decoration: none; font-weight: bold; }
         .btn-accion { padding: 8px 15px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; font-size: 16px; margin-top: 15px; }
         .btn-accion:hover { background: #218838; }
-        .btn-cierre { background: #ffc107; color: #000; margin-top: 10px; }
-        .btn-cierre:hover { background: #e0a800; }
+        .btn-volver { background: #6c757d; color: white; border: none; padding: 8px 14px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; margin-bottom: 15px; }
+        .btn-volver:hover { background: #5a6268; }
+        .opcion-menu { flex: 1 1 260px; max-width: 300px; padding: 28px 20px; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 17px; font-weight: bold; box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
+        .opcion-menu:hover { transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,0.2); }
+        .opcion-menu small { font-weight: normal; font-size: 13px; display: block; margin-top: 8px; }
         .btn-logout-custom { background: #dc3545; color: white; border: none; padding: 10px 20px; font-weight: bold; border-radius: 4px; cursor: pointer; font-size: 14px; }
         .btn-logout-custom:hover { background: #c82333; }
     </style>
 </head>
 <body>
-    <div class="card" style="border-top: 5px solid #28a745;">
-        <h3 style="color: #28a745; border-bottom: 2px solid #28a745;">REGISTRO DE PRODUCCIÓN - LÍNEA DE ENVASADO</h3>
-        
-        <form id="formEnvasado" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;">
+    <div style="max-width: 1000px; margin: auto;">
+
+        <!-- MENÚ PRINCIPAL -->
+        <div id="menuEnvasado" class="card" style="border-top: 5px solid #6f42c1; text-align: center;">
+            <h3 style="color: #6f42c1; border-bottom: 2px solid #6f42c1;">ENVASADO - MENÚ PRINCIPAL</h3>
+            <p style="color: #555; margin-top: 10px;">Selecciona una opción para continuar:</p>
+            <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; margin-top: 25px;">
+                <button onclick="mostrarVista('reportar')" class="opcion-menu" style="background: #28a745;">🖊️ REPORTAR PRODUCCIÓN<small>Registrar un nuevo reporte de producción</small></button>
+                <button onclick="mostrarVista('activa')" class="opcion-menu" style="background: #007bff;">📊 VER PRODUCCIÓN EN CURSO<small>Producción activa del día en curso</small></button>
+            </div>
+        </div>
+
+        <!-- VISTA 1: REGISTRO DE PRODUCCIÓN -->
+        <div id="vistaReportar" class="card" style="border-top: 5px solid #28a745; display: none;">
+            <div style="text-align: left;">
+                <button onclick="mostrarMenu()" class="btn-volver">← Volver al menú</button>
+            </div>
+            <h3 style="color: #28a745; border-bottom: 2px solid #28a745;">REGISTRO DE PRODUCCIÓN - LÍNEA DE ENVASADO</h3>
+
+            <form id="formEnvasado" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;">
             <div>
                 <label><b>Fecha de Producción:</b></label>
                 <input type="date" id="fecha_produccion" name="fecha_produccion" required>
@@ -93,11 +112,15 @@
             <div style="grid-column: span 2;">
                 <button type="submit" class="btn-accion">💾 REGISTRAR PRODUCCIÓN EN CURSO</button>
             </div>
-        </form>
-    </div>
+            </form>
+        </div>
 
-    <div class="card" style="border-top: 5px solid #007bff;">
-        <h3 style="color: #007bff; border-bottom: 2px solid #007bff;">PRODUCCIÓN ACTIVA (DÍA EN CURSO)</h3>
+        <!-- VISTA 2: PRODUCCIÓN ACTIVA -->
+        <div id="vistaActiva" class="card" style="border-top: 5px solid #007bff; display: none;">
+            <div style="text-align: left;">
+                <button onclick="mostrarMenu()" class="btn-volver">← Volver al menú</button>
+            </div>
+            <h3 style="color: #007bff; border-bottom: 2px solid #007bff;">PRODUCCIÓN ACTIVA (DÍA EN CURSO)</h3>
         <table>
             <thead>
                 <tr>
@@ -120,25 +143,10 @@
             <span id="totalTmActivo" style="background: #ffeb3b; padding: 6px 14px; font-weight: bold; border-radius: 4px; border: 1px solid #fbc02d;">0.00</span>
         </div>
 
-        <div style="margin-top: 20px; text-align: right;">
-            <button onclick="realizarCierreDia()" class="btn-accion btn-cierre">🔒 REALIZAR CIERRE DE PRODUCCIÓN DE ESTA FECHA</button>
-        </div>
-    </div>
-
-    <div class="card" style="border-top: 5px solid #6c757d;">
-        <h3 style="color: #495057; border-bottom: 2px solid #495057;">HISTORIAL DE CIERRES DE PRODUCCIÓN</h3>
-        
-        <div style="display: flex; gap: 15px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
-            <label><b>Filtrar por Fecha de Cierre:</b></label>
-            <input type="date" id="filtroFechaCierre" onchange="buscarCierrePorFecha()" style="max-width: 250px;">
-            <button onclick="cargarHistorialCierres()" style="background: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">Ver Todos</button>
         </div>
 
-        <div id="contenedorReporteCierre">
-            <p class="text-center" style="color: #666; font-style: italic;">Cargando historial de cierres...</p>
-        </div>
-
-        <div style="text-align: center; margin-top: 25px; padding-top: 15px; border-top: 1px solid #ddd;">
+        <!-- PIE COMÚN -->
+        <div style="text-align: center; margin-top: 10px; padding: 15px; border-top: 1px solid #ddd;">
             <a href="dashboard.html" class="logout" id="linkDashboard">Volver al Dashboard General</a>
             <br>
             <button onclick="cerrarSesion()" class="btn-logout-custom">🔒 Cerrar Sesión (Salir)</button>
@@ -158,13 +166,26 @@
 
         document.getElementById('fecha_produccion').valueAsDate = new Date();
         let reportesGlobal = [];
-        let historialCierresGlobal = [];
 
         function cerrarSesion() {
             if (confirm('¿Estás seguro de que deseas cerrar sesión?')) {
                 limpiarSesion();
                 window.location.href = 'index.html';
             }
+        }
+
+        function mostrarMenu() {
+            document.getElementById('menuEnvasado').style.display = 'block';
+            document.getElementById('vistaReportar').style.display = 'none';
+            document.getElementById('vistaActiva').style.display = 'none';
+            cargarProduccionActiva();
+        }
+
+        function mostrarVista(vista) {
+            document.getElementById('menuEnvasado').style.display = 'none';
+            document.getElementById('vistaReportar').style.display = vista === 'reportar' ? 'block' : 'none';
+            document.getElementById('vistaActiva').style.display = vista === 'activa' ? 'block' : 'none';
+            if (vista === 'activa') cargarProduccionActiva();
         }
 
         function verificarSeleccionTapa() {
@@ -227,91 +248,6 @@
             } catch (e) {
                 console.error(e);
             }
-        }
-
-        async function cargarHistorialCierres() {
-            try {
-                const res = await fetch('/api/produccion/historial-cierres');
-                if (!res.ok) throw new Error('Error del servidor al cargar cierres.');
-                const datos = await res.json();
-                historialCierresGlobal = Array.isArray(datos) ? datos : [];
-                renderizarCierres(historialCierresGlobal);
-            } catch (e) {
-                console.error(e);
-            }
-        }
-
-        function buscarCierrePorFecha() {
-            const fechaBuscada = document.getElementById('filtroFechaCierre').value;
-            if (!fechaBuscada) {
-                renderizarCierres(historialCierresGlobal);
-                return;
-            }
-            const filtrado = historialCierresGlobal.filter(c => c.fecha_cierre && fechaLocalISO(c.fecha_cierre) === fechaBuscada);
-            renderizarCierres(filtrado);
-        }
-
-        function renderizarCierres(lista) {
-            const contenedor = document.getElementById('contenedorReporteCierre');
-            if (lista.length === 0) {
-                contenedor.innerHTML = `<p class="text-center" style="color: #dc3545;">No se encontraron registros de cierre para la fecha seleccionada.</p>`;
-                return;
-            }
-
-            contenedor.innerHTML = '';
-            lista.forEach(cierre => {
-                const fechaCierreStr = cierre.fecha_cierre ? fechaLocalISO(cierre.fecha_cierre) : 'Sin Fecha';
-                let filasHtml = '';
-                let detalleArr = [];
-                
-                try {
-                    detalleArr = JSON.parse(cierre.detalle_json || '[]');
-                } catch(err) { detalleArr = []; }
-
-                if (detalleArr.length > 0) {
-                    detalleArr.forEach(item => {
-                        filasHtml += `
-                            <tr>
-                                <td>${item.fecha || fechaCierreStr}</td>
-                                <td><b>${item.presentacion}</b></td>
-                                <td class="text-center">${item.cant}</td>
-                                <td class="text-center">${item.um}</td>
-                                <td class="text-center">${item.tn}</td>
-                                <td>${item.obs || '-'}</td>
-                            </tr>
-                        `;
-                    });
-                } else {
-                    filasHtml = `<tr><td colspan="6" class="text-center">Cierre consolidado (Total Cajas: ${cierre.total_cajas})</td></tr>`;
-                }
-
-                contenedor.innerHTML += `
-                    <div style="border: 1px solid #ddd; border-radius: 6px; margin-bottom: 25px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                        <div style="background: #f8f9fa; padding: 10px 15px; border-bottom: 1px solid #ddd; font-weight: bold; color: #333;">
-                            📅 Fecha de Cierre: ${fechaCierreStr} | Usuario: ${cierre.usuario_cierre || 'Sistema'}
-                        </div>
-                        <table>
-                            <thead>
-                                <tr style="background-color: #007bff; color: white;">
-                                    <th>FECHA</th>
-                                    <th>PRESENTACIÓN</th>
-                                    <th class="text-center">CANT</th>
-                                    <th class="text-center">UM</th>
-                                    <th class="text-center">TN</th>
-                                    <th>OBS</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${filasHtml}
-                            </tbody>
-                        </table>
-                        <div style="padding: 12px 15px; text-align: right; background: #fafafa; border-top: 1px solid #ddd;">
-                            <span style="font-weight: bold; margin-right: 10px;">TOTAL TM:</span>
-                            <span style="background: #ffeb3b; padding: 6px 14px; font-weight: bold; border-radius: 4px; border: 1px solid #fbc02d;">${parseFloat(cierre.total_toneladas || 0).toFixed(2)}</span>
-                        </div>
-                    </div>
-                `;
-            });
         }
 
         let enviandoEnvasado = false;
@@ -387,35 +323,7 @@
             }
         }
 
-        async function realizarCierreDia() {
-            const fechaCierre = document.getElementById('fecha_produccion').value;
-            if (!confirm(`¿Está seguro de realizar el cierre de producción para la fecha ${fechaCierre}? Esta acción consolidará los registros en el historial.`)) return;
-
-            try {
-                const res = await fetch('/api/produccion/cierre', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        fecha_cierre: fechaCierre,
-                        usuario: localStorage.getItem('usuario_actual') || 'envasado_user'
-                    })
-                });
-                const data = await res.json();
-                if (res.ok && data.success) {
-                    alert('✅ ' + data.mensaje);
-                    cargarProduccionActiva();
-                    cargarHistorialCierres();
-                } else {
-                    alert('❌ ' + (data.mensaje || 'Error al cerrar producción.'));
-                }
-            } catch (err) {
-                console.error(err);
-                alert('Error de conexión con el servidor.');
-            }
-        }
-
         cargarProduccionActiva();
-        cargarHistorialCierres();
     </script>
 </body>
 </html>

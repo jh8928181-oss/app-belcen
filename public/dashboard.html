@@ -3,82 +3,377 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard General - Control de Inventario Belcen</title>
+    <meta name="theme-color" content="#0f172a">
+    <title>Dashboard General - Corporación Belcen</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; background-color: #f4f6f9; padding: 20px; }
-        .container { max-width: 1100px; margin: auto; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        h2 { color: #343a40; text-align: center; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-top: 0; }
-        .nav-modules { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 25px; }
-        .btn-module { padding: 12px; background: #007bff; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; text-align: center; text-decoration: none; font-size: 14px; transition: background 0.2s; }
-        .btn-module:hover { background: #0056b3; }
-        .btn-vigilancia { background: #ffc107; color: #000; }
-        .btn-vigilancia:hover { background: #e0a800; }
-        .btn-almacen { background: #17a2b8; }
-        .btn-almacen:hover { background: #138496; }
-        .btn-soplado { background: #28a745; }
-        .btn-soplado:hover { background: #218838; }
-        .btn-envasado { background: #6f42c1; }
-        .btn-envasado:hover { background: #5a32a3; }
-        .btn-auditoria { background: #343a40; }
-        .btn-auditoria:hover { background: #23272b; }
-        .btn-simulador { background: #17a2b8; color: white; }
-        .btn-simulador:hover { background: #117a8b; }
-        .btn-admin { background: #e83e8c; color: white; }
-        .btn-admin:hover { background: #d63384; }
-        
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th, td { border: 1px solid #dee2e6; padding: 10px; text-align: left; font-size: 14px; }
-        th { background-color: #343a40; color: white; }
-        .badge { font-weight: bold; padding: 4px 8px; border-radius: 4px; color: white; font-size: 12px; }
-        .badge-ok { background-color: #28a745; }
-        .badge-low { background-color: #dc3545; }
-        .btn-actualizar { background-color: #007bff; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        .logout { background-color: #dc3545; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px; }
-        .logout:hover { background-color: #c82333; }
+        :root {
+            --bg1: #0f172a;
+            --bg2: #1e1b4b;
+            --bg3: #0e7490;
+            --accent: #38bdf8;
+            --accent2: #a78bfa;
+            --glass: rgba(255, 255, 255, 0.10);
+            --glass-border: rgba(255, 255, 255, 0.18);
+            --txt: #f8fafc;
+            --txt-dim: rgba(248, 250, 252, 0.72);
+            --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body { height: 100%; }
+
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', system-ui, -apple-system, Roboto, Arial, sans-serif;
+            color: var(--txt);
+            background: linear-gradient(135deg, var(--bg1), var(--bg2) 55%, var(--bg3));
+            background-attachment: fixed;
+            min-height: 100vh;
+            padding: 16px;
+        }
+
+        .bg-anim { position: fixed; inset: 0; z-index: -1; overflow: hidden; }
+        .blob { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.5; mix-blend-mode: screen; }
+        .b1 { width: 520px; height: 520px; background: #0ea5e9; top: -120px; left: -80px; animation: flota 26s ease-in-out infinite alternate; }
+        .b2 { width: 460px; height: 460px; background: #7c3aed; bottom: -140px; right: -60px; animation: flota 32s ease-in-out infinite alternate-reverse; }
+        .b3 { width: 380px; height: 380px; background: #06b6d4; top: 42%; left: 55%; animation: flota 38s ease-in-out infinite alternate; }
+        @keyframes flota {
+            from { transform: translate(0, 0) scale(1); }
+            to   { transform: translate(60px, -42px) scale(1.15); }
+        }
+
+        .app { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+
+        .glass {
+            background: var(--glass);
+            backdrop-filter: blur(16px) saturate(140%);
+            -webkit-backdrop-filter: blur(16px) saturate(140%);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+        }
+
+        @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+            .glass { background: rgba(15, 23, 42, 0.82); }
+        }
+
+        @keyframes springIn {
+            0%   { opacity: 0; transform: translateY(26px) scale(0.96); }
+            60%  { opacity: 1; transform: translateY(-7px) scale(1.012); }
+            100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .glass, .kpi, .mod { animation: springIn 0.7s var(--spring) both; }
+
+        .modulos  { animation-delay: 0.2s; }
+        .inv      { animation-delay: 0.3s; }
+        .kpis .kpi:nth-child(1) { animation-delay: 0.08s; }
+        .kpis .kpi:nth-child(2) { animation-delay: 0.16s; }
+        .kpis .kpi:nth-child(3) { animation-delay: 0.24s; }
+        .kpis .kpi:nth-child(4) { animation-delay: 0.32s; }
+        .mod { animation-duration: 0.6s; }
+        .mod:nth-child(1) { animation-delay: 0.05s; }
+        .mod:nth-child(2) { animation-delay: 0.10s; }
+        .mod:nth-child(3) { animation-delay: 0.15s; }
+        .mod:nth-child(4) { animation-delay: 0.20s; }
+        .mod:nth-child(5) { animation-delay: 0.25s; }
+        .mod:nth-child(6) { animation-delay: 0.30s; }
+        .mod:nth-child(7) { animation-delay: 0.35s; }
+
+        .hidden { display: none !important; }
+
+        .btn-anim {
+            transition: transform 0.45s var(--spring), background 0.25s;
+        }
+        .btn-anim:hover { transform: translateY(-2px); }
+        .btn-anim:active { transform: scale(0.94); transition-duration: 0.12s; }
+
+        /* ---------- TOPBAR ---------- */
+        .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 22px; }
+        .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; letter-spacing: 0.3px; }
+        .brand .brand-mini { font-size: 11px; font-weight: 600; color: var(--txt-dim); letter-spacing: 0px; }
+        .top-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .chip {
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid var(--glass-border);
+            padding: 7px 14px;
+            border-radius: 999px;
+            font-size: 13px;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+        }
+        .chip b { color: var(--accent); }
+        .btn-salir {
+            background: rgba(220, 53, 69, 0.85);
+            color: #fff;
+            border: none;
+            padding: 9px 16px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 13px;
+            text-decoration: none;
+        }
+        .btn-salir:hover { background: #dc3545; }
+        .btn-ghost {
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid var(--glass-border);
+            color: var(--txt);
+            border-radius: 10px;
+            padding: 8px 11px;
+            cursor: pointer;
+            font-size: 15px;
+        }
+        .btn-ghost:hover { background: rgba(255, 255, 255, 0.2); }
+
+        /* ---------- HERO ---------- */
+        .hero { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; padding: 22px 26px; }
+        .hero h1 { margin: 0; font-size: clamp(22px, 3vw, 30px); font-weight: 800; }
+        .hero p { margin: 6px 0 0; color: var(--txt-dim); font-size: 14px; }
+        .rol-badge {
+            background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(167, 139, 250, 0.25));
+            border: 1px solid rgba(167, 139, 250, 0.4);
+            padding: 10px 18px;
+            border-radius: 999px;
+            font-weight: 800;
+            font-size: 14px;
+            letter-spacing: 1px;
+        }
+
+        /* ---------- KPIS ---------- */
+        .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+        .kpi { padding: 16px 20px; }
+        .kpi-label { font-size: 11px; color: var(--txt-dim); text-transform: uppercase; letter-spacing: 0.9px; font-weight: 700; }
+        .kpi-val { font-size: clamp(22px, 3vw, 30px); font-weight: 800; margin-top: 6px; }
+        .kpi.warn .kpi-val { color: #f87171; }
+
+        /* ---------- MÓDULOS ---------- */
+        .modulos { padding: 20px 24px; }
+        .seccion-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+        .seccion-head h2 { margin: 0; font-size: 18px; font-weight: 800; }
+        .subtitulo { color: var(--txt-dim); font-size: 12px; }
+        .modulos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+        .mod {
+            --ac: #38bdf8;
+            text-decoration: none;
+            color: var(--txt);
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 18px;
+            border-radius: 16px;
+            border: 1px solid var(--glass-border);
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.03));
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.5s var(--spring), box-shadow 0.4s;
+        }
+        .mod::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: var(--ac); }
+        .mod:hover { transform: translateY(-6px) scale(1.04); box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35); }
+        .mod:active { transform: scale(0.96); transition-duration: 0.12s; }
+        .mod-ico { font-size: 26px; }
+        .mod-nom { font-weight: 800; font-size: 14px; }
+        .mod-rol { font-size: 11px; color: var(--txt-dim); }
+        .a-vig { --ac: #fbbf24; }
+        .a-alm { --ac: #22d3ee; }
+        .a-sop { --ac: #4ade80; }
+        .a-env { --ac: #a78bfa; }
+        .a-aud { --ac: #cbd5e1; }
+        .a-sim { --ac: #2dd4bf; }
+        .a-adm { --ac: #f472b6; }
+
+        /* ---------- INVENTARIO ---------- */
+        .inv { padding: 20px 24px; }
+        .inv-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .buscador {
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--glass-border);
+            color: #fff;
+            padding: 9px 16px;
+            border-radius: 999px;
+            font-size: 13px;
+            width: 250px;
+            outline: none;
+        }
+        .buscador::placeholder { color: rgba(255, 255, 255, 0.5); }
+        .buscador:focus { border-color: var(--accent); }
+        .btn-actualizar {
+            background: rgba(56, 189, 248, 0.18);
+            border: 1px solid rgba(56, 189, 248, 0.45);
+            color: #e0f2fe;
+            padding: 9px 18px;
+            border-radius: 999px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 13px;
+        }
+        .btn-actualizar:hover { background: rgba(56, 189, 248, 0.3); }
+
+        .tabla-wrap { overflow-x: auto; border-radius: 14px; border: 1px solid var(--glass-border); }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; background: rgba(0, 0, 0, 0.18); min-width: 660px; }
+        th {
+            text-align: left;
+            padding: 11px 14px;
+            color: rgba(248, 250, 252, 0.65);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.7px;
+            border-bottom: 1px solid var(--glass-border);
+            background: rgba(255, 255, 255, 0.03);
+            white-space: nowrap;
+        }
+        td { padding: 11px 14px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+        tr:last-child td { border-bottom: none; }
+        tbody tr:hover td { background: rgba(255, 255, 255, 0.05); }
+        .badge { padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+        .badge-ok { background: rgba(34, 197, 94, 0.18); color: #86efac; }
+        .badge-low { background: rgba(248, 113, 113, 0.22); color: #fecaca; }
         .text-center { text-align: center; }
+        .sin-registros { color: var(--txt-dim); font-style: italic; }
+
+        .inv-footer { display: flex; justify-content: space-between; margin-top: 12px; color: var(--txt-dim); font-size: 12px; flex-wrap: wrap; gap: 6px; }
+
+        /* ---------- PIE ---------- */
+        .pie { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 4px; color: var(--txt-dim); font-size: 12px; flex-wrap: wrap; }
+
+        /* ---------- RESPONSIVE ---------- */
+        @media (max-width: 640px) {
+            body { padding: 10px; }
+            .app { gap: 14px; }
+            .topbar, .hero { padding: 16px 18px; }
+            .kpis { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+            .modulos, .inv { padding: 16px 18px; }
+            .modulos-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+            .buscador { width: 100%; }
+            .hero { flex-direction: column; align-items: flex-start; }
+            .blob { filter: blur(60px); opacity: 0.35; animation: none; }
+            .glass {
+                backdrop-filter: blur(10px) saturate(130%);
+                -webkit-backdrop-filter: blur(10px) saturate(130%);
+            }
+        }
+        @media (max-width: 380px) {
+            .modulos-grid { grid-template-columns: 1fr; }
+            .kpis { grid-template-columns: 1fr; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h2>Dashboard General - Sistema Belcen</h2>
+    <div class="bg-anim" aria-hidden="true">
+        <div class="blob b1"></div>
+        <div class="blob b2"></div>
+        <div class="blob b3"></div>
+    </div>
 
-        <div style="margin-bottom: 20px;">
-            <p style="font-weight: bold; color: #555; margin-bottom: 10px;">📌 Accesos Directos a Módulos Operativos:</p>
-            <div class="nav-modules">
-                <a href="vigilancia.html" class="btn-module btn-vigilancia">🛡️ Vigilancia</a>
-                <a href="almacen.html" class="btn-module btn-almacen">📦 Almacén</a>
-                <a href="soplado.html" class="btn-module btn-soplado">🏭 Soplado</a>
-                <a href="envasado.html" class="btn-module btn-envasado">🧴 Envasado</a>
-                <a href="auditoria.html" class="btn-module btn-auditoria">📋 Auditoría</a>
-                <a href="basededatosdeplanta.html" class="btn-module btn-simulador">🧮 Simulador de Insumos</a>
-                <a href="admin.html" id="btnModuloUsuarios" class="btn-module btn-admin" style="display: none;">👮 Usuarios</a>
+    <div class="app">
+
+        <!-- TOPBAR -->
+        <header class="glass topbar">
+            <div class="brand">
+                <span>🏭</span>
+                <span>Corporación Belcen<small class="brand-mini"><br>ERP Interno</small></span>
             </div>
-        </div>
+            <div class="top-actions">
+                <span class="chip" id="chipUsuario">👤 <span id="chipNombre">—</span></span>
+                <button class="btn-ghost btn-anim" onclick="cargarInventario()" title="Actualizar inventario">🔄</button>
+                <button class="btn-salir btn-anim" onclick="cerrarSesion()">Salir</button>
+            </div>
+        </header>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 25px;">
-            <h3 style="margin: 0; color: #343a40;">Inventario General en Tiempo Real</h3>
-            <button class="btn-actualizar" onclick="cargarInventario()">🔄 Actualizar Stock</button>
-        </div>
+        <!-- HERO -->
+        <section class="glass hero">
+            <div>
+                <h1 id="saludo">Bienvenido</h1>
+                <p id="fechaHora">Cargando fecha y hora…</p>
+            </div>
+            <span class="rol-badge" id="rolBadge">ROL</span>
+        </section>
 
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Artículo</th>
-                    <th>Categoría</th>
-                    <th>Stock Actual</th>
-                    <th>Unidad</th>
-                    <th>Estado</th>
-                </tr>
-            </thead>
-            <tbody id="tablaInventario">
-                <tr><td colspan="6" class="text-center">Cargando inventario...</td></tr>
-            </tbody>
-        </table>
+        <!-- KPIS -->
+        <section class="kpis">
+            <div class="glass kpi">
+                <div class="kpi-label">Total Artículos</div>
+                <div class="kpi-val" id="kpiArticulos">—</div>
+            </div>
+            <div class="glass kpi warn">
+                <div class="kpi-label">Bajo Stock</div>
+                <div class="kpi-val" id="kpiBajoStock">—</div>
+            </div>
+            <div class="glass kpi">
+                <div class="kpi-label">Categorías</div>
+                <div class="kpi-val" id="kpiCategorias">—</div>
+            </div>
+            <div class="glass kpi">
+                <div class="kpi-label">Stock Acumulado</div>
+                <div class="kpi-val" id="kpiStock">—</div>
+            </div>
+        </section>
 
-        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
-            <button class="logout" onclick="cerrarSesion()">🔒 Cerrar Sesión (Salir)</button>
-        </div>
+        <!-- MÓDULOS -->
+        <section class="glass modulos">
+            <div class="seccion-head">
+                <h2>Módulos Operativos</h2>
+                <span class="subtitulo">Accesos directos</span>
+            </div>
+            <div class="modulos-grid">
+                <a href="vigilancia.html" class="mod a-vig"><span class="mod-ico">🛡️</span><span class="mod-nom">Vigilancia</span><span class="mod-rol">Ingresos y guías</span></a>
+                <a href="almacen.html" class="mod a-alm"><span class="mod-ico">📦</span><span class="mod-nom">Almacén</span><span class="mod-rol">Conformidad y stock</span></a>
+                <a href="soplado.html" class="mod a-sop"><span class="mod-ico">🏭</span><span class="mod-nom">Soplado</span><span class="mod-rol">Botellas y etiquetas</span></a>
+                <a href="envasado.html" class="mod a-env"><span class="mod-ico">🧴</span><span class="mod-nom">Envasado</span><span class="mod-rol">Línea de producción</span></a>
+                <a href="auditoria.html" class="mod a-aud"><span class="mod-ico">📋</span><span class="mod-nom">Auditoría</span><span class="mod-rol">Movimientos y cierres</span></a>
+                <a href="basededatosdeplanta.html" class="mod a-sim"><span class="mod-ico">🧮</span><span class="mod-nom">Simulador de Insumos</span><span class="mod-rol">Base de datos de planta</span></a>
+                <a href="admin.html" id="btnModuloUsuarios" class="mod a-adm hidden"><span class="mod-ico">👮</span><span class="mod-nom">Usuarios</span><span class="mod-rol">Administración</span></a>
+            </div>
+        </section>
+
+        <!-- INVENTARIO -->
+        <section class="glass inv">
+            <div class="seccion-head">
+                <h2>Inventario General</h2>
+                <div class="inv-actions">
+                    <input id="filtroInventario" class="buscador" placeholder="🔍 Buscar artículo, categoría o unidad...">
+                    <button class="btn-actualizar btn-anim" onclick="cargarInventario()">🔄 Actualizar</button>
+                </div>
+            </div>
+            <div class="tabla-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Artículo</th>
+                            <th>Categoría</th>
+                            <th>Stock Actual</th>
+                            <th>Unidad</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaInventario">
+                        <tr><td colspan="6" class="text-center">Cargando inventario…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="inv-footer">
+                <span id="ultimaActualizacion">Sin actualizar</span>
+                <span id="totalFiltrado"></span>
+            </div>
+        </section>
+
+        <!-- PIE -->
+        <footer class="pie">
+            <span>Corporación Belcen S.A.C. · ERP Interno · Inventario en tiempo real</span>
+            <button class="btn-salir btn-anim" onclick="cerrarSesion()">🔒 Cerrar Sesión</button>
+        </footer>
     </div>
 
     <script src="/auth-client.js"></script>
@@ -98,11 +393,6 @@
             if (rolesOperativos.includes(rol)) {
                 window.location.href = rol + '.html';
             }
-
-            // Módulo de administración visible solo para el rol admin
-            if (rol === 'admin') {
-                document.getElementById('btnModuloUsuarios').style.display = 'block';
-            }
         }
 
         function cerrarSesion() {
@@ -112,41 +402,101 @@
             }
         }
 
+        verificarAccesoDashboard();
+
+        // Identidad del usuario
+        const usuarioActual = localStorage.getItem('usuario_actual') || 'usuario';
+        const rolActual = localStorage.getItem('rol_actual') || localStorage.getItem('rol_usuario') || '';
+
+        document.getElementById('saludo').textContent = 'Bienvenido, ' + usuarioActual;
+        document.getElementById('chipNombre').textContent = usuarioActual + ' · ' + (rolActual || '');
+        document.getElementById('rolBadge').textContent = String(rolActual || 'ROL').toUpperCase();
+
+        if (rolActual === 'admin') {
+            document.getElementById('btnModuloUsuarios').classList.remove('hidden');
+        }
+
+        // Reloj en vivo
+        function actualizarReloj() {
+            const ahora = new Date();
+            let fecha = ahora.toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+            fecha = fecha.charAt(0).toUpperCase() + fecha.slice(1);
+            const hora = ahora.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            document.getElementById('fechaHora').textContent = fecha + ' · ' + hora;
+        }
+
+        // Inventario
+        let inventarioGlobal = [];
+
+        function formatearNumero(valor) {
+            const n = Number(valor) || 0;
+            return Number.isInteger(n) ? String(n) : n.toFixed(2);
+        }
+
+        function renderInventario() {
+            const q = (document.getElementById('filtroInventario').value || '').toLowerCase();
+            const filtrados = inventarioGlobal.filter(a =>
+                (a.nombre || '').toLowerCase().includes(q) ||
+                (a.categoria || '').toLowerCase().includes(q) ||
+                (a.unidad_medida || '').toLowerCase().includes(q) ||
+                formatearNumero(a.stock).toLowerCase().includes(q)
+            );
+
+            const tbody = document.getElementById('tablaInventario');
+            tbody.innerHTML = filtrados.length === 0
+                ? '<tr><td colspan="6" class="text-center sin-registros">No hay artículos que coincidan con la búsqueda.</td></tr>'
+                : '';
+
+            filtrados.forEach(art => {
+                const estadoTexto = art.estado || 'STOCK SUFICIENTE';
+                const esBajoStock = estadoTexto === 'REALIZAR PEDIDO';
+                const estadoClass = esBajoStock ? 'badge-low' : 'badge-ok';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${art.id}</td>
+                    <td><b>${art.nombre}</b></td>
+                    <td>${art.categoria || 'General'}</td>
+                    <td><b>${formatearNumero(art.stock)}</b></td>
+                    <td>${art.unidad_medida || 'UNIDADES'}</td>
+                    <td><span class="badge ${estadoClass}">${estadoTexto}</span></td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('totalFiltrado').textContent = filtrados.length + ' de ' + inventarioGlobal.length + ' artículos';
+        }
+
         async function cargarInventario() {
             try {
                 const res = await fetch('/api/inventario');
+                if (!res.ok) throw new Error('Error del servidor.');
                 const articulos = await res.json();
-                const tbody = document.getElementById('tablaInventario');
-                tbody.innerHTML = '';
+                inventarioGlobal = Array.isArray(articulos) ? articulos : [];
 
-                if (articulos.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">No hay artículos registrados.</td></tr>';
-                    return;
-                }
+                const bajoStock = inventarioGlobal.filter(a => (a.estado || '').trim() === 'REALIZAR PEDIDO').length;
+                const categorias = new Set(inventarioGlobal.map(a => (a.categoria || 'General').trim().toLowerCase()));
+                const stockTotal = inventarioGlobal.reduce((s, a) => s + (Number(a.stock) || 0), 0);
 
-                articulos.forEach(art => {
-                    const tr = document.createElement('tr');
-                    const estadoTexto = art.estado || 'STOCK SUFICIENTE';
-                    const esBajoStock = estadoTexto === 'REALIZAR PEDIDO';
-                    const estadoClass = esBajoStock ? 'badge-low' : 'badge-ok';
+                document.getElementById('kpiArticulos').textContent = inventarioGlobal.length;
+                document.getElementById('kpiBajoStock').textContent = bajoStock;
+                document.getElementById('kpiCategorias').textContent = categorias.size;
+                document.getElementById('kpiStock').textContent = formatearNumero(stockTotal);
 
-                    tr.innerHTML = `
-                        <td>${art.id}</td>
-                        <td><b>${art.nombre}</b></td>
-                        <td>${art.categoria || 'General'}</td>
-                        <td><b>${art.stock}</b></td>
-                        <td>${art.unidad_medida}</td>
-                        <td><span class="badge ${estadoClass}">${estadoTexto}</span></td>
-                    `;
-                    tbody.appendChild(tr);
-                });
+                const ahora = new Date();
+                document.getElementById('ultimaActualizacion').textContent =
+                    'Última actualización: ' + ahora.toLocaleTimeString('es-PE');
+                renderInventario();
             } catch (err) {
                 console.error(err);
-                document.getElementById('tablaInventario').innerHTML = '<tr><td colspan="6" class="text-center" style="color:red;">Error al cargar el inventario.</td></tr>';
+                document.getElementById('tablaInventario').innerHTML =
+                    '<tr><td colspan="6" class="text-center" style="color:#fecaca;">Error al cargar el inventario.</td></tr>';
             }
         }
 
-        verificarAccesoDashboard();
+        document.getElementById('filtroInventario').addEventListener('input', renderInventario);
+
+        actualizarReloj();
+        setInterval(actualizarReloj, 1000);
         cargarInventario();
         registrarAutoRefresco(cargarInventario, 15000);
     </script>

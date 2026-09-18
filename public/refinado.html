@@ -5,81 +5,212 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reporte de Refinado - Corporación Belcen</title>
     <style>
-        body { font-family: Arial, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; }
+        :root {
+            --bg: #f2f2f7;
+            --card: rgba(255, 255, 255, 0.72);
+            --card-bord: rgba(0, 0, 0, 0.07);
+            --texto: #1c1c1e;
+            --texto2: #6c7280;
+            --azul: #0a84ff;
+            --verde: #34c759;
+            --rojo: #ff3b30;
+            --ambar: #ff9500;
+            --teal: #17a2b8;
+            --sombra: 0 8px 30px rgba(0, 0, 0, 0.08);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--texto);
+            margin: 0;
+            padding: 24px 16px 56px;
+            -webkit-font-smoothing: antialiased;
+        }
+
         .container { max-width: 1400px; margin: auto; }
-        .tarjeta { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 25px; }
-        h1 { color: #343a40; text-align: center; margin: 0 0 5px 0; font-size: 26px; }
-        .sub { text-align: center; color: #6c757d; margin: 0 0 20px 0; font-size: 14px; }
-        h3 { color: #343a40; padding-bottom: 8px; margin-top: 0; border-bottom: 2px solid #17a2b8; }
-        h3.aceite { border-bottom-color: #ffc107; color: #8a6d00; }
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th, td { border: 1px solid #dee2e6; padding: 6px 8px; text-align: left; font-size: 12px; vertical-align: middle; }
-        th { background-color: #343a40; color: white; }
-        th.azul { background-color: #117a8b; }
-        th.ambar { background-color: #8a6d00; }
+
+        .tarjeta {
+            background: var(--card);
+            backdrop-filter: blur(20px) saturate(160%);
+            -webkit-backdrop-filter: blur(20px) saturate(160%);
+            border: 1px solid var(--card-bord);
+            border-radius: 20px;
+            box-shadow: var(--sombra);
+            padding: 25px;
+            margin-bottom: 25px;
+        }
+        @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+            .tarjeta { background: rgba(255, 255, 255, 0.94); }
+        }
+        .borde-teal { border-top: 6px solid var(--teal); }
+        .borde-ambar { border-top: 5px solid var(--ambar); }
+
+        h1 { color: var(--texto); text-align: center; margin: 0 0 5px 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px; }
+        .sub { text-align: center; color: var(--texto2); margin: 0 0 20px 0; font-size: 14px; }
+        h3 {
+            color: var(--texto);
+            padding: 0 0 10px;
+            margin: 0 0 14px;
+            border-bottom: 2px solid rgba(23, 162, 184, 0.35);
+            font-size: 18px;
+            font-weight: 800;
+        }
+        h3.aceite { border-bottom-color: rgba(255, 149, 0, 0.4); color: #a05a00; }
+
+        .tabla-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 14px; margin-top: 15px; }
+        .tabla-wrap::-webkit-scrollbar { height: 6px; }
+        .tabla-wrap::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.18); border-radius: 999px; }
+        table {
+            width: 100%; border-collapse: separate; border-spacing: 0; margin: 0;
+            border: 1px solid rgba(0, 0, 0, 0.07); border-radius: 14px; overflow: hidden;
+            background: rgba(255, 255, 255, 0.6);
+        }
+        th, td { border: none; border-bottom: 1px solid rgba(0, 0, 0, 0.04); padding: 8px 10px; text-align: left; font-size: 12.5px; vertical-align: middle; }
+        th {
+            background: #f5f5f7; color: var(--texto2);
+            font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;
+        }
+        th.azul { background: rgba(23, 162, 184, 0.12); color: #0a6ea8; }
+        th.ambar { background: rgba(255, 149, 0, 0.16); color: #a05a00; }
+        tbody tr:last-child td { border-bottom: none; }
+
         input[type=number], input[type=text], input[type=date], select {
-            width: 100%; box-sizing: border-box; padding: 4px 6px; font-size: 12px;
-            border: 1px solid #ced4da; border-radius: 3px;
+            width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 13px;
+            border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 10px;
+            background: rgba(255, 255, 255, 0.7); color: var(--texto); font-family: inherit;
         }
         input[type=number]:focus, input[type=text]:focus, input[type=date]:focus, select:focus {
-            outline: none; border-color: #17a2b8; box-shadow: 0 0 0 2px rgba(23,162,184,0.2);
+            outline: none; border-color: var(--azul); box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.15);
         }
-        input[readonly] { background: #f1f3f5; color: #495057; }
-        .nombre-insumo { font-weight: bold; color: #212529; }
-        .badge { padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: bold; white-space: nowrap; display: inline-block; }
-        .badge-pedido { background: #f8d7da; color: #842029; border: 1px solid #f5c2c7; }
-        .badge-suficiente { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .badge-disponible { background: #d4edda; color: #155724; }
-        .badge-noche { background: #cce5ff; color: #004085; }
-        .badge-dia { background: #fff3cd; color: #856404; }
+        select { -webkit-appearance: none; appearance: none; background-image: linear-gradient(45deg, transparent 50%, #6c7280 50%), linear-gradient(135deg, #6c7280 50%, transparent 50%); background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
+        input[readonly] { background: rgba(0, 0, 0, 0.04); color: var(--texto2); }
+        .nombre-insumo { font-weight: 700; color: var(--texto); }
+
+        .badge { padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; display: inline-block; }
+        .badge-pedido { background: rgba(255, 59, 48, 0.14); color: #a3201a; border: 1px solid rgba(255, 59, 48, 0.25); }
+        .badge-suficiente { background: rgba(52, 199, 89, 0.16); color: #1e8e3e; border: 1px solid rgba(52, 199, 89, 0.25); }
+        .badge-disponible { background: rgba(52, 199, 89, 0.16); color: #1e8e3e; }
+        .badge-noche { background: rgba(10, 132, 255, 0.14); color: #0a50a8; }
+        .badge-dia { background: rgba(255, 149, 0, 0.16); color: #a05a00; }
+
         .filtro-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 15px 0; }
-        .filtro-bar label { font-weight: bold; font-size: 13px; }
-        .btn { background: #17a2b8; border: none; padding: 10px 18px; color: white; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 14px; }
-        .btn:hover { background: #138496; }
-        .btn-verde { background: #28a745; }
-        .btn-verde:hover { background: #1e7e34; }
-        .btn-ambar { background: #ffc107; color: #7a5200; }
-        .btn-ambar:hover { background: #e0a800; }
-        .btn-gris { background: #6c757d; }
-        .btn-gris:hover { background: #5a6268; }
-        .btn-rojo { background: #dc3545; }
-        .btn-rojo:hover { background: #c82333; }
-        .logout { background-color: #dc3545; border: none; padding: 10px 20px; text-decoration: none; color: white; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 14px; }
+        .filtro-bar label { font-weight: 700; font-size: 13px; color: var(--texto2); }
+        .turno-switch { display: flex; gap: 6px; align-items: center; }
+
+        .btn {
+            background: var(--teal); border: none; padding: 11px 18px; color: white;
+            border-radius: 999px; font-weight: 700; cursor: pointer; font-size: 13px; font-family: inherit;
+            box-shadow: 0 4px 12px rgba(23, 162, 184, 0.22);
+        }
+        .btn:hover { filter: brightness(0.95); }
+        .btn:active { transform: scale(0.98); }
+        .btn-verde { background: var(--verde); box-shadow: 0 4px 12px rgba(52, 199, 89, 0.25); }
+        .btn-ambar { background: var(--ambar); color: #fff; box-shadow: 0 4px 12px rgba(255, 149, 0, 0.28); }
+        .btn-gris { background: rgba(120, 120, 128, 0.42); box-shadow: none; }
+        .btn-rojo { background: var(--rojo); box-shadow: 0 4px 12px rgba(255, 59, 48, 0.25); }
+
+        .logout {
+            background-color: var(--rojo); border: none; padding: 11px 20px; text-decoration: none;
+            color: white; border-radius: 999px; font-weight: 700; cursor: pointer; font-size: 13px;
+            font-family: inherit; box-shadow: 0 4px 12px rgba(255, 59, 48, 0.25);
+        }
+        .logout:hover { filter: brightness(0.95); }
+
+        .link-aux { color: var(--azul); font-weight: 700; text-decoration: none; margin-right: 12px; }
+        .link-aux:hover { text-decoration: underline; }
+
         .text-center { text-align: center; }
-        .aviso { padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-top: 12px; }
-        .aviso-info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
-        .aviso-warn { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
-        .obs-global { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #ced4da; border-radius: 4px; font-family: Arial; font-size: 13px; resize: vertical; }
-        .total-box { display: flex; flex-wrap: wrap; gap: 15px; margin-top: 15px; }
-        .total-item { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 12px 18px; flex: 1; min-width: 180px; }
-        .total-item label { font-size: 11px; color: #6c757d; text-transform: uppercase; letter-spacing: .5px; }
-        .total-item .valor { font-size: 22px; font-weight: bold; color: #343a40; margin-top: 4px; }
-        .total-item .valor.ambar { color: #8a6d00; }
-        .footer-acciones { text-align: center; margin-top: 10px; padding: 15px; border-top: 1px solid #ddd; }
-        .mensaje { text-align: center; font-weight: bold; margin-top: 12px; min-height: 20px; }
-        .mensaje.ok { color: #1e7e34; }
-        .mensaje.err { color: #bd2130; }
-        .hover-row:hover { background-color: #f8f9fa; }
-        .en-linea-cell { background: #fffaf0; }
+        .sin-registros { color: var(--texto2); font-style: italic; }
+
+        .aviso { padding: 12px 14px; border-radius: 12px; font-size: 13px; margin-top: 12px; line-height: 1.5; }
+        .aviso-info { background: rgba(23, 162, 184, 0.09); color: #0a6ea8; border: 1px solid rgba(23, 162, 184, 0.2); }
+        .aviso-warn { background: rgba(255, 149, 0, 0.12); color: #8a5a00; border: 1px solid rgba(255, 149, 0, 0.3); }
+
+        .obs-global {
+            width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 12px; font-family: inherit; font-size: 13px; resize: vertical;
+            background: rgba(255, 255, 255, 0.7); color: var(--texto); margin-top: 6px;
+        }
+        .obs-global:focus { outline: none; border-color: var(--azul); box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.15); }
+
+        .total-box { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 15px; }
+        .total-item {
+            background: rgba(255, 255, 255, 0.7); border: 1px solid rgba(0, 0, 0, 0.07);
+            border-radius: 14px; padding: 14px 18px; flex: 1; min-width: 180px;
+        }
+        .total-item label { font-size: 11px; color: var(--texto2); text-transform: uppercase; letter-spacing: .5px; }
+        .total-item .valor { font-size: 22px; font-weight: 800; color: var(--texto); margin-top: 4px; }
+        .total-item .valor.ambar { color: var(--ambar); }
+
+        .footer-acciones { text-align: center; margin-top: 10px; padding: 16px 4px 0; border-top: 1px solid rgba(0, 0, 0, 0.08); }
+        .nota-legal { color: var(--texto2); font-size: 13px; }
+
+        .mensaje { text-align: center; font-weight: 700; margin-top: 12px; min-height: 20px; }
+        .mensaje.ok { color: #1e8e3e; }
+        .mensaje.err { color: #c7251e; }
+
+        .hover-row:hover td { background: rgba(0, 0, 0, 0.02); }
+        .en-linea-cell { background: rgba(0, 0, 0, 0.015); }
         .clave { display: none; }
-        .turno-btn { border: 2px solid #ced4da; background: white; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; cursor: pointer; transition: all 0.2s; }
-        .turno-dia:hover, .turno-dia.activo-dia { background: #fff3cd; border-color: #ffc107; color: #856404; }
-        .turno-noche:hover, .turno-noche.activo-noche { background: #cce5ff; border-color: #17a2b8; color: #004085; }
-        .turno-actual { display: inline-block; background: #343a40; color: white; padding: 4px 16px; border-radius: 12px; font-size: 14px; font-weight: bold; letter-spacing: 0.5px; }
+
+        .turno-btn {
+            border: 1px solid rgba(0, 0, 0, 0.12); background: rgba(255, 255, 255, 0.7);
+            padding: 9px 16px; border-radius: 999px; font-size: 13px; font-weight: 700;
+            cursor: pointer; font-family: inherit; transition: all 0.2s; color: var(--texto);
+        }
+        .turno-dia:hover, .turno-dia.activo-dia { background: rgba(255, 149, 0, 0.18); border-color: var(--ambar); color: #8a5a00; }
+        .turno-noche:hover, .turno-noche.activo-noche { background: rgba(10, 132, 255, 0.18); border-color: var(--azul); color: #0a50a8; }
+
+        .turno-actual {
+            display: inline-block; background: rgba(0, 0, 0, 0.08); color: var(--texto);
+            padding: 6px 18px; border-radius: 999px; font-size: 14px; font-weight: 700; letter-spacing: 0.5px;
+        }
+
+        .btn-x-quitar {
+            background: var(--rojo); color: white; border: none; border-radius: 999px; cursor: pointer;
+            padding: 6px 10px; margin-top: 6px; width: 100%; font-size: 12px; font-weight: 700; font-family: inherit;
+        }
+
+        @media (max-width: 768px) {
+            body { padding: 12px 10px calc(16px + env(safe-area-inset-bottom)); }
+            .tarjeta { padding: 18px; }
+            h1 { font-size: 20px; }
+            .filtro-bar { gap: 10px; }
+            #fechaReporte { width: 100% !important; }
+            .link-aux { margin-right: 8px; font-size: 13px; }
+        }
+
+        @media (max-width: 640px) {
+            table { min-width: 860px; }
+            .tabla-wrap input, .tabla-wrap select { font-size: 16px; }
+            .filtro-bar > span[style*="flex:1"] { display: none; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="container">
 
-        <div class="tarjeta" style="border-top: 6px solid #17a2b8; margin-bottom: 20px;">
+        <div class="tarjeta borde-teal" style="margin-bottom: 20px;">
             <h1>🏭 REPORTE DE CONTROL E INVENTARIO DE REFINERÍA</h1>
             <p class="sub">Corporación Belcen S.A.C. — Planta de Refinado de Aceite de Soya</p>
 
             <div class="filtro-bar">
                 <label for="fechaReporte">📅 Fecha del reporte:</label>
-                <input type="date" id="fechaReporte" value="" style="width:auto; font-size:14px; padding:8px;">
+                <input type="date" id="fechaReporte" value="">
 
-                <div class="turno-switch" style="display:flex; gap:6px; align-items:center;">
+                <div class="turno-switch">
                     <span style="font-weight:bold; font-size:13px;">🕐 Turno:</span>
                     <button type="button" id="turnoDIA" class="turno-btn turno-dia" onclick="seleccionarTurno('DIA')">☀️ DÍA</button>
                     <button type="button" id="turnoNOCHE" class="turno-btn turno-noche" onclick="seleccionarTurno('NOCHE')">🌙 NOCHE</button>
@@ -89,8 +220,8 @@
                 <button class="btn btn-gris" onclick="nuevoDia()">➕ Nuevo Día</button>
 
                 <span style="flex:1;"></span>
-                <a href="auditoria.html" style="color:#007bff; font-weight:bold; text-decoration:none; margin-right:12px;">🔍 Ver Auditoría</a>
-                <a href="dashboard.html" id="linkDashboard" style="color:#007bff; font-weight:bold; text-decoration:none; margin-right:12px;">🏠 Dashboard</a>
+                <a href="auditoria.html" class="link-aux">🔍 Ver Auditoría</a>
+                <a href="dashboard.html" id="linkDashboard" class="link-aux">🏠 Dashboard</a>
                 <button class="logout" onclick="cerrarSesion()">🔒 Cerrar Sesión</button>
             </div>
             <div style="text-align:center; margin-top:10px;">
@@ -100,12 +231,13 @@
         </div>
 
         <!-- SECCIÓN 1: STOCK DE INSUMOS DE REFINADO -->
-        <div class="tarjeta" style="border-top: 5px solid #17a2b8;">
+        <div class="tarjeta borde-teal">
             <h3>🛢️ STOCK DE INSUMOS DE REFINADO</h3>
 
             <div class="aviso aviso-info">ℹ️ <b>Considerar stock de crudo del tanque más en línea</b> para calcular la real disponibilidad de aceite crudo.</div>
             <div class="aviso aviso-warn">⚡ <b>Alerta pedido para 3-4 días:</b> coordinar con los proveedores cuando los días de stock caigan a 3-4 días.</div>
 
+            <div class="tabla-wrap">
             <table>
                 <thead>
                     <tr>
@@ -125,12 +257,14 @@
                     <tr><td colspan="10" class="text-center">Cargando insumos...</td></tr>
                 </tbody>
             </table>
+            </div>
         </div>
 
         <!-- SECCIÓN 2: ACEITE REFINADO DE SOYA EN PLANTA -->
-        <div class="tarjeta" style="border-top: 5px solid #ffc107;">
+        <div class="tarjeta borde-ambar">
             <h3 class="aceite">🛢️ ACEITE REFINADO DE SOYA EN PLANTA</h3>
 
+            <div class="tabla-wrap">
             <table>
                 <thead>
                     <tr>
@@ -145,6 +279,7 @@
                     <tr><td colspan="5" class="text-center">Cargando aceite refinado...</td></tr>
                 </tbody>
             </table>
+            </div>
 
             <div class="total-box">
                 <div class="total-item">
@@ -174,7 +309,7 @@
         <div class="footer-acciones">
             <button class="btn btn-verde" onclick="guardarReporte()">💾 Guardar Reporte de Refinado</button>
             <br><br>
-            <span style="color:#888; font-size:13px;">El reporte se guarda por día y por turno: al guardar otra vez el mismo día+turno se actualiza (no se duplica).</span>
+            <span class="nota-legal">El reporte se guarda por día y por turno: al guardar otra vez el mismo día+turno se actualiza (no se duplica).</span>
         </div>
     </div>
 
@@ -309,7 +444,7 @@
                             <option value="ENFRIA DE NOCHE" ${(item.estado || '').toUpperCase().includes('NOCHE') ? 'selected' : ''}>🌙 Enfría de Noche</option>
                             <option value="ENFRIA DIA" ${(item.estado || '').toUpperCase().includes('DÍA') || (item.estado || '').toUpperCase().includes('DIA') ? 'selected' : ''}>☀️ Enfría Día</option>
                         </select>
-                        <button onclick="quitarFilaAceite(this)" style="background:#dc3545; color:white; border:none; border-radius:3px; cursor:pointer; padding:3px 8px; margin-top:4px; width:100%; font-size:12px;">🗑 Quitar</button>
+                        <button onclick="quitarFilaAceite(this)" class="btn-x-quitar">🗑 Quitar</button>
                     </td>
                 `;
                 tbody.appendChild(tr);
@@ -470,7 +605,7 @@
                         <option value="ENFRIA DE NOCHE">🌙 Enfría de Noche</option>
                         <option value="ENFRIA DIA">☀️ Enfría Día</option>
                     </select>
-                    <button onclick="quitarFilaAceite(this)" style="background:#dc3545; color:white; border:none; border-radius:3px; cursor:pointer; padding:3px 8px; margin-top:4px; width:100%; font-size:12px;">🗑 Quitar</button>
+                    <button onclick="quitarFilaAceite(this)" class="btn-x-quitar">🗑 Quitar</button>
                 </td>
             `;
             tbody.appendChild(tr);

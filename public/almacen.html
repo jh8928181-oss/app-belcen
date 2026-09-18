@@ -5,31 +5,245 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestión de Inventario y Almacén - Belcen</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; background-color: #f4f6f9; padding: 20px; }
-        .table-container { max-width: 1100px; margin: auto; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 25px; }
-        h3 { color: #343a40; text-align: center; border-bottom: 2px solid #007bff; padding-bottom: 8px; margin-top: 0; }
-        select, input { padding: 8px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; box-sizing: border-box; }
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
-        th { background-color: #007bff; color: white; }
+        :root {
+            --bg: #f2f2f7;
+            --card: rgba(255, 255, 255, 0.72);
+            --card-bord: rgba(0, 0, 0, 0.07);
+            --texto: #1c1c1e;
+            --texto2: #6c7280;
+            --azul: #0a84ff;
+            --verde: #34c759;
+            --rojo: #ff3b30;
+            --ambar: #ff9500;
+            --sombra: 0 8px 30px rgba(0, 0, 0, 0.08);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            margin: 0;
+            background-color: var(--bg);
+            color: var(--texto);
+            padding: 24px 16px 56px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .table-container {
+            max-width: 1100px; margin: auto;
+            background: var(--card);
+            backdrop-filter: blur(20px) saturate(160%);
+            -webkit-backdrop-filter: blur(20px) saturate(160%);
+            border: 1px solid var(--card-bord);
+            border-radius: 20px;
+            box-shadow: var(--sombra);
+            padding: 25px;
+            margin-bottom: 25px;
+        }
+        @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+            .table-container { background: rgba(255, 255, 255, 0.94); }
+        }
+        .sec-ambar { border-top: 5px solid var(--ambar); }
+        .sec-teal { border-top: 5px solid #17a2b8; }
+        .sec-verde { border-top: 5px solid var(--verde); }
+        .sec-azul { border-top: 5px solid var(--azul); }
+        .sec-rojo { border-top: 5px solid var(--rojo); }
+        .sec-gris { border-top: 5px solid #8e8e93; }
+
+        h3 {
+            color: var(--texto);
+            text-align: center;
+            border-bottom: 2px solid rgba(0, 0, 0, 0.09);
+            padding: 0 0 12px;
+            margin: 0 0 16px;
+            font-size: 19px;
+            font-weight: 800;
+            letter-spacing: -0.3px;
+        }
+        .h3-teal { color: #0e869c; border-bottom-color: rgba(23, 162, 184, 0.35); }
+        .h3-rojo { color: #d6362b; border-bottom-color: rgba(255, 59, 48, 0.30); }
+        .h3-gris { color: #495057; border-bottom-color: rgba(73, 80, 87, 0.30); }
+
+        select, input {
+            padding: 12px 14px;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 12px;
+            font-size: 14px;
+            box-sizing: border-box;
+            width: 100%;
+            margin-top: 6px;
+            margin-bottom: 4px;
+            background: rgba(255, 255, 255, 0.7);
+            color: var(--texto);
+            font-family: inherit;
+        }
+        select:focus, input:focus {
+            outline: none;
+            border-color: var(--azul);
+            box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.15);
+        }
+        select { -webkit-appearance: none; appearance: none; background-image: linear-gradient(45deg, transparent 50%, #6c7280 50%), linear-gradient(135deg, #6c7280 50%, transparent 50%); background-position: calc(100% - 20px) 50%, calc(100% - 15px) 50%; background-size: 5px 5px; background-repeat: no-repeat; cursor: pointer; }
+
+        .grid-form { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px; }
+        .span-2 { grid-column: 1 / -1; }
+        .grid-filtros { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 16px; }
+        .grid-filtros label { font-weight: 700; color: var(--texto); }
+
+        .tabla-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 14px; margin-top: 15px; }
+        table { width: 100%; border-collapse: separate; border-spacing: 0; margin: 0; border: 1px solid rgba(0, 0, 0, 0.07); border-radius: 14px; overflow: hidden; background: rgba(255, 255, 255, 0.6); }
+        th, td { padding: 11px 12px; text-align: left; font-size: 13px; }
+        th { background: #f5f5f7; color: var(--texto2); font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; border-bottom: 1px solid rgba(0, 0, 0, 0.06); white-space: nowrap; }
+        td { border-bottom: 1px solid rgba(0, 0, 0, 0.04); }
+        tbody tr:last-child td { border-bottom: none; }
+        tbody tr:hover td { background: rgba(0, 0, 0, 0.02); }
         .text-center { text-align: center; }
-        .logout { display: inline-block; margin-bottom: 10px; color: #dc3545; text-decoration: none; font-weight: bold; cursor: pointer; }
-        .btn-accion { padding: 6px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        .btn-accion:hover { background: #218838; }
-        .btn-ajustar { background: #ffc107; color: #000; }
-        .btn-ajustar:hover { background: #e0a800; }
-        .btn-regularizar { background: #17a2b8; color: white; }
-        .btn-regularizar:hover { background: #138496; }
+        .diff-alerta { color: var(--rojo); font-weight: 800; }
+        .celda-azul { color: var(--azul); font-weight: 800; }
+        .celda-verde { color: #1e8e3e; font-weight: 800; }
+        .celda-rojo { color: var(--rojo); font-weight: 800; }
+        .sub-text { margin-top: 4px; font-size: 11px; color: var(--texto2); }
+        .sin-registros { color: var(--texto2); font-style: italic; }
+        .estado-cargando { color: var(--texto2); font-style: italic; text-align: center; padding: 10px; }
+        .vacio-note { color: var(--rojo); padding: 15px; text-align: center; font-weight: 600; }
+
+        .tarjeta-header {
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.09); padding-bottom: 12px; margin-bottom: 14px;
+            flex-wrap: wrap; gap: 10px;
+        }
+        .tarjeta-header h3 { margin: 0; border: none; padding: 0; text-align: left; font-size: 19px; font-weight: 800; letter-spacing: -0.3px; }
+        .h-ambar { color: #b06b00; }
+        .h-verde { color: #1e8e3e; }
+        .h-azul { color: #0a6ea8; }
+
+        .pend-chip { background: var(--rojo); color: #fff; font-weight: 800; padding: 8px 16px; border-radius: 999px; font-size: 13px; box-shadow: 0 4px 12px rgba(255, 59, 48, 0.25); }
+
+        .barra-filtros { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+        .btn-filtro { background: rgba(120, 120, 128, 0.18); color: var(--texto); border: none; padding: 9px 16px; border-radius: 999px; cursor: pointer; font-weight: 800; font-size: 13px; font-family: inherit; transition: filter 0.15s ease; }
+        .btn-filtro:hover { filter: brightness(0.94); }
+        .btn-filtro:active { transform: scale(0.97); }
+        .btn-filtro-todos { background: var(--azul); color: #fff; }
+        .btn-filtro-guia { background: var(--verde); color: #fff; }
+        .btn-filtro-regularizar { background: #ffd60a; color: #5c3a00; }
+
+        .btn-agregar { background: rgba(120, 120, 128, 0.16); color: var(--texto); border: none; padding: 9px 16px; border-radius: 999px; font-weight: 800; font-size: 13px; cursor: pointer; font-family: inherit; transition: filter 0.15s ease; }
+        .btn-agregar:hover { filter: brightness(0.95); }
+        .btn-agregar-verde { background: rgba(52, 199, 89, 0.18); color: #1e8e3e; }
+        .btn-agregar-azul { background: rgba(10, 132, 255, 0.15); color: #0a6ea8; }
+
+        .barra-edicion { display: none; background: rgba(255, 149, 0, 0.13); color: #8a5a00; border: 1px solid rgba(255, 149, 0, 0.30); padding: 12px 14px; border-radius: 14px; margin-bottom: 14px; font-weight: 800; font-size: 14px; }
+        .barra-edicion a { color: #5c3a00; text-decoration: underline; font-weight: 800; }
+
+        .caja-items { grid-column: 1 / -1; background: rgba(0, 0, 0, 0.035); padding: 16px; border-radius: 16px; border: 2px dashed rgba(10, 132, 255, 0.35); }
+        .caja-items h4 { margin: 0 0 14px; color: var(--azul); font-size: 15px; font-weight: 800; }
+        .caja-items .tabla-wrap { margin-top: 4px; }
+        .fila-agregar { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+        .fila-agregar > select { flex: 2; min-width: 200px; margin: 0; }
+        .fila-agregar > input { flex: 1; min-width: 100px; margin: 0; }
+        .btn-agregar-item { background: var(--verde); color: #fff; border: none; padding: 11px 18px; font-weight: 800; border-radius: 999px; cursor: pointer; flex: 0 0 auto; font-family: inherit; }
+        .btn-agregar-item:hover { filter: brightness(0.96); }
+
+        .btn-despachar {
+            background: var(--rojo); color: #fff; padding: 16px; font-weight: 800; border: none; border-radius: 999px;
+            cursor: pointer; width: 100%; font-size: 16px; font-family: inherit; box-shadow: 0 6px 18px rgba(255, 59, 48, 0.28);
+        }
+        .btn-despachar:hover { filter: brightness(0.96); }
+        .btn-despachar:active { transform: scale(0.99); }
+        .btn-despachar:disabled { opacity: 0.6; }
+
+        .btn-accion { background: var(--verde); color: #fff; border: none; padding: 7px 14px; border-radius: 999px; cursor: pointer; font-weight: 700; font-size: 12px; font-family: inherit; transition: filter 0.15s ease; }
+        .btn-accion:hover { filter: brightness(0.96); }
+        .btn-accion:active { transform: scale(0.97); }
+        .btn-ajustar { background: #ffd60a; color: #5c3a00; }
+        .btn-ajustar:hover { filter: brightness(0.95); }
+        .btn-regularizar { background: var(--azul); }
+        .btn-regularizar:hover { filter: brightness(0.95); }
+
+        .btn-x { background: var(--rojo); color: #fff; border: none; width: 26px; height: 26px; border-radius: 8px; line-height: 1; font-weight: 800; cursor: pointer; font-family: inherit; }
+        .btn-x-borrar { background: var(--rojo); color: #fff; border: none; padding: 6px 12px; border-radius: 999px; cursor: pointer; font-size: 12px; font-weight: 700; font-family: inherit; }
+        .input-cant-item { width: 90px; text-align: center; padding: 7px; border: 1px solid rgba(0, 0, 0, 0.1); border-radius: 10px; font-size: 14px; font-family: inherit; margin: 0; }
+
+        .badge-stock-ok { background: rgba(52, 199, 89, 0.16); color: #1e8e3e; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+        .badge-stock-bajo { background: rgba(255, 59, 48, 0.14); color: #c0281e; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+        .badge-cumplido { background: rgba(52, 199, 89, 0.16); color: #1e8e3e; padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: 800; white-space: nowrap; }
+        .badge-pendiente { background: rgba(255, 149, 0, 0.18); color: #8a5a00; padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: 800; white-space: nowrap; }
+
+        .fila-filtro-salida { display: flex; gap: 15px; margin-bottom: 18px; align-items: center; flex-wrap: wrap; }
+        .fila-filtro-salida label { font-weight: 700; }
+
+        .grupo-fecha { border: 1px solid rgba(0, 0, 0, 0.07); border-radius: 18px; overflow: hidden; margin-bottom: 22px; background: rgba(255, 255, 255, 0.55); }
+        .grupo-fecha-head { background: #fbfbfd; padding: 12px 16px; border-bottom: 1px solid rgba(0, 0, 0, 0.08); font-weight: 800; color: var(--texto); font-size: 13px; }
+
+        .logout { display: inline-block; margin-bottom: 14px; color: var(--azul); text-decoration: none; font-weight: 600; }
+        .logout:hover { text-decoration: underline; }
+
+        .pie-foot { text-align: center; margin-top: 10px; padding: 15px 4px 0; border-top: 1px solid rgba(0, 0, 0, 0.08); }
+        .logout-cta {
+            background: var(--rojo); color: #fff; border: none; padding: 12px 22px; font-weight: 700;
+            border-radius: 999px; cursor: pointer; font-size: 14px; font-family: inherit; box-shadow: 0 6px 16px rgba(255, 59, 48, 0.25);
+        }
+        .logout-cta:hover { filter: brightness(0.95); }
+        .logout-cta:active { transform: scale(0.97); }
+
+        .modal-fondo { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.45); justify-content: center; align-items: center; z-index: 1000; padding: 16px; }
+        .modal-carta { background: #fff; padding: 24px; border-radius: 24px; width: 100%; max-height: 88vh; overflow-y: auto; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25); }
+        .mc-550 { max-width: 550px; }
+        .mc-520 { max-width: 520px; }
+        .mc-820 { max-width: 820px; }
+        .modal-carta h3 { margin: 0 0 14px; font-size: 18px; font-weight: 800; text-align: left; border-bottom: 2px solid rgba(0, 0, 0, 0.09); padding-bottom: 10px; }
+        .h-modal-verde { color: #1e8e3e; border-bottom-color: rgba(52, 199, 89, 0.35) !important; }
+        .h-modal-azul { color: #0a6ea8; border-bottom-color: rgba(10, 132, 255, 0.35) !important; }
+        .h-modal-teal { color: #0e869c; border-bottom-color: rgba(23, 162, 184, 0.35) !important; }
+        .modal-carta p { font-size: 13px; color: var(--texto2); line-height: 1.5; }
+        .modal-carta label { font-weight: 700; display: block; margin-bottom: 2px; font-size: 13px; color: var(--texto2); }
+        .campo-modal { margin-top: 16px; }
+        .fila-modal { display: flex; gap: 12px; margin-top: 16px; align-items: flex-end; flex-wrap: wrap; }
+        .fila-modal .f2 { flex: 2; min-width: 180px; }
+        .fila-modal .f1 { flex: 1; min-width: 120px; }
+        .lista-modal { max-height: 180px; overflow-y: auto; margin-top: 16px; border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 14px; }
+        .lista-modal table { margin: 0; border: none; }
+        .barra-botones { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+        .btn-modal-cancelar { background: rgba(120, 120, 128, 0.18); color: var(--texto); border: none; padding: 10px 18px; border-radius: 999px; cursor: pointer; font-weight: 700; font-family: inherit; }
+        .btn-modal-ok { background: var(--verde); color: #fff; border: none; padding: 10px 18px; border-radius: 999px; cursor: pointer; font-weight: 800; font-family: inherit; }
+        .btn-modal-ok-teal { background: #17a2b8; }
+        .btn-modal-ok-azul { background: var(--azul); }
+        .btn-modal-add { background: var(--ambar); color: #5c3a00; border: none; padding: 10px 16px; border-radius: 999px; cursor: pointer; font-weight: 800; font-family: inherit; }
+        .btn-modal-add-azul { background: var(--azul); color: #fff; }
+
+        @media (max-width: 640px) {
+            body { padding: 12px 10px calc(16px + env(safe-area-inset-bottom)); }
+            .table-container { padding: 18px; }
+            h3 { font-size: 17px; }
+            select, input { font-size: 16px; }
+            .grid-form, .grid-filtros { grid-template-columns: 1fr; }
+            table { min-width: 640px; }
+            th, td { padding: 9px 10px; }
+            .tarjeta-header { align-items: flex-start; }
+            .fila-agregar > select { flex-basis: 100%; }
+            .modal-fondo { padding: 12px; }
+            .modal-carta { padding: 20px; border-radius: 20px; }
+            .fila-modal .f2, .fila-modal .f1 { min-width: 140px; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
     </style>
 </head>
 <body>
 
     <!-- 1. PENDIENTES DE VIGILANCIA & CONFORMIDAD -->
-    <div class="table-container" style="border-top: 5px solid #ffc107;">
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #ffc107; padding-bottom: 8px; margin-bottom: 15px; flex-wrap: wrap;">
-            <h3 style="color: #d39e00; margin: 0; border: none; padding: 0;">NOTIFICACIONES Y PENDIENTES DE VIGILANCIA (CONFORMIDAD)</h3>
-            <span id="pendientesContador" style="background: #dc3545; color: white; font-weight: bold; padding: 6px 14px; border-radius: 20px; font-size: 13px;">🔔 0 PENDIENTES</span>
+    <div class="table-container sec-ambar">
+        <div class="tarjeta-header">
+            <h3 class="h-ambar">NOTIFICACIONES Y PENDIENTES DE VIGILANCIA (CONFORMIDAD)</h3>
+            <span id="pendientesContador" class="pend-chip">🔔 0 PENDIENTES</span>
         </div>
+        <div class="tabla-wrap">
         <table>
             <thead>
                 <tr>
@@ -44,18 +258,20 @@
                 <tr><td colspan="5" class="text-center">Cargando pendientes...</td></tr>
             </tbody>
         </table>
+        </div>
     </div>
 
     <!-- 2. REGISTRO GENERAL DE INGRESOS A ALMACÉN -->
-    <div class="table-container" style="border-top: 5px solid #17a2b8;">
-        <h3 style="color: #17a2b8; border-bottom: 2px solid #17a2b8;">REGISTRO GENERAL DE INGRESOS A ALMACÉN</h3>
+    <div class="table-container sec-teal">
+        <h3 class="h3-teal">REGISTRO GENERAL DE INGRESOS A ALMACÉN</h3>
         
-        <div style="display: flex; gap: 15px; margin-bottom: 15px;">
-            <button onclick="filtrarIngresos('TODOS')" style="background: #007bff; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold;">Ver Todos</button>
-            <button onclick="filtrarIngresos('CON GUIA')" style="background: #28a745; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold;">Con Guía Conforme</button>
-            <button onclick="filtrarIngresos('POR REGULARIZAR')" style="background: #ffc107; color: black; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold;">Por Regularizar (Diferencias)</button>
+        <div class="barra-filtros">
+            <button onclick="filtrarIngresos('TODOS')" class="btn-filtro btn-filtro-todos">Ver Todos</button>
+            <button onclick="filtrarIngresos('CON GUIA')" class="btn-filtro btn-filtro-guia">Con Guía Conforme</button>
+            <button onclick="filtrarIngresos('POR REGULARIZAR')" class="btn-filtro btn-filtro-regularizar">Por Regularizar (Diferencias)</button>
         </div>
 
+        <div class="tabla-wrap">
         <table>
             <thead>
                 <tr>
@@ -71,16 +287,16 @@
                 <tr><td colspan="6" class="text-center">Cargando registro de ingresos...</td></tr>
             </tbody>
         </table>
+        </div>
     </div>
 
     <!-- 3. PRODUCTO TERMINADO (SOLO > 0) + BOTÓN DE ADICIÓN MANUAL MÚLTIPLE -->
-    <div class="table-container" style="border-top: 5px solid #28a745;">
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #28a745; padding-bottom: 8px; margin-bottom: 15px;">
-            <h3 style="color: #28a745; margin: 0; border: none; padding: 0;">STOCK DE PRODUCTO TERMINADO (CAJAS LISTAS)</h3>
-            <button onclick="abrirModalAgregarPT()" style="background-color: #28a745; color: white; border: none; padding: 8px 14px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 13px;">
-                ➕ Agregar Producto Manual
-            </button>
+    <div class="table-container sec-verde">
+        <div class="tarjeta-header">
+            <h3 class="h-verde">STOCK DE PRODUCTO TERMINADO (CAJAS LISTAS)</h3>
+            <button onclick="abrirModalAgregarPT()" class="btn-agregar btn-agregar-verde">➕ Agregar Producto Manual</button>
         </div>
+        <div class="tabla-wrap">
         <table>
             <thead>
                 <tr>
@@ -93,21 +309,20 @@
                 <tr><td colspan="3" class="text-center">Cargando...</td></tr>
             </tbody>
         </table>
+        </div>
     </div>
 
     <!-- 4. INVENTARIO DE INSUMOS CON FILTROS -->
-    <div class="table-container" style="border-top: 5px solid #007bff;">
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #007bff; padding-bottom: 8px; margin-bottom: 15px; flex-wrap: wrap;">
-            <h3 style="color: #007bff; margin: 0; border: none; padding: 0;">INVENTARIO DE INSUMOS Y MATERIA PRIMA</h3>
-            <button onclick="abrirModalNuevoProducto()" style="background-color: #007bff; color: white; border: none; padding: 8px 14px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 13px;">
-                ➕ Agregar Nuevo Producto
-            </button>
+    <div class="table-container sec-azul">
+        <div class="tarjeta-header">
+            <h3 class="h-azul">INVENTARIO DE INSUMOS Y MATERIA PRIMA</h3>
+            <button onclick="abrirModalNuevoProducto()" class="btn-agregar btn-agregar-azul">➕ Agregar Nuevo Producto</button>
         </div>
         
-        <div style="display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap;">
-            <div style="flex: 1; min-width: 250px;">
+        <div class="grid-filtros">
+            <div>
                 <label><b>Filtrar por Categoría:</b></label>
-                <select id="filtroCategoria" onchange="aplicarFiltros()" style="width: 100%;">
+                <select id="filtroCategoria" onchange="aplicarFiltros()">
                     <option value="TODOS" selected>-- Ver Todas las Categorías --</option>
                     <option value="BOTELLAS Y GALONERAS">Envases (Botellas / Baldes / Latas)</option>
                     <option value="CAJAS">Cajas Vacías</option>
@@ -116,12 +331,13 @@
                     <option value="ETIQUETAS">Etiquetas</option>
                 </select>
             </div>
-            <div style="flex: 1; min-width: 250px;">
+            <div>
                 <label><b>Buscar Artículo:</b></label>
-                <input type="text" id="inputBuscador" onkeyup="aplicarFiltros()" placeholder="Escribe para buscar..." style="width: 100%;">
+                <input type="text" id="inputBuscador" onkeyup="aplicarFiltros()" placeholder="Escribe para buscar...">
             </div>
         </div>
 
+        <div class="tabla-wrap">
         <table>
             <thead>
                 <tr>
@@ -134,18 +350,19 @@
             </thead>
             <tbody id="tablaInventarioAlmacen"></tbody>
         </table>
+        </div>
     </div>
 
     <!-- 5. REGISTRO DE SALIDAS (PDF + MANUAL) -->
-    <div class="table-container" style="border-top: 5px solid #dc3545;">
-        <h3 style="color: #dc3545;">REGISTRO DE SALIDAS DE ALMACÉN</h3>
+    <div class="table-container sec-rojo">
+        <h3 class="h3-rojo">REGISTRO DE SALIDAS DE ALMACÉN</h3>
         
-        <div id="modoEdicionBar" style="display:none; background:#fff3cd; color:#856404; border:1px solid #ffeeba; padding:10px; border-radius:5px; margin-bottom:12px; font-weight:bold;"></div>
+        <div id="modoEdicionBar" class="barra-edicion"></div>
         
-        <form id="formSalida" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;" enctype="multipart/form-data">
+        <form id="formSalida" class="grid-form" enctype="multipart/form-data">
             <div>
                 <label><b>Tipo de Salida:</b></label>
-                <select id="tipo_registro" name="tipo_registro" style="width: 100%;">
+                <select id="tipo_registro" name="tipo_registro">
                     <option value="CON GUIA">Con Guía de Remisión (Auto-lectura PDF)</option>
                     <option value="SIN GUIA">Sin Guía (Manual)</option>
                 </select>
@@ -153,115 +370,113 @@
 
             <div>
                 <label><b>Subir Guía PDF:</b></label>
-                <input type="file" id="archivo_guia" name="archivo_guia" accept=".pdf" onchange="leerPdfAutomatico(this)" style="width: 100%;">
+                <input type="file" id="archivo_guia" name="archivo_guia" accept=".pdf" onchange="leerPdfAutomatico(this)">
             </div>
 
             <div>
                 <label><b>Fecha de Salida:</b></label>
-                <input type="date" id="fecha_salida" name="fecha_salida" style="width: 100%;">
+                <input type="date" id="fecha_salida" name="fecha_salida">
             </div>
 
             <div>
                 <label><b>N° de Guía:</b></label>
-                <input type="text" id="numero_guia" name="numero_guia" placeholder="Ej. T009-00000782" style="width: 100%;">
+                <input type="text" id="numero_guia" name="numero_guia" placeholder="Ej. T009-00000782">
             </div>
 
             <div>
                 <label><b>Empresa Cliente:</b></label>
-                <input type="text" id="empresa" name="empresa" placeholder="Razón Social" style="width: 100%;">
+                <input type="text" id="empresa" name="empresa" placeholder="Razón Social">
             </div>
 
             <div>
                 <label><b>RUC:</b></label>
-                <input type="text" id="ruc" name="ruc" placeholder="RUC" style="width: 100%;">
+                <input type="text" id="ruc" name="ruc" placeholder="RUC">
             </div>
 
             <div>
                 <label><b>Destino:</b></label>
-                <input type="text" id="destino" name="destino" placeholder="Dirección de llegada" style="width: 100%;">
+                <input type="text" id="destino" name="destino" placeholder="Dirección de llegada">
             </div>
 
             <div>
                 <label><b>Chofer / Licencia:</b></label>
-                <input type="text" id="chofer_licencia" name="chofer_licencia" placeholder="Chofer" style="width: 100%;">
+                <input type="text" id="chofer_licencia" name="chofer_licencia" placeholder="Chofer">
             </div>
 
             <div>
                 <label><b>Placa:</b></label>
-                <input type="text" id="placa" name="placa" placeholder="Placa" style="width: 100%;">
+                <input type="text" id="placa" name="placa" placeholder="Placa">
             </div>
 
             <div>
                 <label><b>Punto de Partida:</b></label>
-                <input type="text" id="punto_partida" name="punto_partida" value="Planta Principal - Corporación Belcen" style="width: 100%;">
+                <input type="text" id="punto_partida" name="punto_partida" value="Planta Principal - Corporación Belcen">
             </div>
 
             <!-- TABLA DE PRODUCTOS A DESPACHAR -->
-            <div style="grid-column: span 2; background: #eef2f5; padding: 15px; border-radius: 6px; border: 2px dashed #007bff;">
-                <h4 style="margin-top: 0; color: #007bff;">📦 Lista de Productos a Despachar</h4>
+            <div class="caja-items">
+                <h4>📦 Lista de Productos a Despachar</h4>
                 
-                <div style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;">
-                    <select id="selectProductoSalida" style="flex: 2; min-width: 200px;">
+                <div class="fila-agregar">
+                    <select id="selectProductoSalida">
                         <option value="">-- Seleccione producto o insumo --</option>
                     </select>
-                    <input type="number" step="0.01" id="cantidad_temp" placeholder="Cantidad" style="flex: 1; min-width: 100px;">
-                    <button type="button" onclick="agregarItemManual()" style="background: #28a745; color: white; border: none; padding: 8px 15px; font-weight: bold; border-radius: 4px; cursor: pointer;">+ Agregar Ítem</button>
+                    <input type="number" step="0.01" id="cantidad_temp" placeholder="Cantidad">
+                    <button type="button" onclick="agregarItemManual()" class="btn-agregar-item">+ Agregar Ítem</button>
                 </div>
 
-                <table style="width: 100%; background: white;">
+                <div class="tabla-wrap">
+                <table>
                     <thead>
-                        <tr style="background: #343a40; color: white;">
+                        <tr>
                             <th>PRODUCTO / INSUMO</th>
                             <th class="text-center">CANTIDAD</th>
                             <th class="text-center">QUITAR</th>
                         </tr>
                     </thead>
                     <tbody id="tablaItemsDespacho">
-                        <tr><td colspan="3" class="text-center" style="color: #6c757d; font-style: italic;">Sube un PDF o agrega ítems manualmente.</td></tr>
+                        <tr><td colspan="3" class="text-center sin-registros">Sube un PDF o agrega ítems manualmente.</td></tr>
                     </tbody>
                 </table>
+                </div>
             </div>
 
-            <div style="grid-column: span 2; margin-top: 10px;">
-                <button type="submit" id="btnRegistrarDespacho" style="background: #dc3545; color: white; padding: 14px; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; width: 100%; font-size: 16px;">
-                    🚀 REGISTRAR DESPACHO COMPLETO EN HISTORIAL
-                </button>
+            <div class="span-2">
+                <button type="submit" id="btnRegistrarDespacho" class="btn-despachar">🚀 REGISTRAR DESPACHO COMPLETO EN HISTORIAL</button>
             </div>
         </form>
     </div>
 
     <!-- 6. HISTORIAL DE SALIDAS AGRUPADO POR FECHA -->
-    <div class="table-container" style="border-top: 5px solid #6c757d;">
-        <h3 style="color: #495057; border-bottom: 2px solid #495057;">HISTORIAL DE SALIDAS REGISTRADAS</h3>
+    <div class="table-container sec-gris">
+        <h3 class="h3-gris">HISTORIAL DE SALIDAS REGISTRADAS</h3>
         
-        <div style="display: flex; gap: 15px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
+        <div class="fila-filtro-salida">
             <label><b>Filtrar por Fecha de Salida:</b></label>
-            <input type="date" id="filtroFechaSalida" onchange="buscarSalidaPorFecha()" style="max-width: 250px; padding: 8px; border: 1px solid #ced4da; border-radius: 4px;">
-            <button onclick="cargarHistorialSalidas()" style="background: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">Ver Todos</button>
+            <input type="date" id="filtroFechaSalida" onchange="buscarSalidaPorFecha()" style="max-width: 250px;">
+            <button onclick="cargarHistorialSalidas()" class="btn-filtro">Ver Todos</button>
         </div>
 
         <div id="contenedorHistorialSalidas">
-            <p class="text-center" style="color: #666; font-style: italic;">Cargando historial de salidas...</p>
+            <p class="text-center estado-cargando">Cargando historial de salidas...</p>
         </div>
 
-        <div style="text-align: center; margin-top: 25px; padding-top: 15px; border-top: 1px solid #ddd;">
+        <div class="pie-foot">
             <a href="dashboard.html" class="logout" id="linkDashboard">Volver al Dashboard General</a>
             <br>
-            <button onclick="cerrarSesion()" style="background: #dc3545; color: white; border: none; padding: 10px 20px; font-weight: bold; border-radius: 4px; cursor: pointer; font-size: 14px;">
-                🔒 Cerrar Sesión (Salir)
-            </button>
+            <button onclick="cerrarSesion()" class="logout-cta">🔒 Cerrar Sesión (Salir)</button>
         </div>
     </div>
 
     <!-- MODAL PARA ADICIÓN MANUAL DE 1 O MÁS PRODUCTOS TERMINADOS -->
-    <div id="modalAgregarPT" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000;">
-        <div style="background: white; padding: 25px; border-radius: 8px; width: 550px; max-width: 95%; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
-            <h3 style="margin-top: 0; color: #28a745; border-bottom: 2px solid #28a745; padding-bottom: 5px;">Adición Manual de Producto Terminado</h3>
-            
-            <div style="display: flex; gap: 10px; margin-top: 15px; align-items: flex-end;">
-                <div style="flex: 2;">
-                    <label style="font-weight: bold; display: block; margin-bottom: 5px; font-size: 13px;">Seleccionar Producto:</label>
-                    <select id="selectPTModal" style="width: 100%; padding: 8px;">
+    <div id="modalAgregarPT" class="modal-fondo">
+        <div class="modal-carta mc-550">
+            <h3 class="h-modal-verde">Adición Manual de Producto Terminado</h3>
+
+            <div class="fila-modal">
+                <div class="f2">
+                    <label>Seleccionar Producto:</label>
+                    <select id="selectPTModal">
                         <option value="b1_200ml">Aceite de Soya B-1 200 ml</option>
                         <option value="b1_500ml">Aceite de Soya B-1 500 ml</option>
                         <option value="b1_900ml">Aceite de Soya B-1 900 ml</option>
@@ -281,52 +496,52 @@
                         <option value="belini_balde18lt">Aceite de Soya Belini Balde 18 Lt</option>
                     </select>
                 </div>
-                <div style="flex: 1;">
-                    <label style="font-weight: bold; display: block; margin-bottom: 5px; font-size: 13px;">Cantidad Cajas:</label>
-                    <input type="number" id="inputCantidadPTModal" min="1" placeholder="Ej. 50" style="width: 100%;">
+                <div class="f1">
+                    <label>Cantidad Cajas:</label>
+                    <input type="number" id="inputCantidadPTModal" min="1" placeholder="Ej. 50">
                 </div>
                 <div>
-                    <button type="button" onclick="agregarItemPTModal()" style="background: #007bff; color: white; border: none; padding: 9px 12px; border-radius: 4px; font-weight: bold; cursor: pointer;">+ Añadir</button>
+                    <button type="button" onclick="agregarItemPTModal()" class="btn-modal-add-azul">+ Añadir</button>
                 </div>
             </div>
 
-            <div style="max-height: 160px; overflow-y: auto; margin-top: 15px; border: 1px solid #ddd; border-radius: 4px;">
-                <table style="width: 100%; margin-top: 0;">
+            <div class="lista-modal">
+                <table>
                     <thead>
-                        <tr style="background: #f1f1f1; color: #333;">
-                            <th style="padding: 6px;">Producto</th>
-                            <th style="padding: 6px; text-align: center;">Cajas</th>
-                            <th style="padding: 6px; text-align: center;">Quitar</th>
+                        <tr>
+                            <th>Producto</th>
+                            <th class="text-center">Cajas</th>
+                            <th class="text-center">Quitar</th>
                         </tr>
                     </thead>
                     <tbody id="tablaItemsPTModal">
-                        <tr><td colspan="3" class="text-center" style="color: #888; font-style: italic; font-size: 13px;">No hay productos en la lista temporal.</td></tr>
+                        <tr><td colspan="3" class="text-center sin-registros">No hay productos en la lista temporal.</td></tr>
                     </tbody>
                 </table>
             </div>
 
-            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
-                <button type="button" onclick="cerrarModalAgregarPT()" style="background-color: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">Cancelar</button>
-                <button type="button" onclick="guardarLotePTManual()" style="background-color: #28a745; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">💾 Guardar Todo en Stock</button>
+            <div class="barra-botones">
+                <button type="button" onclick="cerrarModalAgregarPT()" class="btn-modal-cancelar">Cancelar</button>
+                <button type="button" onclick="guardarLotePTManual()" class="btn-modal-ok">💾 Guardar Todo en Stock</button>
             </div>
         </div>
     </div>
 
     <!-- MODAL: AGREGAR NUEVO PRODUCTO AL INVENTARIO -->
-    <div id="modalNuevoProducto" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1001;">
-        <div style="background: white; padding: 25px; border-radius: 8px; width: 520px; max-width: 95%; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
-            <h3 style="margin-top: 0; color: #007bff; border-bottom: 2px solid #007bff; padding-bottom: 5px;">➕ Agregar Nuevo Producto al Inventario</h3>
+    <div id="modalNuevoProducto" class="modal-fondo">
+        <div class="modal-carta mc-520">
+            <h3 class="h-modal-azul">➕ Agregar Nuevo Producto al Inventario</h3>
 
-            <div style="margin-top: 15px;">
-                <label style="font-weight: bold; display: block; margin-bottom: 5px; font-size: 13px;">Nombre del Producto *</label>
-                <input type="text" id="inputNuevoNombre" list="datalistInsumosNombres" placeholder="Ej. Botella Belini x 500 ml" style="width: 100%;">
+            <div class="campo-modal">
+                <label>Nombre del Producto *</label>
+                <input type="text" id="inputNuevoNombre" list="datalistInsumosNombres" placeholder="Ej. Botella Belini x 500 ml">
                 <datalist id="datalistInsumosNombres"></datalist>
             </div>
 
-            <div style="display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap;">
-                <div style="flex: 2; min-width: 180px;">
-                    <label style="font-weight: bold; display: block; margin-bottom: 5px; font-size: 13px;">Categoría</label>
-                    <select id="selectNuevaCategoria" style="width: 100%;">
+            <div class="fila-modal">
+                <div class="f2">
+                    <label>Categoría</label>
+                    <select id="selectNuevaCategoria">
                         <option value="BOTELLAS Y GALONERAS">Envases (Botellas / Baldes / Latas)</option>
                         <option value="CAJAS">Cajas Vacías</option>
                         <option value="TAPAS Y ACCESORIOS">Tapas y Accesorios</option>
@@ -335,58 +550,58 @@
                         <option value="General">General</option>
                     </select>
                 </div>
-                <div style="flex: 1; min-width: 110px;">
-                    <label style="font-weight: bold; display: block; margin-bottom: 5px; font-size: 13px;">Unidad</label>
-                    <select id="selectNuevaUnidad" style="width: 100%;">
+                <div class="f1">
+                    <label>Unidad</label>
+                    <select id="selectNuevaUnidad">
                         <option value="UNIDADES">UNIDADES</option>
                         <option value="MILL">MILL</option>
                         <option value="CAJAS">CAJAS</option>
                     </select>
                 </div>
-                <div style="flex: 1; min-width: 110px;">
-                    <label style="font-weight: bold; display: block; margin-bottom: 5px; font-size: 13px;">Stock Inicial</label>
-                    <input type="number" step="0.01" id="inputNuevoStock" value="0" min="0" style="width: 100%;">
+                <div class="f1">
+                    <label>Stock Inicial</label>
+                    <input type="number" step="0.01" id="inputNuevoStock" value="0" min="0">
                 </div>
             </div>
 
-            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
-                <button type="button" onclick="cerrarModalNuevoProducto()" style="background-color: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">Cancelar</button>
-                <button type="button" onclick="guardarNuevoProducto()" style="background-color: #007bff; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">💾 Registrar Producto</button>
+            <div class="barra-botones">
+                <button type="button" onclick="cerrarModalNuevoProducto()" class="btn-modal-cancelar">Cancelar</button>
+                <button type="button" onclick="guardarNuevoProducto()" class="btn-modal-ok btn-modal-ok-azul">💾 Registrar Producto</button>
             </div>
         </div>
     </div>
 
     <!-- MODAL: REVISAR Y AJUSTAR CONFORMIDAD -->
-    <div id="modalRevisarAjuste" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1002;">
-        <div style="background: white; padding: 25px; border-radius: 8px; width: 820px; max-width: 95%; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
-            <h3 style="margin-top: 0; color: #17a2b8; border-bottom: 2px solid #17a2b8; padding-bottom: 5px;">🔧 Revisar y Ajustar Ingreso</h3>
+    <div id="modalRevisarAjuste" class="modal-fondo">
+        <div class="modal-carta mc-820">
+            <h3 class="h-modal-teal">🔧 Revisar y Ajustar Ingreso</h3>
 
-            <p style="font-size: 13px; color: #555;">Corrige cada producto: nombre, cantidad que llegó, categoría destino (tapas, botellas, cajas, etiquetas o preformas) y unidad. Si el producto ya existe solo se suma el stock; si no, se crea con estos datos.</p>
+            <p>Corrige cada producto: nombre, cantidad que llegó, categoría destino (tapas, botellas, cajas, etiquetas o preformas) y unidad. Si el producto ya existe solo se suma el stock; si no, se crea con estos datos.</p>
 
-            <div style="max-height: 320px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; margin-top: 10px;">
-                <table style="width: 100%; margin-top: 0;">
+            <div class="lista-modal" style="max-height: 320px; margin-top: 10px;">
+                <table>
                     <thead>
-                        <tr style="background: #f1f1f1; color: #333;">
-                            <th style="padding: 6px;">Producto (que llegó)</th>
-                            <th style="padding: 6px; width: 110px;">Cantidad</th>
-                            <th style="padding: 6px; width: 150px;">Categoría</th>
-                            <th style="padding: 6px; width: 100px;">Unidad</th>
-                            <th style="padding: 6px; width: 50px; text-align: center;">Quitar</th>
+                        <tr>
+                            <th>Producto (que llegó)</th>
+                            <th style="width:110px;">Cantidad</th>
+                            <th style="width:150px;">Categoría</th>
+                            <th style="width:100px;">Unidad</th>
+                            <th class="text-center" style="width:50px;">Quitar</th>
                         </tr>
                     </thead>
                     <tbody id="tablaAjusteManual">
-                        <tr><td colspan="5" class="text-center" style="color: #888; font-style: italic; font-size: 13px;">Cargando productos...</td></tr>
+                        <tr><td colspan="5" class="text-center sin-registros">Cargando productos...</td></tr>
                     </tbody>
                 </table>
             </div>
 
             <div style="margin-top: 12px;">
-                <button type="button" onclick="agregarFilaAjuste()" style="background: #ffc107; color: #000; border: none; padding: 8px 14px; border-radius: 4px; font-weight: bold; cursor: pointer;">➕ Agregar ítem</button>
+                <button type="button" onclick="agregarFilaAjuste()" class="btn-modal-add">➕ Agregar ítem</button>
             </div>
 
-            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
-                <button type="button" onclick="cerrarModalRevisarAjuste()" style="background-color: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">Cancelar</button>
-                <button type="button" onclick="guardarAjusteManual()" style="background-color: #17a2b8; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">📦 Confirmar y Registrar en Inventario</button>
+            <div class="barra-botones">
+                <button type="button" onclick="cerrarModalRevisarAjuste()" class="btn-modal-cancelar">Cancelar</button>
+                <button type="button" onclick="guardarAjusteManual()" class="btn-modal-ok btn-modal-ok-teal">📦 Confirmar y Registrar en Inventario</button>
             </div>
         </div>
     </div>
@@ -444,7 +659,7 @@
                     try {
                         parsedItems = JSON.parse(item.items_json || '[]');
                         parsedItems.forEach(p => {
-                            let alertaDiff = p.cantidad_guia !== p.cantidad_fisica ? `<span style="color:red; font-weight:bold;">(Guía: ${p.cantidad_guia} | Físico: ${p.cantidad_fisica})</span>` : `(${p.cantidad_fisica})`;
+                            let alertaDiff = p.cantidad_guia !== p.cantidad_fisica ? `<span class="diff-alerta">(Guía: ${p.cantidad_guia} | Físico: ${p.cantidad_fisica})</span>` : `(${p.cantidad_fisica})`;
                             itemsDetalle += `<div>• <b>${p.nombre}</b> ${alertaDiff}</div>`;
                         });
                     } catch(e) { itemsDetalle = item.producto_textual || 'Detalle no disponible'; }
@@ -555,11 +770,11 @@
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td>
-                    <input type="text" class="filaAjusteNombre" list="datalistInsumosNombres" value="${nombre}" placeholder="Nombre del producto" style="width: 100%;">
+                    <input type="text" class="filaAjusteNombre" list="datalistInsumosNombres" value="${nombre}" placeholder="Nombre del producto">
                 </td>
-                <td><input type="number" step="0.01" min="0" class="filaAjusteCantidad" value="${cantidad !== undefined && cantidad !== null ? cantidad : ''}" style="width: 100%;" title="Cantidad recibida"></td>
+                <td><input type="number" step="0.01" min="0" class="filaAjusteCantidad" value="${cantidad !== undefined && cantidad !== null ? cantidad : ''}" title="Cantidad recibida"></td>
                 <td>
-                    <select class="filaAjusteCategoria" style="width: 100%;">
+                    <select class="filaAjusteCategoria">
                         <option value="BOTELLAS Y GALONERAS">Envases</option>
                         <option value="CAJAS">Cajas</option>
                         <option value="TAPAS Y ACCESORIOS">Tapas</option>
@@ -569,13 +784,13 @@
                     </select>
                 </td>
                 <td>
-                    <select class="filaAjusteUnidad" style="width: 100%;">
+                    <select class="filaAjusteUnidad">
                         <option value="UNIDADES">UNIDADES</option>
                         <option value="MILL">MILL</option>
                         <option value="CAJAS">CAJAS</option>
                     </select>
                 </td>
-                <td class="text-center"><button type="button" onclick="this.closest('tr').remove()" style="background:#dc3545; color:white; border:none; padding:4px 8px; border-radius:3px; cursor:pointer;">X</button></td>
+                <td class="text-center"><button type="button" onclick="this.closest('tr').remove()" class="btn-x">X</button></td>
             `;
             if (categoria) row.querySelector('.filaAjusteCategoria').value = categoria;
             if (cantidadGuia !== undefined && cantidadGuia !== null && cantidadGuia !== '') {
@@ -657,9 +872,9 @@
             tbody.innerHTML = lista.length === 0 ? `<tr><td colspan="6" class="text-center">Sin registros.</td></tr>` : '';
             lista.forEach(row => {
                 const fecha = row.fecha_registro ? fechaLocalISO(row.fecha_registro) : '';
-                const badge = row.estado === 'POR REGULARIZAR' 
-                    ? `<span style="background: #ffc107; color: black; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight:bold;">POR REGULARIZAR</span>`
-                    : `<span style="background: #28a745; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px;">CON GUÍA CONFORME</span>`;
+                const badge = row.estado === 'POR REGULARIZAR'
+                    ? `<span class="badge-pendiente">POR REGULARIZAR</span>`
+                    : `<span class="badge-cumplido">CON GUÍA CONFORME</span>`;
 
                 tbody.innerHTML += `
                     <tr>
@@ -667,8 +882,8 @@
                         <td>${row.numero_guia}</td>
                         <td>${row.proveedor}</td>
                         <td><b>${row.producto_nombre}</b></td>
-                        <td class="text-center" style="color: #007bff; font-weight: bold;">${row.cantidad}</td>
-                        <td class="text-center">${badge}${row.categoria ? `<div style="margin-top:3px; font-size:11px; color:#495057;">${row.categoria} · ${row.unidad_medida || 'UNIDADES'}</div>` : ''}</td>
+                        <td class="text-center celda-azul">${row.cantidad}</td>
+                        <td class="text-center">${badge}${row.categoria ? `<div class="sub-text">${row.categoria} · ${row.unidad_medida || 'UNIDADES'}</div>` : ''}</td>
                     </tr>
                 `;
             });
@@ -687,7 +902,7 @@
                 const tbody = document.getElementById('tablaProductoTerminado');
                 tbody.innerHTML = productoTerminadoGlobal.length === 0 ? `<tr><td colspan="3" class="text-center">Sin stock disponible.</td></tr>` : '';
                 productoTerminadoGlobal.forEach(item => {
-                    tbody.innerHTML += `<tr><td><b>${item.nombre_producto}</b></td><td class="text-center" style="color: #28a745; font-weight: bold;">${item.stock_cajas} CAJAS</td><td class="text-center"><button onclick="ajustarPT(${item.id}, '${item.nombre_producto}', ${item.stock_cajas})" class="btn-accion btn-ajustar">Ajustar</button></td></tr>`;
+                    tbody.innerHTML += `<tr><td><b>${item.nombre_producto}</b></td><td class="text-center celda-verde">${item.stock_cajas} CAJAS</td><td class="text-center"><button onclick="ajustarPT(${item.id}, '${item.nombre_producto}', ${item.stock_cajas})" class="btn-accion btn-ajustar">Ajustar</button></td></tr>`;
                 });
 
                 poblarSelectSalida();
@@ -742,12 +957,12 @@
         function renderTablaPTModal() {
             const tbody = document.getElementById('tablaItemsPTModal');
             if (itemsPTModalArray.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="3" class="text-center" style="color: #888; font-style: italic; font-size: 13px;">No hay productos en la lista temporal.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="3" class="text-center sin-registros">No hay productos en la lista temporal.</td></tr>`;
                 return;
             }
             tbody.innerHTML = '';
             itemsPTModalArray.forEach((item, idx) => {
-                tbody.innerHTML += `<tr><td><b>${item.producto_nombre}</b></td><td class="text-center" style="color: #28a745; font-weight: bold;">${item.cantidad} cjs</td><td class="text-center"><button type="button" onclick="quitarItemPTModal(${idx})" style="background: #dc3545; color: white; border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer;">X</button></td></tr>`;
+                tbody.innerHTML += `<tr><td><b>${item.producto_nombre}</b></td><td class="text-center celda-verde">${item.cantidad} cjs</td><td class="text-center"><button type="button" onclick="quitarItemPTModal(${idx})" class="btn-x">X</button></td></tr>`;
             });
         }
 
@@ -797,7 +1012,7 @@
             data.forEach(item => {
                 const estado = item.estado || 'STOCK SUFICIENTE';
                 const esSuficiente = estado === 'STOCK SUFICIENTE';
-                tbody.innerHTML += `<tr><td><b>${item.nombre}</b></td><td>${item.categoria}</td><td class="text-center" style="color: #007bff; font-weight: bold;">${item.stock} ${item.unidad_medida}</td><td class="text-center"><span style="background: ${esSuficiente ? '#d4edda' : '#f8d7da'}; color: ${esSuficiente ? '#155724' : '#721c24'}; padding: 2px 6px; border-radius: 3px;">${estado}</span></td><td class="text-center"><button onclick="ajustarStock(${item.id}, '${item.nombre}', ${item.stock})" class="btn-accion btn-ajustar">Ajustar</button></td></tr>`;
+                tbody.innerHTML += `<tr><td><b>${item.nombre}</b></td><td>${item.categoria}</td><td class="text-center celda-azul">${item.stock} ${item.unidad_medida}</td><td class="text-center"><span class="${esSuficiente ? 'badge-stock-ok' : 'badge-stock-bajo'}">${estado}</span></td><td class="text-center"><button onclick="ajustarStock(${item.id}, '${item.nombre}', ${item.stock})" class="btn-accion btn-ajustar">Ajustar</button></td></tr>`;
             });
         }
 
@@ -953,11 +1168,11 @@
 
         function renderTablaItems() {
             const tbody = document.getElementById('tablaItemsDespacho');
-            tbody.innerHTML = itemsDespachoArray.length === 0 ? `<tr><td colspan="3" class="text-center" style="color: #6c757d;">No hay ítems en la lista.</td></tr>` : '';
+            tbody.innerHTML = itemsDespachoArray.length === 0 ? `<tr><td colspan="3" class="text-center sin-registros">No hay ítems en la lista.</td></tr>` : '';
             itemsDespachoArray.forEach((item, idx) => {
-                const marcaRevisar = (item.cantidad === null || item.cantidad === undefined || isNaN(parseFloat(item.cantidad))) ? ' <span style="color:#e65100; font-weight:bold;">⚠️ indicar cantidad</span>' : '';
+                const marcaRevisar = (item.cantidad === null || item.cantidad === undefined || isNaN(parseFloat(item.cantidad))) ? ' <span class="diff-alerta">⚠️ indicar cantidad</span>' : '';
                 const valCant = (item.cantidad !== null && item.cantidad !== undefined && !isNaN(parseFloat(item.cantidad))) ? item.cantidad : '';
-                tbody.innerHTML += `<tr><td><b>${item.nombre}</b>${marcaRevisar}</td><td class="text-center"><input type="number" min="0.01" step="any" style="width:90px; text-align:center; padding:3px; border:1px solid #ccc; border-radius:3px;" value="${valCant}" oninput="cambiarCantidadItem(${idx}, this.value)"></td><td class="text-center"><button type="button" onclick="quitarItem(${idx})" style="background: #dc3545; color: white; border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer;">X</button></td></tr>`;
+                tbody.innerHTML += `<tr><td><b>${item.nombre}</b>${marcaRevisar}</td><td class="text-center"><input type="number" min="0.01" step="any" class="input-cant-item" value="${valCant}" oninput="cambiarCantidadItem(${idx}, this.value)"></td><td class="text-center"><button type="button" onclick="quitarItem(${idx})" class="btn-x">X</button></td></tr>`;
             });
         }
 
@@ -989,7 +1204,7 @@
         function renderizarSalidasAgrupadas(lista) {
             const contenedor = document.getElementById('contenedorHistorialSalidas');
             if (lista.length === 0) {
-                contenedor.innerHTML = `<p class="text-center" style="color: #dc3545; padding: 15px;">No se encontraron salidas registradas para la fecha seleccionada.</p>`;
+                contenedor.innerHTML = `<p class="text-center vacio-note">No se encontraron salidas registradas para la fecha seleccionada.</p>`;
                 return;
             }
 
@@ -1006,9 +1221,9 @@
                 let filasHtml = '';
                 
                 salidasDia.forEach(row => {
-                    const estadoBadge = row.estado_guia === 'REGULARIZADO' 
-                        ? `<span style="background: #28a745; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px;">REGULARIZADO</span>` 
-                        : `<span style="background: #ffc107; color: black; padding: 2px 6px; border-radius: 3px; font-size: 10px;">PENDIENTE</span>`;
+                    const estadoBadge = row.estado_guia === 'REGULARIZADO'
+                        ? `<span class="badge-cumplido">REGULARIZADO</span>`
+                        : `<span class="badge-pendiente">PENDIENTE</span>`;
 
                     filasHtml += `
                         <tr>
@@ -1017,20 +1232,21 @@
                             <td><b>${row.numero_guia || 'S/N'}</b></td>
                             <td>${row.empresa}</td>
                             <td><b>${row.articulo_nombre}</b></td>
-                            <td class="text-center" style="color: #dc3545; font-weight: bold;">${row.cantidad_salida}</td>
-                            <td class="text-center">${row.despacho_id ? `<button onclick="editarDespacho('${row.despacho_id}')" class="btn-accion btn-ajustar" title="Editar despacho">✏️</button>` : ''} ${row.estado_guia !== 'REGULARIZADO' ? `<button onclick="regularizarGuia(${row.id})" class="btn-accion btn-regularizar">Reg.</button>` : ''} <button onclick="borrarSalida('${row.despacho_id || ''}', ${row.id})" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 12px;" title="Eliminar despacho">🗑</button></td>
+                            <td class="text-center celda-rojo">${row.cantidad_salida}</td>
+                            <td class="text-center">${row.despacho_id ? `<button onclick="editarDespacho('${row.despacho_id}')" class="btn-accion btn-ajustar" title="Editar despacho">✏️</button>` : ''} ${row.estado_guia !== 'REGULARIZADO' ? `<button onclick="regularizarGuia(${row.id})" class="btn-accion btn-regularizar">Reg.</button>` : ''} <button onclick="borrarSalida('${row.despacho_id || ''}', ${row.id})" class="btn-x-borrar" title="Eliminar despacho">🗑</button></td>
                         </tr>
                     `;
                 });
 
                 contenedor.innerHTML += `
-                    <div style="border: 1px solid #ddd; border-radius: 6px; margin-bottom: 25px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                        <div style="background: #f8f9fa; padding: 10px 15px; border-bottom: 1px solid #ddd; font-weight: bold; color: #333;">
+                    <div class="grupo-fecha">
+                        <div class="grupo-fecha-head">
                             📅 Fecha de Salida: ${fecha} | Despachos Realizados: ${salidasDia.length}
                         </div>
+                        <div class="tabla-wrap">
                         <table>
                             <thead>
-                                <tr style="background-color: #007bff; color: white;">
+                                <tr>
                                     <th>FECHA</th>
                                     <th>TIPO / ESTADO</th>
                                     <th>N° GUÍA</th>
@@ -1044,6 +1260,7 @@
                                 ${filasHtml}
                             </tbody>
                         </table>
+                        </div>
                     </div>
                 `;
             });

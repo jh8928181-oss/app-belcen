@@ -49,9 +49,10 @@
             color: #343a40;
         }
         .panel-cabecera:hover { background: #eef0f3; }
-        .g1 .panel-cabecera { border-left: 6px solid #6c757d; }
-        .g2 .panel-cabecera { border-left: 6px solid #ffc107; }
-        .g3 .panel-cabecera { border-left: 6px solid #17a2b8; }
+        .g1 .panel-cabecera { border-left: 6px solid #007bff; }
+        .g2 .panel-cabecera { border-left: 6px solid #28a745; }
+        .g3 .panel-cabecera { border-left: 6px solid #ffc107; }
+        .g4 .panel-cabecera { border-left: 6px solid #17a2b8; }
         .panel-titulo { flex: 1 1 auto; }
         .panel-contador {
             font-size: 12px; font-weight: 600; color: #6c757d;
@@ -71,30 +72,60 @@
 <body>
     <div class="container">
 
-        <!-- PANEL 1: INGRESOS Y DESPACHOS -->
-        <div class="tarjeta tarjeta-panel g1" id="panel-ingresos">
-            <button class="panel-cabecera" id="btn-ingresos" onclick="togglePanel('ingresos')" aria-expanded="true" aria-controls="cuerpo-ingresos">
-                <span class="panel-titulo">🛒 INGRESOS Y DESPACHOS DE ALMACÉN</span>
-                <span class="panel-contador" id="contadorIngresosDespachos">0 entradas · 0 salidas</span>
+        <!-- PANEL 1: VIGILANCIA -->
+        <div class="tarjeta tarjeta-panel g1" id="panel-vigilancia">
+            <button class="panel-cabecera" id="btn-vigilancia" onclick="togglePanel('vigilancia')" aria-expanded="true" aria-controls="cuerpo-vigilancia">
+                <span class="panel-titulo">🛡️ VIGILANCIA — INGRESOS Y GUÍAS</span>
+                <span class="panel-contador" id="contadorVigilancia">0 ingresos</span>
                 <span class="panel-flecha">▼</span>
             </button>
-            <div class="panel-cuerpo abierto" id="cuerpo-ingresos">
+            <div class="panel-cuerpo abierto" id="cuerpo-vigilancia">
                 <div class="sub-bloque">
-                    <h3 class="entradas">📥 ENTRADAS / INGRESOS — Vigilancia y Almacén</h3>
-                    <input id="filtroEntradas" class="filtro" placeholder="🔍 Buscar por producto, proveedor, fecha u origen...">
+                    <h3 class="entradas">🛡️ INGRESOS REGISTRADOS POR VIGILANCIA</h3>
+                    <input id="filtroEntradasVig" class="filtro" placeholder="🔍 Buscar por producto, proveedor, N° de guía o fecha...">
                     <table>
                         <thead>
                             <tr>
                                 <th class="green">Fecha</th>
+                                <th class="green">N° de Guía</th>
                                 <th class="green">Producto</th>
                                 <th class="green text-center">Cantidad</th>
                                 <th class="green text-center">Foto de la Guía</th>
                                 <th class="green">Proveedor</th>
-                                <th class="green text-center">Origen</th>
                             </tr>
                         </thead>
-                        <tbody id="tablaEntradas">
-                            <tr><td colspan="6" class="text-center">Cargando entradas...</td></tr>
+                        <tbody id="tablaEntradasVig">
+                            <tr><td colspan="6" class="text-center">Cargando ingresos de vigilancia...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- PANEL 2: ALMACÉN -->
+        <div class="tarjeta tarjeta-panel g2" id="panel-almacen">
+            <button class="panel-cabecera" id="btn-almacen" onclick="togglePanel('almacen')" aria-expanded="false" aria-controls="cuerpo-almacen">
+                <span class="panel-titulo">📦 ALMACÉN — CONFORMIDAD Y DESPACHOS</span>
+                <span class="panel-contador" id="contadorAlmacen">0 conformidades · 0 salidas</span>
+                <span class="panel-flecha">▼</span>
+            </button>
+            <div class="panel-cuerpo" id="cuerpo-almacen">
+                <div class="sub-bloque">
+                    <h3 class="entradas">📥 CONFORMIDAD DE INGRESOS — REGISTRADA POR ALMACÉN</h3>
+                    <input id="filtroEntradasAlm" class="filtro" placeholder="🔍 Buscar por producto, proveedor, N° de guía o fecha...">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th class="green">Fecha</th>
+                                <th class="green">N° de Guía</th>
+                                <th class="green">Producto</th>
+                                <th class="green text-center">Cantidad</th>
+                                <th class="green text-center">Foto de la Guía</th>
+                                <th class="green">Proveedor</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaEntradasAlm">
+                            <tr><td colspan="6" class="text-center">Cargando conformidad de almacén...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -121,8 +152,8 @@
             </div>
         </div>
 
-        <!-- PANEL 2: PRODUCCIÓN Y CIERRE -->
-        <div class="tarjeta tarjeta-panel g2" id="panel-produccion">
+        <!-- PANEL 3: PRODUCCIÓN Y CIERRE -->
+        <div class="tarjeta tarjeta-panel g3" id="panel-produccion">
             <button class="panel-cabecera" id="btn-produccion" onclick="togglePanel('produccion')" aria-expanded="false" aria-controls="cuerpo-produccion">
                 <span class="panel-titulo">🏭 PRODUCCIÓN Y CIERRE</span>
                 <span class="panel-contador" id="contadorProduccionCierre">0 producciones · 0 cierres</span>
@@ -168,8 +199,8 @@
             </div>
         </div>
 
-        <!-- PANEL 3: REFINERÍA -->
-        <div class="tarjeta tarjeta-panel g3" id="panel-refineria">
+        <!-- PANEL 4: REFINERÍA -->
+        <div class="tarjeta tarjeta-panel g4" id="panel-refineria">
             <button class="panel-cabecera" id="btn-refineria" onclick="togglePanel('refineria')" aria-expanded="false" aria-controls="cuerpo-refineria">
                 <span class="panel-titulo">🛢️ REFINERÍA — Reporte Diario</span>
                 <span class="panel-contador" id="contadorRefineria">0 insumos · 0 lotes</span>
@@ -270,8 +301,9 @@
             return `<a class="link-guia" href="${url}" target="_blank">👁️ ${texto}</a>`;
         }
 
-        // 📥 ENTRADAS (Vigilancia + Almacén)
-        let entradasGlobal = [];
+        // 📥 ENTRADAS SEPARADAS (Vigilancia y Almacén por individual)
+        let entradasVigGlobal = [];
+        let entradasAlmGlobal = [];
         let salidasGlobal = [];
         let informesGlobal = [];
         let refinadoActual = null;
@@ -294,29 +326,51 @@
             return '<span class="badge badge-disponible">✅ DISPONIBLE</span>';
         }
 
-        function renderEntradas() {
-            const q = (document.getElementById('filtroEntradas').value || '').toLowerCase();
-            const filtradas = entradasGlobal.filter(it =>
+        function renderEntradasVig() {
+            const q = (document.getElementById('filtroEntradasVig').value || '').toLowerCase();
+            const filtradas = entradasVigGlobal.filter(it =>
                 (it.producto || '').toLowerCase().includes(q) ||
                 (it.proveedor || '').toLowerCase().includes(q) ||
-                (it.origen || '').toLowerCase().includes(q) ||
+                (it.numero_guia || '').toLowerCase().includes(q) ||
                 formatearFecha(it.fecha).toLowerCase().includes(q) ||
                 String(it.cantidad).toLowerCase().includes(q)
             );
-            const tbody = document.getElementById('tablaEntradas');
-            tbody.innerHTML = filtradas.length === 0 ? '<tr><td colspan="6" class="text-center sin-registros">No hay entradas que coincidan con la búsqueda.</td></tr>' : '';
+            const tbody = document.getElementById('tablaEntradasVig');
+            tbody.innerHTML = filtradas.length === 0 ? '<tr><td colspan="6" class="text-center sin-registros">No hay ingresos de vigilancia que coincidan con la búsqueda.</td></tr>' : '';
             filtradas.forEach(item => {
-                const badgeOrigen = item.origen === 'ALMACEN'
-                    ? '<span class="badge badge-alm">ALMACÉN</span>'
-                    : '<span class="badge badge-vig">VIGILANCIA</span>';
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td><b>${formatearFecha(item.fecha)}</b></td>
+                    <td>${item.numero_guia || 'S/N'}</td>
                     <td>${item.producto || 'N/D'}</td>
                     <td class="text-center" style="color:#1e7e34; font-weight:bold;">${item.cantidad}</td>
                     <td class="text-center">${linkGuia(item.foto_url, 'Ver Foto')}</td>
                     <td>${item.proveedor || 'N/D'}</td>
-                    <td class="text-center">${badgeOrigen}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderEntradasAlm() {
+            const q = (document.getElementById('filtroEntradasAlm').value || '').toLowerCase();
+            const filtradas = entradasAlmGlobal.filter(it =>
+                (it.producto || '').toLowerCase().includes(q) ||
+                (it.proveedor || '').toLowerCase().includes(q) ||
+                (it.numero_guia || '').toLowerCase().includes(q) ||
+                formatearFecha(it.fecha).toLowerCase().includes(q) ||
+                String(it.cantidad).toLowerCase().includes(q)
+            );
+            const tbody = document.getElementById('tablaEntradasAlm');
+            tbody.innerHTML = filtradas.length === 0 ? '<tr><td colspan="6" class="text-center sin-registros">No hay conformidad de almacén que coincida con la búsqueda.</td></tr>' : '';
+            filtradas.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><b>${formatearFecha(item.fecha)}</b></td>
+                    <td>${item.numero_guia || 'S/N'}</td>
+                    <td>${item.producto || 'N/D'}</td>
+                    <td class="text-center" style="color:#1e7e34; font-weight:bold;">${item.cantidad}</td>
+                    <td class="text-center">${linkGuia(item.foto_url, 'Ver Foto')}</td>
+                    <td>${item.proveedor || 'N/D'}</td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -327,12 +381,16 @@
                 const res = await fetch('/api/auditoria/entradas');
                 if (!res.ok) throw new Error('Error del servidor.');
                 const datos = await res.json();
-                entradasGlobal = Array.isArray(datos) ? datos : [];
-                renderEntradas();
+                const lista = Array.isArray(datos) ? datos : [];
+                entradasVigGlobal = lista.filter(a => String(a.origen || '').toUpperCase() === 'VIGILANCIA');
+                entradasAlmGlobal = lista.filter(a => String(a.origen || '').toUpperCase() === 'ALMACEN');
+                renderEntradasVig();
+                renderEntradasAlm();
                 actualizarContadores();
             } catch (err) {
                 console.error(err);
-                document.getElementById('tablaEntradas').innerHTML = '<tr><td colspan="6" class="text-center" style="color:red;">Error al cargar las entradas.</td></tr>';
+                document.getElementById('tablaEntradasVig').innerHTML = '<tr><td colspan="6" class="text-center" style="color:red;">Error al cargar los ingresos de vigilancia.</td></tr>';
+                document.getElementById('tablaEntradasAlm').innerHTML = '<tr><td colspan="6" class="text-center" style="color:red;">Error al cargar la conformidad de almacén.</td></tr>';
             }
         }
 
@@ -685,24 +743,26 @@
 
         // Contadores en los encabezados de los paneles
         function actualizarContadores() {
-            const c1 = document.getElementById('contadorIngresosDespachos');
-            if (c1) c1.textContent = entradasGlobal.length + ' entradas · ' + salidasGlobal.length + ' salidas';
-            const c2 = document.getElementById('contadorProduccionCierre');
-            if (c2) c2.textContent = informesGlobal.length + ' producciones · ' + historialCierresGlobal.length + ' cierres';
-            const c3 = document.getElementById('contadorRefineria');
-            if (c3) {
+            const c1 = document.getElementById('contadorVigilancia');
+            if (c1) c1.textContent = entradasVigGlobal.length + ' ingresos';
+            const c2 = document.getElementById('contadorAlmacen');
+            if (c2) c2.textContent = entradasAlmGlobal.length + ' conformidades · ' + salidasGlobal.length + ' salidas';
+            const c3 = document.getElementById('contadorProduccionCierre');
+            if (c3) c3.textContent = informesGlobal.length + ' producciones · ' + historialCierresGlobal.length + ' cierres';
+            const c4 = document.getElementById('contadorRefineria');
+            if (c4) {
                 const rep = refinadoActual;
                 const nIns = (rep && Array.isArray(rep.insumos)) ? rep.insumos.length : 0;
                 const nAce = (rep && Array.isArray(rep.aceite)) ? rep.aceite.length : 0;
-                c3.textContent = nIns + ' insumos · ' + nAce + ' lotes';
+                c4.textContent = nIns + ' insumos · ' + nAce + ' lotes';
             }
         }
 
         // Primer panel abierto por defecto
-        const cuerpoIngresos = document.getElementById('cuerpo-ingresos');
-        if (cuerpoIngresos) {
-            cuerpoIngresos.classList.add('abierto');
-            cuerpoIngresos.style.maxHeight = cuerpoIngresos.scrollHeight + 'px';
+        const cuerpoVigilancia = document.getElementById('cuerpo-vigilancia');
+        if (cuerpoVigilancia) {
+            cuerpoVigilancia.classList.add('abierto');
+            cuerpoVigilancia.style.maxHeight = cuerpoVigilancia.scrollHeight + 'px';
         }
 
         const fHoy = new Date();
@@ -714,7 +774,8 @@
         cargarRefinado();
         cargarHistorialCierresAud();
 
-        document.getElementById('filtroEntradas').addEventListener('input', renderEntradas);
+        document.getElementById('filtroEntradasVig').addEventListener('input', renderEntradasVig);
+        document.getElementById('filtroEntradasAlm').addEventListener('input', renderEntradasAlm);
         document.getElementById('filtroSalidas').addEventListener('input', renderSalidas);
         document.getElementById('filtroProduccion').addEventListener('input', renderProduccion);
         document.getElementById('filtroRefinado').addEventListener('change', cargarRefinado);

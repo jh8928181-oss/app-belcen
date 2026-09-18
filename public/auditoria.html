@@ -250,7 +250,7 @@
             <div class="atajos-acciones" id="atajosAcciones">
                 <button class="atajo atajo-accion" onclick="refrescarTodo()"><span class="refresh-ico">🔄</span><span>Refrescar</span></button>
                 <button class="atajo atajo-accion atajo-dash" onclick="window.location.href='dashboard.html'"><span>🏠</span><span>Dashboard</span></button>
-                <button class="atajo atajo-accion" onclick="cerrarSesion()"><span>🔒</span><span>Cerrar sesión</span></button>
+                <button class="atajo atajo-accion" onclick="cerrarPopover(); cerrarSesion();"><span>🔒</span><span>Cerrar sesión</span></button>
             </div>
         </nav>
 
@@ -957,6 +957,7 @@
 
         // Barra de atajos dinámica
         function irAPanel(nombre) {
+            cerrarPopover();
             const cuerpo = document.getElementById('cuerpo-' + nombre);
             if (cuerpo && !cuerpo.classList.contains('abierto')) {
                 togglePanel(nombre);
@@ -1001,6 +1002,7 @@
         }
 
         function marcarAtajoActivo() {
+            cerrarPopover();
             const umbral = window.innerHeight * 0.4;
             let activo = 'vigilancia';
             ['vigilancia', 'almacen', 'produccion', 'refineria'].forEach(n => {
@@ -1014,6 +1016,19 @@
 
         window.addEventListener('scroll', marcarAtajoActivo, { passive: true });
         marcarAtajoActivo();
+
+        document.addEventListener('click', function (e) {
+            const bar = document.getElementById('atajosBar');
+            if (bar && !bar.contains(e.target)) cerrarPopover();
+        });
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                cerrarPopover();
+                const act = document.activeElement;
+                if (act && act.classList && act.classList.contains('atajos-mas')) act.blur();
+            }
+        });
 
         // Primer panel abierto por defecto
         const cuerpoVigilancia = document.getElementById('cuerpo-vigilancia');

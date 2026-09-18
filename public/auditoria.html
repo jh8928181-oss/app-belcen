@@ -5,72 +5,254 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Auditoría - Corporación Belcen</title>
     <style>
-        body { font-family: Arial, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; }
-        .container { max-width: 1200px; margin: auto; }
-        .tarjeta { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 25px; }
-        h2 { color: #343a40; text-align: center; border-bottom: 2px solid #343a40; padding-bottom: 8px; margin-top: 0; }
-        h3 { color: #343a40; padding-bottom: 8px; margin-top: 0; border-bottom: 2px solid #007bff; }
-        h3.entradas { border-bottom: 2px solid #28a745; color: #1e7e34; }
-        h3.salidas { border-bottom: 2px solid #dc3545; color: #bd2130; }
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th, td { border: 1px solid #dee2e6; padding: 10px; text-align: left; font-size: 13px; }
-        th { background-color: #343a40; color: white; }
-        th.green { background-color: #1e7e34; }
-        th.rosa { background-color: #bd2130; }
-        .badge { padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: bold; white-space: nowrap; }
-        .badge-vig { background: #ffeeba; color: #7a5200; }
-        .badge-alm { background: #d4edda; color: #155724; }
-        .badge-pedido { background: #f8d7da; color: #842029; border: 1px solid #f5c2c7; }
-        .badge-suficiente { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .badge-disponible { background: #d4edda; color: #155724; }
-        .badge-noche { background: #cce5ff; color: #004085; }
-        .badge-dia { background: #fff3cd; color: #856404; }
-        .aviso-info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
-        .aviso-warn { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
-        .total-refinado { background:#f8f9fa; border:1px solid #dee2e6; border-radius:6px; padding:10px 14px; display:inline-block; margin-right:12px; }
-        .total-refinado b { font-size:18px; color:#343a40; }
-        .link-guia { color: #007bff; font-weight: bold; text-decoration: none; }
-        .link-guia:hover { text-decoration: underline; }
-        .logout { background-color: #dc3545; border: none; padding: 10px 20px; text-decoration: none; color: white; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 14px; }
-        .logout:hover { background-color: #c82333; }
-        .text-center { text-align: center; }
-        .sin-registros { color: #888; font-style: italic; }
-        .filtro { width: 100%; padding: 9px 12px; border: 1px solid #ced4da; border-radius: 4px; margin-top: 10px; font-size: 13px; box-sizing: border-box; }
-        .filtro:focus { outline: none; border-color: #007bff; box-shadow: 0 0 0 2px rgba(0,123,255,0.2); }
+        :root {
+            --bg: #f2f2f7;
+            --card: rgba(255, 255, 255, 0.72);
+            --card-bord: rgba(0, 0, 0, 0.07);
+            --texto: #1c1c1e;
+            --texto2: #6c7280;
+            --azul: #007aff;
+            --rojo: #ff3b30;
+            --sombra: 0 8px 30px rgba(0, 0, 0, 0.08);
+        }
+
+        * { box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--texto);
+            margin: 0;
+            padding: 24px 16px 96px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container { max-width: 1080px; margin: auto; }
+
+        /* Encabezado estilo iOS */
+        .page-head { padding: 4px 4px 18px; }
+        .page-titulo { margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.5px; }
+        .page-sub { margin: 4px 0 0; color: var(--texto2); font-size: 14px; }
+
+        /* Tarjetas glass */
+        .tarjeta {
+            background: var(--card);
+            backdrop-filter: blur(20px) saturate(160%);
+            -webkit-backdrop-filter: blur(20px) saturate(160%);
+            border: 1px solid var(--card-bord);
+            border-radius: 20px;
+            box-shadow: var(--sombra);
+            padding: 25px;
+            margin-bottom: 20px;
+        }
+        @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+            .tarjeta { background: rgba(255, 255, 255, 0.94); }
+        }
 
         /* Paneles colapsables */
         .tarjeta-panel { padding: 0; overflow: hidden; }
         .panel-cabecera {
             display: flex; width: 100%; box-sizing: border-box;
             align-items: center; justify-content: space-between; gap: 12px;
-            padding: 15px 20px;
-            background: #f8f9fa; border: none; cursor: pointer;
-            text-align: left; font-family: inherit; font-size: 15px; font-weight: bold;
-            color: #343a40;
+            padding: 16px 20px;
+            background: transparent; border: none; cursor: pointer;
+            text-align: left; font-family: inherit; font-size: 17px; font-weight: 700;
+            color: var(--texto);
+            border-bottom: 1px solid var(--card-bord);
         }
-        .panel-cabecera:hover { background: #eef0f3; }
-        .g1 .panel-cabecera { border-left: 6px solid #007bff; }
-        .g2 .panel-cabecera { border-left: 6px solid #28a745; }
-        .g3 .panel-cabecera { border-left: 6px solid #ffc107; }
-        .g4 .panel-cabecera { border-left: 6px solid #17a2b8; }
+        .panel-cabecera:hover { background: rgba(0, 0, 0, 0.03); }
+        .g1 .panel-cabecera { border-left: 5px solid #007bff; background: linear-gradient(90deg, rgba(0,123,255,0.06), transparent 45%); }
+        .g2 .panel-cabecera { border-left: 5px solid #28a745; background: linear-gradient(90deg, rgba(40,167,69,0.06), transparent 45%); }
+        .g3 .panel-cabecera { border-left: 5px solid #ffc107; background: linear-gradient(90deg, rgba(255,193,7,0.09), transparent 45%); }
+        .g4 .panel-cabecera { border-left: 5px solid #17a2b8; background: linear-gradient(90deg, rgba(23,162,184,0.07), transparent 45%); }
         .panel-titulo { flex: 1 1 auto; }
         .panel-contador {
-            font-size: 12px; font-weight: 600; color: #6c757d;
-            background: #fff; border: 1px solid #dee2e6; border-radius: 999px;
-            padding: 3px 12px; white-space: nowrap;
+            font-size: 12px; font-weight: 600; color: var(--texto2);
+            background: rgba(120, 120, 128, 0.12); border-radius: 999px;
+            padding: 4px 12px; white-space: nowrap;
         }
-        .panel-flecha { font-size: 12px; color: #6c757d; transition: transform 0.3s ease; }
+        .panel-flecha { color: #b0b3b8; font-size: 12px; transition: transform 0.3s ease; }
         .panel-cabecera[aria-expanded="true"] .panel-flecha { transform: rotate(180deg); }
-        .panel-cuerpo { max-height: 0; overflow: hidden; transition: max-height 0.35s ease; }
-        .sub-bloque { padding: 18px 20px 6px; }
+        .panel-cuerpo { max-height: 0; overflow: hidden; transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        .sub-bloque { padding: 20px 20px 6px; }
+
+        /* Títulos internos */
+        h3 { font-size: 16px; font-weight: 700; color: var(--texto); padding-bottom: 6px; margin: 0 0 6px; border-bottom: 2px solid #e6e6eb; }
+        h4 { font-size: 14px; font-weight: 700; color: var(--texto); margin: 18px 0 4px; }
+
+        /* Tablas (inset grouped) */
+        table {
+            width: 100%; margin-top: 14px; font-size: 13px;
+            border-collapse: separate; border-spacing: 0;
+            border: 1px solid #ececf0; border-radius: 14px; overflow: hidden;
+            background: rgba(255, 255, 255, 0.6);
+        }
+        th, td { padding: 11px 12px; text-align: left; font-size: 13px; }
+        th {
+            background: #f5f5f7; color: var(--texto2);
+            font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px;
+            border-bottom: 1px solid #e6e6eb; white-space: nowrap;
+        }
+        th.green { background: rgba(30, 126, 52, 0.10); color: #1e7e34; }
+        th.rosa { background: rgba(189, 33, 48, 0.10); color: #bd2130; }
+        td { border-bottom: 1px solid #f0f0f3; }
+        tbody tr:last-child td { border-bottom: none; }
+        tbody tr:hover td { background: rgba(0, 0, 0, 0.02); }
+
+        .text-center { text-align: center; }
+        .sin-registros { color: var(--texto2); font-style: italic; }
+
+        /* Badges */
+        .badge { padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+        .badge-vig { background: rgba(255, 193, 7, 0.20); color: #7a5200; }
+        .badge-alm { background: rgba(40, 167, 69, 0.15); color: #155724; }
+        .badge-pedido { background: rgba(248, 113, 113, 0.20); color: #842029; border: 1px solid rgba(245, 194, 199, 0.8); }
+        .badge-suficiente { background: rgba(40, 167, 69, 0.15); color: #155724; border: 1px solid rgba(195, 230, 203, 0.8); }
+        .badge-disponible { background: rgba(40, 167, 69, 0.15); color: #155724; }
+        .badge-noche { background: rgba(0, 122, 255, 0.12); color: #004085; }
+        .badge-dia { background: rgba(255, 193, 7, 0.20); color: #856404; }
+
+        /* Avisos */
+        .aviso-info { background: rgba(209, 236, 241, 0.7); color: #0c5460; border: 1px solid rgba(190, 229, 235, 0.9); }
+        .aviso-warn { background: rgba(255, 243, 205, 0.8); color: #856404; border: 1px solid rgba(255, 238, 186, 0.9); }
+        .aviso { border-radius: 12px; }
+
+        /* Totales refinado */
+        .total-refinado {
+            background: rgba(0, 0, 0, 0.03); border: 1px solid rgba(0, 0, 0, 0.06);
+            border-radius: 12px; padding: 10px 14px; display: inline-block; margin: 0 10px 10px 0;
+        }
+        .total-refinado b { font-size: 17px; color: var(--texto); }
+
+        /* Enlaces y botones */
+        .link-guia { color: var(--azul); font-weight: 600; text-decoration: none; }
+        .link-guia:hover { text-decoration: underline; }
+        .logout {
+            background: var(--rojo); border: none; padding: 12px 22px; color: white;
+            border-radius: 999px; font-weight: 700; cursor: pointer; font-size: 14px; font-family: inherit;
+            box-shadow: 0 6px 16px rgba(255, 59, 48, 0.25);
+        }
+        .logout:hover { filter: brightness(0.95); }
+        .logout:active { transform: scale(0.97); }
+
+        /* Buscadores */
+        .filtro {
+            width: 100%; padding: 10px 14px; border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 12px; margin-top: 10px; font-size: 13px; box-sizing: border-box;
+            background: rgba(255, 255, 255, 0.7); color: var(--texto); font-family: inherit;
+        }
+        .filtro:focus { outline: none; border-color: var(--azul); box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.15); }
+
+        /* ---- Barra de atajos dinámica ---- */
+        .atajos {
+            display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+            position: sticky; top: 12px; z-index: 40;
+            background: rgba(255, 255, 255, 0.72);
+            backdrop-filter: blur(20px) saturate(160%);
+            -webkit-backdrop-filter: blur(20px) saturate(160%);
+            border: 1px solid rgba(0, 0, 0, 0.07);
+            border-radius: 999px; padding: 8px; margin-bottom: 20px;
+            box-shadow: var(--sombra);
+        }
+        .atajo {
+            display: inline-flex; align-items: center; gap: 6px;
+            border: none; background: transparent; padding: 9px 14px;
+            border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--texto2);
+            cursor: pointer; font-family: inherit; text-decoration: none; white-space: nowrap;
+        }
+        .atajo:hover { background: rgba(0, 0, 0, 0.05); }
+        .atajo.activo { background: var(--azul); color: #fff; box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3); }
+        .atajo-contador {
+            background: rgba(120, 120, 128, 0.14); border-radius: 999px;
+            padding: 1px 8px; font-size: 11px; font-weight: 700;
+        }
+        .atajo.activo .atajo-contador { background: rgba(255, 255, 255, 0.25); color: #fff; }
+        .atajos-acciones { display: flex; align-items: center; gap: 4px; }
+        .atajos-mas { display: none; }
+        .refresh-ico { display: inline-block; }
+        .refresh-ico.animando { animation: giro 0.9s linear infinite; }
+        @keyframes giro { to { transform: rotate(360deg); } }
+
+        /* Pie de página */
+        .footer-pie {
+            display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+            margin-top: 26px; padding: 16px 4px 0; border-top: 1px solid rgba(0, 0, 0, 0.08);
+        }
+
         @media (max-width: 640px) {
+            body { padding: 12px 10px 92px; }
+            .page-titulo { font-size: 28px; }
+            .sub-bloque { padding: 14px 14px 4px; }
             .panel-cabecera { flex-wrap: wrap; padding: 12px 14px; }
             .panel-contador { order: 3; }
+
+            .atajos {
+                position: fixed; top: auto; bottom: 0; left: 0; right: 0;
+                flex-wrap: nowrap; overflow-x: auto; border-radius: 0;
+                border-left: none; border-right: none; border-bottom: none;
+                border-top: 1px solid rgba(0, 0, 0, 0.07);
+                padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+                justify-content: space-between; margin-bottom: 0;
+                box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.08);
+            }
+            .atajo { flex-direction: column; gap: 2px; padding: 6px 12px; font-size: 10px; }
+            .atajo-contador { display: none; }
+            .atajos-mas {
+                display: inline-flex; align-items: center; justify-content: center;
+                color: var(--azul); font-weight: 800; padding: 6px 12px;
+            }
+            .atajos-acciones {
+                position: absolute; bottom: calc(100% + 10px); right: 10px;
+                flex-direction: column; align-items: stretch; min-width: 190px;
+                background: rgba(255, 255, 255, 0.95);
+                border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 18px; padding: 8px;
+                box-shadow: 0 18px 40px rgba(0, 0, 0, 0.2);
+                opacity: 0; pointer-events: none; transform: translateY(8px);
+                transition: opacity 0.25s, transform 0.25s;
+            }
+            .atajos-acciones.abierto { opacity: 1; pointer-events: auto; transform: none; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
+
+        <header class="page-head">
+            <h1 class="page-titulo">Auditoría</h1>
+            <p class="page-sub">Ingresos, producción y refinería — Corporación Belcen</p>
+        </header>
+
+        <!-- BARRA DE ATAJOS DINÁMICA -->
+        <nav class="atajos" id="atajosBar" aria-label="Accesos rápidos">
+            <button class="atajo activo" data-panel="vigilancia" onclick="irAPanel('vigilancia')">
+                <span>🛡️</span><span>Vigilancia</span><span class="atajo-contador" id="contAjoVig">0</span>
+            </button>
+            <button class="atajo" data-panel="almacen" onclick="irAPanel('almacen')">
+                <span>📦</span><span>Almacén</span><span class="atajo-contador" id="contAjoAlm">0</span>
+            </button>
+            <button class="atajo" data-panel="produccion" onclick="irAPanel('produccion')">
+                <span>🏭</span><span>Producción</span><span class="atajo-contador" id="contAjoProd">0</span>
+            </button>
+            <button class="atajo" data-panel="refineria" onclick="irAPanel('refineria')">
+                <span>🛢️</span><span>Refinería</span><span class="atajo-contador" id="contAjoRef">0</span>
+            </button>
+            <button class="atajos-mas" onclick="toggleAcciones()" aria-expanded="false" aria-label="Más acciones">⋯</button>
+            <div class="atajos-acciones" id="atajosAcciones">
+                <button class="atajo atajo-accion" onclick="refrescarTodo()"><span class="refresh-ico">🔄</span><span>Refrescar</span></button>
+                <button class="atajo atajo-accion atajo-dash" onclick="window.location.href='dashboard.html'"><span>🏠</span><span>Dashboard</span></button>
+                <button class="atajo atajo-accion" onclick="cerrarSesion()"><span>🔒</span><span>Cerrar sesión</span></button>
+            </div>
+        </nav>
 
         <!-- PANEL 1: VIGILANCIA -->
         <div class="tarjeta tarjeta-panel g1" id="panel-vigilancia">
@@ -260,11 +442,10 @@
             </div>
         </div>
 
-        <div style="text-align: center; margin-top: 10px; padding: 15px; border-top: 1px solid #ddd;">
-            <a href="dashboard.html" id="linkDashboard" style="display: inline-block; margin-bottom: 10px; color: #007bff; text-decoration: none; font-weight: bold;">Volver al Dashboard General</a>
-            <br>
+        <footer class="footer-pie">
+            <a href="dashboard.html" id="linkDashboard" class="link-guia">← Volver al Dashboard General</a>
             <button class="logout" onclick="cerrarSesion()">🔒 Cerrar Sesión (Salir)</button>
-        </div>
+        </footer>
     </div>
 
     <script src="/auth-client.js"></script>
@@ -276,6 +457,7 @@
         }
         if (rolUsuario !== 'supervisor' && rolUsuario !== 'produccion') {
             document.getElementById('linkDashboard').style.display = 'none';
+            document.querySelectorAll('.atajo-dash').forEach(el => { el.style.display = 'none'; });
         }
 
         function cerrarSesion() {
@@ -741,7 +923,7 @@
             });
         });
 
-        // Contadores en los encabezados de los paneles
+        // Contadores en los encabezados de los paneles y en la barra de atajos
         function actualizarContadores() {
             const c1 = document.getElementById('contadorVigilancia');
             if (c1) c1.textContent = entradasVigGlobal.length + ' ingresos';
@@ -756,7 +938,82 @@
                 const nAce = (rep && Array.isArray(rep.aceite)) ? rep.aceite.length : 0;
                 c4.textContent = nIns + ' insumos · ' + nAce + ' lotes';
             }
+
+            // Barra de atajos
+            const a1 = document.getElementById('contAjoVig');
+            if (a1) a1.textContent = entradasVigGlobal.length;
+            const a2 = document.getElementById('contAjoAlm');
+            if (a2) a2.textContent = entradasAlmGlobal.length + salidasGlobal.length;
+            const a3 = document.getElementById('contAjoProd');
+            if (a3) a3.textContent = informesGlobal.length + historialCierresGlobal.length;
+            const a4 = document.getElementById('contAjoRef');
+            if (a4) {
+                const rep = refinadoActual;
+                const nIns = (rep && Array.isArray(rep.insumos)) ? rep.insumos.length : 0;
+                const nAce = (rep && Array.isArray(rep.aceite)) ? rep.aceite.length : 0;
+                a4.textContent = nIns + nAce;
+            }
         }
+
+        // Barra de atajos dinámica
+        function irAPanel(nombre) {
+            const cuerpo = document.getElementById('cuerpo-' + nombre);
+            if (cuerpo && !cuerpo.classList.contains('abierto')) {
+                togglePanel(nombre);
+            }
+            const panel = document.getElementById('panel-' + nombre);
+            if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function cerrarPopover() {
+            const acc = document.getElementById('atajosAcciones');
+            if (acc) acc.classList.remove('abierto');
+            const mas = document.querySelector('.atajos-mas');
+            if (mas) mas.setAttribute('aria-expanded', 'false');
+        }
+
+        function toggleAcciones() {
+            const acc = document.getElementById('atajosAcciones');
+            if (!acc) return;
+            const abierto = acc.classList.toggle('abierto');
+            const mas = document.querySelector('.atajos-mas');
+            if (mas) mas.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+        }
+
+        let guardRefrescarAtajos = false;
+        async function refrescarTodo() {
+            if (guardRefrescarAtajos) return;
+            guardRefrescarAtajos = true;
+            document.querySelectorAll('.refresh-ico').forEach(ico => ico.classList.add('animando'));
+            cerrarPopover();
+            try {
+                await Promise.all([
+                    cargarEntradas(),
+                    cargarSalidas(),
+                    cargarProduccion(),
+                    cargarRefinado(),
+                    cargarHistorialCierresAud()
+                ]);
+            } finally {
+                document.querySelectorAll('.refresh-ico').forEach(ico => ico.classList.remove('animando'));
+                guardRefrescarAtajos = false;
+            }
+        }
+
+        function marcarAtajoActivo() {
+            const umbral = window.innerHeight * 0.4;
+            let activo = 'vigilancia';
+            ['vigilancia', 'almacen', 'produccion', 'refineria'].forEach(n => {
+                const p = document.getElementById('panel-' + n);
+                if (p && p.getBoundingClientRect().top <= umbral) activo = n;
+            });
+            document.querySelectorAll('.atajo[data-panel]').forEach(b => {
+                b.classList.toggle('activo', b.dataset.panel === activo);
+            });
+        }
+
+        window.addEventListener('scroll', marcarAtajoActivo, { passive: true });
+        marcarAtajoActivo();
 
         // Primer panel abierto por defecto
         const cuerpoVigilancia = document.getElementById('cuerpo-vigilancia');

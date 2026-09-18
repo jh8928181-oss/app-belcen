@@ -80,6 +80,10 @@
         /* Títulos internos */
         h3 { font-size: 16px; font-weight: 700; color: var(--texto); padding-bottom: 6px; margin: 0 0 6px; border-bottom: 2px solid #e6e6eb; }
         h4 { font-size: 14px; font-weight: 700; color: var(--texto); margin: 18px 0 4px; }
+        .sub-titulo.entradas { color: #1e7e34; }
+        .sub-titulo.salidas { color: #bd2130; }
+        .sub-divisor { height: 1px; background: #e6e6eb; margin: 18px 0 0; border: none; }
+        table + .sub-divisor { margin-top: 14px; }
 
         /* Tablas (inset grouped) */
         table {
@@ -293,7 +297,8 @@
             </button>
             <div class="panel-cuerpo" id="cuerpo-almacen">
                 <div class="sub-bloque">
-                    <h3 class="entradas">📥 CONFORMIDAD DE INGRESOS — REGISTRADA POR ALMACÉN</h3>
+                    <h3 class="entradas">📦 ALMACÉN — CONFORMIDAD Y DESPACHOS</h3>
+                    <h4 class="sub-titulo entradas">📥 Conformidad de Ingresos — Registrada por Almacén</h4>
                     <input id="filtroEntradasAlm" class="filtro" placeholder="🔍 Buscar por producto, proveedor, N° de guía o fecha...">
                     <table>
                         <thead>
@@ -310,9 +315,8 @@
                             <tr><td colspan="6" class="text-center">Cargando conformidad de almacén...</td></tr>
                         </tbody>
                     </table>
-                </div>
-                <div class="sub-bloque">
-                    <h3 class="salidas">📤 SALIDAS / DESPACHOS — Almacén</h3>
+                    <div class="sub-divisor"></div>
+                    <h4 class="sub-titulo salidas">📤 Salidas / Despachos — Almacén</h4>
                     <input id="filtroSalidas" class="filtro" placeholder="🔍 Buscar por producto, destino, N° de guía o fecha...">
                     <table>
                         <thead>

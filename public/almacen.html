@@ -106,6 +106,72 @@
         .estado-cargando { color: var(--texto2); font-style: italic; text-align: center; padding: 10px; }
         .vacio-note { color: var(--rojo); padding: 15px; text-align: center; font-weight: 600; }
 
+        .cabecera {
+            max-width: 1100px; margin: 0 auto 25px;
+            background: var(--card);
+            backdrop-filter: blur(20px) saturate(160%);
+            -webkit-backdrop-filter: blur(20px) saturate(160%);
+            border: 1px solid var(--card-bord);
+            border-radius: 22px;
+            box-shadow: var(--sombra);
+            padding: 22px 26px;
+            display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;
+        }
+        .cabecera-titulo { display: flex; align-items: center; gap: 14px; }
+        .cabecera-logo { font-size: 36px; line-height: 1; }
+        .cabecera-titulo h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; margin: 0; }
+        .cabecera-titulo p { font-size: 13px; color: var(--texto2); margin: 3px 0 0; }
+        .cabecera-acciones { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .cabecera-acciones .logout { margin: 0; }
+
+        .nav-superior {
+            max-width: 1100px; margin: -6px auto 25px;
+            display: flex; gap: 8px; flex-wrap: wrap;
+            background: var(--card);
+            backdrop-filter: blur(20px) saturate(160%);
+            -webkit-backdrop-filter: blur(20px) saturate(160%);
+            border: 1px solid var(--card-bord);
+            border-radius: 18px;
+            box-shadow: var(--sombra);
+            padding: 10px;
+        }
+        .nav-btn {
+            flex: 1 1 auto; min-width: 130px;
+            background: transparent; color: var(--texto2);
+            border: none; border-radius: 12px; padding: 12px 14px;
+            font-weight: 800; font-size: 13px; font-family: inherit; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .nav-btn:hover { background: rgba(0, 0, 0, 0.05); }
+        .nav-btn.activo { background: var(--azul); color: #fff; box-shadow: 0 4px 12px rgba(10, 132, 255, 0.30); }
+
+        .modulo { display: none; }
+        .modulo.activo { display: block; }
+        .modulo-dos-col { display: grid; grid-template-columns: 1fr; gap: 25px; align-items: stretch; }
+        @media (min-width: 1024px) {
+            .modulo-dos-col { grid-template-columns: 1fr 1fr; }
+        }
+
+        .tabbar {
+            display: none;
+            position: fixed; left: 0; right: 0; bottom: 0; z-index: 900;
+            background: rgba(248, 248, 250, 0.86);
+            backdrop-filter: blur(24px) saturate(180%);
+            -webkit-backdrop-filter: blur(24px) saturate(180%);
+            border-top: 1px solid rgba(0, 0, 0, 0.08);
+            padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+        }
+        .tabbar-contenido { display: flex; max-width: 1100px; margin: auto; }
+        .tab-btn {
+            flex: 1; background: none; border: none; color: var(--texto2);
+            font-family: inherit; cursor: pointer; padding: 8px 4px 6px;
+            border-radius: 12px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+            font-weight: 700; font-size: 10px; transition: color 0.15s ease;
+        }
+        .tab-btn .tab-ico { font-size: 21px; line-height: 1; }
+        .tab-btn.activo { color: var(--azul); }
+
         .tarjeta-header {
             display: flex; justify-content: space-between; align-items: center;
             border-bottom: 1px solid rgba(0, 0, 0, 0.09); padding-bottom: 12px; margin-bottom: 14px;
@@ -225,6 +291,17 @@
             .fila-modal .f2, .fila-modal .f1 { min-width: 140px; }
         }
 
+        @media (max-width: 768px) {
+            body { padding-bottom: calc(92px + env(safe-area-inset-bottom)); }
+            .nav-superior { display: none; }
+            .tabbar { display: block; }
+            .modulo-dos-col { gap: 0; }
+            .cabecera { padding: 18px; }
+            .cabecera-titulo h1 { font-size: 19px; }
+            .cabecera-titulo .cabecera-logo { font-size: 30px; }
+            .cabecera-acciones { width: 100%; justify-content: space-between; }
+        }
+
         @media (prefers-reduced-motion: reduce) {
             *, *::before, *::after {
                 animation-duration: 0.01ms !important;
@@ -237,6 +314,30 @@
 </head>
 <body>
 
+    <!-- ENCABEZADO -->
+    <header class="cabecera">
+        <div class="cabecera-titulo">
+            <span class="cabecera-logo">🏭</span>
+            <div>
+                <h1>GESTIÓN DE ALMACÉN</h1>
+                <p>Corporación Belcen S.A.C. — Stock, ingresos y salidas de planta</p>
+            </div>
+        </div>
+        <div class="cabecera-acciones">
+            <a href="dashboard.html" class="logout" id="linkDashboard">🏠 Volver al Dashboard</a>
+            <button onclick="cerrarSesion()" class="logout-cta">🔒 Cerrar Sesión</button>
+        </div>
+    </header>
+
+    <!-- NAVEGACIÓN PC -->
+    <nav class="nav-superior" id="navSuperior">
+        <button class="nav-btn activo" data-vista="pendientes" onclick="mostrarVista('pendientes', this)">🔔 Pendientes</button>
+        <button class="nav-btn" data-vista="ingresos" onclick="mostrarVista('ingresos', this)">📥 Ingresos</button>
+        <button class="nav-btn" data-vista="stock" onclick="mostrarVista('stock', this)">📦 Stock</button>
+        <button class="nav-btn" data-vista="salidas" onclick="mostrarVista('salidas', this)">🚛 Salidas</button>
+    </nav>
+
+    <section class="modulo activo" id="modulo-pendientes">
     <!-- 1. PENDIENTES DE VIGILANCIA & CONFORMIDAD -->
     <div class="table-container sec-ambar">
         <div class="tarjeta-header">
@@ -260,7 +361,9 @@
         </table>
         </div>
     </div>
+    </section>
 
+    <section class="modulo" id="modulo-ingresos">
     <!-- 2. REGISTRO GENERAL DE INGRESOS A ALMACÉN -->
     <div class="table-container sec-teal">
         <h3 class="h3-teal">REGISTRO GENERAL DE INGRESOS A ALMACÉN</h3>
@@ -289,7 +392,10 @@
         </table>
         </div>
     </div>
+    </section>
 
+    <section class="modulo" id="modulo-stock">
+    <div class="modulo-dos-col">
     <!-- 3. PRODUCTO TERMINADO (SOLO > 0) + BOTÓN DE ADICIÓN MANUAL MÚLTIPLE -->
     <div class="table-container sec-verde">
         <div class="tarjeta-header">
@@ -352,7 +458,11 @@
         </table>
         </div>
     </div>
+    </div>
+    </section>
 
+    <section class="modulo" id="modulo-salidas">
+    <div class="modulo-dos-col">
     <!-- 5. REGISTRO DE SALIDAS (PDF + MANUAL) -->
     <div class="table-container sec-rojo">
         <h3 class="h3-rojo">REGISTRO DE SALIDAS DE ALMACÉN</h3>
@@ -461,12 +571,20 @@
             <p class="text-center estado-cargando">Cargando historial de salidas...</p>
         </div>
 
-        <div class="pie-foot">
-            <a href="dashboard.html" class="logout" id="linkDashboard">Volver al Dashboard General</a>
-            <br>
-            <button onclick="cerrarSesion()" class="logout-cta">🔒 Cerrar Sesión (Salir)</button>
         </div>
     </div>
+    </div>
+    </section>
+
+    <!-- BARRA INFERIOR MÓVIL -->
+    <nav class="tabbar">
+        <div class="tabbar-contenido">
+            <button class="tab-btn activo" data-vista="pendientes" onclick="mostrarVista('pendientes', this)"><span class="tab-ico">🔔</span>Pendientes</button>
+            <button class="tab-btn" data-vista="ingresos" onclick="mostrarVista('ingresos', this)"><span class="tab-ico">📥</span>Ingresos</button>
+            <button class="tab-btn" data-vista="stock" onclick="mostrarVista('stock', this)"><span class="tab-ico">📦</span>Stock</button>
+            <button class="tab-btn" data-vista="salidas" onclick="mostrarVista('salidas', this)"><span class="tab-ico">🚛</span>Salidas</button>
+        </div>
+    </nav>
 
     <!-- MODAL PARA ADICIÓN MANUAL DE 1 O MÁS PRODUCTOS TERMINADOS -->
     <div id="modalAgregarPT" class="modal-fondo">
@@ -632,6 +750,16 @@
                 limpiarSesion();
                 window.location.href = 'index.html';
             }
+        }
+
+        function mostrarVista(nombre, btn) {
+            document.querySelectorAll('.modulo').forEach(m => m.classList.remove('activo'));
+            const mod = document.getElementById('modulo-' + nombre);
+            if (mod) mod.classList.add('activo');
+            document.querySelectorAll('.nav-btn, .tab-btn').forEach(b => {
+                b.classList.toggle('activo', b.dataset.vista === nombre);
+            });
+            window.scrollTo(0, 0);
         }
 
         let pendientesMap = {};

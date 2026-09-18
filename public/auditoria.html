@@ -51,7 +51,7 @@
         }
 
         /* Paneles colapsables */
-        .tarjeta-panel { padding: 0; overflow: hidden; }
+        .tarjeta-panel { padding: 0; overflow: hidden; scroll-margin-top: 74px; }
         .panel-cabecera {
             display: flex; width: 100%; box-sizing: border-box;
             align-items: center; justify-content: space-between; gap: 12px;
@@ -86,6 +86,9 @@
         table + .sub-divisor { margin-top: 14px; }
 
         /* Tablas (inset grouped) */
+        .tabla-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 14px; }
+        .tabla-wrap::-webkit-scrollbar { height: 6px; }
+        .tabla-wrap::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.18); border-radius: 999px; }
         table {
             width: 100%; margin-top: 14px; font-size: 13px;
             border-collapse: separate; border-spacing: 0;
@@ -148,6 +151,18 @@
         }
         .filtro:focus { outline: none; border-color: var(--azul); box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.15); }
 
+        /* Control segmentado (Ingresos / Salidas) */
+        .seg-alm { display: flex; gap: 6px; margin: 10px 0 2px; flex-wrap: wrap; }
+        .seg-alm button {
+            flex: 1 1 0; padding: 9px 14px; border: none; border-radius: 999px;
+            background: rgba(120, 120, 128, 0.10); color: var(--texto2);
+            font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+        }
+        .seg-alm button.activo { background: var(--azul); color: #fff; box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3); }
+        .vista-alm { width: 100%; }
+        .vista-alm.oculta { display: none; }
+
         /* ---- Barra de atajos dinámica ---- */
         .atajos {
             display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
@@ -190,6 +205,11 @@
             .sub-bloque { padding: 14px 14px 4px; }
             .panel-cabecera { flex-wrap: wrap; padding: 12px 14px; }
             .panel-contador { order: 3; }
+            .tarjeta { padding: 14px; }
+            .tarjeta-panel { padding: 0; scroll-margin-top: 0; scroll-margin-bottom: 76px; }
+            th, td { padding: 9px 10px; }
+            .filtro { font-size: 16px; }
+            table { min-width: 540px; }
 
             .atajos {
                 position: fixed; top: auto; bottom: 0; left: 0; right: 0;
@@ -200,7 +220,7 @@
                 justify-content: space-between; margin-bottom: 0;
                 box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.08);
             }
-            .atajo { flex-direction: column; gap: 2px; padding: 6px 12px; font-size: 10px; }
+            .atajo { flex-direction: column; gap: 2px; padding: 6px 12px; font-size: 10px; flex: 0 0 auto; }
             .atajo-contador { display: none; }
             .atajos-mas {
                 display: inline-flex; align-items: center; justify-content: center;
@@ -269,21 +289,23 @@
                 <div class="sub-bloque">
                     <h3 class="entradas">🛡️ INGRESOS REGISTRADOS POR VIGILANCIA</h3>
                     <input id="filtroEntradasVig" class="filtro" placeholder="🔍 Buscar por producto, proveedor, N° de guía o fecha...">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th class="green">Fecha</th>
-                                <th class="green">N° de Guía</th>
-                                <th class="green">Producto</th>
-                                <th class="green text-center">Cantidad</th>
-                                <th class="green text-center">Foto de la Guía</th>
-                                <th class="green">Proveedor</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tablaEntradasVig">
-                            <tr><td colspan="6" class="text-center">Cargando ingresos de vigilancia...</td></tr>
-                        </tbody>
-                    </table>
+                    <div class="tabla-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th class="green">Fecha</th>
+                                    <th class="green">N° de Guía</th>
+                                    <th class="green">Producto</th>
+                                    <th class="green text-center">Cantidad</th>
+                                    <th class="green text-center">Foto de la Guía</th>
+                                    <th class="green">Proveedor</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tablaEntradasVig">
+                                <tr><td colspan="6" class="text-center">Cargando ingresos de vigilancia...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -298,42 +320,53 @@
             <div class="panel-cuerpo" id="cuerpo-almacen">
                 <div class="sub-bloque">
                     <h3 class="entradas">📦 ALMACÉN — CONFORMIDAD Y DESPACHOS</h3>
-                    <h4 class="sub-titulo entradas">📥 Conformidad de Ingresos — Registrada por Almacén</h4>
-                    <input id="filtroEntradasAlm" class="filtro" placeholder="🔍 Buscar por producto, proveedor, N° de guía o fecha...">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th class="green">Fecha</th>
-                                <th class="green">N° de Guía</th>
-                                <th class="green">Producto</th>
-                                <th class="green text-center">Cantidad</th>
-                                <th class="green text-center">Foto de la Guía</th>
-                                <th class="green">Proveedor</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tablaEntradasAlm">
-                            <tr><td colspan="6" class="text-center">Cargando conformidad de almacén...</td></tr>
-                        </tbody>
-                    </table>
-                    <div class="sub-divisor"></div>
-                    <h4 class="sub-titulo salidas">📤 Salidas / Despachos — Almacén</h4>
-                    <input id="filtroSalidas" class="filtro" placeholder="🔍 Buscar por producto, destino, N° de guía o fecha...">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th class="rosa">Fecha</th>
-                                <th class="rosa">Producto</th>
-                                <th class="rosa text-center">Cantidad</th>
-                                <th class="rosa text-center">PDF / Foto de la Guía</th>
-                                <th class="rosa">A Dónde Va</th>
-                                <th class="rosa">N° de Guía</th>
-                                <th class="rosa text-center">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tablaSalidas">
-                            <tr><td colspan="7" class="text-center">Cargando salidas...</td></tr>
-                        </tbody>
-                    </table>
+                    <div class="seg-alm" role="tablist" aria-label="Ver ingresos o salidas">
+                        <button id="segAlmIng" class="activo" role="tab" aria-selected="true" onclick="verAlmacen('ingresos')">📥 INGRESOS</button>
+                        <button id="segAlmSal" role="tab" aria-selected="false" onclick="verAlmacen('salidas')">📤 SALIDAS</button>
+                    </div>
+                    <div class="vista-alm" id="vistaalm-ingresos">
+                        <h4 class="sub-titulo entradas">📥 Conformidad de Ingresos — Registrada por Almacén</h4>
+                        <input id="filtroEntradasAlm" class="filtro" placeholder="🔍 Buscar por producto, proveedor, N° de guía o fecha...">
+                        <div class="tabla-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th class="green">Fecha</th>
+                                        <th class="green">N° de Guía</th>
+                                        <th class="green">Producto</th>
+                                        <th class="green text-center">Cantidad</th>
+                                        <th class="green text-center">Foto de la Guía</th>
+                                        <th class="green">Proveedor</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tablaEntradasAlm">
+                                    <tr><td colspan="6" class="text-center">Cargando conformidad de almacén...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="vista-alm oculta" id="vistaalm-salidas">
+                        <h4 class="sub-titulo salidas">📤 Salidas / Despachos — Almacén</h4>
+                        <input id="filtroSalidas" class="filtro" placeholder="🔍 Buscar por producto, destino, N° de guía o fecha...">
+                        <div class="tabla-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th class="rosa">Fecha</th>
+                                        <th class="rosa">Producto</th>
+                                        <th class="rosa text-center">Cantidad</th>
+                                        <th class="rosa text-center">PDF / Foto de la Guía</th>
+                                        <th class="rosa">A Dónde Va</th>
+                                        <th class="rosa">N° de Guía</th>
+                                        <th class="rosa text-center">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tablaSalidas">
+                                    <tr><td colspan="7" class="text-center">Cargando salidas...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -349,21 +382,23 @@
                 <div class="sub-bloque">
                     <h3 style="border-bottom: 2px solid #ffc107; color: #8a6d00;">🏭 PRODUCCIÓN (ENVASADO)</h3>
                     <input id="filtroProduccion" class="filtro" placeholder="🔍 Buscar por producto, usuario o fecha...">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th style="background-color:#8a6d00;">Fecha</th>
-                                <th style="background-color:#8a6d00;">Producto</th>
-                                <th class="text-center" style="background-color:#8a6d00;">Cantidad (CAJAS)</th>
-                                <th class="text-center" style="background-color:#8a6d00;">Toneladas</th>
-                                <th style="background-color:#8a6d00;">Quién Reportó</th>
-                                <th style="background-color:#8a6d00;">Insumos Usados</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tablaProduccion">
-                            <tr><td colspan="6" class="text-center">Cargando producción...</td></tr>
-                        </tbody>
-                    </table>
+                    <div class="tabla-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="background-color:#8a6d00;">Fecha</th>
+                                    <th style="background-color:#8a6d00;">Producto</th>
+                                    <th class="text-center" style="background-color:#8a6d00;">Cantidad (CAJAS)</th>
+                                    <th class="text-center" style="background-color:#8a6d00;">Toneladas</th>
+                                    <th style="background-color:#8a6d00;">Quién Reportó</th>
+                                    <th style="background-color:#8a6d00;">Insumos Usados</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tablaProduccion">
+                                <tr><td colspan="6" class="text-center">Cargando producción...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
                 <div class="sub-bloque">
                     <h3 style="border-bottom: 2px solid #6c757d; color: #495057;">🔒 CIERRE Y REPORTES DE PRODUCCIÓN</h3>
@@ -407,40 +442,44 @@
                     </div>
                     <div class="aviso" id="avisoRefinado" style="display:none; padding:12px 14px; border-radius:4px; font-size:13px; margin-top:12px;"></div>
                     <h4 style="margin:18px 0 4px 0; color:#117a8b;">STOCK DE INSUMOS DE REFINADO</h4>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th style="background-color:#117a8b;">Insumo</th>
-                                <th class="text-center" style="background-color:#117a8b;">Inv. Inic.</th>
-                                <th class="text-center" style="background-color:#117a8b;">Ingreso del Día</th>
-                                <th class="text-center" style="background-color:#117a8b;">Consumo del Día</th>
-                                <th class="text-center" style="background-color:#117a8b;">En Línea</th>
-                                <th class="text-center" style="background-color:#117a8b;">Stock en Tanque</th>
-                                <th class="text-center" style="background-color:#117a8b;">UM</th>
-                                <th class="text-center" style="background-color:#117a8b;">Días de Stock</th>
-                                <th style="background-color:#117a8b;">Observaciones</th>
-                                <th class="text-center" style="background-color:#117a8b;">Estado</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tablaRefinadoInsumos">
-                            <tr><td colspan="10" class="text-center">Cargando insumos de refinería...</td></tr>
-                        </tbody>
-                    </table>
+                    <div class="tabla-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="background-color:#117a8b;">Insumo</th>
+                                    <th class="text-center" style="background-color:#117a8b;">Inv. Inic.</th>
+                                    <th class="text-center" style="background-color:#117a8b;">Ingreso del Día</th>
+                                    <th class="text-center" style="background-color:#117a8b;">Consumo del Día</th>
+                                    <th class="text-center" style="background-color:#117a8b;">En Línea</th>
+                                    <th class="text-center" style="background-color:#117a8b;">Stock en Tanque</th>
+                                    <th class="text-center" style="background-color:#117a8b;">UM</th>
+                                    <th class="text-center" style="background-color:#117a8b;">Días de Stock</th>
+                                    <th style="background-color:#117a8b;">Observaciones</th>
+                                    <th class="text-center" style="background-color:#117a8b;">Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tablaRefinadoInsumos">
+                                <tr><td colspan="10" class="text-center">Cargando insumos de refinería...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                     <h4 style="margin:18px 0 4px 0; color:#8a6d00;">ACEITE REFINADO DE SOYA EN PLANTA</h4>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th style="background-color:#8a6d00;">Producto</th>
-                                <th class="text-center" style="background-color:#8a6d00;">Cantidad (TM)</th>
-                                <th class="text-center" style="background-color:#8a6d00;">Lote Nº</th>
-                                <th class="text-center" style="background-color:#8a6d00;">Fecha de Producción</th>
-                                <th style="background-color:#8a6d00;">Estado / Observaciones</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tablaRefinadoAceite">
-                            <tr><td colspan="5" class="text-center">Cargando aceite refinado...</td></tr>
-                        </tbody>
-                    </table>
+                    <div class="tabla-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="background-color:#8a6d00;">Producto</th>
+                                    <th class="text-center" style="background-color:#8a6d00;">Cantidad (TM)</th>
+                                    <th class="text-center" style="background-color:#8a6d00;">Lote Nº</th>
+                                    <th class="text-center" style="background-color:#8a6d00;">Fecha de Producción</th>
+                                    <th style="background-color:#8a6d00;">Estado / Observaciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tablaRefinadoAceite">
+                                <tr><td colspan="5" class="text-center">Cargando aceite refinado...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                     <div id="totalesRefinado" style="margin-top:15px; font-size:14px; color:#343a40;"></div>
                 </div>
             </div>
@@ -742,19 +781,21 @@
                         <div style="background: #f8f9fa; padding: 10px 15px; border-bottom: 1px solid #dee2e6; font-weight: bold; color: #333;">
                             📅 Fecha de Cierre: ${fechaCierreStr} | Usuario: ${cierre.usuario_cierre || 'Sistema'}
                         </div>
-                        <table style="margin-top:0;">
-                            <thead>
-                                <tr style="background-color: #6c757d; color: white;">
-                                    <th>FECHA</th>
-                                    <th>PRESENTACIÓN</th>
-                                    <th class="text-center">CANT</th>
-                                    <th class="text-center">UM</th>
-                                    <th class="text-center">TN</th>
-                                    <th>OBS</th>
-                                </tr>
-                            </thead>
-                            <tbody>${filasHtml}</tbody>
-                        </table>
+                        <div class="tabla-wrap">
+                            <table style="margin-top:0;">
+                                <thead>
+                                    <tr style="background-color: #6c757d; color: white;">
+                                        <th>FECHA</th>
+                                        <th>PRESENTACIÓN</th>
+                                        <th class="text-center">CANT</th>
+                                        <th class="text-center">UM</th>
+                                        <th class="text-center">TN</th>
+                                        <th>OBS</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${filasHtml}</tbody>
+                            </table>
+                        </div>
                         <div style="padding: 12px 15px; text-align: right; background: #fafafa; border-top: 1px solid #dee2e6;">
                             <span style="font-weight: bold; margin-right: 10px;">TOTAL TM:</span>
                             <span style="background: #ffeb3b; padding: 6px 14px; font-weight: bold; border-radius: 4px; border: 1px solid #fbc02d;">${parseFloat(cierre.total_toneladas || 0).toFixed(2)}</span>
@@ -926,6 +967,25 @@
                 c.style.maxHeight = c.scrollHeight + 'px';
             });
         });
+
+        // Cambiar vista individual (Ingresos o Salidas) en Almacén
+        function verAlmacen(tipo) {
+            const vistaIng = document.getElementById('vistaalm-ingresos');
+            const vistaSal = document.getElementById('vistaalm-salidas');
+            const segIng = document.getElementById('segAlmIng');
+            const segSal = document.getElementById('segAlmSal');
+            const esIngresos = tipo === 'ingresos';
+            if (vistaIng) vistaIng.classList.toggle('oculta', !esIngresos);
+            if (vistaSal) vistaSal.classList.toggle('oculta', esIngresos);
+            if (segIng) segIng.classList.toggle('activo', esIngresos);
+            if (segSal) segSal.classList.toggle('activo', !esIngresos);
+            if (segIng) segIng.setAttribute('aria-selected', esIngresos ? 'true' : 'false');
+            if (segSal) segSal.setAttribute('aria-selected', esIngresos ? 'false' : 'true');
+            const cuerpoAlm = document.getElementById('cuerpo-almacen');
+            if (cuerpoAlm && cuerpoAlm.classList.contains('abierto')) {
+                cuerpoAlm.style.maxHeight = cuerpoAlm.scrollHeight + 'px';
+            }
+        }
 
         // Contadores en los encabezados de los paneles y en la barra de atajos
         function actualizarContadores() {

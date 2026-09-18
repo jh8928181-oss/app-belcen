@@ -37,144 +37,196 @@
         .sin-registros { color: #888; font-style: italic; }
         .filtro { width: 100%; padding: 9px 12px; border: 1px solid #ced4da; border-radius: 4px; margin-top: 10px; font-size: 13px; box-sizing: border-box; }
         .filtro:focus { outline: none; border-color: #007bff; box-shadow: 0 0 0 2px rgba(0,123,255,0.2); }
+
+        /* Paneles colapsables */
+        .tarjeta-panel { padding: 0; overflow: hidden; }
+        .panel-cabecera {
+            display: flex; width: 100%; box-sizing: border-box;
+            align-items: center; justify-content: space-between; gap: 12px;
+            padding: 15px 20px;
+            background: #f8f9fa; border: none; cursor: pointer;
+            text-align: left; font-family: inherit; font-size: 15px; font-weight: bold;
+            color: #343a40;
+        }
+        .panel-cabecera:hover { background: #eef0f3; }
+        .g1 .panel-cabecera { border-left: 6px solid #6c757d; }
+        .g2 .panel-cabecera { border-left: 6px solid #ffc107; }
+        .g3 .panel-cabecera { border-left: 6px solid #17a2b8; }
+        .panel-titulo { flex: 1 1 auto; }
+        .panel-contador {
+            font-size: 12px; font-weight: 600; color: #6c757d;
+            background: #fff; border: 1px solid #dee2e6; border-radius: 999px;
+            padding: 3px 12px; white-space: nowrap;
+        }
+        .panel-flecha { font-size: 12px; color: #6c757d; transition: transform 0.3s ease; }
+        .panel-cabecera[aria-expanded="true"] .panel-flecha { transform: rotate(180deg); }
+        .panel-cuerpo { max-height: 0; overflow: hidden; transition: max-height 0.35s ease; }
+        .sub-bloque { padding: 18px 20px 6px; }
+        @media (max-width: 640px) {
+            .panel-cabecera { flex-wrap: wrap; padding: 12px 14px; }
+            .panel-contador { order: 3; }
+        }
     </style>
 </head>
 <body>
     <div class="container">
 
-        <!-- ENTRADAS -->
-        <div class="tarjeta" style="border-top: 5px solid #28a745;">
-            <h3 class="entradas">📥 ENTRADAS / INGRESOS — Vigilancia y Almacén</h3>
-            <input id="filtroEntradas" class="filtro" placeholder="🔍 Buscar por producto, proveedor, fecha u origen...">
-            <table>
-                <thead>
-                    <tr>
-                        <th class="green">Fecha</th>
-                        <th class="green">Producto</th>
-                        <th class="green text-center">Cantidad</th>
-                        <th class="green text-center">Foto de la Guía</th>
-                        <th class="green">Proveedor</th>
-                        <th class="green text-center">Origen</th>
-                    </tr>
-                </thead>
-                <tbody id="tablaEntradas">
-                    <tr><td colspan="6" class="text-center">Cargando entradas...</td></tr>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- SALIDAS -->
-        <div class="tarjeta" style="border-top: 5px solid #dc3545;">
-            <h3 class="salidas">📤 SALIDAS / DESPACHOS — Almacén</h3>
-            <input id="filtroSalidas" class="filtro" placeholder="🔍 Buscar por producto, destino, N° de guía o fecha...">
-            <table>
-                <thead>
-                    <tr>
-                        <th class="rosa">Fecha</th>
-                        <th class="rosa">Producto</th>
-                        <th class="rosa text-center">Cantidad</th>
-                        <th class="rosa text-center">PDF / Foto de la Guía</th>
-                        <th class="rosa">A Dónde Va</th>
-                        <th class="rosa">N° de Guía</th>
-                        <th class="rosa text-center">Acciones</th>
-                    </tr>
-                </thead>
-                <tbody id="tablaSalidas">
-                    <tr><td colspan="7" class="text-center">Cargando salidas...</td></tr>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- PRODUCCIÓN -->
-        <div class="tarjeta" style="border-top: 5px solid #ffc107;">
-            <h3 style="border-bottom: 2px solid #ffc107; color: #8a6d00;">🏭 PRODUCCIÓN (ENVASADO)</h3>
-            <input id="filtroProduccion" class="filtro" placeholder="🔍 Buscar por producto, usuario o fecha...">
-            <table>
-                <thead>
-                    <tr>
-                        <th style="background-color:#8a6d00;">Fecha</th>
-                        <th style="background-color:#8a6d00;">Producto</th>
-                        <th class="text-center" style="background-color:#8a6d00;">Cantidad (CAJAS)</th>
-                        <th class="text-center" style="background-color:#8a6d00;">Toneladas</th>
-                        <th style="background-color:#8a6d00;">Quién Reportó</th>
-                        <th style="background-color:#8a6d00;">Insumos Usados</th>
-                    </tr>
-                </thead>
-                <tbody id="tablaProduccion">
-                    <tr><td colspan="6" class="text-center">Cargando producción...</td></tr>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- CIERRE Y REPORTES DE PRODUCCIÓN -->
-        <div class="tarjeta" style="border-top: 5px solid #6c757d;">
-            <h3 style="border-bottom: 2px solid #6c757d; color: #495057;">🔒 CIERRE Y REPORTES DE PRODUCCIÓN</h3>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px;">
-                <label><b>Fecha de Cierre:</b></label>
-                <input type="date" id="fechaCierreAud" class="filtro" style="max-width: 220px;" title="Selecciona la fecha de producción que se cerrará">
-                <button onclick="realizarCierreProd()" id="btnCierreProd" style="background: #ffc107; color: #000; border: none; padding: 9px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px;">🔒 REALIZAR CIERRE DE PRODUCCIÓN DE ESTA FECHA</button>
-            </div>
-            <h4 style="margin:18px 0 4px 0; color:#495057;">HISTORIAL DE CIERRES DE PRODUCCIÓN</h4>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-                <label><b>Filtrar por Fecha de Cierre:</b></label>
-                <input type="date" id="filtroFechaCierre" class="filtro" style="max-width: 220px;">
-                <button onclick="cargarHistorialCierresAud()" style="background: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">Ver Todos</button>
-            </div>
-            <div id="contenedorReporteCierre" style="margin-top: 15px;">
-                <p class="text-center" style="color: #666; font-style: italic;">Cargando historial de cierres...</p>
+        <!-- PANEL 1: INGRESOS Y DESPACHOS -->
+        <div class="tarjeta tarjeta-panel g1" id="panel-ingresos">
+            <button class="panel-cabecera" id="btn-ingresos" onclick="togglePanel('ingresos')" aria-expanded="true" aria-controls="cuerpo-ingresos">
+                <span class="panel-titulo">🛒 INGRESOS Y DESPACHOS DE ALMACÉN</span>
+                <span class="panel-contador" id="contadorIngresosDespachos">0 entradas · 0 salidas</span>
+                <span class="panel-flecha">▼</span>
+            </button>
+            <div class="panel-cuerpo abierto" id="cuerpo-ingresos">
+                <div class="sub-bloque">
+                    <h3 class="entradas">📥 ENTRADAS / INGRESOS — Vigilancia y Almacén</h3>
+                    <input id="filtroEntradas" class="filtro" placeholder="🔍 Buscar por producto, proveedor, fecha u origen...">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th class="green">Fecha</th>
+                                <th class="green">Producto</th>
+                                <th class="green text-center">Cantidad</th>
+                                <th class="green text-center">Foto de la Guía</th>
+                                <th class="green">Proveedor</th>
+                                <th class="green text-center">Origen</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaEntradas">
+                            <tr><td colspan="6" class="text-center">Cargando entradas...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="sub-bloque">
+                    <h3 class="salidas">📤 SALIDAS / DESPACHOS — Almacén</h3>
+                    <input id="filtroSalidas" class="filtro" placeholder="🔍 Buscar por producto, destino, N° de guía o fecha...">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th class="rosa">Fecha</th>
+                                <th class="rosa">Producto</th>
+                                <th class="rosa text-center">Cantidad</th>
+                                <th class="rosa text-center">PDF / Foto de la Guía</th>
+                                <th class="rosa">A Dónde Va</th>
+                                <th class="rosa">N° de Guía</th>
+                                <th class="rosa text-center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaSalidas">
+                            <tr><td colspan="7" class="text-center">Cargando salidas...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
-        <!-- REFINERÍA -->
-        <div class="tarjeta" style="border-top: 5px solid #17a2b8;">
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
-                <h3 style="border-bottom: 2px solid #17a2b8; color: #117a8b; margin-bottom:0;">🛢️ REFINERÍA — Reporte Diario de Control e Inventario</h3>
-                <a href="refinado.html" style="color:#117a8b; font-weight:bold; text-decoration:none; font-size:13px;">✏️ Editar reporte →</a>
+        <!-- PANEL 2: PRODUCCIÓN Y CIERRE -->
+        <div class="tarjeta tarjeta-panel g2" id="panel-produccion">
+            <button class="panel-cabecera" id="btn-produccion" onclick="togglePanel('produccion')" aria-expanded="false" aria-controls="cuerpo-produccion">
+                <span class="panel-titulo">🏭 PRODUCCIÓN Y CIERRE</span>
+                <span class="panel-contador" id="contadorProduccionCierre">0 producciones · 0 cierres</span>
+                <span class="panel-flecha">▼</span>
+            </button>
+            <div class="panel-cuerpo" id="cuerpo-produccion">
+                <div class="sub-bloque">
+                    <h3 style="border-bottom: 2px solid #ffc107; color: #8a6d00;">🏭 PRODUCCIÓN (ENVASADO)</h3>
+                    <input id="filtroProduccion" class="filtro" placeholder="🔍 Buscar por producto, usuario o fecha...">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="background-color:#8a6d00;">Fecha</th>
+                                <th style="background-color:#8a6d00;">Producto</th>
+                                <th class="text-center" style="background-color:#8a6d00;">Cantidad (CAJAS)</th>
+                                <th class="text-center" style="background-color:#8a6d00;">Toneladas</th>
+                                <th style="background-color:#8a6d00;">Quién Reportó</th>
+                                <th style="background-color:#8a6d00;">Insumos Usados</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaProduccion">
+                            <tr><td colspan="6" class="text-center">Cargando producción...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="sub-bloque">
+                    <h3 style="border-bottom: 2px solid #6c757d; color: #495057;">🔒 CIERRE Y REPORTES DE PRODUCCIÓN</h3>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px;">
+                        <label><b>Fecha de Cierre:</b></label>
+                        <input type="date" id="fechaCierreAud" class="filtro" style="max-width: 220px;" title="Selecciona la fecha de producción que se cerrará">
+                        <button onclick="realizarCierreProd()" id="btnCierreProd" style="background: #ffc107; color: #000; border: none; padding: 9px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px;">🔒 REALIZAR CIERRE DE PRODUCCIÓN DE ESTA FECHA</button>
+                    </div>
+                    <h4 style="margin:18px 0 4px 0; color:#495057;">HISTORIAL DE CIERRES DE PRODUCCIÓN</h4>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                        <label><b>Filtrar por Fecha de Cierre:</b></label>
+                        <input type="date" id="filtroFechaCierre" class="filtro" style="max-width: 220px;">
+                        <button onclick="cargarHistorialCierresAud()" style="background: #6c757d; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">Ver Todos</button>
+                    </div>
+                    <div id="contenedorReporteCierre" style="margin-top: 15px;">
+                        <p class="text-center" style="color: #666; font-style: italic;">Cargando historial de cierres...</p>
+                    </div>
+                </div>
             </div>
-            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:12px;">
-                <input type="date" id="filtroRefinado" class="filtro" value="" style="max-width:220px;" title="Selecciona la fecha del reporte de refinado">
-                <select id="filtroRefinadoTurno" class="filtro" style="max-width:160px;" title="Selecciona el turno del reporte">
-                    <option value="DIA">☀️ Turno DÍA</option>
-                    <option value="NOCHE">🌙 Turno NOCHE</option>
-                </select>
+        </div>
+
+        <!-- PANEL 3: REFINERÍA -->
+        <div class="tarjeta tarjeta-panel g3" id="panel-refineria">
+            <button class="panel-cabecera" id="btn-refineria" onclick="togglePanel('refineria')" aria-expanded="false" aria-controls="cuerpo-refineria">
+                <span class="panel-titulo">🛢️ REFINERÍA — Reporte Diario</span>
+                <span class="panel-contador" id="contadorRefineria">0 insumos · 0 lotes</span>
+                <span class="panel-flecha">▼</span>
+            </button>
+            <div class="panel-cuerpo" id="cuerpo-refineria">
+                <div class="sub-bloque">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
+                        <h3 style="border-bottom: 2px solid #17a2b8; color: #117a8b; margin-bottom:0;">🛢️ REFINERÍA — Reporte Diario de Control e Inventario</h3>
+                        <a href="refinado.html" style="color:#117a8b; font-weight:bold; text-decoration:none; font-size:13px;">✏️ Editar reporte →</a>
+                    </div>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:12px;">
+                        <input type="date" id="filtroRefinado" class="filtro" value="" style="max-width:220px;" title="Selecciona la fecha del reporte de refinado">
+                        <select id="filtroRefinadoTurno" class="filtro" style="max-width:160px;" title="Selecciona el turno del reporte">
+                            <option value="DIA">☀️ Turno DÍA</option>
+                            <option value="NOCHE">🌙 Turno NOCHE</option>
+                        </select>
+                    </div>
+                    <div class="aviso" id="avisoRefinado" style="display:none; padding:12px 14px; border-radius:4px; font-size:13px; margin-top:12px;"></div>
+                    <h4 style="margin:18px 0 4px 0; color:#117a8b;">STOCK DE INSUMOS DE REFINADO</h4>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="background-color:#117a8b;">Insumo</th>
+                                <th class="text-center" style="background-color:#117a8b;">Inv. Inic.</th>
+                                <th class="text-center" style="background-color:#117a8b;">Ingreso del Día</th>
+                                <th class="text-center" style="background-color:#117a8b;">Consumo del Día</th>
+                                <th class="text-center" style="background-color:#117a8b;">En Línea</th>
+                                <th class="text-center" style="background-color:#117a8b;">Stock en Tanque</th>
+                                <th class="text-center" style="background-color:#117a8b;">UM</th>
+                                <th class="text-center" style="background-color:#117a8b;">Días de Stock</th>
+                                <th style="background-color:#117a8b;">Observaciones</th>
+                                <th class="text-center" style="background-color:#117a8b;">Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaRefinadoInsumos">
+                            <tr><td colspan="10" class="text-center">Cargando insumos de refinería...</td></tr>
+                        </tbody>
+                    </table>
+                    <h4 style="margin:18px 0 4px 0; color:#8a6d00;">ACEITE REFINADO DE SOYA EN PLANTA</h4>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="background-color:#8a6d00;">Producto</th>
+                                <th class="text-center" style="background-color:#8a6d00;">Cantidad (TM)</th>
+                                <th class="text-center" style="background-color:#8a6d00;">Lote Nº</th>
+                                <th class="text-center" style="background-color:#8a6d00;">Fecha de Producción</th>
+                                <th style="background-color:#8a6d00;">Estado / Observaciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaRefinadoAceite">
+                            <tr><td colspan="5" class="text-center">Cargando aceite refinado...</td></tr>
+                        </tbody>
+                    </table>
+                    <div id="totalesRefinado" style="margin-top:15px; font-size:14px; color:#343a40;"></div>
+                </div>
             </div>
-            <div class="aviso" id="avisoRefinado" style="display:none; padding:12px 14px; border-radius:4px; font-size:13px; margin-top:12px;"></div>
-            <h4 style="margin:18px 0 4px 0; color:#117a8b;">STOCK DE INSUMOS DE REFINADO</h4>
-            <table>
-                <thead>
-                    <tr>
-                        <th style="background-color:#117a8b;">Insumo</th>
-                        <th class="text-center" style="background-color:#117a8b;">Inv. Inic.</th>
-                        <th class="text-center" style="background-color:#117a8b;">Ingreso del Día</th>
-                        <th class="text-center" style="background-color:#117a8b;">Consumo del Día</th>
-                        <th class="text-center" style="background-color:#117a8b;">En Línea</th>
-                        <th class="text-center" style="background-color:#117a8b;">Stock en Tanque</th>
-                        <th class="text-center" style="background-color:#117a8b;">UM</th>
-                        <th class="text-center" style="background-color:#117a8b;">Días de Stock</th>
-                        <th style="background-color:#117a8b;">Observaciones</th>
-                        <th class="text-center" style="background-color:#117a8b;">Estado</th>
-                    </tr>
-                </thead>
-                <tbody id="tablaRefinadoInsumos">
-                    <tr><td colspan="10" class="text-center">Cargando insumos de refinería...</td></tr>
-                </tbody>
-            </table>
-            <h4 style="margin:18px 0 4px 0; color:#8a6d00;">ACEITE REFINADO DE SOYA EN PLANTA</h4>
-            <table>
-                <thead>
-                    <tr>
-                        <th style="background-color:#8a6d00;">Producto</th>
-                        <th class="text-center" style="background-color:#8a6d00;">Cantidad (TM)</th>
-                        <th class="text-center" style="background-color:#8a6d00;">Lote Nº</th>
-                        <th class="text-center" style="background-color:#8a6d00;">Fecha de Producción</th>
-                        <th style="background-color:#8a6d00;">Estado / Observaciones</th>
-                    </tr>
-                </thead>
-                <tbody id="tablaRefinadoAceite">
-                    <tr><td colspan="5" class="text-center">Cargando aceite refinado...</td></tr>
-                </tbody>
-            </table>
-            <div id="totalesRefinado" style="margin-top:15px; font-size:14px; color:#343a40;"></div>
         </div>
 
         <div style="text-align: center; margin-top: 10px; padding: 15px; border-top: 1px solid #ddd;">
@@ -277,6 +329,7 @@
                 const datos = await res.json();
                 entradasGlobal = Array.isArray(datos) ? datos : [];
                 renderEntradas();
+                actualizarContadores();
             } catch (err) {
                 console.error(err);
                 document.getElementById('tablaEntradas').innerHTML = '<tr><td colspan="6" class="text-center" style="color:red;">Error al cargar las entradas.</td></tr>';
@@ -320,6 +373,7 @@
                 const datos = await res.json();
                 salidasGlobal = Array.isArray(datos) ? datos : [];
                 renderSalidas();
+                actualizarContadores();
             } catch (err) {
                 console.error(err);
                 document.getElementById('tablaSalidas').innerHTML = '<tr><td colspan="7" class="text-center" style="color:red;">Error al cargar las salidas.</td></tr>';
@@ -370,6 +424,7 @@
                 const datos = await res.json();
                 informesGlobal = Array.isArray(datos) ? datos : [];
                 renderProduccion();
+                actualizarContadores();
             } catch (err) {
                 console.error(err);
                 document.getElementById('tablaProduccion').innerHTML = '<tr><td colspan="6" class="text-center" style="color:red;">Error al cargar la producción.</td></tr>';
@@ -391,6 +446,7 @@
                 const datos = await res.json();
                 historialCierresGlobal = Array.isArray(datos) ? datos : [];
                 renderCierresAud(historialCierresGlobal);
+                actualizarContadores();
             } catch (err) {
                 console.error(err);
                 document.getElementById('contenedorReporteCierre').innerHTML = '<p class="text-center" style="color:red;">Error al cargar el historial de cierres.</p>';
@@ -517,6 +573,7 @@
                 aviso.className = 'aviso aviso-warn';
                 const turno = document.getElementById('filtroRefinadoTurno').value || 'DIA';
                 aviso.innerHTML = '📋 No existe reporte (turno ' + turno + ') para esta fecha. Ir a <a href="refinado.html" style="color:#856404; font-weight:bold;">refinado.html</a> para crearlo.';
+                actualizarContadores();
                 return;
             }
 
@@ -562,6 +619,7 @@
                 `<span class="total-refinado">🛢️ Aceite refinado: <b>${totalTM.toFixed(2)} TM</b></span>` +
                 (pm != null ? `<span class="total-refinado">📦 Producción para mañana: <b>${Number(pm) || 0} TM</b></span>` : '') +
                 `<span class="total-refinado">👤 Registrado por: <b>${reporte.usuario_registro || '-'}</b></span>`;
+            actualizarContadores();
         }
 
         async function cargarRefinado() {
@@ -607,6 +665,44 @@
             } finally {
                 guardBorrarSalidaAuditoria = false;
             }
+        }
+
+        // Paneles colapsables
+        function togglePanel(nombre) {
+            const cuerpo = document.getElementById('cuerpo-' + nombre);
+            const btn = document.getElementById('btn-' + nombre);
+            if (!cuerpo) return;
+            const abierto = cuerpo.classList.toggle('abierto');
+            cuerpo.style.maxHeight = abierto ? cuerpo.scrollHeight + 'px' : '0px';
+            if (btn) btn.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+        }
+
+        window.addEventListener('resize', function () {
+            document.querySelectorAll('.panel-cuerpo.abierto').forEach(function (c) {
+                c.style.maxHeight = c.scrollHeight + 'px';
+            });
+        });
+
+        // Contadores en los encabezados de los paneles
+        function actualizarContadores() {
+            const c1 = document.getElementById('contadorIngresosDespachos');
+            if (c1) c1.textContent = entradasGlobal.length + ' entradas · ' + salidasGlobal.length + ' salidas';
+            const c2 = document.getElementById('contadorProduccionCierre');
+            if (c2) c2.textContent = informesGlobal.length + ' producciones · ' + historialCierresGlobal.length + ' cierres';
+            const c3 = document.getElementById('contadorRefineria');
+            if (c3) {
+                const rep = refinadoActual;
+                const nIns = (rep && Array.isArray(rep.insumos)) ? rep.insumos.length : 0;
+                const nAce = (rep && Array.isArray(rep.aceite)) ? rep.aceite.length : 0;
+                c3.textContent = nIns + ' insumos · ' + nAce + ' lotes';
+            }
+        }
+
+        // Primer panel abierto por defecto
+        const cuerpoIngresos = document.getElementById('cuerpo-ingresos');
+        if (cuerpoIngresos) {
+            cuerpoIngresos.classList.add('abierto');
+            cuerpoIngresos.style.maxHeight = cuerpoIngresos.scrollHeight + 'px';
         }
 
         const fHoy = new Date();

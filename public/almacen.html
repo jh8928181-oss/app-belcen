@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestión de Inventario y Almacén - Belcen</title>
+    <link rel="stylesheet" href="/motion.css">
     <style>
         :root {
             --bg: #f2f2f7;
@@ -339,7 +340,7 @@
 
     <section class="modulo activo" id="modulo-pendientes">
     <!-- 1. PENDIENTES DE VIGILANCIA & CONFORMIDAD -->
-    <div class="table-container sec-ambar">
+    <div class="table-container sec-ambar reveal">
         <div class="tarjeta-header">
             <h3 class="h-ambar">NOTIFICACIONES Y PENDIENTES DE VIGILANCIA (CONFORMIDAD)</h3>
             <span id="pendientesContador" class="pend-chip">🔔 0 PENDIENTES</span>
@@ -365,7 +366,7 @@
 
     <section class="modulo" id="modulo-ingresos">
     <!-- 2. REGISTRO GENERAL DE INGRESOS A ALMACÉN -->
-    <div class="table-container sec-teal">
+    <div class="table-container sec-teal reveal">
         <h3 class="h3-teal">REGISTRO GENERAL DE INGRESOS A ALMACÉN</h3>
         
         <div class="barra-filtros">
@@ -397,7 +398,7 @@
     <section class="modulo" id="modulo-stock">
     <div class="modulo-dos-col">
     <!-- 3. PRODUCTO TERMINADO (SOLO > 0) + BOTÓN DE ADICIÓN MANUAL MÚLTIPLE -->
-    <div class="table-container sec-verde">
+    <div class="table-container sec-verde reveal">
         <div class="tarjeta-header">
             <h3 class="h-verde">STOCK DE PRODUCTO TERMINADO (CAJAS LISTAS)</h3>
             <button onclick="abrirModalAgregarPT()" class="btn-agregar btn-agregar-verde">➕ Agregar Producto Manual</button>
@@ -419,7 +420,7 @@
     </div>
 
     <!-- 4. INVENTARIO DE INSUMOS CON FILTROS -->
-    <div class="table-container sec-azul">
+    <div class="table-container sec-azul reveal">
         <div class="tarjeta-header">
             <h3 class="h-azul">INVENTARIO DE INSUMOS Y MATERIA PRIMA</h3>
             <button onclick="abrirModalNuevoProducto()" class="btn-agregar btn-agregar-azul">➕ Agregar Nuevo Producto</button>
@@ -464,7 +465,7 @@
     <section class="modulo" id="modulo-salidas">
     <div class="modulo-dos-col">
     <!-- 5. REGISTRO DE SALIDAS (PDF + MANUAL) -->
-    <div class="table-container sec-rojo">
+    <div class="table-container sec-rojo reveal">
         <h3 class="h3-rojo">REGISTRO DE SALIDAS DE ALMACÉN</h3>
         
         <div id="modoEdicionBar" class="barra-edicion"></div>
@@ -558,7 +559,7 @@
     </div>
 
     <!-- 6. HISTORIAL DE SALIDAS AGRUPADO POR FECHA -->
-    <div class="table-container sec-gris">
+    <div class="table-container sec-gris reveal">
         <h3 class="h3-gris">HISTORIAL DE SALIDAS REGISTRADAS</h3>
         
         <div class="fila-filtro-salida">
@@ -724,6 +725,7 @@
         </div>
     </div>
 
+    <script src="/motion.js" defer></script>
     <script src="/auth-client.js"></script>
     <script>
         // 🔒 Control estricto de roles (Seguridad de Planta)

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Auditoría - Corporación Belcen</title>
+    <link rel="stylesheet" href="/motion.css">
     <style>
         :root {
             --bg: #f2f2f7;
@@ -249,7 +250,7 @@
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="container reveal">
 
         <header class="page-head">
             <h1 class="page-titulo">Auditoría</h1>
@@ -491,6 +492,7 @@
         </footer>
     </div>
 
+    <script src="/motion.js" defer></script>
     <script src="/auth-client.js"></script>
     <script>
         const rolUsuario = localStorage.getItem('rol_actual') || localStorage.getItem('rol_usuario');

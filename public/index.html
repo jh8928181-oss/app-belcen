@@ -6,157 +6,321 @@
     <title>Acceso ERP - Corporación Belcen</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/motion.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
-        body {
-            font-family: 'Poppins', Arial, sans-serif;
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: radial-gradient(circle at 20% 20%, #1b2a6b 0%, #0f1740 45%, #05081f 100%);
-            color: #fff;
-            position: relative;
-            overflow: hidden;
-            padding: 16px;
+        :root {
+            --azul: #2563eb;
+            --violeta: #7c3aed;
+            --cian: #38bdf8;
+            --texto: #1c2434;
+            --texto2: #5b6472;
         }
 
-        .blob {
+        body {
+            font-family: 'Poppins', Arial, sans-serif;
+            color: var(--texto);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ================= SHELL ================= */
+        .login-shell {
+            display: grid;
+            grid-template-columns: 1.05fr 1fr;
+            min-height: 100vh;
+        }
+
+        /* ================= PANEL DE MARCA ================= */
+        .brand-panel {
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            background:
+                radial-gradient(1200px 820px at 85% -10%, rgba(124, 58, 237, 0.55) 0%, transparent 55%),
+                radial-gradient(1000px 700px at -10% 110%, rgba(14, 165, 233, 0.5) 0%, transparent 52%),
+                linear-gradient(165deg, #090d26 0%, #141a4e 45%, #1b2a6b 72%, #31246b 100%);
+            padding: 56px 48px;
+        }
+
+        .aurora {
             position: absolute;
             border-radius: 50%;
             filter: blur(70px);
             opacity: 0.55;
             z-index: 0;
-            animation: float 14s ease-in-out infinite alternate;
+            pointer-events: none;
         }
-        .blob-1 {
-            width: 420px; height: 420px;
-            left: -90px; top: -110px;
-            background: radial-gradient(circle, rgba(103, 58, 183, 0.9), rgba(103, 58, 183, 0) 70%);
+        .a1 {
+            width: 460px; height: 460px;
+            left: -120px; top: -100px;
+            background: radial-gradient(circle, rgba(56, 189, 248, 0.85), transparent 70%);
+            animation: deriva 16s ease-in-out infinite alternate;
         }
-        .blob-2 {
-            width: 500px; height: 500px;
-            right: -120px; bottom: -140px;
-            background: radial-gradient(circle, rgba(0, 188, 212, 0.8), rgba(0, 188, 212, 0) 70%);
-            animation-delay: 3s;
+        .a2 {
+            width: 520px; height: 520px;
+            right: -140px; bottom: -160px;
+            background: radial-gradient(circle, rgba(124, 58, 237, 0.9), transparent 70%);
+            animation: deriva 21s ease-in-out infinite alternate-reverse;
         }
-        .blob-3 {
-            width: 340px; height: 340px;
-            top: 30%; left: 55%;
-            background: radial-gradient(circle, rgba(63, 81, 181, 0.85), rgba(63, 81, 181, 0) 70%);
-            animation-delay: 6s;
+        .a3 {
+            width: 360px; height: 360px;
+            top: 30%; right: 18%;
+            background: radial-gradient(circle, rgba(14, 165, 233, 0.8), transparent 70%);
+            animation: deriva 26s ease-in-out infinite alternate;
+        }
+        @keyframes deriva {
+            0%   { transform: translate(0, 0) scale(1); }
+            50%  { transform: translate(40px, -35px) scale(1.12); }
+            100% { transform: translate(-30px, 30px) scale(0.94); }
         }
 
-        @keyframes float {
-            0%   { transform: translateY(0) translateX(0) scale(1); }
-            50%  { transform: translateY(40px) translateX(30px) scale(1.12); }
-            100% { transform: translateY(-30px) translateX(-20px) scale(0.95); }
-        }
-
-        .polvo {
+        #particulas {
             position: absolute;
             inset: 0;
+            width: 100%;
+            height: 100%;
             z-index: 1;
-            background-image:
-                radial-gradient(rgba(255,255,255,0.14) 1px, transparent 1px);
-            background-size: 34px 34px;
-            opacity: 0.5;
             pointer-events: none;
         }
 
-        .login-wrap {
+        .brand-contenido {
             position: relative;
             z-index: 2;
+            max-width: 440px;
             width: 100%;
-            max-width: 430px;
+            display: flex;
+            flex-direction: column;
+            gap: 22px;
         }
 
-        .glass-card {
-            background: rgba(255, 255, 255, 0.08);
-            backdrop-filter: blur(20px) saturate(150%);
-            -webkit-backdrop-filter: blur(20px) saturate(150%);
-            border: 1px solid rgba(255, 255, 255, 0.18);
-            border-radius: 22px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.38);
-            padding: 38px 34px 32px;
+        /* Logo monograma con anillos */
+        .logo-monograma {
+            position: relative;
+            width: 92px;
+            height: 92px;
+            flex: 0 0 92px;
         }
-
-        .brand {
-            text-align: center;
-            margin-bottom: 26px;
+        .logo-anillo {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            pointer-events: none;
         }
-        .brand-logo {
-            width: 64px;
-            height: 64px;
-            margin: 0 auto 12px;
-            border-radius: 18px;
-            background: linear-gradient(135deg, #2196f3, #9c27b0);
+        .anillo-1 {
+            background: conic-gradient(from 0deg, #38bdf8, #818cf8, #f0abfc, #38bdf8);
+            -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+                    mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+            animation: girar 9s linear infinite;
+            opacity: 0.95;
+        }
+        .anillo-2 {
+            inset: 12px;
+            background: conic-gradient(from 180deg, rgba(255, 255, 255, 0.9), rgba(56, 189, 248, 0.6), rgba(255, 255, 255, 0.9));
+            -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4px));
+                    mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4px));
+            animation: girar 12s linear infinite reverse;
+            opacity: 0.7;
+        }
+        @keyframes girar { to { transform: rotate(360deg); } }
+        .logo-letra {
+            position: absolute;
+            inset: 18px;
+            border-radius: 26px;
+            background: linear-gradient(135deg, #2563eb, #7c3aed);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: 700;
-            font-size: 26px;
+            font-size: 38px;
+            font-weight: 800;
             color: #fff;
-            box-shadow: 0 8px 22px rgba(33, 150, 243, 0.4);
-        }
-        .brand h2 {
-            font-size: 21px;
-            font-weight: 600;
-            letter-spacing: 0.3px;
-        }
-        .brand p {
-            font-size: 13px;
-            color: rgba(255, 255, 255, 0.7);
-            margin-top: 4px;
-            font-weight: 300;
+            box-shadow: 0 16px 38px rgba(37, 99, 235, 0.55);
         }
 
-        .form-group {
-            margin-bottom: 16px;
+        .brand-titulo {
+            font-size: 30px;
+            font-weight: 700;
+            line-height: 1.2;
+            letter-spacing: 0.2px;
         }
+        .brand-titulo span {
+            background: linear-gradient(90deg, #38bdf8, #a78bfa, #f0abfc);
+            -webkit-background-clip: text;
+                    background-clip: text;
+            color: transparent;
+            animation: brilloTexto 6s ease-in-out infinite;
+            background-size: 200% auto;
+        }
+        @keyframes brilloTexto {
+            0%, 100% { background-position: 0% center; }
+            50%      { background-position: 100% center; }
+        }
+
+        .brand-sub {
+            font-size: 14px;
+            font-weight: 300;
+            color: rgba(255, 255, 255, 0.72);
+            line-height: 1.6;
+        }
+
+        .brand-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .chip {
+            background: rgba(255, 255, 255, 0.09);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            padding: 8px 14px;
+            border-radius: 999px;
+            font-size: 12.5px;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.25s, border-color 0.25s;
+        }
+        .chip:hover { transform: translateY(-2px); background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.35); }
+
+        .brand-pie {
+            margin-top: 14px;
+            padding-top: 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.12);
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.5);
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-weight: 300;
+        }
+        .seguridad-punto {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .seguridad-punto::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #34d399;
+            box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6);
+            animation: pulsoSeg 2.4s ease-out infinite;
+            display: inline-block;
+        }
+        @keyframes pulsoSeg {
+            0%   { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55); }
+            70%  { box-shadow: 0 0 0 10px rgba(52, 211, 153, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+        }
+
+        /* ================= PANEL DEL FORMULARIO ================= */
+        .form-panel {
+            background: linear-gradient(180deg, #edf0f8 0%, #f7f8fc 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 48px 24px;
+            position: relative;
+        }
+
+        .form-centro {
+            width: 100%;
+            max-width: 420px;
+        }
+
+        .login-card {
+            background: #fff;
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            border-radius: 24px;
+            box-shadow: 0 24px 60px rgba(23, 31, 71, 0.14);
+            padding: 38px 34px 30px;
+        }
+
+        .login-head { text-align: center; margin-bottom: 24px; }
+        .mini-logo {
+            width: 52px;
+            height: 52px;
+            margin: 0 auto 14px;
+            border-radius: 16px;
+            background: linear-gradient(135deg, #2563eb, #7c3aed);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: 800;
+            color: #fff;
+            box-shadow: 0 10px 24px rgba(37, 99, 235, 0.4);
+        }
+        .login-head h2 { font-size: 22px; font-weight: 700; letter-spacing: 0.2px; }
+        .login-head p { font-size: 13px; color: var(--texto2); margin-top: 6px; font-weight: 400; }
+
+        .form-group { margin-bottom: 16px; }
 
         label {
             display: block;
             font-size: 13px;
-            font-weight: 500;
-            color: rgba(255, 255, 255, 0.85);
+            font-weight: 600;
+            color: var(--texto);
             margin-bottom: 7px;
-            letter-spacing: 0.2px;
         }
 
-        .input-wrap {
-            position: relative;
-        }
-        .input-wrap .icono {
+        .input-wrap { position: relative; }
+        .input-wrap .ico {
             position: absolute;
-            left: 14px;
+            left: 15px;
             top: 50%;
             transform: translateY(-50%);
-            color: rgba(255, 255, 255, 0.55);
-            font-size: 16px;
+            width: 19px;
+            height: 19px;
+            color: #9aa3b5;
             pointer-events: none;
         }
 
         input {
             width: 100%;
-            padding: 13px 14px 13px 44px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.22);
+            padding: 13px 46px 13px 44px;
+            background: #fff;
+            border: 1px solid #dbe0ee;
             border-radius: 12px;
-            color: #fff;
+            color: var(--texto);
             font-size: 14px;
             font-family: inherit;
-            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
             outline: none;
+            box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+            transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
         }
-        input::placeholder { color: rgba(255, 255, 255, 0.45); }
+        input::placeholder { color: #aab2c3; }
         input:focus {
-            background: rgba(255, 255, 255, 0.16);
-            border-color: rgba(0, 188, 212, 0.9);
-            box-shadow: 0 0 0 3px rgba(0, 188, 212, 0.22);
+            border-color: var(--azul);
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.14);
         }
+
+        .ojo {
+            position: absolute;
+            right: 9px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            padding: 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            color: #98a1b3;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s, background 0.2s;
+        }
+        .ojo:hover { color: var(--azul); background: rgba(37, 99, 235, 0.08); }
+        .ojo svg { width: 19px; height: 19px; }
+        .ojo .ojo-off { display: none; }
 
         .opciones {
             display: flex;
@@ -167,9 +331,10 @@
         .recordar {
             display: inline-flex;
             align-items: center;
-            gap: 8px;
+            gap: 9px;
             font-size: 13px;
-            color: rgba(255, 255, 255, 0.8);
+            font-weight: 500;
+            color: var(--texto2);
             cursor: pointer;
             user-select: none;
         }
@@ -180,12 +345,12 @@
             height: 0;
         }
         .check-caja {
-            width: 19px;
-            height: 19px;
-            flex: 0 0 19px;
-            border: 1px solid rgba(255, 255, 255, 0.35);
-            border-radius: 6px;
-            background: rgba(255, 255, 255, 0.08);
+            width: 20px;
+            height: 20px;
+            flex: 0 0 20px;
+            border: 1.5px solid #c6cddd;
+            border-radius: 7px;
+            background: #fff;
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -202,113 +367,246 @@
             margin-top: -2px;
         }
         .recordar input:checked + .check-caja {
-            background: linear-gradient(135deg, #2196f3, #9c27b0);
+            background: linear-gradient(135deg, #2563eb, #7c3aed);
             border-color: transparent;
-            box-shadow: 0 4px 12px rgba(33, 150, 243, 0.4);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+            animation: checkPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
         .recordar input:checked + .check-caja::after { transform: rotate(45deg) scale(1); }
+        @keyframes checkPop {
+            0%   { transform: scale(0.72); }
+            60%  { transform: scale(1.12); }
+            100% { transform: scale(1); }
+        }
 
         .btn-ingresar {
+            position: relative;
+            overflow: hidden;
             width: 100%;
             padding: 14px;
             border: none;
             border-radius: 12px;
-            background: linear-gradient(135deg, #00bcd4, #3f51b5);
+            background: linear-gradient(135deg, #2563eb, #7c3aed);
             color: #fff;
             font-family: inherit;
             font-size: 15px;
             font-weight: 600;
             letter-spacing: 0.4px;
             cursor: pointer;
-            transition: transform 0.15s, box-shadow 0.2s, filter 0.2s;
-            box-shadow: 0 8px 22px rgba(0, 188, 212, 0.35);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 10px 24px rgba(37, 99, 235, 0.38);
+            transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s, filter 0.25s;
+        }
+        .btn-ingresar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -90%;
+            width: 45%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+            transform: skewX(-20deg);
+            transition: left 0.55s ease;
         }
         .btn-ingresar:hover:not(:disabled) {
             transform: translateY(-2px);
-            box-shadow: 0 12px 28px rgba(0, 188, 212, 0.45);
-            filter: brightness(1.08);
+            box-shadow: 0 14px 32px rgba(37, 99, 235, 0.5);
+            filter: brightness(1.06);
         }
-        .btn-ingresar:active:not(:disabled) { transform: translateY(0); }
-        .btn-ingresar:disabled { opacity: 0.65; cursor: not-allowed; }
+        .btn-ingresar:hover:not(:disabled)::after { left: 130%; }
+        .btn-ingresar:active:not(:disabled) { transform: translateY(0) scale(0.98); }
+        .btn-ingresar:disabled { cursor: not-allowed; opacity: 0.75; }
 
+        .spinner {
+            display: none;
+            width: 19px;
+            height: 19px;
+            border: 2.5px solid rgba(255, 255, 255, 0.35);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin360 0.7s linear infinite;
+        }
+        .btn-ingresar.cargando .spinner { display: block; }
+        .btn-ingresar.cargando .btn-txt { opacity: 0; position: absolute; }
         .error-msg {
-            color: #ff80ab;
+            color: #e11d48;
             text-align: center;
             margin-top: 16px;
             font-size: 13px;
             font-weight: 500;
-            min-height: 18px;
+            min-height: 20px;
+        }
+        .error-msg.shake { animation: shake 0.4s ease; }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-6px); }
+            40% { transform: translateX(6px); }
+            60% { transform: translateX(-4px); }
+            80% { transform: translateX(4px); }
         }
 
-        .footer-login {
+        .form-pie {
             text-align: center;
             margin-top: 18px;
             font-size: 12px;
-            color: rgba(255, 255, 255, 0.45);
-            font-weight: 300;
+            color: #9aa3b5;
+            font-weight: 400;
         }
 
+        /* ================= ENTRADA ESCALONADA ================= */
+        .fade-item {
+            opacity: 0;
+            animation: fadeUp 0.65s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+            animation-delay: calc(var(--i, 0) * 90ms);
+        }
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(18px); }
+            to   { opacity: 1; transform: none; }
+        }
+        .login-card { animation: fadeUp 0.7s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+        /* ================= RESPONSIVE ================= */
+        @media (max-width: 1000px) {
+            .login-shell { grid-template-columns: 1fr; }
+            .brand-panel { padding: 26px 24px; }
+            .brand-contenido {
+                flex-direction: row;
+                align-items: center;
+                gap: 18px;
+                max-width: 720px;
+            }
+            .brand-titulo { font-size: 24px; }
+            .brand-chips { display: none; }
+            .brand-pie { display: none; }
+            .logo-monograma { width: 68px; height: 68px; flex-basis: 68px; }
+            .logo-letra { inset: 13px; font-size: 28px; border-radius: 20px; }
+            .logo-anillo { }
+            .anillo-2 { inset: 9px; }
+            .form-panel { min-height: 560px; }
+        }
         @media (max-width: 480px) {
-            body { padding: 12px; }
-            .glass-card { padding: 28px 22px 24px; border-radius: 18px; }
-            .brand h2 { font-size: 18px; }
-            .blob-1 { width: 260px; height: 260px; }
-            .blob-2 { width: 300px; height: 300px; }
-            .blob-3 { width: 220px; height: 220px; }
+            .form-panel { padding: 24px 14px; }
+            .login-card { padding: 28px 22px 24px; border-radius: 20px; }
+            .brand-titulo span { display: block; }
         }
 
         @media (prefers-reduced-motion: reduce) {
-            .blob { animation: none; }
+            .aurora { animation: none; }
+            .anillo-1, .anillo-2 { animation: none; }
+            .brand-titulo span { animation: none; }
+            .seguridad-punto::before { animation: none; }
+            .btn-ingresar::after { display: none; }
+            .recordar input:checked + .check-caja { animation: none; }
+            .error-msg.shake { animation: none; }
+            .fade-item, .login-card { animation: none; opacity: 1; transform: none; }
         }
     </style>
 </head>
 <body>
-    <div class="blob blob-1"></div>
-    <div class="blob blob-2"></div>
-    <div class="blob blob-3"></div>
-    <div class="polvo"></div>
+    <div class="login-shell">
 
-    <div class="login-wrap">
-        <div class="glass-card">
-            <div class="brand">
-                <div class="brand-logo">B</div>
-                <h2>Corporación Belcen S.A.C.</h2>
-                <p>Acceso al Sistema ERP</p>
+        <!-- ===== PANEL DE MARCA ===== -->
+        <aside class="brand-panel" id="brandPanel">
+            <canvas id="particulas" aria-hidden="true"></canvas>
+            <div class="aurora a1"></div>
+            <div class="aurora a2"></div>
+            <div class="aurora a3"></div>
+
+            <div class="brand-contenido">
+                <div class="logo-monograma fade-item" style="--i:0">
+                    <div class="logo-anillo anillo-1"></div>
+                    <div class="logo-anillo anillo-2"></div>
+                    <span class="logo-letra">B</span>
+                </div>
+                <div>
+                    <h1 class="brand-titulo fade-item" style="--i:1">Corporación <span>Belcen</span> S.A.C.</h1>
+                    <p class="brand-sub fade-item" style="--i:2">Sistema ERP interno · Control de inventario, producción y almacén en tiempo real.</p>
+                </div>
+                <div class="brand-chips">
+                    <span class="chip fade-item" style="--i:3">🛡️ Vigilancia</span>
+                    <span class="chip fade-item" style="--i:4">📦 Almacén</span>
+                    <span class="chip fade-item" style="--i:5">🏭 Soplado</span>
+                    <span class="chip fade-item" style="--i:6">🧴 Envasado</span>
+                    <span class="chip fade-item" style="--i:7">📋 Auditoría</span>
+                </div>
+                <div class="brand-pie fade-item" style="--i:8">
+                    <span class="seguridad-punto">Conexión segura · Sesiones protegidas</span>
+                    <span>© 2026 Corporación Belcen S.A.C.</span>
+                </div>
             </div>
+        </aside>
 
-            <form id="loginForm">
-                <div class="form-group">
-                    <label for="usuario">Usuario</label>
-                    <div class="input-wrap">
-                        <span class="icono">👤</span>
-                        <input type="text" id="usuario" placeholder="Ingrese su usuario" autocomplete="username" required>
+        <!-- ===== PANEL DEL FORMULARIO ===== -->
+        <main class="form-panel">
+            <div class="form-centro">
+                <div class="login-card">
+                    <div class="login-head">
+                        <div class="mini-logo fade-item" style="--i:0">B</div>
+                        <h2 class="fade-item" style="--i:1">Iniciar sesión</h2>
+                        <p class="fade-item" style="--i:2">Ingresa tus credenciales para acceder al sistema.</p>
                     </div>
-                </div>
-                <div class="form-group">
-                    <label for="password">Contraseña</label>
-                    <div class="input-wrap">
-                        <span class="icono">🔒</span>
-                        <input type="password" id="password" placeholder="Ingrese su contraseña" autocomplete="current-password" required>
-                    </div>
-                </div>
 
-                <div class="opciones">
-                    <label class="recordar">
-                        <input type="checkbox" id="recordar">
-                        <span class="check-caja"></span>
-                        Recordar contraseña
-                    </label>
-                </div>
+                    <form id="loginForm" novalidate>
+                        <div class="form-group fade-item" style="--i:3">
+                            <label for="usuario">Usuario</label>
+                            <div class="input-wrap">
+                                <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                    <circle cx="12" cy="7" r="4"></circle>
+                                </svg>
+                                <input type="text" id="usuario" placeholder="Ej. almacen1" autocomplete="username" required>
+                            </div>
+                        </div>
 
-                <button type="submit" id="btnIngresar" class="btn-ingresar">Ingresar al Sistema</button>
-            </form>
-            <div id="errorMsg" class="error-msg"></div>
-            <div class="footer-login">Corporación Belcen S.A.C. · ERP Interno</div>
-        </div>
+                        <div class="form-group fade-item" style="--i:4">
+                            <label for="password">Contraseña</label>
+                            <div class="input-wrap">
+                                <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="3" y="11" width="18" height="11" rx="2"></rect>
+                                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                                </svg>
+                                <input type="password" id="password" placeholder="Ingrese su contraseña" autocomplete="current-password" required>
+                                <button type="button" class="ojo" id="btnOjo" aria-label="Mostrar u ocultar contraseña" tabindex="-1">
+                                    <svg class="ojo-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                        <circle cx="12" cy="12" r="3"></circle>
+                                    </svg>
+                                    <svg class="ojo-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"></path>
+                                        <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"></path>
+                                        <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"></path>
+                                        <line x1="1" y1="1" x2="23" y2="23"></line>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="opciones fade-item" style="--i:5">
+                            <label class="recordar">
+                                <input type="checkbox" id="recordar">
+                                <span class="check-caja"></span>
+                                Recordar contraseña
+                            </label>
+                        </div>
+
+                        <button type="submit" id="btnIngresar" class="btn-ingresar fade-item" style="--i:6">
+                            <span class="spinner" aria-hidden="true"></span>
+                            <span class="btn-txt">Ingresar al Sistema</span>
+                        </button>
+                    </form>
+                    <div id="errorMsg" class="error-msg fade-item" style="--i:7" role="alert"></div>
+                    <div class="form-pie fade-item" style="--i:8">Corporación Belcen S.A.C. · ERP Interno</div>
+                </div>
+            </div>
+        </main>
     </div>
 
+    <script src="/motion.js" defer></script>
     <script>
         (function () {
+            // Limpieza de sesión al entrar a la pantalla de login
             try {
                 localStorage.removeItem('token_actual');
                 localStorage.removeItem('usuario_actual');
@@ -331,6 +629,103 @@
             } catch (e) { }
         })();
 
+        // Mostrar / ocultar contraseña
+        (function () {
+            const btnOjo = document.getElementById('btnOjo');
+            const pass = document.getElementById('password');
+            btnOjo.addEventListener('click', function () {
+                const oculto = pass.type === 'password';
+                pass.type = oculto ? 'text' : 'password';
+                btnOjo.querySelector('.ojo-up').style.display = oculto ? 'none' : 'block';
+                btnOjo.querySelector('.ojo-off').style.display = oculto ? 'block' : 'none';
+            });
+        })();
+
+        // Partículas interactivas del panel de marca
+        (function () {
+            const canvas = document.getElementById('particulas');
+            const reducido = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            if (!canvas || reducido) return;
+
+            const ctx = canvas.getContext('2d');
+            let particulas = [];
+            let animando;
+            let mouseX = 0, mouseY = 0;
+            const panel = document.getElementById('brandPanel');
+
+            function redimensionar() {
+                const rect = panel.getBoundingClientRect();
+                canvas.width = rect.width * Math.min(window.devicePixelRatio || 1, 2);
+                canvas.height = rect.height * Math.min(window.devicePixelRatio || 1, 2);
+                canvas.style.width = rect.width + 'px';
+                canvas.style.height = rect.height + 'px';
+                crearParticulas();
+            }
+
+            function crearParticulas() {
+                const area = canvas.width * canvas.height;
+                const total = Math.min(70, Math.floor(area / 28000));
+                particulas = [];
+                for (let i = 0; i < total; i++) {
+                    particulas.push({
+                        x: Math.random() * canvas.width,
+                        y: Math.random() * canvas.height,
+                        r: Math.random() * 2 + 0.8,
+                        vx: (Math.random() - 0.5) * 0.25,
+                        vy: (Math.random() - 0.5) * 0.25,
+                        base: 0.35 + Math.random() * 0.45
+                    });
+                }
+            }
+
+            function paso() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                const escala = Math.min(window.devicePixelRatio || 1, 2);
+                for (const p of particulas) {
+                    const dx = mouseX - p.x;
+                    const dy = mouseY - p.y;
+                    const d = Math.hypot(dx, dy);
+                    if (d > 0 && d < 160 * escala) {
+                        const fuerza = (1 - d / (160 * escala)) * 0.5;
+                        p.vx -= (dx / d) * fuerza * 0.15;
+                        p.vy -= (dy / d) * fuerza * 0.15;
+                    }
+                    p.vx *= 0.98;
+                    p.vy *= 0.98;
+                    p.x += p.vx;
+                    p.y += p.vy;
+
+                    if (p.x < 0) p.x = canvas.width;
+                    if (p.x > canvas.width) p.x = 0;
+                    if (p.y < 0) p.y = canvas.height;
+                    if (p.y > canvas.height) p.y = 0;
+
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(255,255,255,' + p.base + ')';
+                    ctx.fill();
+                }
+                animando = requestAnimationFrame(paso);
+            }
+
+            panel.addEventListener('mousemove', function (e) {
+                mouseX = e.offsetX;
+                mouseY = e.offsetY;
+            });
+            window.addEventListener('resize', redimensionar);
+            document.addEventListener('visibilitychange', function () {
+                if (document.hidden) {
+                    cancelAnimationFrame(animando);
+                } else if (!animando) {
+                    paso();
+                }
+            });
+
+            redimensionar();
+            paso();
+        })();
+
+        // === LÓGICA DE LOGIN (sin cambios respecto al original) ===
         let enviandoLogin = false;
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -341,6 +736,7 @@
             const recordar = document.getElementById('recordar').checked;
             const errorDiv = document.getElementById('errorMsg');
             errorDiv.textContent = '';
+            errorDiv.classList.remove('shake');
 
             const recordarClave = () => {
                 try {
@@ -354,7 +750,16 @@
 
             enviandoLogin = true;
             btn.disabled = true;
-            btn.textContent = 'Ingresando...';
+            btn.classList.add('cargando');
+
+            const mostrarError = (mensaje) => {
+                errorDiv.textContent = mensaje;
+                errorDiv.classList.remove('shake');
+                // fuerza reflow para reiniciar la animación
+                void errorDiv.offsetWidth;
+                errorDiv.classList.add('shake');
+            };
+
             try {
                 const response = await fetch('/api/login', {
                     method: 'POST',
@@ -401,15 +806,15 @@
                             window.location.href = 'dashboard.html';
                     }
                 } else {
-                    errorDiv.textContent = data.mensaje || 'Usuario o contraseña incorrectos.';
+                    mostrarError(data.mensaje || 'Usuario o contraseña incorrectos.');
                 }
             } catch (err) {
                 console.error(err);
-                errorDiv.textContent = 'Error de conexión con el servidor.';
+                mostrarError('Error de conexión con el servidor.');
             } finally {
                 enviandoLogin = false;
                 btn.disabled = false;
-                btn.textContent = 'Ingresar al Sistema';
+                btn.classList.remove('cargando');
             }
         });
     </script>

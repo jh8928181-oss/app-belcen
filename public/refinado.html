@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reporte de Refinado - Corporación Belcen</title>
+    <link rel="stylesheet" href="/motion.css">
     <style>
         :root {
             --bg: #f2f2f7;
@@ -202,7 +203,7 @@
 <body>
     <div class="container">
 
-        <div class="tarjeta borde-teal" style="margin-bottom: 20px;">
+        <div class="tarjeta borde-teal reveal" style="margin-bottom: 20px;">
             <h1>🏭 REPORTE DE CONTROL E INVENTARIO DE REFINERÍA</h1>
             <p class="sub">Corporación Belcen S.A.C. — Planta de Refinado de Aceite de Soya</p>
 
@@ -231,7 +232,7 @@
         </div>
 
         <!-- SECCIÓN 1: STOCK DE INSUMOS DE REFINADO -->
-        <div class="tarjeta borde-teal">
+        <div class="tarjeta borde-teal reveal">
             <h3>🛢️ STOCK DE INSUMOS DE REFINADO</h3>
 
             <div class="aviso aviso-info">ℹ️ <b>Considerar stock de crudo del tanque más en línea</b> para calcular la real disponibilidad de aceite crudo.</div>
@@ -261,7 +262,7 @@
         </div>
 
         <!-- SECCIÓN 2: ACEITE REFINADO DE SOYA EN PLANTA -->
-        <div class="tarjeta borde-ambar">
+        <div class="tarjeta borde-ambar reveal">
             <h3 class="aceite">🛢️ ACEITE REFINADO DE SOYA EN PLANTA</h3>
 
             <div class="tabla-wrap">
@@ -313,6 +314,7 @@
         </div>
     </div>
 
+    <script src="/motion.js" defer></script>
     <script src="/auth-client.js"></script>
     <script>
         const rolUsuario = localStorage.getItem('rol_actual') || localStorage.getItem('rol_usuario');

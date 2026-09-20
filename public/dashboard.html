@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#0f172a">
     <title>Dashboard General - Corporación Belcen</title>
+    <link rel="stylesheet" href="/motion.css">
     <style>
         :root {
             --bg1: #0f172a;
@@ -417,6 +418,7 @@
         </footer>
     </div>
 
+    <script src="/motion.js" defer></script>
     <script src="/auth-client.js"></script>
     <script>
         // Control estricto de roles para el Dashboard General
@@ -468,6 +470,16 @@
 
         // Inventario
         let inventarioGlobal = [];
+        let kpisInicializados = false;
+
+        function setearKpi(id, valor, decimales) {
+            const el = document.getElementById(id);
+            if (!kpisInicializados && typeof window.animarConteo === 'function') {
+                window.animarConteo(el, valor, { duracion: 800, decimales: decimales });
+            } else {
+                el.textContent = Number(valor).toFixed(decimales);
+            }
+        }
 
         function formatearNumero(valor) {
             const n = Number(valor) || 0;
@@ -518,10 +530,12 @@
                 const categorias = new Set(inventarioGlobal.map(a => (a.categoria || 'General').trim().toLowerCase()));
                 const stockTotal = inventarioGlobal.reduce((s, a) => s + (Number(a.stock) || 0), 0);
 
-                document.getElementById('kpiArticulos').textContent = inventarioGlobal.length;
-                document.getElementById('kpiBajoStock').textContent = bajoStock;
-                document.getElementById('kpiCategorias').textContent = categorias.size;
-                document.getElementById('kpiStock').textContent = formatearNumero(stockTotal);
+                setearKpi('kpiArticulos', inventarioGlobal.length, 0);
+                setearKpi('kpiBajoStock', bajoStock, 0);
+                setearKpi('kpiCategorias', categorias.size, 0);
+                const decStock = Number.isInteger(stockTotal) ? 0 : 2;
+                setearKpi('kpiStock', stockTotal, decStock);
+                kpisInicializados = true;
 
                 const ahora = new Date();
                 document.getElementById('ultimaActualizacion').textContent =

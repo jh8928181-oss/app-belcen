@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reporte de Soplado - Belcen</title>
+    <link rel="stylesheet" href="/motion.css">
     <style>
         :root {
             --bg: #f2f2f7;
@@ -165,7 +166,7 @@
     </style>
 </head>
 <body>
-    <div class="card estado-bar">
+    <div class="card estado-bar reveal">
         <div class="estado-info">
             <span id="pillEstadoSoplado" class="estado-pill parado">🔴 PARADO</span>
             <span id="totalesEstadoSoplado" class="estado-totales">Hoy: — botellas</span>
@@ -173,7 +174,7 @@
         <button id="btnCambiarEstadoSoplado" class="btn-estado" onclick="cambiarEstadoSoplado()">🟢 MARCAR EN MARCHA</button>
     </div>
 
-    <div class="card">
+    <div class="card reveal">
         <h3>REPORTE DE TURNO - SOPLADO</h3>
         
         <div class="info-receta">
@@ -235,6 +236,7 @@
         </div>
     </div>
 
+    <script src="/motion.js" defer></script>
     <script src="/auth-client.js"></script>
     <script>
         const rolUsuario = localStorage.getItem('rol_actual');

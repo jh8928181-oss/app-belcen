@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Base de Datos y Control de Planta - Belcen</title>
+    <link rel="stylesheet" href="/motion.css">
     <style>
         body { font-family: Arial, sans-serif; margin: 0; background-color: #f4f6f9; padding: 20px; color: #333; }
         .card { max-width: 1200px; margin: auto; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 25px; }
@@ -22,13 +23,13 @@
     </style>
 </head>
 <body>
-    <div class="card" style="border-top: 5px solid #007bff;">
+    <div class="card reveal" style="border-top: 5px solid #007bff;">
         <h2>📊 BASE DE DATOS Y CONTROL GENERAL DE PLANTA</h2>
         <p>Vista consolidada en tiempo real de inventarios, productos terminados y simulador inteligente de viabilidad de insumos.</p>
         <a href="dashboard.html" class="logout" id="linkDashboard">⬅ Volver al Dashboard General</a>
     </div>
 
-    <div class="card" style="border-top: 5px solid #17a2b8;">
+    <div class="card reveal" style="border-top: 5px solid #17a2b8;">
         <h3 style="color: #17a2b8; border-bottom: 2px solid #17a2b8;">🧮 SIMULADOR DE VIABILIDAD DE INSUMOS</h3>
         <div class="simulador-box">
             <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 15px;">
@@ -82,7 +83,7 @@
         </div>
     </div>
 
-    <div class="card" style="border-top: 5px solid #28a745;">
+    <div class="card reveal" style="border-top: 5px solid #28a745;">
         <h3 style="color: #28a745; border-bottom: 2px solid #28a745;">📦 STOCK DE PRODUCTO TERMINADO (CAJAS LISTAS)</h3>
         <table>
             <thead>
@@ -98,7 +99,7 @@
         </table>
     </div>
 
-    <div class="card" style="border-top: 5px solid #ffc107;">
+    <div class="card reveal" style="border-top: 5px solid #ffc107;">
         <h3 style="color: #b8860b; border-bottom: 2px solid #ffc107;">📋 INFORME DE PRODUCCIÓN</h3>
         <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 15px;">
             <div>
@@ -131,7 +132,7 @@
         </table>
     </div>
 
-    <div class="card" style="border-top: 5px solid #6c757d;">
+    <div class="card reveal" style="border-top: 5px solid #6c757d;">
         <h3 style="color: #495057; border-bottom: 2px solid #495057;">🛠️ INVENTARIO GENERAL DE INSUMOS Y MATERIA PRIMA</h3>
         <table>
             <thead>
@@ -149,6 +150,7 @@
         </table>
     </div>
 
+    <script src="/motion.js" defer></script>
     <script src="/auth-client.js"></script>
     <script>
         const rolUsuario = localStorage.getItem('rol_actual');

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reporte de Envasado - Belcen</title>
+    <link rel="stylesheet" href="/motion.css">
     <style>
         :root {
             --bg: #f2f2f7;
@@ -203,7 +204,7 @@
     <div class="container">
 
         <!-- BARRA DE ESTADO DE LÍNEA -->
-        <div class="card sec-azul estado-bar">
+        <div class="card sec-azul estado-bar reveal">
             <div class="estado-info">
                 <span id="pillEstadoEnvasado" class="estado-pill parado">🔴 PARADO</span>
                 <span id="totalesEstadoEnvasado" class="estado-totales">Hoy: — cajas · — TM · — reportes</span>
@@ -212,7 +213,7 @@
         </div>
 
         <!-- MENÚ PRINCIPAL -->
-        <div id="menuEnvasado" class="card sec-purp" style="text-align: center;">
+        <div id="menuEnvasado" class="card sec-purp reveal" style="text-align: center;">
             <h3 class="h3-purp">ENVASADO - MENÚ PRINCIPAL</h3>
             <p style="color: var(--texto2); margin-top: 10px;">Selecciona una opción para continuar:</p>
             <div class="menu-opciones">
@@ -338,6 +339,7 @@
         </div>
     </div>
 
+    <script src="/motion.js" defer></script>
     <script src="/auth-client.js"></script>
     <script>
         const rolUsuario = localStorage.getItem('rol_actual');

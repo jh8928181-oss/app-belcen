@@ -153,6 +153,7 @@
         @media (min-width: 1024px) {
             .modulo-dos-col { grid-template-columns: 1fr 1fr; }
         }
+        .modulo-stock-pila { grid-template-columns: 1fr; }
 
         .tabbar {
             display: none;
@@ -234,6 +235,11 @@
         .badge-stock-bajo { background: rgba(255, 59, 48, 0.14); color: #c0281e; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
         .badge-cumplido { background: rgba(52, 199, 89, 0.16); color: #1e8e3e; padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: 800; white-space: nowrap; }
         .badge-pendiente { background: rgba(255, 149, 0, 0.18); color: #8a5a00; padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: 800; white-space: nowrap; }
+
+        .sep-categoria td { background: #f0f1f4; color: var(--texto2); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.6px; padding: 8px 12px; border-bottom: none; }
+        @media (max-width: 520px) {
+            .sep-categoria td { font-size: 10px; padding: 6px 10px; letter-spacing: 0.4px; }
+        }
 
         .fila-filtro-salida { display: flex; gap: 15px; margin-bottom: 18px; align-items: center; flex-wrap: wrap; }
         .fila-filtro-salida label { font-weight: 700; }
@@ -396,7 +402,7 @@
     </section>
 
     <section class="modulo" id="modulo-stock">
-    <div class="modulo-dos-col">
+    <div class="modulo-dos-col modulo-stock-pila">
     <!-- 3. PRODUCTO TERMINADO (SOLO > 0) + BOTÓN DE ADICIÓN MANUAL MÚLTIPLE -->
     <div class="table-container sec-verde reveal">
         <div class="tarjeta-header">
@@ -1138,11 +1144,23 @@
 
         function mostrarInventarioAlmacen(data) {
             const tbody = document.getElementById('tablaInventarioAlmacen');
-            tbody.innerHTML = data.length === 0 ? `<tr><td colspan="5" class="text-center">No se encontraron artículos.</td></tr>` : '';
+            if (data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center">No se encontraron artículos.</td></tr>`;
+                return;
+            }
+            const grupos = {};
             data.forEach(item => {
-                const estado = item.estado || 'STOCK SUFICIENTE';
-                const esSuficiente = estado === 'STOCK SUFICIENTE';
-                tbody.innerHTML += `<tr><td><b>${item.nombre}</b></td><td>${item.categoria}</td><td class="text-center celda-azul">${item.stock} ${item.unidad_medida}</td><td class="text-center"><span class="${esSuficiente ? 'badge-stock-ok' : 'badge-stock-bajo'}">${estado}</span></td><td class="text-center"><button onclick="ajustarStock(${item.id}, '${item.nombre}', ${item.stock})" class="btn-accion btn-ajustar">Ajustar</button></td></tr>`;
+                const cat = item.categoria || 'SIN CATEGORÍA';
+                (grupos[cat] = grupos[cat] || []).push(item);
+            });
+            tbody.innerHTML = '';
+            Object.keys(grupos).forEach(cat => {
+                tbody.innerHTML += `<tr class="sep-categoria"><td colspan="5">${cat}</td></tr>`;
+                grupos[cat].forEach(item => {
+                    const estado = item.estado || 'STOCK SUFICIENTE';
+                    const esSuficiente = estado === 'STOCK SUFICIENTE';
+                    tbody.innerHTML += `<tr><td><b>${item.nombre}</b></td><td>${item.categoria || 'SIN CATEGORÍA'}</td><td class="text-center celda-azul">${item.stock} ${item.unidad_medida}</td><td class="text-center"><span class="${esSuficiente ? 'badge-stock-ok' : 'badge-stock-bajo'}">${estado}</span></td><td class="text-center"><button onclick="ajustarStock(${item.id}, '${item.nombre}', ${item.stock})" class="btn-accion btn-ajustar">Ajustar</button></td></tr>`;
+                });
             });
         }
 

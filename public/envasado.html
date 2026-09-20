@@ -113,6 +113,24 @@
         .logout { display: inline-block; margin-bottom: 12px; color: var(--azul); text-decoration: none; font-weight: 600; }
         .logout:hover { text-decoration: underline; }
 
+        .estado-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
+        .estado-info { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .estado-pill {
+            padding: 8px 18px; border-radius: 999px; font-weight: 800; font-size: 14px; color: #fff;
+            display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
+        }
+        .estado-pill.marcha { background: var(--verde); box-shadow: 0 4px 12px rgba(52, 199, 89, 0.35); }
+        .estado-pill.parado { background: var(--rojo); box-shadow: 0 4px 12px rgba(255, 59, 48, 0.30); }
+        .estado-totales { font-size: 13px; color: var(--texto2); font-weight: 600; }
+        .btn-estado {
+            background: var(--azul); color: #fff; border: none; padding: 12px 22px; border-radius: 999px;
+            cursor: pointer; font-weight: 800; font-size: 14px; font-family: inherit;
+            box-shadow: 0 6px 16px rgba(10, 132, 255, 0.30);
+        }
+        .btn-estado:hover { filter: brightness(0.95); }
+        .btn-estado:active { transform: scale(0.97); }
+        .btn-estado:disabled { opacity: 0.6; }
+
         .btn-accion {
             padding: 14px 20px; background: var(--verde); color: white; border: none;
             border-radius: 999px; cursor: pointer; font-weight: 700; width: 100%; font-size: 16px;
@@ -183,6 +201,15 @@
 </head>
 <body>
     <div class="container">
+
+        <!-- BARRA DE ESTADO DE LÍNEA -->
+        <div class="card sec-azul estado-bar">
+            <div class="estado-info">
+                <span id="pillEstadoEnvasado" class="estado-pill parado">🔴 PARADO</span>
+                <span id="totalesEstadoEnvasado" class="estado-totales">Hoy: — cajas · — TM · — reportes</span>
+            </div>
+            <button id="btnCambiarEstadoEnvasado" class="btn-estado" onclick="cambiarEstadoEnvasado()">🟢 MARCAR EN MARCHA</button>
+        </div>
 
         <!-- MENÚ PRINCIPAL -->
         <div id="menuEnvasado" class="card sec-purp" style="text-align: center;">
@@ -381,6 +408,7 @@
                 if (reportesGlobal.length === 0) {
                     tbody.innerHTML = `<tr><td colspan="7" class="text-center">No hay registros activos para el día en curso.</td></tr>`;
                     document.getElementById('totalTmActivo').textContent = '0.00';
+                    resumenEstadoEnvasado();
                     return;
                 }
 
@@ -403,8 +431,82 @@
                     `;
                 });
                 document.getElementById('totalTmActivo').textContent = sumaTn.toFixed(2);
+                resumenEstadoEnvasado();
             } catch (e) {
                 console.error(e);
+            }
+        }
+
+        let estadoEnvasadoActual = 'PARADO';
+
+        function pintarEstadoEnvasado() {
+            const pill = document.getElementById('pillEstadoEnvasado');
+            const btn = document.getElementById('btnCambiarEstadoEnvasado');
+            if (estadoEnvasadoActual === 'EN MARCHA') {
+                pill.className = 'estado-pill marcha';
+                pill.textContent = '🟢 EN MARCHA';
+                btn.textContent = '🛑 MARCAR PARADO';
+            } else {
+                pill.className = 'estado-pill parado';
+                pill.textContent = '🔴 PARADO';
+                btn.textContent = '🟢 MARCAR EN MARCHA';
+            }
+        }
+
+        function resumenEstadoEnvasado() {
+            let totalCajas = 0;
+            let totalTn = 0;
+            reportesGlobal.forEach(r => {
+                totalCajas += parseInt(r.cantidad_cajas || 0, 10);
+                totalTn += parseFloat(r.toneladas || 0);
+            });
+            document.getElementById('totalesEstadoEnvasado').textContent =
+                `Hoy: ${totalCajas} cajas · ${totalTn.toFixed(2)} TM · ${reportesGlobal.length} reportes`;
+        }
+
+        async function cargarEstadoEnvasado() {
+            try {
+                const res = await fetch('/api/estado-lineas');
+                if (!res.ok) throw new Error('Error del servidor.');
+                const estados = await res.json();
+                const fila = (Array.isArray(estados) ? estados : []).find(e => e.area === 'envasado');
+                estadoEnvasadoActual = fila && fila.estado ? fila.estado : 'PARADO';
+                pintarEstadoEnvasado();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        let cambiandoEstadoEnvasado = false;
+        async function cambiarEstadoEnvasado() {
+            if (cambiandoEstadoEnvasado) return;
+            cambiandoEstadoEnvasado = true;
+            const btn = document.getElementById('btnCambiarEstadoEnvasado');
+            if (btn) btn.disabled = true;
+            const nuevo = estadoEnvasadoActual === 'EN MARCHA' ? 'PARADO' : 'EN MARCHA';
+            try {
+                const res = await fetch('/api/estado-linea', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        area: 'envasado',
+                        estado: nuevo,
+                        usuario: localStorage.getItem('usuario_actual') || 'envasado_user'
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    estadoEnvasadoActual = data.estado;
+                    pintarEstadoEnvasado();
+                } else {
+                    alert('❌ ' + (data.mensaje || 'Error al cambiar el estado.'));
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Error de conexión con el servidor.');
+            } finally {
+                cambiandoEstadoEnvasado = false;
+                if (btn) btn.disabled = false;
             }
         }
 
@@ -482,6 +584,8 @@
         }
 
         cargarProduccionActiva();
+        cargarEstadoEnvasado();
+        registrarAutoRefresco(() => { cargarEstadoEnvasado(); cargarProduccionActiva(); }, 15000);
     </script>
 </body>
 </html>

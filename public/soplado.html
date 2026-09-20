@@ -107,6 +107,24 @@
             line-height: 1.5;
         }
 
+        .estado-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
+        .estado-info { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .estado-pill {
+            padding: 8px 18px; border-radius: 999px; font-weight: 800; font-size: 14px; color: #fff;
+            display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
+        }
+        .estado-pill.marcha { background: var(--verde); box-shadow: 0 4px 12px rgba(52, 199, 89, 0.35); }
+        .estado-pill.parado { background: var(--rojo); box-shadow: 0 4px 12px rgba(255, 59, 48, 0.30); }
+        .estado-totales { font-size: 13px; color: var(--texto2); font-weight: 600; }
+        .btn-estado {
+            background: var(--azul); color: #fff; border: none; padding: 12px 22px; border-radius: 999px;
+            cursor: pointer; font-weight: 800; font-size: 14px; font-family: inherit;
+            box-shadow: 0 6px 16px rgba(10, 132, 255, 0.30);
+        }
+        .btn-estado:hover { filter: brightness(0.95); }
+        .btn-estado:active { transform: scale(0.97); }
+        .btn-estado:disabled { opacity: 0.6; }
+
         .btn-logout-custom {
             background: var(--rojo);
             color: white;
@@ -147,6 +165,14 @@
     </style>
 </head>
 <body>
+    <div class="card estado-bar">
+        <div class="estado-info">
+            <span id="pillEstadoSoplado" class="estado-pill parado">🔴 PARADO</span>
+            <span id="totalesEstadoSoplado" class="estado-totales">Hoy: — botellas</span>
+        </div>
+        <button id="btnCambiarEstadoSoplado" class="btn-estado" onclick="cambiarEstadoSoplado()">🟢 MARCAR EN MARCHA</button>
+    </div>
+
     <div class="card">
         <h3>REPORTE DE TURNO - SOPLADO</h3>
         
@@ -272,6 +298,103 @@
                 if (btnEnviar) btnEnviar.disabled = false;
             }
         });
+
+        let estadoSopladoActual = 'PARADO';
+
+        function pintarEstadoSoplado() {
+            const pill = document.getElementById('pillEstadoSoplado');
+            const btn = document.getElementById('btnCambiarEstadoSoplado');
+            if (estadoSopladoActual === 'EN MARCHA') {
+                pill.className = 'estado-pill marcha';
+                pill.textContent = '🟢 EN MARCHA';
+                btn.textContent = '🛑 MARCAR PARADO';
+            } else {
+                pill.className = 'estado-pill parado';
+                pill.textContent = '🔴 PARADO';
+                btn.textContent = '🟢 MARCAR EN MARCHA';
+            }
+        }
+
+        function fechaCorta(iso) {
+            if (!iso) return '';
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return String(iso).substring(0, 10);
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+
+        function fechaHoyLocal() {
+            const d = new Date();
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+
+        async function cargarTotalesSoplado() {
+            try {
+                const res = await fetch('/api/soplado/reportes');
+                if (!res.ok) throw new Error('Error del servidor.');
+                const datos = await res.json();
+                const reportes = Array.isArray(datos) ? datos : [];
+                const hoy = fechaHoyLocal();
+                let totalBotellas = 0;
+                reportes.forEach(r => {
+                    if (fechaCorta(r.fecha_reporte) === hoy) {
+                        totalBotellas += parseInt(r.cantidad_botellas || 0, 10);
+                    }
+                });
+                document.getElementById('totalesEstadoSoplado').textContent = 'Hoy: ' + totalBotellas + ' botellas';
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function cargarEstadoSoplado() {
+            try {
+                const res = await fetch('/api/estado-lineas');
+                if (!res.ok) throw new Error('Error del servidor.');
+                const estados = await res.json();
+                const fila = (Array.isArray(estados) ? estados : []).find(e => e.area === 'soplado');
+                estadoSopladoActual = fila && fila.estado ? fila.estado : 'PARADO';
+                pintarEstadoSoplado();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        let cambiandoEstadoSoplado = false;
+        async function cambiarEstadoSoplado() {
+            if (cambiandoEstadoSoplado) return;
+            cambiandoEstadoSoplado = true;
+            const btn = document.getElementById('btnCambiarEstadoSoplado');
+            if (btn) btn.disabled = true;
+            const nuevo = estadoSopladoActual === 'EN MARCHA' ? 'PARADO' : 'EN MARCHA';
+            try {
+                const res = await fetch('/api/estado-linea', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        area: 'soplado',
+                        estado: nuevo,
+                        usuario: localStorage.getItem('usuario_actual') || 'soplado_user'
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    estadoSopladoActual = data.estado;
+                    pintarEstadoSoplado();
+                } else {
+                    alert('❌ ' + (data.mensaje || 'Error al cambiar el estado.'));
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Error de conexión con el servidor.');
+            } finally {
+                cambiandoEstadoSoplado = false;
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        cargarEstadoSoplado();
+        cargarTotalesSoplado();
+        registrarAutoRefresco(() => { cargarEstadoSoplado(); cargarTotalesSoplado(); }, 15000);
     </script>
 </body>
 </html>

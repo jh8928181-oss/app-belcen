@@ -146,6 +146,25 @@ const inicializarBaseDeDatos = async () => {
             EXCEPTION WHEN duplicate_object THEN NULL;
             END $$;
 
+            CREATE TABLE IF NOT EXISTS reportes_soplado (
+                id SERIAL PRIMARY KEY,
+                fecha_reporte DATE DEFAULT CURRENT_DATE,
+                preforma_nombre VARCHAR(150),
+                botella_tipo VARCHAR(100),
+                botella_nombre VARCHAR(150),
+                cantidad_botellas INT,
+                usuario_registro VARCHAR(50),
+                fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS estado_lineas (
+                id SERIAL PRIMARY KEY,
+                area VARCHAR(50) UNIQUE NOT NULL,
+                estado VARCHAR(20) NOT NULL DEFAULT 'PARADO',
+                usuario_registro VARCHAR(50),
+                fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
             -- Usuarios de turno de Refinado (idempotente)
             INSERT INTO usuarios_sistema (usuario, password, rol) VALUES
                 ('usuario1', 'a49a94603f9a105326f880170b9342a6fd3ed71157b4dd16da4fbd46648c7f45721b25e49f83a1038bb333e4af25a59be35725e5e8b3b19e79a87fdb648299f3:8222cb2d385b1216e4e53a27ab34e4eb', 'refinado'),

@@ -765,6 +765,13 @@ app.post('/api/soplado/registrar', async (req, res) => {
         }
         await actualizarEstadoArticulo(client, botellaNombre);
 
+        // Guardar el reporte del día para la barra de estado y estadísticas
+        await client.query(
+            `INSERT INTO reportes_soplado (preforma_nombre, botella_tipo, botella_nombre, cantidad_botellas, usuario_registro)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [preforma_nombre, botella_tipo, botellaNombre, cantidadBotellas, usuario || 'soplado_user']
+        );
+
         await client.query('COMMIT');
         res.json({ success: true, mensaje: `Producción de ${cantidadBotellas} unidades de ${botellaNombre} registrada. Se descontó la preforma "${preforma_nombre}" y su etiqueta.` });
     } catch (error) {
@@ -773,6 +780,48 @@ app.post('/api/soplado/registrar', async (req, res) => {
         res.status(500).json({ success: false, mensaje: 'Error al procesar el reporte de soplado: ' + error.message });
     } finally {
         client.release();
+    }
+});
+
+app.get('/api/soplado/reportes', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM reportes_soplado ORDER BY id DESC LIMIT 50');
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+app.get('/api/estado-lineas', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT area, estado, usuario_registro, fecha_actualizacion FROM estado_lineas');
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+app.post('/api/estado-linea', async (req, res) => {
+    try {
+        const { area, estado, usuario } = req.body;
+        const areaValida = area === 'envasado' || area === 'soplado';
+        const estadoValido = estado === 'EN MARCHA' || estado === 'PARADO';
+        if (!areaValida || !estadoValido) {
+            return res.status(400).json({ success: false, mensaje: 'Área o estado inválido.' });
+        }
+        await pool.query(
+            `INSERT INTO estado_lineas (area, estado, usuario_registro, fecha_actualizacion)
+             VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+             ON CONFLICT (area) DO UPDATE SET
+                estado = EXCLUDED.estado,
+                usuario_registro = EXCLUDED.usuario_registro,
+                fecha_actualizacion = EXCLUDED.fecha_actualizacion`,
+            [area, estado, usuario || 'operador']
+        );
+        res.json({ success: true, area, estado });
+    } catch (err) {
+        console.error('Error al actualizar estado de línea:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
     }
 });
 

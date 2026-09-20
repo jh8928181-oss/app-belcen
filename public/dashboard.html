@@ -149,6 +149,21 @@
         .kpi-val { font-size: clamp(22px, 3vw, 30px); font-weight: 800; margin-top: 6px; }
         .kpi.warn .kpi-val { color: #f87171; }
 
+        /* ---------- ESTADO DE PRODUCCIÓN ---------- */
+        .estado-prod { padding: 20px 24px; }
+        .estado-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+        .estado-bloque {
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 16px 18px;
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .estado-bloque-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; flex-wrap: wrap; }
+        .badge-marcha { background: rgba(34, 197, 94, 0.2); color: #86efac; }
+        .badge-parado { background: rgba(248, 113, 113, 0.22); color: #fecaca; }
+        .estado-resumen { margin-top: 10px; font-size: 21px; font-weight: 800; }
+        .estado-hora { margin-top: 6px; font-size: 12px; color: var(--txt-dim); }
+
         /* ---------- MÓDULOS ---------- */
         .modulos { padding: 20px 24px; }
         .seccion-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
@@ -317,6 +332,32 @@
             <div class="glass kpi">
                 <div class="kpi-label">Stock Acumulado</div>
                 <div class="kpi-val" id="kpiStock">—</div>
+            </div>
+        </section>
+
+        <!-- ESTADO DE PRODUCCIÓN -->
+        <section class="glass estado-prod">
+            <div class="seccion-head">
+                <h2>Estado de Producción</h2>
+                <span class="subtitulo">Líneas de Envasado y Soplado</span>
+            </div>
+            <div class="estado-grid">
+                <div class="estado-bloque">
+                    <div class="estado-bloque-head">
+                        <b>🧴 Envasado</b>
+                        <span id="badgeEnvasado" class="badge badge-parado">🔴 PARADO</span>
+                    </div>
+                    <div id="resumenEnvasado" class="estado-resumen">Cargando…</div>
+                    <div id="horaEnvasado" class="estado-hora">—</div>
+                </div>
+                <div class="estado-bloque">
+                    <div class="estado-bloque-head">
+                        <b>🏭 Soplado</b>
+                        <span id="badgeSoplado" class="badge badge-parado">🔴 PARADO</span>
+                    </div>
+                    <div id="resumenSoplado" class="estado-resumen">Cargando…</div>
+                    <div id="horaSoplado" class="estado-hora">—</div>
+                </div>
             </div>
         </section>
 
@@ -495,10 +536,93 @@
 
         document.getElementById('filtroInventario').addEventListener('input', renderInventario);
 
+        // Estado de producción (Envasado y Soplado)
+        function fechaCortaEstado(iso) {
+            if (!iso) return '';
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return String(iso).substring(0, 10);
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+        function fechaHoyEstado() {
+            const d = new Date();
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+
+        async function cargarEstadoProduccion() {
+            try {
+                const res = await fetch('/api/estado-lineas');
+                if (!res.ok) throw new Error('Error del servidor.');
+                const estados = await res.json();
+                const lista = Array.isArray(estados) ? estados : [];
+                const mapa = { envasado: null, soplado: null };
+                lista.forEach(f => {
+                    if (mapa[f.area] !== undefined) mapa[f.area] = f;
+                });
+
+                const ids = {
+                    envasado: { badge: 'badgeEnvasado', hora: 'horaEnvasado' },
+                    soplado: { badge: 'badgeSoplado', hora: 'horaSoplado' }
+                };
+
+                Object.keys(ids).forEach(area => {
+                    const f = mapa[area];
+                    const activo = f && f.estado === 'EN MARCHA';
+                    const badge = document.getElementById(ids[area].badge);
+                    const hora = document.getElementById(ids[area].hora);
+                    badge.className = 'badge ' + (activo ? 'badge-marcha' : 'badge-parado');
+                    badge.textContent = activo ? '🟢 EN MARCHA' : '🔴 PARADO';
+                    hora.textContent = f && f.fecha_actualizacion
+                        ? 'Actualizado: ' + new Date(f.fecha_actualizacion).toLocaleTimeString('es-PE')
+                        : 'Sin registros';
+                });
+            } catch (err) {
+                console.error(err);
+            }
+
+            try {
+                const res = await fetch('/api/produccion/reportes');
+                if (res.ok) {
+                    const reportes = await res.json();
+                    const lista = Array.isArray(reportes) ? reportes : [];
+                    let totalCajas = 0;
+                    let totalTn = 0;
+                    lista.forEach(r => {
+                        totalCajas += parseInt(r.cantidad_cajas || 0, 10);
+                        totalTn += parseFloat(r.toneladas || 0);
+                    });
+                    document.getElementById('resumenEnvasado').textContent =
+                        lista.length + ' reportes hoy · ' + formatearNumero(totalCajas) + ' cajas · ' + totalTn.toFixed(2) + ' TM';
+                }
+            } catch (err) {
+                console.error(err);
+            }
+
+            try {
+                const res = await fetch('/api/soplado/reportes');
+                if (res.ok) {
+                    const reportes = await res.json();
+                    const lista = Array.isArray(reportes) ? reportes : [];
+                    const hoy = fechaHoyEstado();
+                    let totalBotellas = 0;
+                    lista.forEach(r => {
+                        if (fechaCortaEstado(r.fecha_reporte) === hoy) {
+                            totalBotellas += parseInt(r.cantidad_botellas || 0, 10);
+                        }
+                    });
+                    document.getElementById('resumenSoplado').textContent =
+                        totalBotellas + ' botellas producidas hoy';
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
         actualizarReloj();
         setInterval(actualizarReloj, 1000);
         cargarInventario();
+        cargarEstadoProduccion();
         registrarAutoRefresco(cargarInventario, 15000);
+        registrarAutoRefresco(cargarEstadoProduccion, 15000);
     </script>
 </body>
 </html>

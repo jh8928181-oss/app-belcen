@@ -446,7 +446,7 @@
                             <option value="ENFRIA DE NOCHE" ${(item.estado || '').toUpperCase().includes('NOCHE') ? 'selected' : ''}>🌙 Enfría de Noche</option>
                             <option value="ENFRIA DIA" ${(item.estado || '').toUpperCase().includes('DÍA') || (item.estado || '').toUpperCase().includes('DIA') ? 'selected' : ''}>☀️ Enfría Día</option>
                         </select>
-                        <button onclick="quitarFilaAceite(this)" class="btn-x-quitar">🗑 Quitar</button>
+                        <button type="button" onclick="quitarFilaAceite(this)" class="btn-comer" title="Quitar fila"><span class="ico-papelera"><span class="tapa"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/></svg></span><span class="base"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></span></span><span class="texto-papelera"><span class="letra">D</span><span class="letra">e</span><span class="letra">l</span><span class="letra">e</span><span class="letra">t</span><span class="letra">e</span></span></button>
                     </td>
                 `;
                 tbody.appendChild(tr);
@@ -607,7 +607,7 @@
                         <option value="ENFRIA DE NOCHE">🌙 Enfría de Noche</option>
                         <option value="ENFRIA DIA">☀️ Enfría Día</option>
                     </select>
-                    <button onclick="quitarFilaAceite(this)" class="btn-x-quitar">🗑 Quitar</button>
+                    <button type="button" onclick="quitarFilaAceite(this)" class="btn-comer" title="Quitar fila"><span class="ico-papelera"><span class="tapa"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/></svg></span><span class="base"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></span></span><span class="texto-papelera"><span class="letra">D</span><span class="letra">e</span><span class="letra">l</span><span class="letra">e</span><span class="letra">t</span><span class="letra">e</span></span></button>
                 </td>
             `;
             tbody.appendChild(tr);

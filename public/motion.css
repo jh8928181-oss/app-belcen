@@ -57,6 +57,91 @@ html.js-motion button:active:not(:disabled) {
 
 .hidden { display: none !important; }
 
+/* ---------- Botón de borrado animado (.btn-comer) ----------
+   La papelera (tapa + base) se abre y "se come" las letras una a
+   una. Compacto por defecto; .btn-comer-xl para variante grande. */
+html.js-motion :where(.btn-comer) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #6c5ce7;
+    color: #fff;
+    border: none;
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    white-space: nowrap;
+    vertical-align: middle;
+    box-shadow: 0 2px 6px rgba(108, 92, 231, 0.35);
+    transition: filter 0.15s ease, transform 0.12s ease;
+}
+html.js-motion :where(.btn-comer):hover { filter: brightness(1.08); }
+html.js-motion :where(.btn-comer-xl) {
+    padding: 14px 26px;
+    font-size: 16px;
+    gap: 9px;
+    box-shadow: 0 8px 24px rgba(108, 92, 231, 0.40);
+}
+html.js-motion :where(.ico-papelera) {
+    position: relative;
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+}
+html.js-motion :where(.ico-papelera .tapa, .ico-papelera .base) {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+}
+html.js-motion :where(.ico-papelera svg) {
+    display: block;
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+html.js-motion :where(.ico-papelera .tapa) {
+    transform-origin: 4px 6px;
+    transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform;
+}
+html.js-motion :where(.btn-comer-xl .ico-papelera, .btn-comer-xl .ico-papelera svg) {
+    width: 22px;
+    height: 22px;
+}
+html.js-motion :where(.btn-comer-xl .ico-papelera .tapa) { transform-origin: 5px 8px; }
+html.js-motion :where(.texto-papelera) { display: inline-flex; }
+html.js-motion :where(.texto-papelera .letra) {
+    display: inline-block;
+    transform-origin: 100% 50%;
+    transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+                opacity 0.3s ease;
+    will-change: transform, opacity;
+}
+html.js-motion :where(.btn-comer.eating) { cursor: default; }
+html.js-motion :where(.btn-comer.eating .ico-papelera .tapa) { transform: rotate(-45deg); }
+html.js-motion :where(.btn-comer.eating .texto-papelera .letra) {
+    transform: translateX(-14px) scale(0);
+    opacity: 0;
+}
+html.js-motion :where(.btn-comer.eating .texto-papelera .letra:nth-child(1)) { transition-delay: 0ms; }
+html.js-motion :where(.btn-comer.eating .texto-papelera .letra:nth-child(2)) { transition-delay: 60ms; }
+html.js-motion :where(.btn-comer.eating .texto-papelera .letra:nth-child(3)) { transition-delay: 120ms; }
+html.js-motion :where(.btn-comer.eating .texto-papelera .letra:nth-child(4)) { transition-delay: 180ms; }
+html.js-motion :where(.btn-comer.eating .texto-papelera .letra:nth-child(5)) { transition-delay: 240ms; }
+html.js-motion :where(.btn-comer.eating .texto-papelera .letra:nth-child(6)) { transition-delay: 300ms; }
+html.js-motion :where(.btn-comer.eating .texto-papelera .letra:nth-child(7)) { transition-delay: 360ms; }
+html.js-motion :where(.btn-comer.eating .texto-papelera .letra:nth-child(8)) { transition-delay: 420ms; }
+
 /* ---------- Preferencia de menor movimiento ---------- */
 @media (prefers-reduced-motion: reduce) {
     html.js-motion body { animation: none; }
@@ -69,5 +154,11 @@ html.js-motion button:active:not(:disabled) {
         transition: box-shadow 0.2s ease;
     }
     html.js-motion button:active:not(:disabled) { transform: none; }
+    html.js-motion :where(.btn-comer.eating .ico-papelera .tapa) { transform: none; }
+    html.js-motion :where(.btn-comer.eating .texto-papelera .letra) {
+        transform: none;
+        opacity: 1;
+        transition: none;
+    }
     :where(html) { scroll-behavior: auto; }
 }

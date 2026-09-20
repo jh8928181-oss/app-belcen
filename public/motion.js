@@ -69,4 +69,24 @@
         }
         requestAnimationFrame(paso);
     };
+
+    /* Botón de borrado animado: al hacer clic se activa .eating
+       (la papelera se abre y come las letras) y se revierte a los
+       2.5s para poder repetirse. No bloquea el onclick del usuario. */
+    function initComer() {
+        document.addEventListener('click', function (e) {
+            var btn = e.target.closest ? e.target.closest('.btn-comer') : null;
+            if (!btn || btn.classList.contains('eating')) return;
+            btn.classList.add('eating');
+            setTimeout(function () {
+                btn.classList.remove('eating');
+            }, 2500);
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initComer);
+    } else {
+        initComer();
+    }
 })();

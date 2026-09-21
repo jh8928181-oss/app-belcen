@@ -149,6 +149,13 @@
         .kpi-label { font-size: 11px; color: var(--txt-dim); text-transform: uppercase; letter-spacing: 0.9px; font-weight: 700; }
         .kpi-val { font-size: clamp(22px, 3vw, 30px); font-weight: 800; margin-top: 6px; }
         .kpi.warn .kpi-val { color: #f87171; }
+        .kpi-btn { cursor: pointer; transition: transform 0.45s var(--spring), box-shadow 0.35s, background 0.25s; }
+        .kpi-btn:hover { transform: translateY(-3px); }
+        .kpi-btn:active { transform: scale(0.96); transition-duration: 0.12s; }
+        .kpi-btn:focus-visible { outline: 2px solid #f87171; outline-offset: 2px; }
+        .kpi-btn.on { background: rgba(248, 113, 113, 0.18); box-shadow: 0 0 0 2px #f87171, 0 12px 34px rgba(0, 0, 0, 0.32); }
+        .kpi-hint { font-size: 10px; color: var(--txt-dim); font-weight: 600; letter-spacing: 0.3px; margin-top: 4px; min-height: 13px; }
+        .kpi-btn.on .kpi-hint { color: #fecaca; }
 
         /* ---------- ESTADO DE PRODUCCIÓN ---------- */
         .estado-prod { padding: 20px 24px; }
@@ -322,9 +329,10 @@
                 <div class="kpi-label">Total Artículos</div>
                 <div class="kpi-val" id="kpiArticulos">—</div>
             </div>
-            <div class="glass kpi warn">
+<div class="glass kpi warn kpi-btn" id="kpiBajoStockCard" role="button" tabindex="0" aria-pressed="false" title="Mostrar solo artículos con bajo stock" onclick="toggleFiltroBajoStock()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleFiltroBajoStock();}">
                 <div class="kpi-label">Bajo Stock</div>
                 <div class="kpi-val" id="kpiBajoStock">—</div>
+                <div class="kpi-hint" id="kpiBajoStockHint">Toca para ver bajos</div>
             </div>
             <div class="glass kpi">
                 <div class="kpi-label">Categorías</div>
@@ -380,7 +388,7 @@
         </section>
 
         <!-- INVENTARIO -->
-        <section class="glass inv">
+        <section class="glass inv" id="seccionInventario">
             <div class="seccion-head">
                 <h2>Inventario General</h2>
                 <div class="inv-actions">
@@ -471,6 +479,27 @@
         // Inventario
         let inventarioGlobal = [];
         let kpisInicializados = false;
+        let soloBajoStock = false;
+
+        function esBajoStock(art) {
+            return String(art.estado || '').trim() === 'REALIZAR PEDIDO';
+        }
+
+        function actualizarKpiBajoStock() {
+            const card = document.getElementById('kpiBajoStockCard');
+            card.classList.toggle('on', soloBajoStock);
+            card.setAttribute('aria-pressed', String(soloBajoStock));
+            document.getElementById('kpiBajoStockHint').textContent =
+                soloBajoStock ? 'Filtrando · toca para quitar' : 'Toca para ver bajos';
+        }
+
+        function toggleFiltroBajoStock() {
+            soloBajoStock = !soloBajoStock;
+            actualizarKpiBajoStock();
+            renderInventario();
+            const seccion = document.getElementById('seccionInventario');
+            if (seccion) seccion.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
 
         function setearKpi(id, valor, decimales) {
             const el = document.getElementById(id);
@@ -488,16 +517,17 @@
 
         function renderInventario() {
             const q = (document.getElementById('filtroInventario').value || '').toLowerCase();
-            const filtrados = inventarioGlobal.filter(a =>
-                (a.nombre || '').toLowerCase().includes(q) ||
+const filtrados = inventarioGlobal.filter(a =>
+                (!soloBajoStock || esBajoStock(a)) &&
+                ((a.nombre || '').toLowerCase().includes(q) ||
                 (a.categoria || '').toLowerCase().includes(q) ||
                 (a.unidad_medida || '').toLowerCase().includes(q) ||
-                formatearNumero(a.stock).toLowerCase().includes(q)
+                formatearNumero(a.stock).toLowerCase().includes(q))
             );
 
             const tbody = document.getElementById('tablaInventario');
             tbody.innerHTML = filtrados.length === 0
-                ? '<tr><td colspan="6" class="text-center sin-registros">No hay artículos que coincidan con la búsqueda.</td></tr>'
+                ? '<tr><td colspan="6" class="text-center sin-registros">' + (soloBajoStock ? 'No hay artículos con bajo stock.' : 'No hay artículos que coincidan con la búsqueda.') + '</td></tr>'
                 : '';
 
             filtrados.forEach(art => {

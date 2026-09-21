@@ -67,6 +67,7 @@
         .g2 .panel-cabecera { border-left: 5px solid #28a745; background: linear-gradient(90deg, rgba(40,167,69,0.06), transparent 45%); }
         .g3 .panel-cabecera { border-left: 5px solid #ffc107; background: linear-gradient(90deg, rgba(255,193,7,0.09), transparent 45%); }
         .g4 .panel-cabecera { border-left: 5px solid #17a2b8; background: linear-gradient(90deg, rgba(23,162,184,0.07), transparent 45%); }
+        .g5 .panel-cabecera { border-left: 5px solid #6f42c1; background: linear-gradient(90deg, rgba(111,66,193,0.06), transparent 45%); }
         .panel-titulo { flex: 1 1 auto; }
         .panel-contador {
             font-size: 12px; font-weight: 600; color: var(--texto2);
@@ -120,6 +121,11 @@
         .badge-disponible { background: rgba(40, 167, 69, 0.15); color: #155724; }
         .badge-noche { background: rgba(0, 122, 255, 0.12); color: #004085; }
         .badge-dia { background: rgba(255, 193, 7, 0.20); color: #856404; }
+        .badge-hist-ajuste { background: rgba(0, 122, 255, 0.15); color: #004a99; }
+        .badge-hist-entrada { background: rgba(30, 126, 52, 0.15); color: #1e7e34; }
+        .badge-hist-salida { background: rgba(189, 33, 48, 0.15); color: #bd2130; }
+        .badge-hist-produccion { background: rgba(253, 126, 20, 0.18); color: #9a5400; }
+        .badge-hist-devolucion { background: rgba(23, 162, 184, 0.15); color: #0b7285; }
 
         /* Avisos */
         .aviso-info { background: rgba(209, 236, 241, 0.7); color: #0c5460; border: 1px solid rgba(190, 229, 235, 0.9); }
@@ -486,6 +492,51 @@
             </div>
         </div>
 
+        <!-- HISTORIAL DE MOVIMIENTOS DE INVENTARIO -->
+        <div class="tarjeta tarjeta-panel g5" id="panel-historial">
+            <button class="panel-cabecera" id="btn-historial" onclick="togglePanel('historial')" aria-expanded="false" aria-controls="cuerpo-historial">
+                <span class="panel-titulo">📈 Historial de Movimientos de Inventario</span>
+                <span class="panel-contador" id="contadorHistorial">0 movimientos</span>
+                <span class="panel-flecha">▼</span>
+            </button>
+            <div class="panel-cuerpo" id="cuerpo-historial">
+                <div class="sub-bloque">
+                    <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:6px;">
+                        <select id="filtroHistTipo" class="filtro" style="max-width:200px;" onchange="cargarHistorialInventario()">
+                            <option value="">TODOS LOS TIPOS</option>
+                            <option value="AJUSTE">🔧 AJUSTE</option>
+                            <option value="ENTRADA">📥 ENTRADA</option>
+                            <option value="SALIDA">📤 SALIDA</option>
+                            <option value="PRODUCCION">🏭 PRODUCCIÓN</option>
+                            <option value="DEVOLUCION">↩️ DEVOLUCIÓN</option>
+                        </select>
+                        <input type="date" id="filtroHistDesde" class="filtro" style="max-width:180px;" onchange="cargarHistorialInventario()" title="Desde">
+                        <input type="date" id="filtroHistHasta" class="filtro" style="max-width:180px;" onchange="cargarHistorialInventario()" title="Hasta">
+                        <input id="filtroHistQ" class="filtro" placeholder="🔍 Buscar producto, usuario o referencia..." oninput="cargarHistorialInventario()">
+                    </div>
+                    <div class="sub-titulo salidas" style="margin:12px 0 4px;">Qué producto cambió, la cantidad (±), quién lo hizo y la producción que descontó.</div>
+                    <div class="tabla-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Tipo</th>
+                                    <th>Producto</th>
+                                    <th class="text-center">Cantidad</th>
+                                    <th class="text-center">Stock anterior → nuevo</th>
+                                    <th>Usuario</th>
+                                    <th>Referencia</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tablaHistorialInventario">
+                                <tr><td colspan="7" class="text-center sin-registros">Cargando…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <footer class="footer-pie">
             <a href="dashboard.html" id="linkDashboard" class="link-guia">← Volver al Dashboard General</a>
             <button class="logout" onclick="cerrarSesion()">🔒 Cerrar Sesión (Salir)</button>
@@ -735,6 +786,64 @@
             } catch (err) {
                 console.error(err);
                 document.getElementById('contenedorReporteCierre').innerHTML = '<p class="text-center" style="color:red;">Error al cargar el historial de cierres.</p>';
+            }
+        }
+
+        // 📈 HISTORIAL DE MOVIMIENTOS DE INVENTARIO
+        function badgeHistorial(tipo) {
+            const t = String(tipo || '').trim().toUpperCase();
+            if (t === 'AJUSTE') return '<span class="badge badge-hist-ajuste">🔧 AJUSTE</span>';
+            if (t === 'ENTRADA') return '<span class="badge badge-hist-entrada">📥 ENTRADA</span>';
+            if (t === 'SALIDA') return '<span class="badge badge-hist-salida">📤 SALIDA</span>';
+            if (t === 'PRODUCCION' || t === 'PRODUCCIÓN') return '<span class="badge badge-hist-produccion">🏭 PRODUCCIÓN</span>';
+            if (t === 'DEVOLUCION' || t === 'DEVOLUCIÓN') return '<span class="badge badge-hist-devolucion">↩️ DEVOLUCIÓN</span>';
+            return '<span class="badge">' + t + '</span>';
+        }
+
+        async function cargarHistorialInventario() {
+            const params = new URLSearchParams();
+            const tipo = (document.getElementById('filtroHistTipo') || {}).value || '';
+            const desde = (document.getElementById('filtroHistDesde') || {}).value || '';
+            const hasta = (document.getElementById('filtroHistHasta') || {}).value || '';
+            const q = (document.getElementById('filtroHistQ') || {}).value || '';
+            if (tipo) params.set('tipo', tipo);
+            if (desde) params.set('desde', desde);
+            if (hasta) params.set('hasta', hasta);
+            if (q.trim()) params.set('q', q.trim());
+            const tbody = document.getElementById('tablaHistorialInventario');
+            try {
+                const res = await fetch('/api/auditoria/historial?' + params.toString());
+                if (!res.ok) throw new Error('Error del servidor.');
+                const lista = await res.json();
+                const datos = Array.isArray(lista) ? lista : [];
+                const contadorEl = document.getElementById('contadorHistorial');
+                if (contadorEl) contadorEl.textContent = datos.length + (datos.length === 1 ? ' movimiento' : ' movimientos');
+                tbody.innerHTML = datos.length === 0
+                    ? '<tr><td colspan="7" class="text-center sin-registros">No hay movimientos para los filtros actuales.</td></tr>'
+                    : '';
+                datos.forEach(m => {
+                    const esResta = String(m.tipo_cambio || '').toUpperCase() === 'RESTA';
+                    const signo = esResta ? '-' : '+';
+                    const color = esResta ? '#bd2130' : '#1e7e34';
+                    const cant = (m.cantidad === null || m.cantidad === undefined) ? 0 : Number(m.cantidad);
+                    const mostrarCant = Number.isInteger(cant) ? cant : cant.toFixed(2);
+                    const ant = (m.stock_anterior === null || m.stock_anterior === undefined) ? '—' : Number(m.stock_anterior);
+                    const nuevo = (m.stock_nuevo === null || m.stock_nuevo === undefined) ? '—' : Number(m.stock_nuevo);
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><b>${formatearFecha(m.fecha)}</b></td>
+                        <td>${badgeHistorial(m.tipo)}</td>
+                        <td>${m.producto || 'N/D'}</td>
+                        <td class="text-center" style="color:${color}; font-weight:bold;">${signo}${mostrarCant}</td>
+                        <td class="text-center">${ant} → ${nuevo}</td>
+                        <td>${m.usuario || 'sistema'}</td>
+                        <td>${m.referencia || ''}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                console.error(err);
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center" style="color:red;">Error al cargar el historial.</td></tr>';
             }
         }
 
@@ -1059,7 +1168,8 @@
                     cargarSalidas(),
                     cargarProduccion(),
                     cargarRefinado(),
-                    cargarHistorialCierresAud()
+                    cargarHistorialCierresAud(),
+                    cargarHistorialInventario()
                 ]);
             } finally {
                 document.querySelectorAll('.refresh-ico').forEach(ico => ico.classList.remove('animando'));
@@ -1111,6 +1221,7 @@
         cargarProduccion();
         cargarRefinado();
         cargarHistorialCierresAud();
+        cargarHistorialInventario();
 
         document.getElementById('filtroEntradasVig').addEventListener('input', renderEntradasVig);
         document.getElementById('filtroEntradasAlm').addEventListener('input', renderEntradasAlm);
@@ -1126,6 +1237,7 @@
             cargarProduccion();
             cargarRefinado();
             cargarHistorialCierresAud();
+            cargarHistorialInventario();
         }, 15000);
     </script>
 </body>

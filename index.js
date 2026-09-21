@@ -406,17 +406,35 @@ app.post('/api/almacen/conformidad', async (req, res) => {
             }
 
             let targetArticuloId = null;
-            const existeRes = await client.query('SELECT id FROM inventario WHERE LOWER(nombre) = LOWER($1)', [item.nombre]);
+            const cantidadFisica = Number(item.cantidad_fisica) || 0;
+            const existeRes = await client.query('SELECT id, stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [item.nombre]);
             
             if (existeRes.rows.length > 0) {
                 targetArticuloId = existeRes.rows[0].id;
-                await client.query(`UPDATE inventario SET stock = stock + $1 WHERE id = $2`, [item.cantidad_fisica, targetArticuloId]);
+                const stockAnterior = Number(existeRes.rows[0].stock) || 0;
+                await client.query(`UPDATE inventario SET stock = stock + $1 WHERE id = $2`, [cantidadFisica, targetArticuloId]);
+                await registrarHistorial(client, {
+                    tipo: 'ENTRADA', origen: 'conformidad',
+                    producto: item.nombre, articulo_id: targetArticuloId,
+                    cantidad: cantidadFisica, tipo_cambio: 'SUMA',
+                    stock_anterior: stockAnterior, stock_nuevo: stockAnterior + cantidadFisica,
+                    usuario: usuarioResponsable(req, usuario_almacen),
+                    referencia: 'Conformidad - guía ' + (ingreso.numero_guia || 'S/N')
+                });
             } else {
                 const nuevoArt = await client.query(
                     `INSERT INTO inventario (nombre, categoria, stock, unidad_medida, estado) VALUES ($1, 'General', $2, 'UNIDADES', 'STOCK SUFICIENTE') RETURNING id`,
-                    [item.nombre, item.cantidad_fisica]
+                    [item.nombre, cantidadFisica]
                 );
                 targetArticuloId = nuevoArt.rows[0].id;
+                await registrarHistorial(client, {
+                    tipo: 'ENTRADA', origen: 'conformidad',
+                    producto: item.nombre, articulo_id: targetArticuloId,
+                    cantidad: cantidadFisica, tipo_cambio: 'SUMA',
+                    stock_anterior: 0, stock_nuevo: cantidadFisica,
+                    usuario: usuarioResponsable(req, usuario_almacen),
+                    referencia: 'Conformidad (artículo nuevo) - guía ' + (ingreso.numero_guia || 'S/N')
+                });
             }
             await actualizarEstadoArticulo(client, item.nombre);
 
@@ -486,14 +504,23 @@ app.post('/api/almacen/conformidad-ajustada', async (req, res) => {
                 estadoItem = 'POR REGULARIZAR';
             }
 
-            const existeRes = await client.query('SELECT id FROM inventario WHERE LOWER(nombre) = LOWER($1)', [nombre]);
+            const existeRes = await client.query('SELECT id, stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [nombre]);
             let targetArticuloId;
             if (existeRes.rows.length > 0) {
                 targetArticuloId = existeRes.rows[0].id;
+                const stockAnterior = Number(existeRes.rows[0].stock) || 0;
                 await client.query(
                     `UPDATE inventario SET stock = stock + $1 WHERE id = $2`,
                     [cantidad, targetArticuloId]
                 );
+                await registrarHistorial(client, {
+                    tipo: 'ENTRADA', origen: 'conformidad_ajustada',
+                    producto: nombre, articulo_id: targetArticuloId,
+                    cantidad, tipo_cambio: 'SUMA',
+                    stock_anterior: stockAnterior, stock_nuevo: stockAnterior + cantidad,
+                    usuario: usuarioResponsable(req, usuario_almacen),
+                    referencia: 'Conformidad ajustada - guía ' + (ingreso.numero_guia || 'S/N')
+                });
             } else {
                 const nuevoArt = await client.query(
                     `INSERT INTO inventario (nombre, categoria, stock, unidad_medida, estado)
@@ -502,6 +529,14 @@ app.post('/api/almacen/conformidad-ajustada', async (req, res) => {
                     [nombre, categoria, cantidad, unidad_medida]
                 );
                 targetArticuloId = nuevoArt.rows[0].id;
+                await registrarHistorial(client, {
+                    tipo: 'ENTRADA', origen: 'conformidad_ajustada',
+                    producto: nombre, articulo_id: targetArticuloId,
+                    cantidad, tipo_cambio: 'SUMA',
+                    stock_anterior: 0, stock_nuevo: cantidad,
+                    usuario: usuarioResponsable(req, usuario_almacen),
+                    referencia: 'Conformidad ajustada (artículo nuevo) - guía ' + (ingreso.numero_guia || 'S/N')
+                });
             }
             await actualizarEstadoArticulo(client, nombre);
 
@@ -560,14 +595,39 @@ app.post('/api/inventario/nuevo', async (req, res) => {
 app.post('/api/almacen/ajustar-stock', async (req, res) => {
     try {
         const { articulo_id, nuevo_stock } = req.body;
-        
+        const cantidadNueva = Number(nuevo_stock);
+        if (isNaN(cantidadNueva)) {
+            return res.status(400).json({ success: false, mensaje: 'El nuevo stock debe ser un número válido.' });
+        }
+
+        const actual = await pool.query('SELECT nombre, stock FROM inventario WHERE id = $1', [articulo_id]);
+        if (actual.rows.length === 0) {
+            return res.status(404).json({ success: false, mensaje: 'El artículo no existe.' });
+        }
+        const nombreArticulo = actual.rows[0].nombre;
+        const stockAnterior = Number(actual.rows[0].stock) || 0;
+
         await pool.query(
             `UPDATE inventario 
              SET stock = $1::numeric, 
                  estado = CASE WHEN $1::numeric <= 0 THEN 'REALIZAR PEDIDO' ELSE 'STOCK SUFICIENTE' END 
              WHERE id = $2`,
-            [nuevo_stock, articulo_id]
+            [cantidadNueva, articulo_id]
         );
+
+        const diferencia = cantidadNueva - stockAnterior;
+        await registrarHistorial(pool, {
+            tipo: 'AJUSTE',
+            origen: 'almacen',
+            producto: nombreArticulo,
+            articulo_id: articulo_id,
+            cantidad: Math.abs(diferencia),
+            tipo_cambio: diferencia >= 0 ? 'SUMA' : 'RESTA',
+            stock_anterior: stockAnterior,
+            stock_nuevo: cantidadNueva,
+            usuario: usuarioResponsable(req, req.body.usuario),
+            referencia: 'Ajuste manual de stock'
+        });
 
         res.json({ success: true, mensaje: 'Stock de insumo ajustado manualmente.' });
     } catch (err) {
@@ -599,7 +659,29 @@ app.get('/api/producto-terminado', async (req, res) => {
 app.post('/api/producto-terminado/ajustar', async (req, res) => {
     try {
         const { id, nuevo_stock } = req.body;
-        await pool.query('UPDATE producto_terminado SET stock_cajas = $1 WHERE id = $2', [nuevo_stock, id]);
+        const cantidadNueva = Number(nuevo_stock);
+        if (isNaN(cantidadNueva)) {
+            return res.status(400).json({ success: false, mensaje: 'El nuevo stock debe ser un número válido.' });
+        }
+        const actual = await pool.query('SELECT producto_key, nombre_producto, stock_cajas FROM producto_terminado WHERE id = $1', [id]);
+        if (actual.rows.length === 0) {
+            return res.status(404).json({ success: false, mensaje: 'El producto terminado no existe.' });
+        }
+        const stockAnterior = Number(actual.rows[0].stock_cajas) || 0;
+        await pool.query('UPDATE producto_terminado SET stock_cajas = $1 WHERE id = $2', [cantidadNueva, id]);
+        const diferencia = cantidadNueva - stockAnterior;
+        await registrarHistorial(pool, {
+            tipo: 'AJUSTE',
+            origen: 'producto_terminado',
+            producto: actual.rows[0].nombre_producto,
+            producto_key: actual.rows[0].producto_key,
+            cantidad: Math.abs(diferencia),
+            tipo_cambio: diferencia >= 0 ? 'SUMA' : 'RESTA',
+            stock_anterior: stockAnterior,
+            stock_nuevo: cantidadNueva,
+            usuario: usuarioResponsable(req, req.body.usuario),
+            referencia: 'Ajuste manual de producto terminado'
+        });
         res.json({ success: true, mensaje: 'Stock de producto terminado actualizado correctamente.' });
     } catch (err) {
         console.error("Error al ajustar producto terminado:", err);
@@ -630,12 +712,26 @@ app.post('/api/producto-terminado/agregar-manual', async (req, res) => {
             return res.status(400).json({ success: false, mensaje: 'Producto y cantidad válida son requeridos.' });
         }
         const nombreLegible = PRODUCTOS_TERMINADOS_MAP[producto_tipo] || producto_tipo;
+        const previo = await pool.query('SELECT stock_cajas FROM producto_terminado WHERE producto_key = $1', [producto_tipo]);
+        const stockAnterior = previo.rows.length > 0 ? Number(previo.rows[0].stock_cajas) || 0 : 0;
         await pool.query(`
             INSERT INTO producto_terminado (producto_key, nombre_producto, stock_cajas)
             VALUES ($1, $2, $3)
             ON CONFLICT (producto_key) 
             DO UPDATE SET stock_cajas = producto_terminado.stock_cajas + EXCLUDED.stock_cajas;
         `, [producto_tipo, nombreLegible, cajas]);
+        await registrarHistorial(pool, {
+            tipo: 'ENTRADA',
+            origen: 'producto_terminado',
+            producto: nombreLegible,
+            producto_key: producto_tipo,
+            cantidad: cajas,
+            tipo_cambio: 'SUMA',
+            stock_anterior: stockAnterior,
+            stock_nuevo: stockAnterior + cajas,
+            usuario: usuarioResponsable(req, req.body.usuario),
+            referencia: 'Alta manual de producto terminado (sin descontar insumos)'
+        });
         res.json({ success: true, mensaje: 'Producto terminado agregado manualmente sin descontar insumos.' });
     } catch (err) {
         console.error("Error al agregar producto terminado manual:", err);
@@ -737,39 +833,71 @@ app.post('/api/soplado/registrar', async (req, res) => {
         }
 
         // 1. Descontar la preforma elegida manualmente por el operador (stock en MILL)
-        const updPreforma = await client.query(
-            `UPDATE inventario SET stock = stock - $1 WHERE LOWER(nombre) = LOWER($2)`,
-            [cantidadBotellas / 1000, preforma_nombre]
-        );
-        if (updPreforma.rowCount === 0) {
+        const preRes = await client.query('SELECT stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [preforma_nombre]);
+        if (preRes.rows.length === 0) {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, mensaje: `La preforma "${preforma_nombre}" no existe en el inventario.` });
         }
+        const stockPreformaAnterior = Number(preRes.rows[0].stock) || 0;
+        const cantidadPreformaMill = cantidadBotellas / 1000;
+        await client.query(
+            `UPDATE inventario SET stock = stock - $1 WHERE LOWER(nombre) = LOWER($2)`,
+            [cantidadPreformaMill, preforma_nombre]
+        );
         await actualizarEstadoArticulo(client, preforma_nombre);
+        await registrarHistorial(client, {
+            tipo: 'PRODUCCION', origen: 'soplado',
+            producto: preforma_nombre,
+            cantidad: cantidadPreformaMill, tipo_cambio: 'RESTA',
+            stock_anterior: stockPreformaAnterior, stock_nuevo: stockPreformaAnterior - cantidadPreformaMill,
+            usuario: usuarioResponsable(req, usuario),
+            referencia: 'Descuento por soplado de ' + cantidadBotellas + ' uds de ' + botellaNombre
+        });
 
         // 2. Descontar la etiqueta correspondiente automáticamente (stock en MILL)
         if (etiquetaNombre) {
-            const updEtiqueta = await client.query(
-                `UPDATE inventario SET stock = stock - $1 WHERE LOWER(nombre) = LOWER($2)`,
-                [cantidadBotellas / 1000, etiquetaNombre]
-            );
-            if (updEtiqueta.rowCount === 0) {
+            const etRes = await client.query('SELECT stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [etiquetaNombre]);
+            if (etRes.rows.length === 0) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ success: false, mensaje: `La etiqueta "${etiquetaNombre}" no existe en el inventario.` });
             }
+            const stockEtiquetaAnterior = Number(etRes.rows[0].stock) || 0;
+            const cantidadEtiquetaMill = cantidadBotellas / 1000;
+            await client.query(
+                `UPDATE inventario SET stock = stock - $1 WHERE LOWER(nombre) = LOWER($2)`,
+                [cantidadEtiquetaMill, etiquetaNombre]
+            );
             await actualizarEstadoArticulo(client, etiquetaNombre);
+            await registrarHistorial(client, {
+                tipo: 'PRODUCCION', origen: 'soplado',
+                producto: etiquetaNombre,
+                cantidad: cantidadEtiquetaMill, tipo_cambio: 'RESTA',
+                stock_anterior: stockEtiquetaAnterior, stock_nuevo: stockEtiquetaAnterior - cantidadEtiquetaMill,
+                usuario: usuarioResponsable(req, usuario),
+                referencia: 'Descuento por soplado de ' + cantidadBotellas + ' uds de ' + botellaNombre
+            });
         }
 
         // 3. Aumentar stock de la botella fabricada en inventario
-        const updBotella = await client.query(
-            `UPDATE inventario SET stock = stock + $1 WHERE LOWER(nombre) = LOWER($2)`,
-            [cantidadBotellas, botellaNombre]
-        );
-        if (updBotella.rowCount === 0) {
+        const botRes = await client.query('SELECT stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [botellaNombre]);
+        if (botRes.rows.length === 0) {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, mensaje: `La botella "${botellaNombre}" no existe en el inventario. Crea el artículo primero.` });
         }
+        const stockBotellaAnterior = Number(botRes.rows[0].stock) || 0;
+        await client.query(
+            `UPDATE inventario SET stock = stock + $1 WHERE LOWER(nombre) = LOWER($2)`,
+            [cantidadBotellas, botellaNombre]
+        );
         await actualizarEstadoArticulo(client, botellaNombre);
+        await registrarHistorial(client, {
+            tipo: 'PRODUCCION', origen: 'soplado',
+            producto: botellaNombre,
+            cantidad: cantidadBotellas, tipo_cambio: 'SUMA',
+            stock_anterior: stockBotellaAnterior, stock_nuevo: stockBotellaAnterior + cantidadBotellas,
+            usuario: usuarioResponsable(req, usuario),
+            referencia: 'Producción soplado: ' + cantidadBotellas + ' uds ' + botellaNombre
+        });
 
         // Guardar el reporte del día para la barra de estado y estadísticas
         await client.query(
@@ -837,6 +965,49 @@ async function actualizarEstadoArticulo(q, nombre) {
         `UPDATE inventario SET estado = CASE WHEN stock <= 0 THEN 'REALIZAR PEDIDO' ELSE 'STOCK SUFICIENTE' END WHERE LOWER(nombre) = LOWER($1)`,
         [nombre]
     );
+}
+
+// --- FUNCIÓN AUXILIAR: HISTORIAL DE MOVIMIENTOS DE INVENTARIO (best-effort, nunca rompe el flujo) ---
+async function registrarHistorial(q, datos) {
+    try {
+        await q.query(
+            `INSERT INTO historial_inventario (tipo, origen, producto, producto_key, articulo_id, cantidad, tipo_cambio, stock_anterior, stock_nuevo, usuario, referencia)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+            [
+                datos.tipo || 'MOVIMIENTO',
+                datos.origen || '',
+                datos.producto || 'N/D',
+                datos.producto_key || null,
+                datos.articulo_id || null,
+                Number(datos.cantidad) || 0,
+                datos.tipo_cambio === 'RESTA' ? 'RESTA' : 'SUMA',
+                datos.stock_anterior !== undefined && datos.stock_anterior !== null ? Number(datos.stock_anterior) : null,
+                datos.stock_nuevo !== undefined && datos.stock_nuevo !== null ? Number(datos.stock_nuevo) : null,
+                datos.usuario || 'sistema',
+                datos.referencia || ''
+            ]
+        );
+    } catch (err) {
+        console.error("No se pudo registrar en el historial de inventario:", err.message);
+    }
+}
+
+// Resuelve el nombre de usuario priorizando la sesión (token) y luego el enviado por el formulario.
+function usuarioResponsable(req, bodyUsuario) {
+    return (req && req.usuario) || bodyUsuario || 'sistema';
+}
+
+// Lee el stock actual de un artículo de inventario (para registrar stock anterior/nuevo).
+async function leerStockArticulo(q, articuloId, nombre) {
+    const cad = 'SELECT id, nombre, stock FROM inventario WHERE ' + (articuloId ? 'id = $1' : 'LOWER(nombre) = LOWER($1)');
+    const res = await q.query(cad, [articuloId || nombre]);
+    return res.rows.length > 0 ? res.rows[0] : null;
+}
+
+// Lee el stock actual de un producto terminado.
+async function leerStockProductoTerminado(q, productoKey) {
+    const res = await q.query('SELECT producto_key, nombre_producto, stock_cajas FROM producto_terminado WHERE producto_key = $1', [productoKey]);
+    return res.rows.length > 0 ? res.rows[0] : null;
 }
 
 // --- FUNCIÓN AUXILIAR PARA RECETAS DE ENVASADO ---
@@ -1750,10 +1921,32 @@ app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, re
             }
 
             if (productoKeyFinal) {
+                const st = await client.query('SELECT nombre_producto, stock_cajas FROM producto_terminado WHERE producto_key = $1', [productoKeyFinal]);
+                const stockAnterior = st.rows.length > 0 ? Number(st.rows[0].stock_cajas) || 0 : 0;
                 await client.query(`UPDATE producto_terminado SET stock_cajas = stock_cajas - $1 WHERE producto_key = $2`, [cantidad, productoKeyFinal]);
+                await registrarHistorial(client, {
+                    tipo: 'SALIDA', origen: 'salidas',
+                    producto: st.rows.length > 0 ? st.rows[0].nombre_producto : nombreItem,
+                    producto_key: productoKeyFinal,
+                    cantidad, tipo_cambio: 'RESTA',
+                    stock_anterior: stockAnterior, stock_nuevo: stockAnterior - cantidad,
+                    usuario: usuarioResponsable(req, usuario),
+                    referencia: 'Despacho N° ' + despachoId + ' - guía ' + guiaFinal
+                });
             } else if (idArticuloFinal) {
+                const st = await client.query('SELECT nombre, stock FROM inventario WHERE id = $1', [idArticuloFinal]);
+                const stockAnterior = st.rows.length > 0 ? Number(st.rows[0].stock) || 0 : 0;
                 await client.query(`UPDATE inventario SET stock = stock - $1 WHERE id = $2`, [cantidad, idArticuloFinal]);
                 if (item.nombre) await actualizarEstadoArticulo(client, item.nombre);
+                await registrarHistorial(client, {
+                    tipo: 'SALIDA', origen: 'salidas',
+                    producto: st.rows.length > 0 ? st.rows[0].nombre : nombreItem,
+                    articulo_id: idArticuloFinal,
+                    cantidad, tipo_cambio: 'RESTA',
+                    stock_anterior: stockAnterior, stock_nuevo: stockAnterior - cantidad,
+                    usuario: usuarioResponsable(req, usuario),
+                    referencia: 'Despacho N° ' + despachoId + ' - guía ' + guiaFinal
+                });
             }
 
             let targetArticuloId = idArticuloFinal;
@@ -1818,11 +2011,33 @@ app.post('/api/salidas/eliminar', async (req, res) => {
         for (const fila of filas) {
             const cantidad = parseFloat(fila.cantidad_salida) || 0;
             if (fila.producto_key) {
+                const st = await client.query('SELECT nombre_producto, stock_cajas FROM producto_terminado WHERE producto_key = $1', [fila.producto_key]);
+                const stockAnterior = st.rows.length > 0 ? Number(st.rows[0].stock_cajas) || 0 : 0;
                 await client.query(`UPDATE producto_terminado SET stock_cajas = stock_cajas + $1 WHERE producto_key = $2`, [cantidad, fila.producto_key]);
+                await registrarHistorial(client, {
+                    tipo: 'DEVOLUCION', origen: 'salidas',
+                    producto: st.rows.length > 0 ? st.rows[0].nombre_producto : fila.producto_key,
+                    producto_key: fila.producto_key,
+                    cantidad, tipo_cambio: 'SUMA',
+                    stock_anterior: stockAnterior, stock_nuevo: stockAnterior + cantidad,
+                    usuario: usuarioResponsable(req, req.body.usuario),
+                    referencia: 'Despacho eliminado N° ' + (fila.despacho_id || fila.id)
+                });
             } else if (fila.articulo_id) {
+                const st = await client.query('SELECT nombre, stock FROM inventario WHERE id = $1', [fila.articulo_id]);
+                const stockAnterior = st.rows.length > 0 ? Number(st.rows[0].stock) || 0 : 0;
                 await client.query(`UPDATE inventario SET stock = stock + $1 WHERE id = $2`, [cantidad, fila.articulo_id]);
                 const nombreRow = await client.query('SELECT nombre FROM inventario WHERE id = $1', [fila.articulo_id]);
                 if (nombreRow.rows.length > 0) await actualizarEstadoArticulo(client, nombreRow.rows[0].nombre);
+                await registrarHistorial(client, {
+                    tipo: 'DEVOLUCION', origen: 'salidas',
+                    producto: st.rows.length > 0 ? st.rows[0].nombre : 'Artículo #' + fila.articulo_id,
+                    articulo_id: fila.articulo_id,
+                    cantidad, tipo_cambio: 'SUMA',
+                    stock_anterior: stockAnterior, stock_nuevo: stockAnterior + cantidad,
+                    usuario: usuarioResponsable(req, req.body.usuario),
+                    referencia: 'Despacho eliminado N° ' + (fila.despacho_id || fila.id)
+                });
             }
             await client.query('DELETE FROM salidas_almacen WHERE id = $1', [fila.id]);
             borradas++;
@@ -1855,11 +2070,33 @@ app.post('/api/salidas/editar', upload.single('archivo_guia'), async (req, res) 
         for (const fila of filas) {
             const cantidad = parseFloat(fila.cantidad_salida) || 0;
             if (fila.producto_key) {
+                const st = await client.query('SELECT nombre_producto, stock_cajas FROM producto_terminado WHERE producto_key = $1', [fila.producto_key]);
+                const stockAnterior = st.rows.length > 0 ? Number(st.rows[0].stock_cajas) || 0 : 0;
                 await client.query(`UPDATE producto_terminado SET stock_cajas = stock_cajas + $1 WHERE producto_key = $2`, [cantidad, fila.producto_key]);
+                await registrarHistorial(client, {
+                    tipo: 'DEVOLUCION', origen: 'salidas_editar',
+                    producto: st.rows.length > 0 ? st.rows[0].nombre_producto : fila.producto_key,
+                    producto_key: fila.producto_key,
+                    cantidad, tipo_cambio: 'SUMA',
+                    stock_anterior: stockAnterior, stock_nuevo: stockAnterior + cantidad,
+                    usuario: usuarioResponsable(req, usuario),
+                    referencia: 'Despacho editado N° ' + despacho_id
+                });
             } else if (fila.articulo_id) {
+                const st = await client.query('SELECT nombre, stock FROM inventario WHERE id = $1', [fila.articulo_id]);
+                const stockAnterior = st.rows.length > 0 ? Number(st.rows[0].stock) || 0 : 0;
                 await client.query(`UPDATE inventario SET stock = stock + $1 WHERE id = $2`, [cantidad, fila.articulo_id]);
                 const nombreRow = await client.query('SELECT nombre FROM inventario WHERE id = $1', [fila.articulo_id]);
                 if (nombreRow.rows.length > 0) await actualizarEstadoArticulo(client, nombreRow.rows[0].nombre);
+                await registrarHistorial(client, {
+                    tipo: 'DEVOLUCION', origen: 'salidas_editar',
+                    producto: st.rows.length > 0 ? st.rows[0].nombre : 'Artículo #' + fila.articulo_id,
+                    articulo_id: fila.articulo_id,
+                    cantidad, tipo_cambio: 'SUMA',
+                    stock_anterior: stockAnterior, stock_nuevo: stockAnterior + cantidad,
+                    usuario: usuarioResponsable(req, usuario),
+                    referencia: 'Despacho editado N° ' + despacho_id
+                });
             }
             await client.query('DELETE FROM salidas_almacen WHERE id = $1', [fila.id]);
         }
@@ -1898,10 +2135,32 @@ app.post('/api/salidas/editar', upload.single('archivo_guia'), async (req, res) 
             }
 
             if (productoKeyFinal) {
+                const st = await client.query('SELECT nombre_producto, stock_cajas FROM producto_terminado WHERE producto_key = $1', [productoKeyFinal]);
+                const stockAnterior = st.rows.length > 0 ? Number(st.rows[0].stock_cajas) || 0 : 0;
                 await client.query(`UPDATE producto_terminado SET stock_cajas = stock_cajas - $1 WHERE producto_key = $2`, [cantidad, productoKeyFinal]);
+                await registrarHistorial(client, {
+                    tipo: 'SALIDA', origen: 'salidas',
+                    producto: st.rows.length > 0 ? st.rows[0].nombre_producto : nombreItem,
+                    producto_key: productoKeyFinal,
+                    cantidad, tipo_cambio: 'RESTA',
+                    stock_anterior: stockAnterior, stock_nuevo: stockAnterior - cantidad,
+                    usuario: usuarioResponsable(req, usuario),
+                    referencia: 'Edición despacho N° ' + despacho_id + ' - guía ' + guiaFinal
+                });
             } else if (idArticuloFinal) {
+                const st = await client.query('SELECT nombre, stock FROM inventario WHERE id = $1', [idArticuloFinal]);
+                const stockAnterior = st.rows.length > 0 ? Number(st.rows[0].stock) || 0 : 0;
                 await client.query(`UPDATE inventario SET stock = stock - $1 WHERE id = $2`, [cantidad, idArticuloFinal]);
                 if (item.nombre) await actualizarEstadoArticulo(client, item.nombre);
+                await registrarHistorial(client, {
+                    tipo: 'SALIDA', origen: 'salidas',
+                    producto: st.rows.length > 0 ? st.rows[0].nombre : nombreItem,
+                    articulo_id: idArticuloFinal,
+                    cantidad, tipo_cambio: 'RESTA',
+                    stock_anterior: stockAnterior, stock_nuevo: stockAnterior - cantidad,
+                    usuario: usuarioResponsable(req, usuario),
+                    referencia: 'Edición despacho N° ' + despacho_id + ' - guía ' + guiaFinal
+                });
             }
 
             let targetArticuloId = idArticuloFinal;
@@ -2032,6 +2291,38 @@ app.get('/api/auditoria/salidas', async (req, res) => {
     }
 });
 
+// --- AUDITORÍA: HISTORIAL DE MOVIMIENTOS DE INVENTARIO ---
+app.get('/api/auditoria/historial', async (req, res) => {
+    try {
+        const { tipo, desde, hasta, q } = req.query;
+        const params = [];
+        const filtros = [];
+
+        filtros.push(`$1 = '' OR tipo = $1`);
+        params.push(String(tipo || '').trim());
+
+        filtros.push(`$2 = '' OR fecha >= $2::timestamp`);
+        params.push(String(desde || '').trim());
+
+        filtros.push(`$3 = '' OR fecha <= ($3::timestamp + interval '1 day')`);
+        params.push(String(hasta || '').trim());
+
+        const busqueda = String(q || '').trim();
+        filtros.push(`$4 = '' OR LOWER(producto) LIKE LOWER($4) OR LOWER(COALESCE(usuario,'')) LIKE LOWER($4) OR LOWER(COALESCE(referencia,'')) LIKE LOWER($4)`);
+        params.push('%' + busqueda + '%');
+
+        const result = await pool.query(`
+            SELECT * FROM historial_inventario
+            WHERE ${filtros.join(' AND ')}
+            ORDER BY fecha DESC, id DESC
+            LIMIT 500
+        `, params);
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
 // --- FUNCIONES AUXILIARES DE PRODUCCIÓN ---
 function detectarProductoTipo(presentacion) {
     const p = presentacion.toLowerCase();
@@ -2125,21 +2416,42 @@ app.post('/api/produccion/reporte', async (req, res) => {
             const desgloseJson = JSON.stringify(desglose);
 
             for (const insumo of insumosADescontar) {
+                const st = await client.query('SELECT stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [insumo.nombre]);
+                const stockAnterior = st.rows.length > 0 ? Number(st.rows[0].stock) || 0 : 0;
                 await client.query(
                     `UPDATE inventario SET stock = stock - $1 WHERE LOWER(nombre) = LOWER($2)`,
                     [insumo.cantidad, insumo.nombre]
                 );
                 await actualizarEstadoArticulo(client, insumo.nombre);
+                await registrarHistorial(client, {
+                    tipo: 'PRODUCCION', origen: 'envasado',
+                    producto: insumo.nombre,
+                    cantidad: Number(insumo.cantidad), tipo_cambio: 'RESTA',
+                    stock_anterior: stockAnterior, stock_nuevo: stockAnterior - Number(insumo.cantidad),
+                    usuario: usuarioResponsable(req, usuario),
+                    referencia: 'Descuento por envasado: ' + cajas + ' cajas de ' + presentacion
+                });
             }
 
             if (producto_tipo) {
                 const nombreLegible = PRODUCTOS_TERMINADOS_MAP[producto_tipo] || presentacion;
+                const previo = await client.query('SELECT stock_cajas FROM producto_terminado WHERE producto_key = $1', [producto_tipo]);
+                const stockAnteriorPT = previo.rows.length > 0 ? Number(previo.rows[0].stock_cajas) || 0 : 0;
                 await client.query(`
                     INSERT INTO producto_terminado (producto_key, nombre_producto, stock_cajas)
                     VALUES ($1, $2, $3)
                     ON CONFLICT (producto_key) 
                     DO UPDATE SET stock_cajas = producto_terminado.stock_cajas + EXCLUDED.stock_cajas;
                 `, [producto_tipo, nombreLegible, cajas]);
+                await registrarHistorial(client, {
+                    tipo: 'PRODUCCION', origen: 'envasado',
+                    producto: nombreLegible,
+                    producto_key: producto_tipo,
+                    cantidad: cajas, tipo_cambio: 'SUMA',
+                    stock_anterior: stockAnteriorPT, stock_nuevo: stockAnteriorPT + cajas,
+                    usuario: usuarioResponsable(req, usuario),
+                    referencia: 'Producción de ' + cajas + ' cajas - ' + presentacion
+                });
             }
 
             await client.query(
@@ -2238,17 +2550,38 @@ app.post('/api/produccion/eliminar', async (req, res) => {
         if (producto_tipo) {
             const insumosADevolver = obtenerInsumosReceta(producto_tipo, cantidad_cajas, tapa_elegida);
             for (const insumo of insumosADevolver) {
+                const st = await client.query('SELECT stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [insumo.nombre]);
+                const stockAnterior = st.rows.length > 0 ? Number(st.rows[0].stock) || 0 : 0;
                 await client.query(
                     `UPDATE inventario SET stock = stock + $1 WHERE LOWER(nombre) = LOWER($2)`,
                     [insumo.cantidad, insumo.nombre]
                 );
                 await actualizarEstadoArticulo(client, insumo.nombre);
+                await registrarHistorial(client, {
+                    tipo: 'DEVOLUCION', origen: 'envasado',
+                    producto: insumo.nombre,
+                    cantidad: Number(insumo.cantidad), tipo_cambio: 'SUMA',
+                    stock_anterior: stockAnterior, stock_nuevo: stockAnterior + Number(insumo.cantidad),
+                    usuario: usuarioResponsable(req, req.body.usuario),
+                    referencia: 'Devolución al eliminar reporte: ' + cantidad_cajas + ' cajas de ' + reporte.presentacion
+                });
             }
 
+            const stPT = await client.query('SELECT nombre_producto, stock_cajas FROM producto_terminado WHERE producto_key = $1', [producto_tipo]);
+            const stockAnteriorPT = stPT.rows.length > 0 ? Number(stPT.rows[0].stock_cajas) || 0 : 0;
             await client.query(
                 `UPDATE producto_terminado SET stock_cajas = stock_cajas - $1 WHERE producto_key = $2`,
                 [cantidad_cajas, producto_tipo]
             );
+            await registrarHistorial(client, {
+                tipo: 'DEVOLUCION', origen: 'envasado',
+                producto: stPT.rows.length > 0 ? stPT.rows[0].nombre_producto : reporte.presentacion,
+                producto_key: producto_tipo,
+                cantidad: cantidad_cajas, tipo_cambio: 'RESTA',
+                stock_anterior: stockAnteriorPT, stock_nuevo: stockAnteriorPT - cantidad_cajas,
+                usuario: usuarioResponsable(req, req.body.usuario),
+                referencia: 'Devolución al eliminar reporte de ' + reporte.presentacion
+            });
         }
 
         await client.query('DELETE FROM reportes_produccion WHERE id = $1', [reporte_id]);

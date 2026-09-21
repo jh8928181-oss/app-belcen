@@ -165,6 +165,25 @@ const inicializarBaseDeDatos = async () => {
                 fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS historial_inventario (
+                id SERIAL PRIMARY KEY,
+                fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                tipo VARCHAR(30) NOT NULL DEFAULT 'MOVIMIENTO',
+                origen VARCHAR(50),
+                producto VARCHAR(150) NOT NULL,
+                producto_key VARCHAR(100),
+                articulo_id INT,
+                cantidad NUMERIC(12,3) NOT NULL DEFAULT 0,
+                tipo_cambio VARCHAR(10) NOT NULL DEFAULT 'SUMA',
+                stock_anterior NUMERIC(12,3),
+                stock_nuevo NUMERIC(12,3),
+                usuario VARCHAR(50),
+                referencia TEXT,
+                fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_historial_fecha ON historial_inventario (fecha DESC);
+            CREATE INDEX IF NOT EXISTS idx_historial_tipo ON historial_inventario (tipo);
+
             -- Usuarios de turno de Refinado (idempotente)
             INSERT INTO usuarios_sistema (usuario, password, rol) VALUES
                 ('usuario1', 'a49a94603f9a105326f880170b9342a6fd3ed71157b4dd16da4fbd46648c7f45721b25e49f83a1038bb333e4af25a59be35725e5e8b3b19e79a87fdb648299f3:8222cb2d385b1216e4e53a27ab34e4eb', 'refinado'),

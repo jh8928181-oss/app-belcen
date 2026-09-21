@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const pool = require('./db');
 const path = require('path');
@@ -8,6 +9,11 @@ const os = require('os');
 const crypto = require('crypto');
 const { promisify } = require('util');
 const tesseract = require('tesseract.js');
+
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const MODELO_GEMINI = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+let modeloGeminiExitoso = '';      // último modelo que respondió bien (evita reintentos)
+let ultimoFalloIA = 0;             // circuito antivuelta: si la IA acaba de fallar, no reintentarla al instante
 
 process.on('unhandledRejection', (reason) => {
     console.error('Rechazo no manejado:', reason);
@@ -1250,14 +1256,14 @@ function parsearCabeceraSUNAT(textoPdf) {
         }
     }
 
-    let pm = textoPdf.match(/Número de placa del vehículo[:\s]+([A-Z0-9][A-Z0-9\-]*[0-9])/i);
-    if (!pm) pm = textoPdf.match(/Número de placa[^\n]*Principal[:\s]+([A-Z0-9][A-Z0-9\-]*[0-9])/i);
-    if (!pm) pm = textoPdf.match(/Principal[:\s]+([A-Z0-9][A-Z0-9\-]*[0-9])/i);
-    if (!pm) pm = textoPdf.match(/(?:placa|veh[ií]culo)[^\w]*([A-Z0-9][A-Z0-9\-]+)/i);
-    if (pm) res.placa = pm[1].trim().toUpperCase();
+    let pm = textoPdf.match(/[Nn][°ºoóO0]?\.?\s*(?:úmero de placa del veh[ií]culo|umero de placa del vehiculo)[^\w]*:?\s*([A-Z]{2,3}[-–\s]?\d{3,4})/i);
+    if (!pm) pm = textoPdf.match(/veh[ií]culo[^\w]*:?\s*([A-Z]{2,3}[-–\s]?\d{3,4})/i);
+    if (!pm) pm = textoPdf.match(/Principal[:\s]+([A-Z]{2,3}[-–\s]?\d{3,4})/i);
+    if (!pm) pm = textoPdf.match(/\b([A-Z]{2,3}[-–]\d{3,4})\b/i);
+    if (pm) res.placa = pm[1].trim().replace(/\s+/g, '').toUpperCase();
 
     let cm = textoPdf.match(/Principal[:\s]+([A-ZÁÉÍÓÚÑÜ .]{3,}?)\s*-\s*DOCUMENTO NACIONAL/i);
-    if (!cm) cm = textoPdf.match(/Conductor[:\s]*([A-ZÁÉÍÓÚÑÜ .]{3,}?)(?=\s*(?:DNI|Licencia|LIC|Brevete|Placa|Veh[ií]culo|RUC)[:\s]|$)/i);
+    if (!cm) cm = textoPdf.match(/Conductor[:\s]*([A-ZÁÉÍÓÚÑÜ .]{3,}?)(?=\s*\r?\n|$|\s*(?:D[\.\s]?N[\.\s]?I|DNI|Licencia|LIC|Brevete|Placa|Veh[ií]culo|RUC)[:\s])/i);
     if (!cm) cm = textoPdf.match(/Conductor[:\s]*(\d{8})/i);
     if (cm) res.chofer = cm[1].trim().replace(/\s+/g, ' ');
 
@@ -1294,39 +1300,288 @@ async function ocrPdf(dataBuffer) {
     return texto.trim();
 }
 
-// --- LECTOR INTELIGENTE DE PDF PARA SALIDAS ---
+/* =====================================================================
+   LECTOR DE DOCUMENTOS CON IA (Gemini + OCR local)
+   Soporta imágenes (JPG/PNG/WebP/BMP/HEIC) y PDF (texto o escaneo).
+   ===================================================================== */
+const MIMES_IMAGEN = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/bmp', 'image/heic', 'image/tiff']);
+
+function mimetypePorExt(nombre) {
+    const ext = (nombre || '').toLowerCase().split('.').pop();
+    if (ext === 'pdf') return 'application/pdf';
+    if (ext === 'png') return 'image/png';
+    if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+    if (ext === 'webp') return 'image/webp';
+    if (ext === 'bmp') return 'image/bmp';
+    if (ext === 'heic') return 'image/heic';
+    return 'application/octet-stream';
+}
+
+function primeroNoVacio(...valores) {
+    for (const v of valores) {
+        if (v && String(v).trim()) return String(v).trim();
+    }
+    return '';
+}
+
+const PROMPT_GEMINI = [
+    'Eres un asistente experto en guías de remisión y facturas peruanas (SUNAT).',
+    'Lee el documento del traslado que se adjunta a continuación (imagen, PDF o texto) y extrae: la CABECERA (tipo de documento, número de guía, proveedor/remitente, RUC, empresa/destinatario, chofer, DNI del chofer, placa, punto de partida, destino, licencia) y los ITEMS de "Bienes por transportar" (descripción del producto y cantidad).',
+    'Responde ÚNICAMENTE con JSON válido con esta forma exacta:',
+    '{',
+    '  "campos": { "tipo_documento": "", "numero_guia": "", "proveedor": "", "ruc": "", "empresa": "", "chofer": "", "dni_chofer": "", "placa": "", "partida": "", "destino": "", "licencia": "" },',
+    '  "items": [ { "nombre": "", "cantidad": 0, "cantidad_guia": 0 } ],',
+    '  "texto": ""',
+    '}',
+    'Reglas: usa cadenas vacías cuando no encuentres un dato. El número de guía debe incluir serie-correlativo (ej. "T009-00000782"). "texto" = TODO el texto legible que veas del documento tal cual. Las cantidades deben ser números; si un ítem no tiene cantidad usa 0.'
+].join('\n');
+
+async function llamarGemini(modelo, partes, timeoutMs) {
+    const control = new AbortController();
+    const timer = setTimeout(() => control.abort(), timeoutMs);
+    try {
+        const resp = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: partes }], generationConfig: { temperature: 0.1, responseMimeType: 'application/json', maxOutputTokens: 4096 } }),
+                signal: control.signal
+            }
+        );
+        const json = await resp.json();
+        if (!resp.ok) throw new Error((json && json.error && json.error.message) || ('HTTP ' + resp.status));
+        const txt = ((json && json.candidates && json.candidates[0] && json.candidates[0].content && json.candidates[0].content.parts) || [])
+            .map(p => p.text || '').join('').trim();
+        if (!txt) throw new Error('Respuesta vacía de la IA.');
+        return { modelo, txt };
+    } catch (err) {
+        if (err.name === 'AbortError') throw new Error('Tiempo de espera agotado en la IA (' + modelo + ').');
+        throw err;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+// Resuelve en cuanto UNA llamada tiene éxito; solo falla si TODAS fallan.
+function primeroExitoso(promesas) {
+    return new Promise((resolve, reject) => {
+        let pendientes = promesas.length;
+        let primerError = null;
+        for (const p of promesas) {
+            Promise.resolve(p).then(resolve, (e) => { if (!primerError) primerError = e; if (--pendientes === 0) reject(primerError); });
+        }
+    });
+}
+
+// Pide a Gemini que lea el documento y devuelva campos + ítems + texto.
+// Si ya hay texto extraído se usa la ruta rápida (texto plano); si no, se adjunta el archivo (imagen/PDF).
+async function analizarDocumentoConGemini(dataBuffer, mimetype, textoExtraido) {
+    if (!GEMINI_API_KEY || typeof fetch !== 'function') return null;
+    if (Date.now() - ultimoFalloIA < 10000) return null; // la IA acaba de fallar: salir rápido, sin esperas
+    const esImagen = MIMES_IMAGEN.has(mimetype);
+    const esPdf = mimetype === 'application/pdf';
+    if (!esImagen && !esPdf) return null;
+
+    const usaTexto = textoExtraido && textoExtraido.trim().length >= 60;
+    let partes;
+    if (usaTexto) {
+        // Ruta rápida: se envía SOLO el texto (sin adjuntar el archivo) → respuesta en segundos.
+        partes = [{ text: PROMPT_GEMINI }, { text: 'DOCUMENTO A ANALIZAR:\n\n' + textoExtraido.trim() }];
+    } else {
+        if ((esPdf && dataBuffer.length > 8 * 1024 * 1024) || (!esPdf && dataBuffer.length > 15 * 1024 * 1024)) return null;
+        partes = [{ text: PROMPT_GEMINI }, { inlineData: { mimeType: esPdf ? 'application/pdf' : mimetype, data: dataBuffer.toString('base64') } }];
+    }
+
+    const modelos = Array.from(new Set([modeloGeminiExitoso, 'gemini-flash-lite-latest', MODELO_GEMINI, 'gemini-3.5-flash'].filter(Boolean)));
+
+    try {
+        const resultado = await primeroExitoso(modelos.map(m => llamarGemini(m, partes, usaTexto ? 15000 : 20000)));
+        modeloGeminiExitoso = resultado.modelo;
+        return JSON.parse(resultado.txt.replace(/^```json\s*/i, '').replace(/\s*```\s*$/, '').trim());
+    } catch (err) {
+        ultimoFalloIA = Date.now();
+        if (err instanceof SyntaxError) console.error('Gemini devolvió un JSON inválido.');
+        else console.error('Gemini falló:', err.message);
+        throw err;
+    }
+}
+
+// Extrae el texto de un documento (imagen o PDF): texto nativo → OCR local → Gemini.
+async function extraerTextoDocumento(dataBuffer, mimetype) {
+    const advertencias = [];
+    const esImagen = MIMES_IMAGEN.has(mimetype);
+
+    if (esImagen) {
+        try {
+            const worker = await obtenerWorkerOCR();
+            const { data } = await worker.recognize(Buffer.from(dataBuffer));
+            const textoOCR = (data.text || '').trim();
+            if (textoOCR.length >= 15) return { texto: textoOCR, metodo: 'ocr', advertencias };
+            advertencias.push('El OCR local no reconoció la imagen; se intentará con IA.');
+        } catch (err) {
+            advertencias.push('Error en OCR local: ' + err.message);
+        }
+    } else if (mimetype === 'application/pdf') {
+        try {
+            const pdfData = await new PDFParse({ data: dataBuffer }).getText();
+            const textoNativo = (pdfData.text || '').trim();
+            if (textoNativo.length >= 30) return { texto: textoNativo, metodo: 'texto', advertencias };
+            advertencias.push('El PDF no tiene texto nativo (parece escaneo), se aplicará OCR.');
+        } catch (err) {
+            advertencias.push('No se pudo extraer texto del PDF: ' + err.message);
+        }
+        try {
+            const textoOCR = await ocrPdf(dataBuffer);
+            if (textoOCR.length >= 15) return { texto: textoOCR, metodo: 'ocr', advertencias };
+            advertencias.push('El OCR local no reconoció el escaneo; se intentará con IA.');
+        } catch (err) {
+            advertencias.push('Error en OCR del escaneo: ' + err.message);
+        }
+    }
+
+    try {
+        const ia = await analizarDocumentoConGemini(dataBuffer, mimetype);
+        if (ia && ia.texto && ia.texto.trim().length >= 15) {
+            advertencias.push('Texto reconocido con IA (Gemini).');
+            return { texto: ia.texto.trim(), metodo: 'ia', advertencias };
+        }
+    } catch (err) {
+        advertencias.push('La IA no pudo leer el documento: ' + err.message);
+    }
+
+    return { texto: '', metodo: 'texto', advertencias };
+}
+
+// Cabecera legible para vigilancia (ingresos) a partir de texto plano.
+function componerCamposDesdeTexto(texto) {
+    const cabecera = parsearCabeceraSUNAT(texto);
+    const res = {
+        campos: {
+            tipo_documento: '',
+            numero_guia: cabecera.numero_guia,
+            proveedor: cabecera.empresa,
+            ruc: cabecera.ruc,
+            empresa: cabecera.empresa,
+            chofer: cabecera.chofer,
+            dni_chofer: '',
+            placa: cabecera.placa,
+            partida: cabecera.punto_partida,
+            destino: cabecera.destino,
+            licencia: cabecera.licencia
+        },
+        items: []
+    };
+    const rem = texto.match(/Datos del\s+[Rr]emitente\s*:?\s*(.+?)\s*-\s*(?:REGISTRO\s*ÚNICO\s*DE\s*CONTRIBUYENTES|RUC)\s*N[°º]?\s*(\d{11})/i);
+    if (rem) {
+        res.campos.proveedor = rem[1].trim();
+        if (!res.campos.ruc) res.campos.ruc = rem[2];
+    }
+    const mDNI = texto.match(/D[\.\s]?N[\.\s]?I[:\s]*[N°º]?\s*(\d{8})/i);
+    if (mDNI) res.campos.dni_chofer = mDNI[1];
+    const t = texto.toLowerCase();
+    if (t.includes('factura')) res.campos.tipo_documento = 'FACTURA';
+    else if (t.includes('guia') || t.includes('guía') || t.includes('remisi')) res.campos.tipo_documento = 'GUIA DE REMISION';
+    else res.campos.tipo_documento = 'OTRO';
+
+    // ítems en bruto de la sección "Bienes por transportar" (insumos, no catálogo de salidas)
+    const rechazar = /^(?:BIENES\s+POR\s+TRANSPORTAR|Datos del|N[°º]\.?\s|Fecha|RUC|N[Uu]mero de|P\.?Partida|P\.?Llegada|Conductor|Licencia|D\.?N\.?I|Principal|Secundario|Raz[oó]n|Direcci[oó]n|Unidad de medida|Cantidad|Descripci|C[oó]digo|^Item\b|^TOTAL|^Peso|^T\d{3})/i;
+    const filas = texto.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const candidatos = [];
+    let enBienes = false;
+    for (const fila of filas) {
+        if (/bienes por transportar/i.test(fila)) { enBienes = true; continue; }
+        const m = fila.match(/^(.{3,120}?)[\s]+([\d][\d\.,]{1,10})$/);
+        if (!m) continue;
+        const nombre = m[1].trim().replace(/\s+/g, ' ');
+        if (enBienes && !rechazar.test(nombre) && !/^[A-Z]{2,3}-?\d{3,4}$/i.test(nombre)) {
+            candidatos.push({ nombre, cantidad_guia: Number(m[2].replace(/\./g, '').replace(',', '.')) || 0 });
+        }
+    }
+    if (candidatos.length === 0) {
+        for (const fila of filas) {
+            const m = fila.match(/^(.{3,120}?)[\s]+([\d][\d\.,]{1,10})$/);
+            if (!m) continue;
+            const nombre = m[1].trim().replace(/\s+/g, ' ');
+            if (/^(?:botella|etiqueta|tapa|ca[ja]s?|preforma|paleta|insumo|aceite|don lalo|belini|corporacion)/i.test(nombre) && !rechazar.test(nombre)) {
+                candidatos.push({ nombre, cantidad_guia: Number(m[2].replace(/\./g, '').replace(',', '.')) || 0 });
+            }
+        }
+    }
+    const porNombre = new Map();
+    for (const it of candidatos) {
+        const clave = it.nombre.toUpperCase();
+        if (porNombre.has(clave)) porNombre.get(clave).cantidad_guia += it.cantidad_guia;
+        else porNombre.set(clave, { nombre: it.nombre, cantidad_guia: it.cantidad_guia });
+    }
+    res.items = Array.from(porNombre.values());
+    return res;
+}
+
+// --- LECTOR INTELIGENTE DE DOCUMENTOS PARA SALIDAS ---
 app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res) => {
+    const limpiarArchivo = () => { if (req.file) fs.promises.unlink(req.file.path).catch(() => {}); };
     try {
         if (!req.file) {
-            return res.status(400).json({ success: false, mensaje: 'No se subió ningún archivo PDF.' });
+            return res.status(400).json({ success: false, mensaje: 'No se subió ningún archivo.' });
         }
 
         const dataBuffer = fs.readFileSync(req.file.path);
-        const pdfData = await new PDFParse({ data: dataBuffer }).getText();
-        let textoPdf = pdfData.text || '';
-        let metodo = 'texto';
+        const mimetype = req.file.mimetype || mimetypePorExt(req.file.originalname);
+        const { texto: textoPdf, metodo, advertencias: advertenciasExtraccion } = await extraerTextoDocumento(dataBuffer, mimetype);
+        const advertencias = advertenciasExtraccion.slice();
 
-        const esEscaneo = textoPdf.trim().length < 30;
-        if (esEscaneo) {
-            try {
-                const textoOCR = await ocrPdf(dataBuffer);
-                if (textoOCR.trim().length < 15) {
-                    return res.json({ success: false, mensaje: 'El PDF es un escaneo (imagen) y no se pudo reconocer su contenido por OCR. Carga los datos manualmente.' });
-                }
-                textoPdf = textoOCR;
-                metodo = 'ocr';
-            } catch (err) {
-                console.error('Error OCR:', err);
-                return res.json({ success: false, mensaje: 'El PDF parecía un escaneo y el OCR falló (' + err.message + '). Carga los datos manualmente.' });
-            }
+        if (!textoPdf || textoPdf.trim().length < 15) {
+            return res.json({ success: false, mensaje: 'No se pudo reconocer contenido legible en el documento (ni texto ni OCR). Carga los datos manualmente.' });
         }
 
-        const cabecera = parsearCabeceraSUNAT(textoPdf);
-        const chofer_licencia = [cabecera.chofer, cabecera.licencia ? 'Lic: ' + cabecera.licencia : ''].filter(Boolean).join(' - ');
+        let cabecera = parsearCabeceraSUNAT(textoPdf);
+        let chofer_licencia = [cabecera.chofer, cabecera.licencia ? 'Lic: ' + cabecera.licencia : ''].filter(Boolean).join(' - ');
+
+        // Refuerzo con IA (Gemini): completa cabecera e ítems cuando los parsers locales no alcanzan.
+        let itemsIA = null;
+        let usadoGemini = false;
+        try {
+            const ia = await analizarDocumentoConGemini(dataBuffer, mimetype, textoPdf);
+            if (ia && (Object.values(ia.campos || {}).some(v => String(v).trim()) || (Array.isArray(ia.items) && ia.items.length))) {
+                const c = ia.campos || {};
+                cabecera.numero_guia = primeroNoVacio(c.numero_guia, cabecera.numero_guia);
+                cabecera.ruc = primeroNoVacio(c.ruc, cabecera.ruc);
+                cabecera.empresa = primeroNoVacio(c.empresa, c.proveedor, cabecera.empresa);
+                cabecera.destino = primeroNoVacio(c.destino, cabecera.destino);
+                cabecera.punto_partida = primeroNoVacio(c.partida, cabecera.punto_partida);
+                cabecera.placa = primeroNoVacio(c.placa, cabecera.placa).replace(/\s+Principal$/i, '');
+                cabecera.chofer = primeroNoVacio(c.chofer, cabecera.chofer);
+                cabecera.licencia = primeroNoVacio(c.licencia, cabecera.licencia);
+                chofer_licencia = [cabecera.chofer, cabecera.licencia ? 'Lic: ' + cabecera.licencia : ''].filter(Boolean).join(' - ');
+                if (Array.isArray(ia.items) && ia.items.length > 0) itemsIA = ia.items;
+                advertencias.unshift('Datos leídos con IA (Gemini). Revisa cantidades y campos antes de registrar.');
+                usadoGemini = true;
+            }
+        } catch (errG) {
+            console.error('Gemini no disponible en salidas:', errG.message);
+        }
 
         const { items: itemsTabla, advertencias: advertenciasTabla } = detectarItemsTabla(textoPdf);
-        let itemsDetectados = itemsTabla;
-        const advertencias = advertenciasTabla.slice();
+        let itemsDetectados;
+        if (itemsIA && itemsIA.length > 0) {
+            itemsDetectados = itemsIA.map(it => ({
+                product_key: it.product_key || '',
+                nombre: it.nombre || '',
+                cantidad: Number(it.cantidad ?? it.cantidad_guia) || 0,
+                cantidad_auto: true
+            }));
+        } else {
+            const porProd = new Map();
+            for (const it of itemsTabla) {
+                const clave = it.product_key || it.nombre;
+                const prev = porProd.get(clave);
+                if (prev) prev.cantidad += Number(it.cantidad) || 0;
+                else porProd.set(clave, { ...it, cantidad: Number(it.cantidad) || 0 });
+            }
+            itemsDetectados = Array.from(porProd.values());
+            advertencias.push(...advertenciasTabla);
+        }
 
         if (itemsDetectados.length === 0) {
             const ptRes = await pool.query('SELECT * FROM producto_terminado');
@@ -1357,6 +1612,7 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
         res.json({
             success: true,
             metodo,
+            usadoGemini,
             datos: {
                 numero_guia: cabecera.numero_guia,
                 ruc: cabecera.ruc,
@@ -1372,6 +1628,78 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
     } catch (err) {
         console.error("Error al leer PDF:", err);
         res.status(500).json({ success: false, mensaje: 'No se pudo leer el PDF: ' + err.message });
+    } finally {
+        limpiarArchivo();
+    }
+});
+
+// --- LECTOR IA GENÉRICO PARA VIGILANCIA / ALMACÉN (imagen o PDF, rellena campos) ---
+app.post('/api/documento/leer', upload.single('archivo_documento'), async (req, res) => {
+    const limpiarArchivo = () => { if (req.file) fs.promises.unlink(req.file.path).catch(() => {}); };
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, mensaje: 'No se subió ninguna imagen o PDF.' });
+        }
+
+        const dataBuffer = fs.readFileSync(req.file.path);
+        const mimetype = req.file.mimetype || mimetypePorExt(req.file.originalname);
+        const { texto, metodo, advertencias: advertenciasExt } = await extraerTextoDocumento(dataBuffer, mimetype);
+        const advertencias = advertenciasExt.slice();
+
+        let campos = {};
+        let items = [];
+        let textoReconocido = texto;
+        let usadoGemini = false;
+
+        if (texto && texto.trim().length >= 15) {
+            let ia = null;
+            try { ia = await analizarDocumentoConGemini(dataBuffer, mimetype, texto); }
+            catch (err) { advertencias.push('La IA falló: ' + err.message); }
+
+            const hayCamposIA = ia && ia.campos && Object.values(ia.campos).some(v => String(v).trim());
+            if (hayCamposIA || (ia && Array.isArray(ia.items) && ia.items.length > 0)) {
+                campos = ia.campos || {};
+                items = (Array.isArray(ia.items) ? ia.items : []).map(it => ({
+                    nombre: it.nombre || '',
+                    cantidad_guia: Number(it.cantidad_guia ?? it.cantidad) || 0
+                }));
+                textoReconocido = ia.texto || texto;
+                usadoGemini = true;
+                advertencias.push('Datos leídos con IA (Gemini). REVÍSALOS antes de guardar.');
+            } else {
+                const comp = componerCamposDesdeTexto(texto);
+                campos = comp.campos;
+                items = comp.items;
+            }
+        }
+
+        if (!Object.keys(campos).length) {
+            // Último intento con IA incluso si el texto local fue pobre.
+            try {
+                const ia = await analizarDocumentoConGemini(dataBuffer, mimetype, texto);
+                if (ia && ia.campos) {
+                    campos = ia.campos;
+                    items = (Array.isArray(ia.items) ? ia.items : []).map(it => ({
+                        nombre: it.nombre || '',
+                        cantidad_guia: Number(it.cantidad_guia ?? it.cantidad) || 0
+                    }));
+                    textoReconocido = ia.texto || texto;
+                    usadoGemini = true;
+                    advertencias.push('Datos leídos con IA (Gemini). REVÍSALOS antes de guardar.');
+                }
+            } catch (err) {
+                advertencias.push('La IA no pudo leer el documento: ' + err.message);
+            }
+        }
+
+        if (campos.placa) campos.placa = String(campos.placa).replace(/\s+Principal$/i, '');
+        const reconocioGuia = !!(campos.numero_guia || campos.proveedor || campos.ruc || campos.placa || campos.chofer);
+        res.json({ success: true, metodo, usadoGemini, reconocioGuia, texto: textoReconocido, campos, items, advertencias });
+    } catch (err) {
+        console.error('Error al leer documento:', err);
+        res.status(500).json({ success: false, mensaje: 'No se pudo leer el documento: ' + err.message });
+    } finally {
+        limpiarArchivo();
     }
 });
 

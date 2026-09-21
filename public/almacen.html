@@ -282,6 +282,9 @@
         .btn-modal-ok-azul { background: var(--azul); }
         .btn-modal-add { background: var(--ambar); color: #5c3a00; border: none; padding: 10px 16px; border-radius: 999px; cursor: pointer; font-weight: 800; font-family: inherit; }
         .btn-modal-add-azul { background: var(--azul); color: #fff; }
+        .aviso-ia-modal { margin: 12px 0; padding: 10px 12px; border-radius: 12px; background: rgba(59, 91, 219, 0.08); border: 1px solid rgba(59, 91, 219, 0.35); font-size: 13px; }
+        .btn-ia-sec { background: #26418a; color: #fff; border: none; padding: 7px 12px; font-weight: 700; border-radius: 999px; cursor: pointer; font-family: inherit; font-size: 12px; }
+        .btn-ia-sec:disabled { opacity: 0.6; cursor: wait; }
 
         @media (max-width: 640px) {
             body { padding: 12px 10px calc(16px + env(safe-area-inset-bottom)); }
@@ -480,14 +483,15 @@
             <div>
                 <label><b>Tipo de Salida:</b></label>
                 <select id="tipo_registro" name="tipo_registro">
-                    <option value="CON GUIA">Con Guía de Remisión (Auto-lectura PDF)</option>
+                    <option value="CON GUIA">Con Guía de Remisión (Auto-lectura IA del documento)</option>
                     <option value="SIN GUIA">Sin Guía (Manual)</option>
                 </select>
             </div>
 
             <div>
-                <label><b>Subir Guía PDF:</b></label>
-                <input type="file" id="archivo_guia" name="archivo_guia" accept=".pdf" onchange="leerPdfAutomatico(this)">
+                <label><b>Subir Guía (PDF o foto):</b></label>
+                <input type="file" id="archivo_guia" name="archivo_guia" accept=".pdf,.png,.jpg,.jpeg,.webp" onchange="leerPdfAutomatico(this)">
+                <small id="leerGuiaEstado" style="display:block; color:#555;"></small>
             </div>
 
             <div>
@@ -701,6 +705,15 @@
         <div class="modal-carta mc-820">
             <h3 class="h-modal-teal">🔧 Revisar y Ajustar Ingreso</h3>
 
+            <div class="aviso-ia-modal">
+                <label><b>🤖 Leer PDF / foto de la guía y rellenar el ajuste:</b></label>
+                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:4px;">
+                    <input type="file" id="archivo_ajuste_doc" accept=".pdf,.png,.jpg,.jpeg,.webp" style="max-width:250px;">
+                    <button type="button" id="btnLeerAjuste" class="btn-ia-sec" onclick="leerDocumentoAjuste()">Leer y rellenar</button>
+                    <small id="leerAjusteEstado" style="color:#555;"></small>
+                </div>
+            </div>
+
             <p>Corrige cada producto: nombre, cantidad que llegó, categoría destino (tapas, botellas, cajas, etiquetas o preformas) y unidad. Si el producto ya existe solo se suma el stock; si no, se crea con estos datos.</p>
 
             <div class="lista-modal" style="max-height: 320px; margin-top: 10px;">
@@ -883,6 +896,41 @@
             finally { guardNuevoProducto = false; }
         }
 
+        let leyendoAjusteIA = false;
+        async function leerDocumentoAjuste() {
+            const input = document.getElementById('archivo_ajuste_doc');
+            const estado = document.getElementById('leerAjusteEstado');
+            if (!input.files || !input.files[0]) { alert('Selecciona primero el PDF o foto de la guía.'); return; }
+            if (leyendoAjusteIA) return;
+            leyendoAjusteIA = true;
+            const btn = document.getElementById('btnLeerAjuste');
+            if (btn) btn.disabled = true;
+            if (estado) estado.textContent = 'Leyendo…';
+            try {
+                const fd = new FormData();
+                fd.append('archivo_documento', input.files[0]);
+                const res = await fetch('/api/documento/leer', { method: 'POST', body: fd });
+                const data = await res.json();
+                if (!res.ok || !data.success) { alert('❌ ' + (data.mensaje || 'No se pudo leer el documento.')); return; }
+                const tbody = document.getElementById('tablaAjusteManual');
+                tbody.innerHTML = '';
+                const items = (data.items && data.items.length) ? data.items : [];
+                if (items.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="5" class="text-center" style="color:#888;">No se reconocieron productos en el documento. Agrégalos manualmente.</td></tr>`;
+                    alert('⚠️ ' + ((data.advertencias && data.advertencias.length) ? data.advertencias.join(' ') : 'No se reconocieron ítems en el documento.'));
+                    return;
+                }
+                items.forEach(it => {
+                    agregarFilaAjusteVals(it.nombre || '', Number(it.cantidad_guia) || 0, Number(it.cantidad_guia) || 0, '');
+                });
+                if (estado) estado.textContent = 'OK: ' + items.length + ' ítem(s) cargados. REVISA antes de confirmar.';
+            } catch (err) { console.error(err); alert('Error al leer el documento: ' + err.message); }
+            finally {
+                leyendoAjusteIA = false;
+                if (btn) btn.disabled = false;
+            }
+        }
+
         // 🔧 Revisar y Ajustar conformidad (manual)
         function abrirModalRevisarAjuste(id) {
             const parsed = pendientesMap[id] || [];
@@ -946,6 +994,10 @@
         function cerrarModalRevisarAjuste() {
             document.getElementById('modalRevisarAjuste').style.display = 'none';
             ingresoAjusteActual = null;
+            const inpAdj = document.getElementById('archivo_ajuste_doc');
+            if (inpAdj) inpAdj.value = '';
+            const estAdj = document.getElementById('leerAjusteEstado');
+            if (estAdj) estAdj.textContent = '';
         }
 
         let guardAjusteManual = false;
@@ -1226,10 +1278,13 @@
             if (!input.files || !input.files[0]) return;
             const formData = new FormData();
             formData.append('archivo_guia', input.files[0]);
+            const estadoGuia = document.getElementById('leerGuiaEstado');
+            if (estadoGuia) estadoGuia.textContent = 'Leyendo ' + input.files[0].name + '…';
 
             try {
                 const res = await fetch('/api/salidas/leer-pdf', { method: 'POST', body: formData });
                 const data = await res.json();
+                if (estadoGuia) estadoGuia.textContent = '';
 
                 if (!res.ok || !data.success) {
                     itemsDespachoArray = [];
@@ -1241,6 +1296,7 @@
 
                 const d = data.datos || {};
                 const esOCR = data.metodo === 'ocr';
+                const esIA = !!data.usadoGemini;
 
                 if (d.numero_guia) document.getElementById('numero_guia').value = d.numero_guia;
                 if (d.ruc) document.getElementById('ruc').value = d.ruc;
@@ -1262,21 +1318,31 @@
                         cantidad_auto: i.cantidad_auto
                     }));
                     renderTablaItems();
-                    let mensaje = esOCR
-                        ? '🧾 Guía leída por OCR (era un escaneo). Cabecera e ítems cargados. REVISA las cantidades ⚠️.'
-                        : cabeceraOk
+                    let mensaje;
+                    if (esIA) {
+                        mensaje = '🤖 Guía leída con IA (Gemini). Cabecera, transporte e ítems cargados. REVISA las cantidades ⚠️.';
+                    } else if (esOCR) {
+                        mensaje = '🧾 Guía leída por OCR (era un escaneo). Cabecera e ítems cargados. REVISA las cantidades ⚠️.';
+                    } else {
+                        mensaje = cabeceraOk
                             ? '📄 Guía leída con éxito: cabecera, transporte e ítems cargados.'
                             : '📄 Ítems cargados (no se leyó cabecera).';
+                    }
                     if (advertencias.length > 0) {
                         mensaje += '\n\nADVERTENCIA:\n- ' + advertencias.join('\n- ') + '\n\nRevisa las cantidades ⚠️ antes de registrar.';
                     }
                     alert(mensaje);
                 } else {
-                    let mensaje = esOCR
-                        ? '🧾 Guía leída por OCR (escaneo) pero no se reconocieron ítems.'
-                        : cabeceraOk
+                    let mensaje;
+                    if (esIA) {
+                        mensaje = '🤖 Guía leída con IA (Gemini), pero no se reconocieron ítems. Agrégalos manualmente.';
+                    } else if (esOCR) {
+                        mensaje = '🧾 Guía leída por OCR (escaneo) pero no se reconocieron ítems.';
+                    } else {
+                        mensaje = cabeceraOk
                             ? '📄 Cabecera leída, pero no se reconocieron los ítems automáticamente. Agrégalos manualmente.'
                             : '⚠️ No se pudo leer la guía: ni cabecera ni ítems. Agrégala manualmente.';
+                    }
                     if (advertencias.length > 0) mensaje += '\n\n' + advertencias.join('\n');
                     alert(mensaje);
                 }

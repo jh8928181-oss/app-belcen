@@ -144,6 +144,22 @@
         .btn-logout-custom:hover { filter: brightness(0.95); }
         .btn-logout-custom:active { transform: scale(0.97); }
 
+        .btn-ia-leer {
+            background: #3b5bdb; color: #fff; border: none; padding: 9px 14px; font-weight: 700;
+            border-radius: 999px; cursor: pointer; font-family: inherit; font-size: 13px; margin-top: 6px;
+            box-shadow: 0 4px 12px rgba(59, 91, 219, 0.28);
+        }
+        .btn-ia-leer:disabled { opacity: 0.6; cursor: wait; }
+        .aviso-ia {
+            margin: 14px 0; padding: 12px 14px; border-radius: 12px;
+            background: rgba(59, 91, 219, 0.08); border: 1px solid rgba(59, 91, 219, 0.35);
+            color: #26418a; font-size: 13px;
+        }
+        .aviso-ia summary { cursor: pointer; font-weight: 700; }
+        .btn-ia-sec {
+            background: #26418a; color: #fff; border: none; padding: 7px 12px; font-weight: 700;
+            border-radius: 999px; cursor: pointer; font-family: inherit; font-size: 12px; margin-top: 6px;
+        }
         .pie-foot {
             text-align: center;
             margin-top: 26px;
@@ -210,10 +226,23 @@
                     <label><b>Lugar de Partida / Destino:</b></label>
                     <input type="text" id="lugar_partida" name="lugar_partida" placeholder="Origen -> Planta Principal Belcen">
                 </div>
-                <div>
-                    <label><b>Foto de Guía / Evidencia:</b></label>
-                    <input type="file" id="foto_guia" name="foto_guia" accept="image/*">
+<div>
+                    <label><b>Guía / Documento (foto o PDF):</b></label>
+                    <input type="file" id="foto_guia" name="foto_guia" accept=".pdf,.png,.jpg,.jpeg,.webp" onchange="readLeerDocEstado(this)">
+                    <small id="leerDocumentoEstado" style="display:block; color:#555;"></small>
+                    <button type="button" id="btnLeerDoc" onclick="leerDocumentoVigilancia()" class="btn-ia-leer">🤖 Leer y rellenar campos</button>
                 </div>
+            </div>
+
+            <div id="avisoLeerDoc" class="aviso-ia" style="display:none;">
+                <span id="avisoLeerDocTexto"><b>Datos leídos por IA.</b> Revísalos y corrige lo que falte antes de guardar.</span>
+                <button type="button" onclick="ocultarAvisoLeerDoc()" class="btn-x" title="Ocultar aviso" style="float:right;">X</button>
+                <details style="margin-top:8px;">
+                    <summary>Ver / usar texto extraído</summary>
+                    <textarea id="textoExtraidoDoc" readonly rows="4" style="width:100%; font-size:12px; resize:vertical;"></textarea>
+                    <button type="button" onclick="usarTextoTodo()" class="btn-ia-sec">📋 Copiar texto en Observaciones</button>
+                </details>
+            </div>
                 <div class="span-2">
                     <label><b>Observaciones Especiales (Estado de carga / Precintos / EPP):</b></label>
                     <input type="text" id="observaciones" name="observaciones" placeholder="Ej. Precinto OK, chofer con EPP completo (casco, botas)">
@@ -333,6 +362,91 @@
                     </tr>
                 `;
             });
+        }
+
+        function readLeerDocEstado(input) {
+            const estado = document.getElementById('leerDocumentoEstado');
+            if (estado) estado.textContent = input.files && input.files[0] ? 'Archivo: ' + input.files[0].name : '';
+        }
+
+        function mapearTipoDocumentoLegible(t) {
+            const s = (t || '').toLowerCase();
+            if (s.includes('factura')) return 'FACTURA';
+            if (s.includes('guia') || s.includes('guía') || s.includes('remisi')) return 'GUIA DE REMISION';
+            return 'OTRO';
+        }
+
+        function ocultarAvisoLeerDoc() {
+            document.getElementById('avisoLeerDoc').style.display = 'none';
+        }
+
+        function usarTextoTodo() {
+            const texto = (document.getElementById('textoExtraidoDoc').value || '').trim();
+            if (!texto) { alert('No hay texto extraído.'); return; }
+            const obs = document.getElementById('observaciones');
+            obs.value = (obs.value ? obs.value + '\n' : '') + '--- TEXTO EXTRAÍDO ---\n' + texto;
+            alert('📋 Texto copiado en Observaciones.');
+        }
+
+        async function leerDocumentoVigilancia() {
+            const input = document.getElementById('foto_guia');
+            if (!input.files || !input.files[0]) {
+                alert('Selecciona primero la foto o el PDF de la guía (campo "Guía / Documento").');
+                return;
+            }
+            const btn = document.getElementById('btnLeerDoc');
+            if (btn) { btn.disabled = true; btn.textContent = '🤖 Leyendo…'; }
+            try {
+                const fd = new FormData();
+                fd.append('archivo_documento', input.files[0]);
+                const res = await fetch('/api/documento/leer', { method: 'POST', body: fd });
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    alert('❌ ' + (data.mensaje || 'No se pudo leer el documento.'));
+                    return;
+                }
+                const c = data.campos || {};
+                document.getElementById('tipo_documento').value = c.tipo_documento
+                    ? mapearTipoDocumentoLegible(c.tipo_documento) : document.getElementById('tipo_documento').value;
+                if (c.numero_guia) document.getElementById('numero_guia').value = c.numero_guia;
+                if (c.proveedor) document.getElementById('proveedor').value = c.proveedor;
+                if (c.chofer) document.getElementById('chofer').value = c.chofer;
+                if (c.dni_chofer) document.getElementById('dni_chofer').value = c.dni_chofer;
+                if (c.placa) document.getElementById('placa').value = String(c.placa).replace(/\s+Principal$/i, '');
+                if (c.partida) document.getElementById('lugar_partida').value = c.partida;
+
+                if (data.items && data.items.length) {
+                    itemsVigilanciaArray = data.items.map(i => ({
+                        nombre: i.nombre,
+                        cantidad_guia: Number(i.cantidad_guia) || 0,
+                        cantidad_fisica: Number(i.cantidad_guia) || 0
+                    }));
+                    renderTablaVigilancia();
+                }
+
+                const avisoTexto = document.getElementById('avisoLeerDocTexto');
+                document.getElementById('textoExtraidoDoc').value = data.texto || '';
+                let msg = data.usadoGemini
+                    ? '<b>🤖 Datos leídos con IA (Gemini).</b>'
+                    : '<b>🧾 Datos leídos con lector local.</b>';
+                if (data.advertencias && data.advertencias.length) msg += ' ' + data.advertencias.join(' ');
+                msg += ' REVÍSALOS y corrige lo que falte antes de guardar.';
+                avisoTexto.innerHTML = msg;
+
+                if (!data.reconocioGuia && data.texto && data.texto.trim()) {
+                    const obs = document.getElementById('observaciones');
+                    obs.value = (obs.value ? obs.value + '\n' : '') + '--- TEXTO EXTRAÍDO ---\n' + data.texto;
+                    avisoTexto.innerHTML += ' El documento no se reconoció como guía; el texto quedó en Observaciones (revísalo).';
+                }
+                const aviso = document.getElementById('avisoLeerDoc');
+                aviso.style.display = 'block';
+                aviso.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            } catch (err) {
+                console.error(err);
+                alert('Error de conexión al leer el documento: ' + err.message);
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '🤖 Leer y rellenar campos'; }
+            }
         }
 
         let enviandoVigilancia = false;

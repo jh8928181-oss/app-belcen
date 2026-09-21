@@ -2275,6 +2275,15 @@ app.get('/api/auditoria/entradas', async (req, res) => {
     }
 });
 
+app.get('/api/auditoria/vigilancia', async (req, res) => {
+    try {
+        const result = await pool.query(`SELECT * FROM ingresos_vigilancia ORDER BY id DESC`);
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
 app.get('/api/auditoria/salidas', async (req, res) => {
     try {
         const result = await pool.query(`

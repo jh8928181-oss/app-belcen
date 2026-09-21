@@ -26,7 +26,7 @@
             margin: 0;
             background-color: var(--bg);
             color: var(--texto);
-            padding: 24px 16px 56px;
+            padding: 24px 16px calc(120px + env(safe-area-inset-bottom));
             -webkit-font-smoothing: antialiased;
         }
 
@@ -57,7 +57,7 @@
             letter-spacing: -0.3px;
         }
 
-        select, input {
+        select, input, textarea {
             padding: 12px 14px;
             border: 1px solid rgba(0, 0, 0, 0.08);
             border-radius: 12px;
@@ -69,15 +69,17 @@
             color: var(--texto);
             font-family: inherit;
         }
-        select:focus, input:focus {
+        select:focus, input:focus, textarea:focus {
             outline: none;
             border-color: var(--azul);
             box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.15);
         }
         select { -webkit-appearance: none; appearance: none; background-image: linear-gradient(45deg, transparent 50%, #6c7280 50%), linear-gradient(135deg, #6c7280 50%, transparent 50%); background-position: calc(100% - 20px) 50%, calc(100% - 15px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
+        .campo-falta { border-color: var(--rojo) !important; box-shadow: 0 0 0 4px rgba(255, 59, 48, 0.12) !important; }
 
         .grid-form { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
         .span-2 { grid-column: 1 / -1; }
+        .etiqueta-mini { font-size: 12px; color: var(--texto2); font-weight: 700; }
 
         .tabla-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 14px; }
         table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 14px; border: 1px solid rgba(0, 0, 0, 0.07); border-radius: 14px; overflow: hidden; background: rgba(255, 255, 255, 0.6); }
@@ -94,6 +96,13 @@
             border-radius: 999px; cursor: pointer; font-weight: 700; font-family: inherit;
             min-width: 32px;
         }
+
+        .badge-diff {
+            display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px;
+            font-weight: 800; white-space: nowrap;
+        }
+        .badge-diff.ok { background: rgba(52, 199, 89, 0.15); color: #1e7e34; }
+        .badge-diff.warn { background: rgba(255, 59, 48, 0.15); color: #bd2130; }
 
         .logout { display: inline-block; margin-bottom: 12px; color: var(--azul); text-decoration: none; font-weight: 600; }
         .logout:hover { text-decoration: underline; }
@@ -128,9 +137,9 @@
         .fila-carga > div { flex: 1 1 140px; }
         .fila-carga .g2 { flex: 2 1 220px; }
         .fila-carga .g1 { flex: 1 1 120px; }
-        .fila-carga label { font-size: 12px; color: var(--texto2); }
+        .fila-carga label { font-size: 12px; color: var(--texto2); font-weight: 700; }
         .btn-add-vig {
-            background: var(--ambar); color: #fff; border: none; padding: 11px 16px; font-weight: 700;
+            background: var(--ambar); color: #fff; border: none; padding: 13px 16px; font-weight: 700;
             border-radius: 999px; cursor: pointer; font-family: inherit; white-space: nowrap;
             box-shadow: 0 4px 12px rgba(255, 149, 0, 0.28);
         }
@@ -145,15 +154,15 @@
         .btn-logout-custom:active { transform: scale(0.97); }
 
         .btn-ia-leer {
-            background: #3b5bdb; color: #fff; border: none; padding: 9px 14px; font-weight: 700;
-            border-radius: 999px; cursor: pointer; font-family: inherit; font-size: 13px; margin-top: 6px;
+            background: #3b5bdb; color: #fff; border: none; padding: 11px 16px; font-weight: 700;
+            border-radius: 999px; cursor: pointer; font-family: inherit; font-size: 14px; margin-top: 10px;
             box-shadow: 0 4px 12px rgba(59, 91, 219, 0.28);
         }
         .btn-ia-leer:disabled { opacity: 0.6; cursor: wait; }
         .aviso-ia {
-            margin: 14px 0; padding: 12px 14px; border-radius: 12px;
+            margin: 14px 0 0; padding: 12px 14px; border-radius: 12px;
             background: rgba(59, 91, 219, 0.08); border: 1px solid rgba(59, 91, 219, 0.35);
-            color: #26418a; font-size: 13px;
+            color: #26418a; font-size: 13px; text-align: left;
         }
         .aviso-ia summary { cursor: pointer; font-weight: 700; }
         .btn-ia-sec {
@@ -167,15 +176,131 @@
             border-top: 1px solid rgba(0, 0, 0, 0.08);
         }
 
+        /* ---------- WIZARD: pasos ---------- */
+        .paso { display: none; }
+        .paso.activo { display: block; animation: pasoIn .28s ease; }
+        @keyframes pasoIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: none; }
+        }
+
+        /* ---------- Chips de progreso (animados) ---------- */
+        .progreso-steps {
+            display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: nowrap;
+            margin: 0 0 18px; overflow-x: auto; padding-bottom: 6px; -webkit-overflow-scrolling: touch;
+        }
+        .chip-paso {
+            display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px;
+            background: rgba(0, 0, 0, 0.05); border: 1px solid rgba(0, 0, 0, 0.06);
+            font-size: 12.5px; font-weight: 700; color: var(--texto2); cursor: default;
+            font-family: inherit; white-space: nowrap; transition: background .25s ease, color .25s ease,
+            border-color .25s ease, transform .18s ease;
+        }
+        .chip-paso .chip-num {
+            width: 22px; height: 22px; border-radius: 50%; background: rgba(0, 0, 0, 0.08);
+            display: inline-flex; align-items: center; justify-content: center; font-size: 12px;
+            transition: background .25s ease, color .25s ease;
+        }
+        .chip-paso.activo {
+            background: rgba(255, 149, 0, 0.14); border-color: rgba(255, 149, 0, 0.45); color: #a05a00;
+            animation: chipPulse 1.6s ease-in-out infinite;
+        }
+        .chip-paso.activo .chip-num { background: var(--ambar); color: #fff; }
+        .chip-paso.completado {
+            background: rgba(52, 199, 89, 0.12); border-color: rgba(52, 199, 89, 0.40); color: #1e7e34; cursor: pointer;
+        }
+        .chip-paso.completado:hover { transform: translateY(-1px); }
+        .chip-paso.completado .chip-num { background: var(--verde); color: #fff; }
+        .chip-paso:disabled { opacity: .45; cursor: not-allowed; }
+        .chip-check { width: 14px; height: 14px; flex: 0 0 auto; }
+        .chip-check path { stroke-dasharray: 24; stroke-dashoffset: 24; animation: dibujarTick .4s ease forwards; }
+        @keyframes dibujarTick { to { stroke-dashoffset: 0; } }
+        @keyframes chipPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(255, 149, 0, 0.35); }
+            50% { box-shadow: 0 0 0 6px rgba(255, 149, 0, 0); }
+        }
+
+        /* ---------- Dropzone IA ---------- */
+        .dropzone {
+            margin-top: 14px; padding: 18px 16px; border-radius: 16px; text-align: center;
+            background: rgba(59, 91, 219, 0.07); border: 2px dashed rgba(59, 91, 219, 0.40);
+        }
+        .dropzone label { cursor: pointer; display: block; }
+        .dropzone input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; margin: 0; padding: 0; }
+        .dz-ico { font-size: 26px; }
+        .dz-txt { font-size: 14px; font-weight: 800; color: #26418a; margin-top: 4px; }
+        .dz-sub { font-size: 12px; color: var(--texto2); margin-top: 2px; }
+
+        /* ---------- Barra fija de navegación (tipo app) ---------- */
+        .barra-pasos {
+            position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+            display: flex; gap: 10px; align-items: center; justify-content: center;
+            padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+            background: rgba(255, 255, 255, 0.82);
+            backdrop-filter: blur(20px) saturate(160%);
+            -webkit-backdrop-filter: blur(20px) saturate(160%);
+            border-top: 1px solid rgba(0, 0, 0, 0.07);
+            box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.06);
+        }
+        @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+            .barra-pasos { background: rgba(255, 255, 255, 0.96); }
+        }
+        .btn-paso {
+            flex: 1; max-width: 340px; min-height: 48px; border-radius: 999px; border: none;
+            font-family: inherit; font-weight: 800; font-size: 15px; cursor: pointer;
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            transition: transform .18s ease, opacity .2s ease, box-shadow .2s ease, background .2s ease;
+        }
+        .btn-paso:disabled { opacity: .45; cursor: not-allowed; }
+        .btn-paso:active:not(:disabled) { transform: scale(.97); }
+        .btn-atras { background: rgba(0, 0, 0, 0.07); color: var(--texto); }
+        .btn-next { background: var(--ambar); color: #fff; box-shadow: 0 6px 16px rgba(255, 149, 0, 0.30); }
+        .btn-next.registrar { background: var(--verde); box-shadow: 0 6px 16px rgba(52, 199, 89, 0.30); }
+        .btn-next.registrar:hover { filter: brightness(0.96); }
+
+        /* ---------- Resumen paso 3 ---------- */
+        .resumen-doc { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+        .chip-dato {
+            background: rgba(0, 0, 0, 0.05); border: 1px solid rgba(0, 0, 0, 0.06);
+            padding: 6px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: var(--texto);
+        }
+        .chip-dato b { color: #a05a00; }
+
+        /* ---------- Panel de éxito ---------- */
+        .exito-panel { display: none; text-align: center; padding: 26px 10px; }
+        .exito-panel .exito-ico {
+            width: 64px; height: 64px; border-radius: 50%; background: var(--verde); color: #fff;
+            font-size: 30px; display: inline-flex; align-items: center; justify-content: center;
+            margin-bottom: 14px; box-shadow: 0 10px 24px rgba(52, 199, 89, 0.35); animation: exitoPop .4s ease;
+        }
+        @keyframes exitoPop { from { transform: scale(.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .exito-panel h4 { margin: 0 0 6px; color: #1e7e34; font-size: 20px; }
+        .exito-panel p { color: var(--texto2); margin: 4px 0 18px; }
+        .exito-resumen {
+            background: rgba(0, 0, 0, 0.04); border-radius: 14px; padding: 14px;
+            margin: 0 0 18px; font-size: 13px; text-align: left;
+        }
+        .exito-resumen div { padding: 3px 0; }
+        .exito-botones { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+        .btn-exito-sec {
+            background: var(--azul); color: #fff; border: none; padding: 12px 18px;
+            border-radius: 999px; cursor: pointer; font-weight: 800; font-size: 14px; font-family: inherit;
+            box-shadow: 0 6px 16px rgba(10, 132, 255, 0.30);
+        }
+        .btn-exito-sec:hover { filter: brightness(0.95); }
+        .btn-exito-sec.sec { background: rgba(0, 0, 0, 0.08); color: var(--texto); box-shadow: none; }
+
         @media (max-width: 640px) {
-            body { padding: 12px 10px calc(16px + env(safe-area-inset-bottom)); }
+            body { padding: 12px 10px calc(120px + env(safe-area-inset-bottom)); }
             .card { padding: 18px; }
             h3 { font-size: 18px; }
-            select, input { font-size: 16px; }
+            select, input, textarea { font-size: 16px; }
             .grid-form { grid-template-columns: 1fr; }
             table { min-width: 520px; }
             th, td { padding: 9px 10px; }
             .fila-carga > div { flex: 1 1 45%; }
+            .chip-paso { padding: 8px 12px; font-size: 12px; }
+            .btn-paso { font-size: 14px; min-height: 50px; }
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -191,84 +316,127 @@
 <body>
     <div class="card reveal">
         <h3>REGISTRO DE INGRESO - VIGILANCIA</h3>
-        
-        <form id="formVigilancia" enctype="multipart/form-data">
-            <div class="grid-form">
-                <div>
-                    <label><b>Tipo de Documento:</b></label>
-                    <select id="tipo_documento" name="tipo_documento">
-                        <option value="GUIA DE REMISION">Guía de Remisión</option>
-                        <option value="FACTURA">Factura</option>
-                        <option value="OTRO">Otro Documento</option>
-                    </select>
-                </div>
-                <div>
-                    <label><b>N° de Guía / Documento:</b></label>
-                    <input type="text" id="numero_guia" name="numero_guia" placeholder="Ej. T001-000452" required>
-                </div>
-                <div>
-                    <label><b>Empresa Proveedora:</b></label>
-                    <input type="text" id="proveedor" name="proveedor" placeholder="Razón Social del Proveedor" required>
-                </div>
-                <div>
-                    <label><b>Nombre del Conductor:</b></label>
-                    <input type="text" id="chofer" name="chofer" placeholder="Apellidos y nombres del chofer">
-                </div>
-                <div>
-                    <label><b>Documento de Identidad (DNI):</b></label>
-                    <input type="text" id="dni_chofer" name="dni_chofer" placeholder="N° de DNI / Pasaporte">
-                </div>
-                <div>
-                    <label><b>Placa del Vehículo:</b></label>
-                    <input type="text" id="placa" name="placa" placeholder="Ej. ABC-123">
-                </div>
-                <div>
-                    <label><b>Lugar de Partida / Destino:</b></label>
-                    <input type="text" id="lugar_partida" name="lugar_partida" placeholder="Origen -> Planta Principal Belcen">
-                </div>
-<div>
-                    <label><b>Guía / Documento (foto o PDF):</b></label>
+
+        <!-- Progreso de pasos -->
+        <div class="progreso-steps" role="tablist" aria-label="Pasos del registro">
+            <button type="button" class="chip-paso activo" data-paso="0" onclick="irAPaso(0)" aria-current="step">
+                <span class="chip-num">1</span><span>Documento</span>
+            </button>
+            <button type="button" class="chip-paso" data-paso="1" onclick="irAPaso(1)">
+                <span class="chip-num">2</span><span>Carga</span>
+            </button>
+            <button type="button" class="chip-paso" data-paso="2" onclick="irAPaso(2)">
+                <span class="chip-num">3</span><span>Revisar</span>
+            </button>
+        </div>
+
+        <form id="formVigilancia" enctype="multipart/form-data" novalidate>
+
+            <!-- PASO 1: Documento y Transporte -->
+            <section class="paso activo" data-paso="0" id="pasoDoc">
+                <div class="dropzone">
+                    <label for="foto_guia">
+                        <div class="dz-ico">📷</div>
+                        <div class="dz-txt">Toca para subir la guía (foto o PDF)</div>
+                        <div class="dz-sub">La IA lee y rellena los campos automáticamente</div>
+                    </label>
                     <input type="file" id="foto_guia" name="foto_guia" accept=".pdf,.png,.jpg,.jpeg,.webp" onchange="readLeerDocEstado(this)">
                     <small id="leerDocumentoEstado" style="display:block; color:#555;"></small>
                     <button type="button" id="btnLeerDoc" onclick="leerDocumentoVigilancia()" class="btn-ia-leer">🤖 Leer y rellenar campos</button>
-                </div>
-            </div>
-
-            <div id="avisoLeerDoc" class="aviso-ia" style="display:none;">
-                <span id="avisoLeerDocTexto"><b>Datos leídos por IA.</b> Revísalos y corrige lo que falte antes de guardar.</span>
-                <button type="button" onclick="ocultarAvisoLeerDoc()" class="btn-x" title="Ocultar aviso" style="float:right;">X</button>
-                <details style="margin-top:8px;">
-                    <summary>Ver / usar texto extraído</summary>
-                    <textarea id="textoExtraidoDoc" readonly rows="4" style="width:100%; font-size:12px; resize:vertical;"></textarea>
-                    <button type="button" onclick="usarTextoTodo()" class="btn-ia-sec">📋 Copiar texto en Observaciones</button>
-                </details>
-            </div>
-                <div class="span-2">
-                    <label><b>Observaciones Especiales (Estado de carga / Precintos / EPP):</b></label>
-                    <input type="text" id="observaciones" name="observaciones" placeholder="Ej. Precinto OK, chofer con EPP completo (casco, botas)">
-                </div>
-            </div>
-
-            <div class="carga-box">
-                <h4>📦 Datos de la Carga e Insumos</h4>
-                
-                <div class="fila-carga">
-                    <div class="g2">
-                        <label><b>Descripción del Insumo / Producto:</b></label>
-                        <input type="text" id="prod_textual" placeholder="Ej. Botella Belini x 1 Lt / Cajas / Tapas">
+                    <div id="avisoLeerDoc" class="aviso-ia" style="display:none;">
+                        <span id="avisoLeerDocTexto"><b>Datos leídos por IA.</b> Revísalos y corrige lo que falte antes de guardar.</span>
+                        <button type="button" onclick="ocultarAvisoLeerDoc()" class="btn-x" title="Ocultar aviso" style="float:right;">X</button>
+                        <details style="margin-top:8px;">
+                            <summary>Ver / usar texto extraído</summary>
+                            <textarea id="textoExtraidoDoc" readonly rows="4" style="width:100%; font-size:12px; resize:vertical;"></textarea>
+                            <button type="button" onclick="usarTextoTodo()" class="btn-ia-sec">📋 Copiar texto en Observaciones</button>
+                        </details>
                     </div>
-                    <div class="g1">
-                        <label><b>Cantidad Guía:</b></label>
-                        <input type="number" step="0.01" id="prod_cant_guia" placeholder="Cant. Papel">
-                    </div>
-                    <div class="g1">
-                        <label><b>Cantidad Física:</b></label>
-                        <input type="number" step="0.01" id="prod_cant_fisica" placeholder="Cant. Real">
+                </div>
+
+                <div class="grid-form" style="margin-top:16px;">
+                    <div>
+                        <label class="etiqueta-mini">🧾 Tipo de Documento</label>
+                        <select id="tipo_documento" name="tipo_documento">
+                            <option value="GUIA DE REMISION">Guía de Remisión</option>
+                            <option value="FACTURA">Factura</option>
+                            <option value="OTRO">Otro Documento</option>
+                        </select>
                     </div>
                     <div>
-                        <button type="button" onclick="agregarItemVigilancia()" class="btn-add-vig">+ Añadir</button>
+                        <label class="etiqueta-mini">🔢 N° de Guía / Documento *</label>
+                        <input type="text" id="numero_guia" name="numero_guia" placeholder="Ej. T001-000452" required>
+                    </div>
+                    <div>
+                        <label class="etiqueta-mini">🏢 Empresa Proveedora *</label>
+                        <input type="text" id="proveedor" name="proveedor" placeholder="Razón Social del Proveedor" required>
+                    </div>
+                    <div>
+                        <label class="etiqueta-mini">👤 Nombre del Conductor</label>
+                        <input type="text" id="chofer" name="chofer" placeholder="Apellidos y nombres del chofer">
+                    </div>
+                    <div>
+                        <label class="etiqueta-mini">🪪 Documento de Identidad (DNI)</label>
+                        <input type="text" id="dni_chofer" name="dni_chofer" placeholder="N° de DNI / Pasaporte">
+                    </div>
+                    <div>
+                        <label class="etiqueta-mini">🚛 Placa del Vehículo</label>
+                        <input type="text" id="placa" name="placa" placeholder="Ej. ABC-123">
+                    </div>
+                    <div class="span-2">
+                        <label class="etiqueta-mini">🗺️ Lugar de Partida / Destino</label>
+                        <input type="text" id="lugar_partida" name="lugar_partida" placeholder="Origen -> Planta Principal Belcen">
                     </div>
                 </div>
+            </section>
+
+            <!-- PASO 2: Carga e Insumos -->
+            <section class="paso" data-paso="1" id="pasoCarga">
+                <div class="carga-box">
+                    <h4>📦 Datos de la Carga e Insumos</h4>
+
+                    <div class="fila-carga">
+                        <div class="g2">
+                            <label>Descripción del Insumo / Producto:</label>
+                            <input type="text" id="prod_textual" placeholder="Ej. Botella Belini x 1 Lt / Cajas / Tapas" onkeydown="if(event.key==='Enter'){event.preventDefault();agregarItemVigilancia();}">
+                        </div>
+                        <div class="g1">
+                            <label>Cantidad Guía:</label>
+                            <input type="number" step="0.01" id="prod_cant_guia" placeholder="Cant. Papel">
+                        </div>
+                        <div class="g1">
+                            <label>Cantidad Física:</label>
+                            <input type="number" step="0.01" id="prod_cant_fisica" placeholder="Cant. Real">
+                        </div>
+                        <div>
+                            <button type="button" onclick="agregarItemVigilancia()" class="btn-add-vig">+ Añadir</button>
+                        </div>
+                    </div>
+
+                    <div class="tabla-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>PRODUCTO / INSUMO</th>
+                                    <th class="text-center">CANT. GUÍA</th>
+                                    <th class="text-center">CANT. FÍSICA</th>
+                                    <th class="text-center">DIF.</th>
+                                    <th class="text-center">QUITAR</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tablaItemsVigilancia">
+                                <tr><td colspan="5" class="text-center sin-registros">No hay productos agregados.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PASO 3: Revisión y Envío -->
+            <section class="paso" data-paso="2" id="pasoRevisar">
+                <h4 style="margin:0 0 12px; color:#a05a00;">🔎 Revise antes de enviar</h4>
+
+                <div class="resumen-doc" id="resumenDocPaso3"></div>
 
                 <div class="tabla-wrap">
                     <table>
@@ -277,27 +445,43 @@
                                 <th>PRODUCTO / INSUMO</th>
                                 <th class="text-center">CANT. GUÍA</th>
                                 <th class="text-center">CANT. FÍSICA</th>
-                                <th class="text-center">QUITAR</th>
+                                <th class="text-center">DIF.</th>
                             </tr>
                         </thead>
-                        <tbody id="tablaItemsVigilancia">
-                            <tr><td colspan="4" class="text-center sin-registros">No hay productos agregados.</td></tr>
-                        </tbody>
+                        <tbody id="tablaResumenPaso3"></tbody>
                     </table>
                 </div>
-            </div>
 
-            <div>
-                <button type="submit" class="btn-accion">🚀 REGISTRAR INGRESO Y ENVIAR NOTIFICACIÓN A ALMACÉN</button>
-            </div>
+                <div id="obsRevisar" style="margin-top:18px;">
+                    <label class="etiqueta-mini">📝 Observaciones Especiales (Estado de carga / Precintos / EPP)</label>
+                    <input type="text" id="observaciones" name="observaciones" placeholder="Ej. Precinto OK, chofer con EPP completo (casco, botas)">
+                </div>
+
+                <!-- Éxito -->
+                <div id="panelExito" class="exito-panel">
+                    <div class="exito-ico">✅</div>
+                    <h4>Ingreso registrado</h4>
+                    <p>Se envió la notificación a Almacén.</p>
+                    <div id="exitoResumen" class="exito-resumen"></div>
+                    <div class="exito-botones">
+                        <button type="button" onclick="reiniciarFormulario()" class="btn-exito-sec">＋ Nueva entrada</button>
+                        <button type="button" onclick="window.location.href='dashboard.html'" class="btn-exito-sec sec">Volver al inicio</button>
+                    </div>
+                </div>
+            </section>
         </form>
 
-        <div class="pie-foot">
+        <div class="pie-foot" id="pieVigilancia">
             <a href="dashboard.html" class="logout" id="linkDashboard">Volver al Dashboard General</a>
             <br>
             <button onclick="cerrarSesion()" class="btn-logout-custom">🔒 Cerrar Sesión (Salir)</button>
         </div>
     </div>
+
+    <footer class="barra-pasos" id="barraPasos">
+        <button type="button" id="btnPasoAtras" class="btn-paso btn-atras" onclick="pasoAtras()" hidden>← Atrás</button>
+        <button type="button" id="btnPasoNext" class="btn-paso btn-next" onclick="pasoNext()">Continuar</button>
+    </footer>
 
     <script src="/motion.js" defer></script>
     <script src="/auth-client.js"></script>
@@ -309,10 +493,11 @@
             window.location.href = 'index.html';
         }
         if (rolUsuario !== 'supervisor' && rolUsuario !== 'produccion') {
-            document.getElementById('linkDashboard').style.display = 'none'; // Solo roles con permiso de dashboard
+            document.getElementById('linkDashboard').style.display = 'none';
         }
 
         let itemsVigilanciaArray = [];
+        let pasoActual = 0;
 
         function cerrarSesion() {
             if (confirm('¿Estás seguro de que deseas cerrar sesión?')) {
@@ -321,6 +506,148 @@
             }
         }
 
+        /* ---------- WIZARD: navegación ---------- */
+        function pasoCompletado(n) {
+            if (n === 0) {
+                return Boolean(
+                    document.getElementById('numero_guia').value.trim() &&
+                    document.getElementById('proveedor').value.trim()
+                );
+            }
+            if (n === 1) return itemsVigilanciaArray.length > 0;
+            return true;
+        }
+
+        function marcarFaltantes(n) {
+            const campos = n === 0 ? ['numero_guia', 'proveedor'] : [];
+            campos.forEach(id => {
+                const el = document.getElementById(id);
+                const falta = !el.value.trim();
+                el.classList.toggle('campo-falta', falta);
+            });
+        }
+        ['numero_guia', 'proveedor'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('input', () => { el.classList.remove('campo-falta'); actualizarEstadoWizard(); });
+        });
+
+        function actualizarEstadoWizard() {
+            const chips = document.querySelectorAll('.chip-paso');
+            chips.forEach((chip, i) => {
+                const activo = i === pasoActual;
+                const completo = i < pasoActual || pasoCompletado(i);
+                chip.classList.toggle('activo', activo);
+                chip.classList.toggle('completado', !activo && completo);
+                chip.setAttribute('aria-current', activo ? 'step' : 'false');
+                const prevCompleto = i === 0 || pasoCompletado(i - 1);
+                chip.disabled = i > pasoActual && !prevCompleto;
+                let iconoHTML = '<span class="chip-num">' + (i + 1) + '</span>';
+                if (!activo && completo) {
+                    iconoHTML = '<span class="chip-check"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#1e7e34" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>';
+                }
+                chip.innerHTML = iconoHTML + '<span>' + ['Documento', 'Carga', 'Revisar'][i] + '</span>';
+            });
+
+            const atras = document.getElementById('btnPasoAtras');
+            const next = document.getElementById('btnPasoNext');
+            if (atras) atras.hidden = pasoActual === 0;
+
+            if (next) {
+                if (pasoActual === 2) {
+                    next.classList.add('registrar');
+                    next.innerHTML = '🚀 Registrar' + (itemsVigilanciaArray.length ? ' · ' + itemsVigilanciaArray.length + ' ítems' : '');
+                } else {
+                    next.classList.remove('registrar');
+                    next.innerHTML = 'Continuar' + (pasoActual === 1 && itemsVigilanciaArray.length ? ' · ' + itemsVigilanciaArray.length + ' ítems' : '');
+                }
+                next.disabled = !pasoCompletado(pasoActual) || enviandoVigilancia;
+            }
+        }
+
+        function irAPaso(n) {
+            if (n === pasoActual) return;
+            if (n > pasoActual) {
+                for (let i = pasoActual; i < n; i++) {
+                    if (!pasoCompletado(i)) {
+                        alert('Completa el paso ' + ['de Documento', 'de Carga'][i] + ' para continuar.');
+                        marcarFaltantes(i);
+                        document.getElementById(['pasoDoc', 'pasoCarga', 'pasoRevisar'][i]).scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        return;
+                    }
+                }
+            }
+            pasoActual = n;
+            document.querySelectorAll('.paso').forEach(p => p.classList.toggle('activo', p.id === ['pasoDoc', 'pasoCarga', 'pasoRevisar'][n]));
+            if (n === 2) renderResumenPaso3();
+            actualizarEstadoWizard();
+            document.getElementById(['pasoDoc', 'pasoCarga', 'pasoRevisar'][n]).scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function pasoAtras() {
+            if (pasoActual > 0) irAPaso(pasoActual - 1);
+        }
+
+        function pasoNext() {
+            if (!pasoCompletado(pasoActual)) {
+                alert('Completa los campos requeridos de este paso para continuar.');
+                marcarFaltantes(pasoActual);
+                return;
+            }
+            if (pasoActual === 2) {
+                enviarFormularioVigilancia(null);
+            } else {
+                irAPaso(pasoActual + 1);
+            }
+        }
+
+        /* ---------- Resumen paso 3 ---------- */
+        function renderResumenPaso3() {
+            const chips = document.getElementById('resumenDocPaso3');
+            const datos = [
+                { label: 'N°', value: document.getElementById('numero_guia').value },
+                { label: 'Tipo', value: document.getElementById('tipo_documento').options[document.getElementById('tipo_documento').selectedIndex].text },
+                { label: 'Proveedor', value: document.getElementById('proveedor').value },
+                { label: 'Conductor', value: [document.getElementById('chofer').value, document.getElementById('dni_chofer').value].filter(Boolean).join(' · ') },
+                { label: 'Placa', value: document.getElementById('placa').value },
+                { label: 'Ruta', value: document.getElementById('lugar_partida').value }
+            ].filter(d => d.value);
+            chips.innerHTML = datos.map(d =>
+                '<span class="chip-dato">' + d.label + ': <b>' + d.value + '</b></span>'
+            ).join('') || '<span class="sin-registros">Sin datos de documento.</span>';
+
+            const tbody = document.getElementById('tablaResumenPaso3');
+            let sumaGuia = 0;
+            let sumaFis = 0;
+            tbody.innerHTML = '';
+            itemsVigilanciaArray.forEach(item => {
+                const dif = Number(item.cantidad_fisica) - Number(item.cantidad_guia);
+                sumaGuia += Number(item.cantidad_guia);
+                sumaFis += Number(item.cantidad_fisica);
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><b>${item.nombre}</b></td>
+                    <td class="text-center">${item.cantidad_guia}</td>
+                    <td class="text-center">${item.cantidad_fisica}</td>
+                    <td class="text-center">${badgeDiferencia(dif)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+            const trTot = document.createElement('tr');
+            trTot.innerHTML = `
+                <td><b>TOTALES</b></td>
+                <td class="text-center"><b>${sumaGuia}</b></td>
+                <td class="text-center"><b>${sumaFis}</b></td>
+                <td class="text-center">${badgeDiferencia(sumaFis - sumaGuia)}</td>
+            `;
+            tbody.appendChild(trTot);
+        }
+
+        function badgeDiferencia(dif) {
+            if (dif === 0) return '<span class="badge-diff ok">OK</span>';
+            return '<span class="badge-diff warn">⚠ ' + (dif > 0 ? '+' : '') + dif + '</span>';
+        }
+
+        /* ---------- ítems de carga ---------- */
         function agregarItemVigilancia() {
             const nombre = document.getElementById('prod_textual').value.trim();
             const cantidad_guia = parseFloat(document.getElementById('prod_cant_guia').value);
@@ -337,6 +664,7 @@
             document.getElementById('prod_textual').value = '';
             document.getElementById('prod_cant_guia').value = '';
             document.getElementById('prod_cant_fisica').value = '';
+            document.getElementById('prod_textual').focus();
         }
 
         function quitarItemVigilancia(index) {
@@ -347,23 +675,27 @@
         function renderTablaVigilancia() {
             const tbody = document.getElementById('tablaItemsVigilancia');
             if (itemsVigilanciaArray.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="4" class="text-center sin-registros">No hay productos agregados.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center sin-registros">No hay productos agregados.</td></tr>`;
+                actualizarEstadoWizard();
                 return;
             }
             tbody.innerHTML = '';
             itemsVigilanciaArray.forEach((item, idx) => {
-                const diffColor = item.cantidad_guia !== item.cantidad_fisica ? 'celda-diff' : '';
-                tbody.innerHTML += `
-                    <tr>
-                        <td><b>${item.nombre}</b></td>
-                        <td class="text-center">${item.cantidad_guia}</td>
-                        <td class="text-center ${diffColor}">${item.cantidad_fisica}</td>
-                        <td class="text-center"><button type="button" onclick="quitarItemVigilancia(${idx})" class="btn-x">X</button></td>
-                    </tr>
+                const dif = Number(item.cantidad_fisica) - Number(item.cantidad_guia);
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><b>${item.nombre}</b></td>
+                    <td class="text-center">${item.cantidad_guia}</td>
+                    <td class="text-center">${item.cantidad_fisica}</td>
+                    <td class="text-center">${badgeDiferencia(dif)}</td>
+                    <td class="text-center"><button type="button" onclick="quitarItemVigilancia(${idx})" class="btn-x">X</button></td>
                 `;
+                tbody.appendChild(tr);
             });
+            actualizarEstadoWizard();
         }
 
+        /* ---------- Lectura IA ---------- */
         function readLeerDocEstado(input) {
             const estado = document.getElementById('leerDocumentoEstado');
             if (estado) estado.textContent = input.files && input.files[0] ? 'Archivo: ' + input.files[0].name : '';
@@ -391,7 +723,7 @@
         async function leerDocumentoVigilancia() {
             const input = document.getElementById('foto_guia');
             if (!input.files || !input.files[0]) {
-                alert('Selecciona primero la foto o el PDF de la guía (campo "Guía / Documento").');
+                alert('Selecciona primero la foto o el PDF de la guía (dropzone "Toca para subir").');
                 return;
             }
             const btn = document.getElementById('btnLeerDoc');
@@ -447,23 +779,38 @@
             } finally {
                 if (btn) { btn.disabled = false; btn.textContent = '🤖 Leer y rellenar campos'; }
             }
+            actualizarEstadoWizard();
         }
 
+        /* ---------- Envío (barra fija + Enter) ---------- */
         let enviandoVigilancia = false;
-        document.getElementById('formVigilancia').addEventListener('submit', async (e) => {
-            e.preventDefault();
+        async function enviarFormularioVigilancia(e) {
+            if (e && typeof e.preventDefault === 'function') e.preventDefault();
             if (enviandoVigilancia) return;
-            enviandoVigilancia = true;
-            const btnEnviar = e.submitter || document.querySelector('#formVigilancia button[type="submit"]');
-            if (btnEnviar) btnEnviar.disabled = true;
-            if (itemsVigilanciaArray.length === 0) {
-                alert('❌ Debe agregar al menos un producto o insumo a la guía.');
-                enviandoVigilancia = false;
-                if (btnEnviar) btnEnviar.disabled = false;
+            if (pasoActual !== 2) {
+                pasoNext();
                 return;
             }
+            if (itemsVigilanciaArray.length === 0) {
+                alert('❌ Debe agregar al menos un producto o insumo a la guía.');
+                irAPaso(1);
+                return;
+            }
+            enviandoVigilancia = true;
+            const btnEnviar = (e && e.submitter) || document.getElementById('btnPasoNext');
+            if (btnEnviar) { btnEnviar.disabled = true; btnEnviar.textContent = 'Enviando…'; }
 
-            const formData = new FormData(e.target);
+            const formData = new FormData();
+            formData.append('tipo_documento', document.getElementById('tipo_documento').value);
+            formData.append('numero_guia', document.getElementById('numero_guia').value);
+            formData.append('proveedor', document.getElementById('proveedor').value);
+            formData.append('chofer', document.getElementById('chofer').value);
+            formData.append('dni_chofer', document.getElementById('dni_chofer').value);
+            formData.append('placa', document.getElementById('placa').value);
+            formData.append('lugar_partida', document.getElementById('lugar_partida').value);
+            formData.append('observaciones', document.getElementById('observaciones').value);
+            const inputFoto = document.getElementById('foto_guia');
+            if (inputFoto && inputFoto.files && inputFoto.files[0]) formData.append('foto_guia', inputFoto.files[0]);
             formData.append('usuario', localStorage.getItem('usuario_actual') || 'vigilancia1');
             formData.append('items_json', JSON.stringify(itemsVigilanciaArray));
 
@@ -471,10 +818,7 @@
                 const res = await fetch('/api/vigilancia/registrar', { method: 'POST', body: formData });
                 const data = await res.json();
                 if (res.ok && data.success) {
-                    alert('✅ ' + data.mensaje);
-                    document.getElementById('formVigilancia').reset();
-                    itemsVigilanciaArray = [];
-                    renderTablaVigilancia();
+                    mostrarExito(data);
                 } else {
                     alert('❌ ' + (data.mensaje || 'Error al registrar.'));
                 }
@@ -483,9 +827,48 @@
                 alert('Error de conexión con el servidor.');
             } finally {
                 enviandoVigilancia = false;
-                if (btnEnviar) btnEnviar.disabled = false;
+                if (btnEnviar) { btnEnviar.disabled = false; btnEnviar.innerHTML = '🚀 Registrar'; }
+                actualizarEstadoWizard();
             }
-        });
+        }
+
+        function mostrarExito(data) {
+            const resumen = document.getElementById('exitoResumen');
+            resumen.innerHTML = `
+                <div><b>N° guía:</b> ${document.getElementById('numero_guia').value || 'S/N'}</div>
+                <div><b>Proveedor:</b> ${document.getElementById('proveedor').value || '—'}</div>
+                <div><b>Ítems:</b> ${itemsVigilanciaArray.length}</div>
+                <div><b>Hora:</b> ${new Date().toLocaleString('es-PE')}</div>
+                <div>${data.mensaje || ''}</div>
+            `;
+            document.getElementById('panelExito').style.display = 'block';
+            document.getElementById('resumenDocPaso3').style.display = 'none';
+            document.querySelector('#pasoRevisar .tabla-wrap').style.display = 'none';
+            document.getElementById('obsRevisar').style.display = 'none';
+            document.getElementById('barraPasos').style.display = 'none';
+            document.getElementById('pieVigilancia').style.display = 'none';
+            document.querySelector('.progreso-steps').style.display = 'none';
+            document.getElementById('pasoRevisar').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function reiniciarFormulario() {
+            document.getElementById('formVigilancia').reset();
+            itemsVigilanciaArray = [];
+            renderTablaVigilancia();
+            document.getElementById('panelExito').style.display = 'none';
+            document.getElementById('resumenDocPaso3').style.display = '';
+            document.querySelector('#pasoRevisar .tabla-wrap').style.display = '';
+            document.getElementById('obsRevisar').style.display = '';
+            document.getElementById('barraPasos').style.display = '';
+            document.getElementById('pieVigilancia').style.display = '';
+            document.querySelector('.progreso-steps').style.display = '';
+            pasoActual = 0;
+            document.querySelectorAll('.paso').forEach(p => p.classList.toggle('activo', p.id === 'pasoDoc'));
+            actualizarEstadoWizard();
+        }
+
+        document.getElementById('formVigilancia').addEventListener('submit', enviarFormularioVigilancia);
+        actualizarEstadoWizard();
     </script>
 </body>
 </html>

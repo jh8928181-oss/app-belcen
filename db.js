@@ -164,6 +164,7 @@ const inicializarBaseDeDatos = async () => {
                 usuario_registro VARCHAR(50),
                 fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+            ALTER TABLE estado_lineas ADD COLUMN IF NOT EXISTS proximo_producto VARCHAR(150);
 
             CREATE TABLE IF NOT EXISTS historial_inventario (
                 id SERIAL PRIMARY KEY,

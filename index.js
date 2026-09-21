@@ -928,7 +928,7 @@ app.get('/api/soplado/reportes', async (req, res) => {
 
 app.get('/api/estado-lineas', async (req, res) => {
     try {
-        const result = await pool.query('SELECT area, estado, usuario_registro, fecha_actualizacion FROM estado_lineas');
+        const result = await pool.query('SELECT area, estado, usuario_registro, fecha_actualizacion, proximo_producto FROM estado_lineas');
         res.json(result.rows);
     } catch (err) {
         res.status(500).json({ success: false, mensaje: err.message });
@@ -937,22 +937,24 @@ app.get('/api/estado-lineas', async (req, res) => {
 
 app.post('/api/estado-linea', async (req, res) => {
     try {
-        const { area, estado, usuario } = req.body;
+        const { area, estado, usuario, proximo_producto } = req.body;
         const areaValida = area === 'envasado' || area === 'soplado';
         const estadoValido = estado === 'EN MARCHA' || estado === 'PARADO';
         if (!areaValida || !estadoValido) {
             return res.status(400).json({ success: false, mensaje: 'Área o estado inválido.' });
         }
+        const tieneSiguiente = proximo_producto !== undefined;
         await pool.query(
-            `INSERT INTO estado_lineas (area, estado, usuario_registro, fecha_actualizacion)
-             VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+            `INSERT INTO estado_lineas (area, estado, usuario_registro, fecha_actualizacion, proximo_producto)
+             VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4)
              ON CONFLICT (area) DO UPDATE SET
                 estado = EXCLUDED.estado,
                 usuario_registro = EXCLUDED.usuario_registro,
-                fecha_actualizacion = EXCLUDED.fecha_actualizacion`,
-            [area, estado, usuario || 'operador']
+                fecha_actualizacion = EXCLUDED.fecha_actualizacion,
+                proximo_producto = CASE WHEN $5 THEN EXCLUDED.proximo_producto ELSE estado_lineas.proximo_producto END`,
+            [area, estado, usuario || 'operador', tieneSiguiente ? proximo_producto : null, tieneSiguiente]
         );
-        res.json({ success: true, area, estado });
+        res.json({ success: true, area, estado, proximo_producto: tieneSiguiente ? proximo_producto : undefined });
     } catch (err) {
         console.error('Error al actualizar estado de línea:', err);
         res.status(500).json({ success: false, mensaje: err.message });

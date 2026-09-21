@@ -356,8 +356,9 @@
                         <b>🧴 Envasado</b>
                         <span id="badgeEnvasado" class="badge badge-parado">🔴 PARADO</span>
                     </div>
-                    <div id="resumenEnvasado" class="estado-resumen">Cargando…</div>
+<div id="resumenEnvasado" class="estado-resumen">Cargando…</div>
                     <div id="horaEnvasado" class="estado-hora">—</div>
+                    <div id="detalleEnvasado" class="estado-hora" style="margin-top:4px;">Anterior: — · Siguiente: —</div>
                 </div>
                 <div class="estado-bloque">
                     <div class="estado-bloque-head">
@@ -597,11 +598,12 @@ const filtrados = inventarioGlobal.filter(a =>
                 const res = await fetch('/api/estado-lineas');
                 if (!res.ok) throw new Error('Error del servidor.');
                 const estados = await res.json();
-                const lista = Array.isArray(estados) ? estados : [];
+const lista = Array.isArray(estados) ? estados : [];
                 const mapa = { envasado: null, soplado: null };
                 lista.forEach(f => {
                     if (mapa[f.area] !== undefined) mapa[f.area] = f;
                 });
+                let siguienteEnvasado = (mapa.envasado && mapa.envasado.proximo_producto) || '';
 
                 const ids = {
                     envasado: { badge: 'badgeEnvasado', hora: 'horaEnvasado' },
@@ -634,8 +636,12 @@ const filtrados = inventarioGlobal.filter(a =>
                         totalCajas += parseInt(r.cantidad_cajas || 0, 10);
                         totalTn += parseFloat(r.toneladas || 0);
                     });
-                    document.getElementById('resumenEnvasado').textContent =
+document.getElementById('resumenEnvasado').textContent =
                         lista.length + ' reportes hoy · ' + formatearNumero(totalCajas) + ' cajas · ' + totalTn.toFixed(2) + ' TM';
+                    const ultimo = lista.length ? lista[0] : null;
+                    document.getElementById('detalleEnvasado').textContent =
+                        'Anterior: ' + (ultimo ? ultimo.presentacion + ' · ' + ultimo.cantidad_cajas + ' cajas' : '—') +
+                        ' | Siguiente: ' + (siguienteEnvasado || '—');
                 }
             } catch (err) {
                 console.error(err);

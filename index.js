@@ -458,6 +458,117 @@ app.post('/api/almacen/conformidad', async (req, res) => {
     }
 });
 
+// --- ALMACÉN: REGISTRO DIRECTO DE INGRESO CONFORME (con IA / guía) ---
+app.post('/api/almacen/registrar-conforme', upload.single('foto_guia'), async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const {
+            tipo_documento,
+            numero_guia,
+            proveedor,
+            chofer,
+            dni_chofer,
+            placa,
+            lugar_partida,
+            punto_llegada,
+            observaciones,
+            usuario,
+            items_json
+        } = req.body;
+
+        await client.query('BEGIN');
+
+        const items = JSON.parse(items_json || '[]');
+        if (!Array.isArray(items) || items.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: 'Debe incluir al menos un producto en el ingreso.' });
+        }
+
+        const foto_url = req.file ? `/uploads/${req.file.filename}` : null;
+        const usuarioRegistro = usuario || 'almacen1';
+
+        let tieneDiferencias = false;
+        for (const item of items) {
+            if (Number(item.cantidad_guia) !== Number(item.cantidad_fisica)) {
+                tieneDiferencias = true;
+                break;
+            }
+        }
+
+        const estadoFinal = tieneDiferencias
+            ? 'CONFORME CON DIFERENCIAS (POR REGULARIZAR)'
+            : `RECIBIDO POR ${usuarioRegistro}`;
+
+        const insert = await client.query(
+            `INSERT INTO ingresos_vigilancia
+             (tipo_documento, numero_guia, proveedor, chofer, dni_chofer, placa, lugar_partida, punto_llegada, observaciones, foto_url, usuario_vigilancia, items_json, estado, fecha_ingreso)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+             RETURNING id, numero_guia`,
+            [
+                tipo_documento, numero_guia, proveedor,
+                chofer || '', dni_chofer || '', placa || '',
+                lugar_partida || '', punto_llegada || 'Planta Principal - Corporación Belcen',
+                observaciones || '', foto_url, usuarioRegistro, JSON.stringify(items), estadoFinal
+            ]
+        );
+        const ingresoId = insert.rows[0].id;
+
+        for (const item of items) {
+            let estadoItem = 'CON GUIA';
+            if (Number(item.cantidad_guia) !== Number(item.cantidad_fisica)) {
+                estadoItem = 'POR REGULARIZAR';
+            }
+
+            const cantidadFisica = Number(item.cantidad_fisica) || 0;
+            const existeRes = await client.query('SELECT id, stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [item.nombre]);
+            let targetArticuloId;
+            if (existeRes.rows.length > 0) {
+                targetArticuloId = existeRes.rows[0].id;
+                const stockAnterior = Number(existeRes.rows[0].stock) || 0;
+                await client.query(`UPDATE inventario SET stock = stock + $1 WHERE id = $2`, [cantidadFisica, targetArticuloId]);
+                await registrarHistorial(client, {
+                    tipo: 'ENTRADA', origen: 'conformidad',
+                    producto: item.nombre, articulo_id: targetArticuloId,
+                    cantidad: cantidadFisica, tipo_cambio: 'SUMA',
+                    stock_anterior: stockAnterior, stock_nuevo: stockAnterior + cantidadFisica,
+                    usuario: usuarioResponsable(req, usuarioRegistro),
+                    referencia: 'Conformidad - guía ' + (numero_guia || 'S/N')
+                });
+            } else {
+                const nuevoArt = await client.query(
+                    `INSERT INTO inventario (nombre, categoria, stock, unidad_medida, estado) VALUES ($1, 'General', $2, 'UNIDADES', 'STOCK SUFICIENTE') RETURNING id`,
+                    [item.nombre, cantidadFisica]
+                );
+                targetArticuloId = nuevoArt.rows[0].id;
+                await registrarHistorial(client, {
+                    tipo: 'ENTRADA', origen: 'conformidad',
+                    producto: item.nombre, articulo_id: targetArticuloId,
+                    cantidad: cantidadFisica, tipo_cambio: 'SUMA',
+                    stock_anterior: 0, stock_nuevo: cantidadFisica,
+                    usuario: usuarioResponsable(req, usuarioRegistro),
+                    referencia: 'Conformidad (artículo nuevo) - guía ' + (numero_guia || 'S/N')
+                });
+            }
+            await actualizarEstadoArticulo(client, item.nombre);
+
+            await client.query(
+                `INSERT INTO registro_ingresos_almacen (fecha_registro, numero_guia, proveedor, producto_nombre, cantidad, estado, articulo_id)
+                 VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6)`,
+                [numero_guia, proveedor, item.nombre, item.cantidad_fisica, estadoItem, targetArticuloId]
+            );
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: 'Ingreso registrado conforme. Stock actualizado.', ingreso: { id: ingresoId, numero_guia } });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Error en registrar-conforme:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al registrar el ingreso conforme: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
 app.get('/api/almacen/registro-ingresos', async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM registro_ingresos_almacen ORDER BY id DESC LIMIT 100`);

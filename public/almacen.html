@@ -198,6 +198,7 @@
         .btn-agregar:hover { filter: brightness(0.95); }
         .btn-agregar-verde { background: rgba(52, 199, 89, 0.18); color: #1e8e3e; }
         .btn-agregar-azul { background: rgba(10, 132, 255, 0.15); color: #0a6ea8; }
+        .btn-agregar-ambar { background: rgba(255, 149, 0, 0.18); color: #b06b00; }
 
         .barra-edicion { display: none; background: rgba(255, 149, 0, 0.13); color: #8a5a00; border: 1px solid rgba(255, 149, 0, 0.30); padding: 12px 14px; border-radius: 14px; margin-bottom: 14px; font-weight: 800; font-size: 14px; }
         .barra-edicion a { color: #5c3a00; text-decoration: underline; font-weight: 800; }
@@ -312,6 +313,73 @@
             .cabecera-acciones { width: 100%; justify-content: space-between; }
         }
 
+        /* ---------- Wizard "Registrar Ingreso" (Almacén) ---------- */
+        .wz-alm { margin-top: 18px; border-top: 1px dashed rgba(0, 0, 0, 0.12); padding-top: 16px; }
+        .wz-alm .paso { display: none; }
+        .wz-alm .paso.activo { display: block; animation: wzPasoIn .28s ease; }
+        @keyframes wzPasoIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+        .wz-alm .progreso-steps { display: flex; gap: 8px; justify-content: center; align-items: center; margin: 0 0 16px; overflow-x: auto; padding-bottom: 6px; }
+        .wz-alm .chip-paso { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: rgba(0, 0, 0, 0.05); border: 1px solid rgba(0, 0, 0, 0.06); font-size: 12.5px; font-weight: 700; color: var(--texto2); cursor: default; font-family: inherit; white-space: nowrap; transition: background .25s ease, color .25s ease, border-color .25s ease, transform .18s ease; }
+        .wz-alm .chip-paso .chip-num { width: 22px; height: 22px; border-radius: 50%; background: rgba(0, 0, 0, 0.08); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; transition: background .25s ease, color .25s ease; }
+        .wz-alm .chip-paso.activo { background: rgba(255, 149, 0, 0.14); border-color: rgba(255, 149, 0, 0.45); color: #a05a00; }
+        .wz-alm .chip-paso.activo .chip-num { background: var(--ambar); color: #fff; }
+        .wz-alm .chip-paso.completado { background: rgba(52, 199, 89, 0.12); border-color: rgba(52, 199, 89, 0.40); color: #1e7e34; cursor: pointer; }
+        .wz-alm .chip-paso.completado .chip-num { background: var(--verde); color: #fff; }
+        .wz-alm .chip-paso:disabled { opacity: .45; cursor: not-allowed; }
+        .wz-alm .chip-check { width: 14px; height: 14px; flex: 0 0 auto; }
+        .wz-alm .dropzone { padding: 18px 16px; border-radius: 16px; text-align: center; background: rgba(59, 91, 219, 0.07); border: 2px dashed rgba(59, 91, 219, 0.40); }
+        .wz-alm .dropzone label { cursor: pointer; display: block; }
+        .wz-alm .dropzone input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; margin: 0; padding: 0; }
+        .wz-alm .dz-ico { font-size: 26px; }
+        .wz-alm .dz-txt { font-size: 14px; font-weight: 800; color: #26418a; margin-top: 4px; }
+        .wz-alm .dz-sub { font-size: 12px; color: var(--texto2); margin-top: 2px; }
+        .wz-alm .btn-ia-leer { background: #3b5bdb; color: #fff; border: none; padding: 11px 16px; font-weight: 700; border-radius: 999px; cursor: pointer; font-family: inherit; font-size: 14px; margin-top: 10px; box-shadow: 0 4px 12px rgba(59, 91, 219, 0.28); }
+        .wz-alm .btn-ia-leer:disabled { opacity: .6; cursor: wait; }
+        .wz-alm .aviso-ia { margin: 14px 0 0; padding: 12px 14px; border-radius: 12px; background: rgba(59, 91, 219, 0.08); border: 1px solid rgba(59, 91, 219, 0.35); color: #26418a; font-size: 13px; text-align: left; }
+        .wz-alm .aviso-ia summary { cursor: pointer; font-weight: 700; }
+        .wz-alm .btn-ia-sec { background: #26418a; color: #fff; border: none; padding: 7px 12px; font-weight: 700; border-radius: 999px; cursor: pointer; font-family: inherit; font-size: 12px; margin-top: 6px; }
+        .wz-alm .grid-form { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .wz-alm .grid-form .span-2 { grid-column: 1 / -1; }
+        .wz-alm .etiqueta-mini { font-size: 12px; color: var(--texto2); font-weight: 700; display: block; margin-bottom: 5px; }
+        .wz-alm input, .wz-alm select { width: 100%; padding: 10px 12px; border: 1px solid rgba(0, 0, 0, 0.12); border-radius: 12px; font-size: 14px; font-family: inherit; background: #fff; color: var(--texto); }
+        .wz-alm .campo-falta { border-color: var(--rojo) !important; }
+        .wz-alm .carga-box { background: rgba(255, 149, 0, 0.09); padding: 16px; border-radius: 16px; border: 1px solid rgba(255, 149, 0, 0.28); margin-top: 16px; }
+        .wz-alm .carga-box h4 { margin: 0 0 12px; color: #a05a00; font-size: 15px; }
+        .wz-alm .fila-carga { display: flex; gap: 10px; margin-bottom: 10px; align-items: flex-end; flex-wrap: wrap; }
+        .wz-alm .fila-carga > div { flex: 1 1 140px; }
+        .wz-alm .fila-carga .g2 { flex: 2 1 220px; }
+        .wz-alm .fila-carga .g1 { flex: 1 1 120px; }
+        .wz-alm .fila-carga label { font-size: 12px; color: var(--texto2); font-weight: 700; }
+        .wz-alm .btn-add-vig { background: var(--ambar); color: #fff; border: none; padding: 13px 16px; font-weight: 700; border-radius: 999px; cursor: pointer; font-family: inherit; white-space: nowrap; box-shadow: 0 4px 12px rgba(255, 149, 0, 0.28); }
+        .wz-alm .badge-diff { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+        .wz-alm .badge-diff.ok { background: rgba(52, 199, 89, 0.15); color: #1e7e34; }
+        .wz-alm .badge-diff.warn { background: rgba(255, 59, 48, 0.15); color: #bd2130; }
+        .wz-alm .sin-registros { color: var(--texto2); font-style: italic; }
+        .wz-alm .resumen-doc { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+        .wz-alm .chip-dato { background: rgba(0, 0, 0, 0.05); border: 1px solid rgba(0, 0, 0, 0.06); padding: 6px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: var(--texto); }
+        .wz-alm .chip-dato b { color: #a05a00; }
+        .wz-alm .exito-panel { display: none; text-align: center; padding: 26px 10px; }
+        .wz-alm .exito-panel .exito-ico { width: 64px; height: 64px; border-radius: 50%; background: var(--verde); color: #fff; font-size: 30px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 14px; box-shadow: 0 10px 24px rgba(52, 199, 89, 0.35); }
+        .wz-alm .exito-panel h4 { margin: 0 0 6px; color: #1e7e34; font-size: 20px; }
+        .wz-alm .exito-panel p { color: var(--texto2); margin: 4px 0 18px; }
+        .wz-alm .exito-resumen { background: rgba(0, 0, 0, 0.04); border-radius: 14px; padding: 14px; margin: 0 0 18px; font-size: 13px; text-align: left; }
+        .wz-alm .exito-resumen div { padding: 3px 0; }
+        .wz-alm .exito-botones { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+        .wz-alm .btn-exito-sec { background: var(--azul); color: #fff; border: none; padding: 12px 18px; border-radius: 999px; cursor: pointer; font-weight: 800; font-size: 14px; font-family: inherit; box-shadow: 0 6px 16px rgba(10, 132, 255, 0.30); }
+        .wz-alm .btn-exito-sec.sec { background: rgba(0, 0, 0, 0.08); color: var(--texto); box-shadow: none; }
+        .wz-alm .barra-pasos { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; display: flex; gap: 10px; align-items: center; justify-content: center; padding: 12px 14px calc(12px + env(safe-area-inset-bottom)); background: rgba(255, 255, 255, 0.82); backdrop-filter: blur(20px) saturate(160%); -webkit-backdrop-filter: blur(20px) saturate(160%); border-top: 1px solid rgba(0, 0, 0, 0.07); box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.06); }
+        .wz-alm .btn-paso { flex: 1; max-width: 340px; min-height: 48px; border-radius: 999px; border: none; font-family: inherit; font-weight: 800; font-size: 15px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; transition: transform .18s ease, opacity .2s ease, box-shadow .2s ease, background .2s ease; }
+        .wz-alm .btn-paso:disabled { opacity: .45; cursor: not-allowed; }
+        .wz-alm .btn-atras { background: rgba(0, 0, 0, 0.07); color: var(--texto); }
+        .wz-alm .btn-next { background: var(--ambar); color: #fff; box-shadow: 0 6px 16px rgba(255, 149, 0, 0.30); }
+        .wz-alm .btn-next.registrar { background: var(--verde); box-shadow: 0 6px 16px rgba(52, 199, 89, 0.30); }
+
+        @media (max-width: 640px) {
+            .wz-alm .grid-form { grid-template-columns: 1fr; }
+            .wz-alm .chip-paso { padding: 8px 12px; font-size: 12px; }
+            .wz-alm .btn-paso { font-size: 14px; min-height: 50px; }
+        }
+
         @media (prefers-reduced-motion: reduce) {
             *, *::before, *::after {
                 animation-duration: 0.01ms !important;
@@ -353,6 +421,7 @@
         <div class="tarjeta-header">
             <h3 class="h-ambar">NOTIFICACIONES Y PENDIENTES DE VIGILANCIA (CONFORMIDAD)</h3>
             <span id="pendientesContador" class="pend-chip">🔔 0 PENDIENTES</span>
+            <button type="button" id="btnRegistroIngresoAlm" onclick="toggleFormRegistroIngreso()" class="btn-agregar btn-agregar-ambar">➕ Registrar Ingreso</button>
         </div>
         <div class="tabla-wrap">
         <table>
@@ -369,6 +438,158 @@
                 <tr><td colspan="5" class="text-center">Cargando pendientes...</td></tr>
             </tbody>
         </table>
+        </div>
+
+        <div id="wizardIngresoAlm" class="wz-alm" style="display:none;">
+            <div class="progreso-steps" role="tablist" aria-label="Pasos del registro">
+                <button type="button" class="chip-paso activo" onclick="wizardAlmIrAPaso(0)" aria-current="step">
+                    <span class="chip-num">1</span><span>Documento</span>
+                </button>
+                <button type="button" class="chip-paso" onclick="wizardAlmIrAPaso(1)">
+                    <span class="chip-num">2</span><span>Carga</span>
+                </button>
+                <button type="button" class="chip-paso" onclick="wizardAlmIrAPaso(2)">
+                    <span class="chip-num">3</span><span>Revisar</span>
+                </button>
+            </div>
+
+            <form id="formWizardAlm" enctype="multipart/form-data" novalidate>
+
+                <section class="paso activo" id="almPasoDoc">
+                    <div class="dropzone">
+                        <label for="almFotoGuia">
+                            <div class="dz-ico">📷</div>
+                            <div class="dz-txt">Toca para subir la guía (foto o PDF)</div>
+                            <div class="dz-sub">La IA lee y rellena los campos automáticamente</div>
+                        </label>
+                        <input type="file" id="almFotoGuia" name="foto_guia" accept=".pdf,.png,.jpg,.jpeg,.webp" onchange="readLeerDocEstadoAlm(this)">
+                        <small id="almLeerDocumentoEstado" style="display:block; color:#555;"></small>
+                        <button type="button" id="almBtnLeerDoc" onclick="leerDocumentoAlmacen()" class="btn-ia-leer">🤖 Leer y rellenar campos</button>
+                        <div id="almAvisoLeerDoc" class="aviso-ia" style="display:none;">
+                            <span id="almAvisoLeerDocTexto"><b>Datos leídos por IA.</b> Revísalos y corrige lo que falte antes de guardar.</span>
+                            <button type="button" onclick="ocultarAvisoLeerAlm()" class="btn-x" title="Ocultar aviso" style="float:right;">X</button>
+                            <details style="margin-top:8px;">
+                                <summary>Ver / usar texto extraído</summary>
+                                <textarea id="almTextoExtraidoDoc" readonly rows="4" style="width:100%; font-size:12px; resize:vertical;"></textarea>
+                                <button type="button" onclick="usarTextoTodoAlm()" class="btn-ia-sec">📋 Copiar texto en Observaciones</button>
+                            </details>
+                        </div>
+                    </div>
+
+                    <div class="grid-form" style="margin-top:16px;">
+                        <div>
+                            <label class="etiqueta-mini">🧾 Tipo de Documento</label>
+                            <select id="almTipoDocumento" name="tipo_documento">
+                                <option value="GUIA DE REMISION">Guía de Remisión</option>
+                                <option value="FACTURA">Factura</option>
+                                <option value="OTRO">Otro Documento</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="etiqueta-mini">🔢 N° de Guía / Documento *</label>
+                            <input type="text" id="almNumeroGuia" name="numero_guia" placeholder="Ej. T001-000452" required>
+                        </div>
+                        <div>
+                            <label class="etiqueta-mini">🏢 Empresa Proveedora *</label>
+                            <input type="text" id="almProveedor" name="proveedor" placeholder="Razón Social del Proveedor" required>
+                        </div>
+                        <div>
+                            <label class="etiqueta-mini">👤 Nombre del Conductor</label>
+                            <input type="text" id="almChofer" name="chofer" placeholder="Apellidos y nombres del chofer">
+                        </div>
+                        <div>
+                            <label class="etiqueta-mini">🪪 Documento de Identidad (DNI)</label>
+                            <input type="text" id="almDniChofer" name="dni_chofer" placeholder="N° de DNI / Pasaporte">
+                        </div>
+                        <div>
+                            <label class="etiqueta-mini">🚛 Placa del Vehículo</label>
+                            <input type="text" id="almPlaca" name="placa" placeholder="Ej. ABC-123">
+                        </div>
+                        <div class="span-2">
+                            <label class="etiqueta-mini">🗺️ Lugar de Partida / Destino</label>
+                            <input type="text" id="almLugarPartida" name="lugar_partida" placeholder="Origen -> Planta Principal Belcen">
+                        </div>
+                    </div>
+                </section>
+
+                <section class="paso" id="almPasoCarga">
+                    <div class="carga-box">
+                        <h4>📦 Datos de la Carga e Insumos</h4>
+                        <div class="fila-carga">
+                            <div class="g2">
+                                <label>Descripción del Insumo / Producto:</label>
+                                <input type="text" id="almProdTextual" placeholder="Ej. Botella Belini x 1 Lt / Cajas / Tapas" onkeydown="if(event.key==='Enter'){event.preventDefault();wizardAlmAgregarItem();}">
+                            </div>
+                            <div class="g1">
+                                <label>Cantidad Guía:</label>
+                                <input type="number" step="0.01" id="almProdCantGuia" placeholder="Cant. Papel">
+                            </div>
+                            <div class="g1">
+                                <label>Cantidad Física:</label>
+                                <input type="number" step="0.01" id="almProdCantFisica" placeholder="Cant. Real">
+                            </div>
+                            <div>
+                                <button type="button" onclick="wizardAlmAgregarItem()" class="btn-add-vig">+ Añadir</button>
+                            </div>
+                        </div>
+
+                        <div class="tabla-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>PRODUCTO / INSUMO</th>
+                                        <th class="text-center">CANT. GUÍA</th>
+                                        <th class="text-center">CANT. FÍSICA</th>
+                                        <th class="text-center">DIF.</th>
+                                        <th class="text-center">QUITAR</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="almTablaItems">
+                                    <tr><td colspan="5" class="text-center sin-registros">No hay productos agregados.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="paso" id="almPasoRevisar">
+                    <h4 style="margin:0 0 12px; color:#a05a00;">🔎 Revise antes de enviar</h4>
+                    <div class="resumen-doc" id="almResumenDoc"></div>
+                    <div class="tabla-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>PRODUCTO / INSUMO</th>
+                                    <th class="text-center">CANT. GUÍA</th>
+                                    <th class="text-center">CANT. FÍSICA</th>
+                                    <th class="text-center">DIF.</th>
+                                </tr>
+                            </thead>
+                            <tbody id="almTablaResumen"></tbody>
+                        </table>
+                    </div>
+                    <div id="almObsRevisar" style="margin-top:18px;">
+                        <label class="etiqueta-mini">📝 Observaciones Especiales (Estado de carga / Precintos / EPP)</label>
+                        <input type="text" id="almObservaciones" name="observaciones" placeholder="Ej. Precinto OK, producto en buen estado">
+                    </div>
+
+                    <div id="almPanelExito" class="exito-panel">
+                        <div class="exito-ico">✅</div>
+                        <h4>Ingreso registrado conforme</h4>
+                        <p>El stock se actualizó automáticamente.</p>
+                        <div id="almExitoResumen" class="exito-resumen"></div>
+                        <div class="exito-botones">
+                            <button type="button" onclick="reiniciarFormularioAlmacen()" class="btn-exito-sec">＋ Nueva entrada</button>
+                            <button type="button" onclick="toggleFormRegistroIngreso()" class="btn-exito-sec sec">Cerrar y ver tablas</button>
+                        </div>
+                    </div>
+                </section>
+            </form>
+
+            <footer class="barra-pasos" id="almBarraPasos" style="padding-bottom:calc(12px + env(safe-area-inset-bottom));">
+                <button type="button" id="almBtnPasoAtras" class="btn-paso btn-atras" onclick="wizardAlmAtras()" hidden>← Atrás</button>
+                <button type="button" id="almBtnPasoNext" class="btn-paso btn-next" onclick="wizardAlmNext()">Continuar</button>
+            </footer>
         </div>
     </div>
     </section>
@@ -785,6 +1006,390 @@
 
         let pendientesMap = {};
         let ingresoAjusteActual = null;
+
+        /* ---------- Wizard "Registrar Ingreso" (Almacén) ---------- */
+        let itemsAlmacenArray = [];
+        let pasoWizardAlmacen = 0;
+        let enviandoWizardAlmacen = false;
+        let wizardAlmActivado = false;
+
+        function wizardAlmVal(id) {
+            const el = document.getElementById(id);
+            return (el && el.value != null) ? el.value : '';
+        }
+
+        function wizardAlmInit() {
+            if (wizardAlmActivado) return;
+            wizardAlmActivado = true;
+            const form = document.getElementById('formWizardAlm');
+            if (form) form.addEventListener('submit', enviarFormularioAlmacen);
+            ['almNumeroGuia', 'almProveedor'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.addEventListener('input', () => { el.classList.remove('campo-falta'); wizardAlmActualizar(); });
+            });
+            wizardAlmActualizar();
+        }
+
+        function wizardAlmPasoCompletado(n) {
+            if (n === 0) {
+                return Boolean(
+                    document.getElementById('almNumeroGuia').value.trim() &&
+                    document.getElementById('almProveedor').value.trim()
+                );
+            }
+            if (n === 1) return itemsAlmacenArray.length > 0;
+            return true;
+        }
+
+        function wizardAlmMarcarFaltantes(n) {
+            const ids = n === 0 ? ['almNumeroGuia', 'almProveedor'] : [];
+            ids.forEach(id => {
+                const el = document.getElementById(id);
+                el.classList.toggle('campo-falta', !el.value.trim());
+            });
+        }
+
+        function wizardAlmActualizar() {
+            const chips = document.querySelectorAll('#wizardIngresoAlm .chip-paso');
+            chips.forEach((chip, i) => {
+                const activo = i === pasoWizardAlmacen;
+                const completo = i < pasoWizardAlmacen || wizardAlmPasoCompletado(i);
+                chip.classList.toggle('activo', activo);
+                chip.classList.toggle('completado', !activo && completo);
+                let icono = '<span class="chip-num">' + (i + 1) + '</span>';
+                if (!activo && completo) {
+                    icono = '<span class="chip-check"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#1e7e34" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>';
+                }
+                chip.innerHTML = icono + '<span>' + ['Documento', 'Carga', 'Revisar'][i] + '</span>';
+            });
+
+            const atras = document.getElementById('almBtnPasoAtras');
+            const next = document.getElementById('almBtnPasoNext');
+            if (atras) atras.hidden = pasoWizardAlmacen === 0;
+            if (next) {
+                if (pasoWizardAlmacen === 2) {
+                    next.classList.add('registrar');
+                    next.innerHTML = '🚀 Registrar' + (itemsAlmacenArray.length ? ' · ' + itemsAlmacenArray.length + ' ítems' : '');
+                } else {
+                    next.classList.remove('registrar');
+                    next.innerHTML = 'Continuar' + (pasoWizardAlmacen === 1 && itemsAlmacenArray.length ? ' · ' + itemsAlmacenArray.length + ' ítems' : '');
+                }
+                next.disabled = !wizardAlmPasoCompletado(pasoWizardAlmacen) || enviandoWizardAlmacen;
+            }
+        }
+
+        function wizardAlmIrAPaso(n) {
+            if (n === pasoWizardAlmacen) return;
+            const pasosIds = ['almPasoDoc', 'almPasoCarga', 'almPasoRevisar'];
+            if (n > pasoWizardAlmacen) {
+                for (let i = pasoWizardAlmacen; i < n; i++) {
+                    if (!wizardAlmPasoCompletado(i)) {
+                        alert('Completa el paso ' + ['de Documento', 'de Carga'][i] + ' para continuar.');
+                        wizardAlmMarcarFaltantes(i);
+                        document.getElementById(pasosIds[i]).scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        return;
+                    }
+                }
+            }
+            pasoWizardAlmacen = n;
+            document.querySelectorAll('#wizardIngresoAlm .paso').forEach(p => p.classList.toggle('activo', p.id === pasosIds[n]));
+            if (n === 2) wizardAlmRenderResumen();
+            wizardAlmActualizar();
+            document.getElementById(pasosIds[n]).scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function wizardAlmAtras() {
+            if (pasoWizardAlmacen > 0) wizardAlmIrAPaso(pasoWizardAlmacen - 1);
+        }
+
+        function wizardAlmNext() {
+            if (!wizardAlmPasoCompletado(pasoWizardAlmacen)) {
+                alert('Completa los campos requeridos de este paso para continuar.');
+                wizardAlmMarcarFaltantes(pasoWizardAlmacen);
+                return;
+            }
+            if (pasoWizardAlmacen === 2) {
+                enviarFormularioAlmacen(null);
+            } else {
+                wizardAlmIrAPaso(pasoWizardAlmacen + 1);
+            }
+        }
+
+        function wizardAlmBadge(dif) {
+            if (dif === 0) return '<span class="badge-diff ok">OK</span>';
+            return '<span class="badge-diff warn">⚠ ' + (dif > 0 ? '+' : '') + dif + '</span>';
+        }
+
+        function wizardAlmRenderResumen() {
+            const datos = [
+                { label: 'N°', value: wizardAlmVal('almNumeroGuia') },
+                { label: 'Tipo', value: document.getElementById('almTipoDocumento').options[document.getElementById('almTipoDocumento').selectedIndex].text },
+                { label: 'Proveedor', value: wizardAlmVal('almProveedor') },
+                { label: 'Conductor', value: [wizardAlmVal('almChofer'), wizardAlmVal('almDniChofer')].filter(Boolean).join(' · ') },
+                { label: 'Placa', value: wizardAlmVal('almPlaca') },
+                { label: 'Ruta', value: wizardAlmVal('almLugarPartida') }
+            ].filter(d => d.value);
+            document.getElementById('almResumenDoc').innerHTML =
+                datos.map(d => '<span class="chip-dato">' + d.label + ': <b>' + d.value + '</b></span>').join('') ||
+                '<span class="sin-registros">Sin datos de documento.</span>';
+
+            const tbody = document.getElementById('almTablaResumen');
+            let sumaGuia = 0;
+            let sumaFis = 0;
+            tbody.innerHTML = '';
+            itemsAlmacenArray.forEach(item => {
+                const dif = Number(item.cantidad_fisica) - Number(item.cantidad_guia);
+                sumaGuia += Number(item.cantidad_guia);
+                sumaFis += Number(item.cantidad_fisica);
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><b>${item.nombre}</b></td>
+                    <td class="text-center">${item.cantidad_guia}</td>
+                    <td class="text-center">${item.cantidad_fisica}</td>
+                    <td class="text-center">${wizardAlmBadge(dif)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+            const trTot = document.createElement('tr');
+            trTot.innerHTML = `
+                <td><b>TOTALES</b></td>
+                <td class="text-center"><b>${sumaGuia}</b></td>
+                <td class="text-center"><b>${sumaFis}</b></td>
+                <td class="text-center">${wizardAlmBadge(sumaFis - sumaGuia)}</td>
+            `;
+            tbody.appendChild(trTot);
+        }
+
+        function wizardAlmAgregarItem() {
+            const nombre = document.getElementById('almProdTextual').value.trim();
+            const cantidad_guia = parseFloat(document.getElementById('almProdCantGuia').value);
+            const cantidad_fisica = parseFloat(document.getElementById('almProdCantFisica').value);
+            if (!nombre || isNaN(cantidad_guia) || isNaN(cantidad_fisica)) {
+                alert('❌ Complete la descripción y las cantidades (guía y física).');
+                return;
+            }
+            itemsAlmacenArray.push({ nombre, cantidad_guia, cantidad_fisica });
+            wizardAlmRenderTabla();
+            document.getElementById('almProdTextual').value = '';
+            document.getElementById('almProdCantGuia').value = '';
+            document.getElementById('almProdCantFisica').value = '';
+            document.getElementById('almProdTextual').focus();
+        }
+
+        function wizardAlmQuitarItem(index) {
+            itemsAlmacenArray.splice(index, 1);
+            wizardAlmRenderTabla();
+        }
+
+        function wizardAlmRenderTabla() {
+            const tbody = document.getElementById('almTablaItems');
+            if (itemsAlmacenArray.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center sin-registros">No hay productos agregados.</td></tr>';
+                wizardAlmActualizar();
+                return;
+            }
+            tbody.innerHTML = '';
+            itemsAlmacenArray.forEach((item, idx) => {
+                const dif = Number(item.cantidad_fisica) - Number(item.cantidad_guia);
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><b>${item.nombre}</b></td>
+                    <td class="text-center">${item.cantidad_guia}</td>
+                    <td class="text-center">${item.cantidad_fisica}</td>
+                    <td class="text-center">${wizardAlmBadge(dif)}</td>
+                    <td class="text-center"><button type="button" onclick="wizardAlmQuitarItem(${idx})" class="btn-x">X</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+            wizardAlmActualizar();
+        }
+
+        function readLeerDocEstadoAlm(input) {
+            const estado = document.getElementById('almLeerDocumentoEstado');
+            if (estado) estado.textContent = input.files && input.files[0] ? 'Archivo: ' + input.files[0].name : '';
+        }
+
+        function wizardAlmMapearTipo(t) {
+            const s = (t || '').toLowerCase();
+            if (s.includes('factura')) return 'FACTURA';
+            if (s.includes('guia') || s.includes('guía') || s.includes('remisi')) return 'GUIA DE REMISION';
+            return 'OTRO';
+        }
+
+        function ocultarAvisoLeerAlm() {
+            document.getElementById('almAvisoLeerDoc').style.display = 'none';
+        }
+
+        function usarTextoTodoAlm() {
+            const texto = (document.getElementById('almTextoExtraidoDoc').value || '').trim();
+            if (!texto) { alert('No hay texto extraído.'); return; }
+            const obs = document.getElementById('almObservaciones');
+            obs.value = (obs.value ? obs.value + '\n' : '') + '--- TEXTO EXTRAÍDO ---\n' + texto;
+            alert('📋 Texto copiado en Observaciones.');
+        }
+
+        async function leerDocumentoAlmacen() {
+            const input = document.getElementById('almFotoGuia');
+            if (!input.files || !input.files[0]) {
+                alert('Selecciona primero la foto o el PDF de la guía (dropzone "Toca para subir").');
+                return;
+            }
+            const btn = document.getElementById('almBtnLeerDoc');
+            if (btn) { btn.disabled = true; btn.textContent = '🤖 Leyendo…'; }
+            try {
+                const fd = new FormData();
+                fd.append('archivo_documento', input.files[0]);
+                const res = await fetch('/api/documento/leer', { method: 'POST', body: fd });
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    alert('❌ ' + (data.mensaje || 'No se pudo leer el documento.'));
+                    return;
+                }
+                const c = data.campos || {};
+                document.getElementById('almTipoDocumento').value = c.tipo_documento
+                    ? wizardAlmMapearTipo(c.tipo_documento) : document.getElementById('almTipoDocumento').value;
+                if (c.numero_guia) document.getElementById('almNumeroGuia').value = c.numero_guia;
+                if (c.proveedor) document.getElementById('almProveedor').value = c.proveedor;
+                if (c.chofer) document.getElementById('almChofer').value = c.chofer;
+                if (c.dni_chofer) document.getElementById('almDniChofer').value = c.dni_chofer;
+                if (c.placa) document.getElementById('almPlaca').value = String(c.placa).replace(/\s+Principal$/i, '');
+                if (c.partida) document.getElementById('almLugarPartida').value = c.partida;
+
+                if (data.items && data.items.length) {
+                    itemsAlmacenArray = data.items.map(i => ({
+                        nombre: i.nombre,
+                        cantidad_guia: Number(i.cantidad_guia) || 0,
+                        cantidad_fisica: Number(i.cantidad_guia) || 0
+                    }));
+                    wizardAlmRenderTabla();
+                }
+
+                document.getElementById('almTextoExtraidoDoc').value = data.texto || '';
+                const avisoTexto = document.getElementById('almAvisoLeerDocTexto');
+                let msg = data.usadoGemini
+                    ? '<b>🤖 Datos leídos con IA (Gemini).</b>'
+                    : '<b>🧾 Datos leídos con lector local.</b>';
+                if (data.advertencias && data.advertencias.length) msg += ' ' + data.advertencias.join(' ');
+                msg += ' REVÍSALOS y corrige lo que falte antes de guardar.';
+                avisoTexto.innerHTML = msg;
+
+                if (!data.reconocioGuia && data.texto && data.texto.trim()) {
+                    const obs = document.getElementById('almObservaciones');
+                    obs.value = (obs.value ? obs.value + '\n' : '') + '--- TEXTO EXTRAÍDO ---\n' + data.texto;
+                    avisoTexto.innerHTML += ' El documento no se reconoció como guía; el texto quedó en Observaciones (revísalo).';
+                }
+                document.getElementById('almAvisoLeerDoc').style.display = 'block';
+                document.getElementById('almAvisoLeerDoc').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            } catch (err) {
+                console.error(err);
+                alert('Error de conexión al leer el documento: ' + err.message);
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '🤖 Leer y rellenar campos'; }
+            }
+            wizardAlmActualizar();
+        }
+
+        async function enviarFormularioAlmacen(e) {
+            if (e && typeof e.preventDefault === 'function') e.preventDefault();
+            if (enviandoWizardAlmacen) return;
+            if (pasoWizardAlmacen !== 2) {
+                wizardAlmNext();
+                return;
+            }
+            if (itemsAlmacenArray.length === 0) {
+                alert('❌ Debe agregar al menos un producto o insumo a la guía.');
+                wizardAlmIrAPaso(1);
+                return;
+            }
+            enviandoWizardAlmacen = true;
+            const btnEnviar = (e && e.submitter) || document.getElementById('almBtnPasoNext');
+            if (btnEnviar) { btnEnviar.disabled = true; btnEnviar.textContent = 'Enviando…'; }
+
+            const formData = new FormData();
+            formData.append('tipo_documento', wizardAlmVal('almTipoDocumento'));
+            formData.append('numero_guia', wizardAlmVal('almNumeroGuia'));
+            formData.append('proveedor', wizardAlmVal('almProveedor'));
+            formData.append('chofer', wizardAlmVal('almChofer'));
+            formData.append('dni_chofer', wizardAlmVal('almDniChofer'));
+            formData.append('placa', wizardAlmVal('almPlaca'));
+            formData.append('lugar_partida', wizardAlmVal('almLugarPartida'));
+            formData.append('observaciones', wizardAlmVal('almObservaciones'));
+            const inputFoto = document.getElementById('almFotoGuia');
+            if (inputFoto && inputFoto.files && inputFoto.files[0]) formData.append('foto_guia', inputFoto.files[0]);
+            formData.append('usuario', localStorage.getItem('usuario_actual') || 'almacen1');
+            formData.append('items_json', JSON.stringify(itemsAlmacenArray));
+
+            try {
+                const res = await fetch('/api/almacen/registrar-conforme', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    mostrarExitoAlmacen(data);
+                    cargarPendientes();
+                    cargarRegistroIngresos();
+                } else {
+                    alert('❌ ' + (data.mensaje || 'Error al registrar.'));
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Error de conexión con el servidor.');
+            } finally {
+                enviandoWizardAlmacen = false;
+                if (btnEnviar) { btnEnviar.disabled = false; btnEnviar.innerHTML = '🚀 Registrar'; }
+                wizardAlmActualizar();
+            }
+        }
+
+        function mostrarExitoAlmacen(data) {
+            const resumen = document.getElementById('almExitoResumen');
+            resumen.innerHTML = `
+                <div><b>N° guía:</b> ${wizardAlmVal('almNumeroGuia') || 'S/N'}</div>
+                <div><b>Proveedor:</b> ${wizardAlmVal('almProveedor') || '—'}</div>
+                <div><b>Ítems:</b> ${itemsAlmacenArray.length}</div>
+                <div><b>Hora:</b> ${new Date().toLocaleString('es-PE')}</div>
+                <div>${data.mensaje || ''}</div>
+            `;
+            document.getElementById('almPanelExito').style.display = 'block';
+            document.getElementById('almResumenDoc').style.display = 'none';
+            document.querySelector('#almPasoRevisar .tabla-wrap').style.display = 'none';
+            document.getElementById('almObsRevisar').style.display = 'none';
+            document.getElementById('almBarraPasos').style.display = 'none';
+            document.getElementById('almPasoRevisar').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function reiniciarFormularioAlmacen() {
+            document.getElementById('formWizardAlm').reset();
+            itemsAlmacenArray = [];
+            wizardAlmRenderTabla();
+            document.getElementById('almPanelExito').style.display = 'none';
+            document.getElementById('almResumenDoc').style.display = '';
+            document.querySelector('#almPasoRevisar .tabla-wrap').style.display = '';
+            document.getElementById('almObsRevisar').style.display = '';
+            document.getElementById('almBarraPasos').style.display = '';
+            const aviso = document.getElementById('almAvisoLeerDoc');
+            if (aviso) aviso.style.display = 'none';
+            pasoWizardAlmacen = 0;
+            document.querySelectorAll('#wizardIngresoAlm .paso').forEach(p => p.classList.toggle('activo', p.id === 'almPasoDoc'));
+            wizardAlmActualizar();
+        }
+
+        function toggleFormRegistroIngreso() {
+            const w = document.getElementById('wizardIngresoAlm');
+            const btn = document.getElementById('btnRegistroIngresoAlm');
+            const barra = document.getElementById('almBarraPasos');
+            const abierto = w.style.display !== 'none';
+            if (abierto) {
+                w.style.display = 'none';
+                if (btn) btn.textContent = '➕ Registrar Ingreso';
+                if (barra) barra.style.display = 'none';
+            } else {
+                wizardAlmInit();
+                reiniciarFormularioAlmacen();
+                w.style.display = 'block';
+                if (btn) btn.textContent = '✖ Cerrar formulario';
+                if (barra) barra.style.display = '';
+                w.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
 
         async function cargarPendientes() {
             try {

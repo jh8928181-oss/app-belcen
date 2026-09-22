@@ -1667,20 +1667,27 @@ async function analizarDocumentoConGemini(dataBuffer, mimetype, textoExtraido) {
     const esPdf = mimetype === 'application/pdf';
     if (!esImagen && !esPdf) return null;
 
-    const usaTexto = textoExtraido && textoExtraido.trim().length >= 60;
+    const textoOk = textoExtraido && textoExtraido.trim().length >= 60;
+    const usarSoloTexto = esPdf && textoOk;
+    const demasiadoGrande = (esPdf && dataBuffer.length > 8 * 1024 * 1024) || (!esPdf && dataBuffer.length > 15 * 1024 * 1024);
     let partes;
-    if (usaTexto) {
-        // Ruta rápida: se envía SOLO el texto (sin adjuntar el archivo) → respuesta en segundos.
+    if (usarSoloTexto) {
+        // Ruta rápida: PDF con texto extraído → se envía SOLO el texto (sin adjuntar el archivo) → respuesta en segundos.
         partes = [{ text: PROMPT_GEMINI }, { text: 'DOCUMENTO A ANALIZAR:\n\n' + textoExtraido.trim() }];
     } else {
-        if ((esPdf && dataBuffer.length > 8 * 1024 * 1024) || (!esPdf && dataBuffer.length > 15 * 1024 * 1024)) return null;
-        partes = [{ text: PROMPT_GEMINI }, { inlineData: { mimeType: esPdf ? 'application/pdf' : mimetype, data: dataBuffer.toString('base64') } }];
+        // Imágenes (fotos de guías) SIEMPRE adjuntan la foto: la visión directa reconoce mejor que el OCR local.
+        if (demasiadoGrande) return null;
+        const auxiliares = [];
+        if (textoExtraido && textoExtraido.trim().length >= 15) {
+            auxiliares.push({ text: 'TEXTO OCR EXTRAÍDO DEL DOCUMENTO (ayuda, no reemplaza la imagen):\n' + textoExtraido.trim() });
+        }
+        partes = [{ text: PROMPT_GEMINI }].concat(auxiliares, [{ inlineData: { mimeType: esPdf ? 'application/pdf' : mimetype, data: dataBuffer.toString('base64') } }]);
     }
 
     const modelos = Array.from(new Set([modeloGeminiExitoso, 'gemini-flash-lite-latest', MODELO_GEMINI, 'gemini-3.5-flash'].filter(Boolean)));
 
     try {
-        const resultado = await primeroExitoso(modelos.map(m => llamarGemini(m, partes, usaTexto ? 15000 : 20000)));
+        const resultado = await primeroExitoso(modelos.map(m => llamarGemini(m, partes, usarSoloTexto ? 15000 : 25000)));
         modeloGeminiExitoso = resultado.modelo;
         return JSON.parse(resultado.txt.replace(/^```json\s*/i, '').replace(/\s*```\s*$/, '').trim());
     } catch (err) {

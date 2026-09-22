@@ -471,7 +471,7 @@
                             <details style="margin-top:8px;">
                                 <summary>Ver / usar texto extraído</summary>
                                 <textarea id="almTextoExtraidoDoc" readonly rows="4" style="width:100%; font-size:12px; resize:vertical;"></textarea>
-                                <button type="button" onclick="usarTextoTodoAlm()" class="btn-ia-sec">📋 Copiar texto en Observaciones</button>
+                                <button type="button" id="almBtnCopiarTexto" onclick="usarTextoTodoAlm()" class="btn-ia-sec" style="display:none;">📋 Copiar texto en Observaciones</button>
                             </details>
                         </div>
                     </div>
@@ -1265,19 +1265,18 @@
                 }
 
                 document.getElementById('almTextoExtraidoDoc').value = data.texto || '';
+                const btnCopiarAlm = document.getElementById('almBtnCopiarTexto');
+                if (btnCopiarAlm) btnCopiarAlm.style.display = (!data.reconocioGuia && data.texto && data.texto.trim()) ? '' : 'none';
                 const avisoTexto = document.getElementById('almAvisoLeerDocTexto');
                 let msg = data.usadoGemini
                     ? '<b>🤖 Datos leídos con IA (Gemini).</b>'
                     : '<b>🧾 Datos leídos con lector local.</b>';
                 if (data.advertencias && data.advertencias.length) msg += ' ' + data.advertencias.join(' ');
                 msg += ' REVÍSALOS y corrige lo que falte antes de guardar.';
-                avisoTexto.innerHTML = msg;
-
-                if (!data.reconocioGuia && data.texto && data.texto.trim()) {
-                    const obs = document.getElementById('almObservaciones');
-                    obs.value = (obs.value ? obs.value + '\n' : '') + '--- TEXTO EXTRAÍDO ---\n' + data.texto;
-                    avisoTexto.innerHTML += ' El documento no se reconoció como guía; el texto quedó en Observaciones (revísalo).';
+                if (!data.reconocioGuia) {
+                    msg = '<b>⚠ Documento no reconocido como guía.</b> ' + (data.usadoGemini ? 'La IA leyó el documento pero no encontró datos de guía en él. ' : 'No se pudieron extraer datos de guía. ') + 'Completa los campos manualmente.';
                 }
+                avisoTexto.innerHTML = msg;
                 document.getElementById('almAvisoLeerDoc').style.display = 'block';
                 document.getElementById('almAvisoLeerDoc').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             } catch (err) {

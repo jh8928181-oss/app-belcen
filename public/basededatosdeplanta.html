@@ -20,6 +20,22 @@
         .btn-accion:hover { background: #218838; }
         .simulador-box { background: #e9ecef; padding: 15px; border-radius: 6px; border: 1px solid #ced4da; margin-top: 15px; }
         .logout { display: inline-block; margin-top: 15px; color: #dc3545; text-decoration: none; font-weight: bold; }
+        .tabla-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 8px; }
+        .grid-linea { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 15px; }
+        @media (max-width: 640px) {
+            body { padding: 10px; }
+            h2 { font-size: 18px; }
+            h3 { font-size: 16px; }
+            select, input { font-size: 16px; }
+            .card { padding: 16px; }
+            .grid-linea { grid-template-columns: 1fr !important; }
+            .tabla-wrap.tabla-card-movil table { min-width: 0; border: none; }
+            .tabla-wrap.tabla-card-movil thead { display: none; }
+            .tabla-wrap.tabla-card-movil tbody tr { display: block; border: 1px solid #ddd; border-radius: 12px; margin: 0 0 10px; padding: 6px 0; background: #fff; }
+            .tabla-wrap.tabla-card-movil tbody tr td { display: block; text-align: left !important; padding: 6px 12px; }
+            .tabla-wrap.tabla-card-movil td::before { content: attr(data-label); display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #8a93a3; font-weight: 700; margin-bottom: 2px; }
+            .tabla-wrap.tabla-card-movil td:not([data-label]) { all: unset; display: block; text-align: center; padding: 10px; }
+        }
     </style>
 </head>
 <body>
@@ -32,7 +48,7 @@
     <div class="card reveal" style="border-top: 5px solid #17a2b8;">
         <h3 style="color: #17a2b8; border-bottom: 2px solid #17a2b8;">🧮 SIMULADOR DE VIABILIDAD DE INSUMOS</h3>
         <div class="simulador-box">
-            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 15px;">
+<div class="grid-linea" style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 15px;">
                 <div>
                     <label><b>Seleccionar Presentación a Simular:</b></label>
                     <select id="sim_producto" onchange="verificarTapaSimulador()">
@@ -85,18 +101,20 @@
 
     <div class="card reveal" style="border-top: 5px solid #28a745;">
         <h3 style="color: #28a745; border-bottom: 2px solid #28a745;">📦 STOCK DE PRODUCTO TERMINADO (CAJAS LISTAS)</h3>
-        <table>
-            <thead>
-                <tr>
-                    <th>CÓDIGO KEY</th>
-                    <th>PRODUCTO</th>
-                    <th class="text-center">STOCK ACTUAL (CAJAS)</th>
-                </tr>
-            </thead>
-            <tbody id="tablaProductoTerminado">
-                <tr><td colspan="3" class="text-center">Cargando producto terminado...</td></tr>
-            </tbody>
-        </table>
+        <div class="tabla-wrap tabla-card-movil">
+            <table>
+                <thead>
+                    <tr>
+                        <th>CÓDIGO KEY</th>
+                        <th>PRODUCTO</th>
+                        <th class="text-center">STOCK ACTUAL (CAJAS)</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaProductoTerminado">
+                    <tr><td colspan="3" class="text-center">Cargando producto terminado...</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <div class="card reveal" style="border-top: 5px solid #ffc107;">
@@ -115,6 +133,7 @@
                 <button onclick="verTodosInformes()" class="btn-accion" style="margin-top: 5px; background: #6c757d;">Ver Todo</button>
             </div>
         </div>
+        <div class="tabla-wrap tabla-card-movil">
         <table>
             <thead>
                 <tr>
@@ -130,24 +149,27 @@
                 <tr><td colspan="6" class="text-center">Cargando informes...</td></tr>
             </tbody>
         </table>
+        </div>
     </div>
 
     <div class="card reveal" style="border-top: 5px solid #6c757d;">
         <h3 style="color: #495057; border-bottom: 2px solid #495057;">🛠️ INVENTARIO GENERAL DE INSUMOS Y MATERIA PRIMA</h3>
-        <table>
-            <thead>
-                <tr>
-                    <th>ARTÍCULO</th>
-                    <th>CATEGORÍA</th>
-                    <th class="text-center">STOCK ACTUAL</th>
-                    <th class="text-center">UNIDAD</th>
-                    <th class="text-center">ESTADO</th>
-                </tr>
-            </thead>
-            <tbody id="tablaInventarioGeneral">
-                <tr><td colspan="5" class="text-center">Cargando inventario general...</td></tr>
-            </tbody>
-        </table>
+        <div class="tabla-wrap tabla-card-movil">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ARTÍCULO</th>
+                        <th>CATEGORÍA</th>
+                        <th class="text-center">STOCK ACTUAL</th>
+                        <th class="text-center">UNIDAD</th>
+                        <th class="text-center">ESTADO</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaInventarioGeneral">
+                    <tr><td colspan="5" class="text-center">Cargando inventario general...</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <script src="/motion.js" defer></script>
@@ -164,6 +186,19 @@
 
         let inventarioGlobal = [];
         let ptGlobal = [];
+
+        function etiquetarTablas() {
+            document.querySelectorAll('.tabla-card-movil table').forEach(tabla => {
+                const ths = Array.from(tabla.querySelectorAll('thead th'))
+                    .map(th => th.textContent.replace(/\s+/g, ' ').trim());
+                if (!ths.length) return;
+                tabla.querySelectorAll('tbody tr').forEach(fila => {
+                    const celdas = Array.from(fila.cells);
+                    if (celdas.length !== ths.length) return;
+                    celdas.forEach((td, i) => { td.dataset.label = ths[i]; });
+                });
+            });
+        }
 
         async function cargarDatosPlanta() {
             try {
@@ -186,6 +221,7 @@
                         </tr>
                     `;
                 });
+                etiquetarTablas();
 
                 const resPt = await fetch('/api/producto-terminado');
                 ptGlobal = await resPt.json();
@@ -201,6 +237,7 @@
                         </tr>
                     `;
                 });
+                etiquetarTablas();
 
             } catch (err) {
                 console.error("Error al cargar base de datos de planta:", err);
@@ -270,6 +307,7 @@
 
             const html = `
                 <h4>Resultado de Simulación para ${cajas} ${cajas === 1 ? 'Caja' : 'Cajas'} (${data.producto_tipo}):</h4>
+                <div class="tabla-wrap tabla-card-movil" style="margin-top:8px;">
                 <table style="width:100%; border-collapse:collapse; font-size:13px; margin-top:8px;">
                     <thead>
                         <tr style="background:#007bff; color:#fff;">
@@ -291,11 +329,13 @@
                             </tr>`).join('')}
                     </tbody>
                 </table>
+                </div>
                 ${filas.length > 0 && filas.every(f => f.ok)
                     ? `<div style="background: #d4edda; color: #155724; padding: 10px; border-radius: 4px; font-weight: bold; text-align: center; margin-top:10px;">✅ PRODUCCIÓN 100% VIABLE CON EL STOCK ACTUAL</div>`
                     : `<div style="background: #f8d7da; color: #721c24; padding: 10px; border-radius: 4px; font-weight: bold; text-align: center; margin-top:10px;">❌ NO ES VIABLE: FALTAN INSUMOS PARA COMPLETAR ESTE LOTE</div>`}
             `;
             resDiv.innerHTML = html;
+            etiquetarTablas();
         }
 
         function verificarTapaSimulador() {
@@ -343,6 +383,7 @@
                         </tr>
                     `;
                 });
+                etiquetarTablas();
             } catch (err) {
                 console.error(err);
                 document.getElementById('tablaInformes').innerHTML = `<tr><td colspan="6" class="text-center">Error cargando informes.</td></tr>`;

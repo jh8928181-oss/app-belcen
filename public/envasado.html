@@ -206,6 +206,17 @@
             th, td { padding: 9px 10px; }
             .menu-opciones { gap: 12px; }
             .opcion-menu { flex-basis: 100%; max-width: 100%; }
+
+            .tabla-card-movil table { min-width: 0; border-collapse: collapse; }
+            .tabla-card-movil thead { display: none; }
+            .tabla-card-movil tbody, .tabla-card-movil tr, .tabla-card-movil td { display: block; }
+            .tabla-card-movil tbody { display: flex; flex-direction: column; gap: 10px; }
+            .tabla-card-movil tr { background: #fff; border: 1px solid #dfe3ee; border-radius: 14px; box-shadow: 0 2px 6px rgba(30,41,59,.05); }
+            .tabla-card-movil td { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid #eef1f7; }
+            .tabla-card-movil td:last-child { border-bottom: none; }
+            .tabla-card-movil td::before { content: attr(data-label); display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px; color: #8a93a3; font-weight: 700; margin-bottom: 2px; }
+            .tabla-card-movil td:not([data-label]) { all: unset; display: block; text-align: center; padding: 10px; }
+            .tabla-card-movil .botones-accion, .tabla-card-movil .acciones-fila { justify-content: flex-end; }
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -313,13 +324,13 @@
             <div style="text-align: left;">
                 <button onclick="mostrarMenu()" class="btn-volver">← Volver al menú</button>
             </div>
-            <h3 class="h3-azul">PRODUCCIÓN ACTIVA (DÍA EN CURSO)</h3>
-        <div class="tabla-wrap">
-        <table>
-            <thead>
-                <tr>
-                    <th>FECHA</th>
-                    <th>PRESENTACIÓN</th>
+                <h3 class="h3-azul">PRODUCCIÓN ACTIVA (DÍA EN CURSO)</h3>
+                <div class="tabla-wrap tabla-card-movil">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>FECHA</th>
+                                <th>PRESENTACIÓN</th>
                     <th class="text-center">CANT</th>
                     <th class="text-center">UM</th>
                     <th class="text-center">TN</th>
@@ -504,6 +515,19 @@
             return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
         }
 
+        function etiquetarTablas() {
+            document.querySelectorAll('.tabla-card-movil table').forEach(tabla => {
+                const ths = Array.from(tabla.querySelectorAll('thead th'))
+                    .map(th => th.textContent.replace(/\s+/g, ' ').trim());
+                if (!ths.length) return;
+                tabla.querySelectorAll('tbody tr').forEach(fila => {
+                    const celdas = Array.from(fila.cells);
+                    if (celdas.length !== ths.length) return;
+                    celdas.forEach((td, i) => { td.dataset.label = ths[i]; });
+                });
+            });
+        }
+
         async function cargarProduccionActiva() {
             try {
                 const res = await fetch('/api/produccion/reportes');
@@ -539,6 +563,7 @@
                 });
                 document.getElementById('totalTmActivo').textContent = sumaTn.toFixed(2);
                 resumenEstadoEnvasado();
+                etiquetarTablas();
             } catch (e) {
                 console.error(e);
             }

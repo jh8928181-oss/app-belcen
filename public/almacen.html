@@ -300,6 +300,13 @@
             .modal-fondo { padding: 12px; }
             .modal-carta { padding: 20px; border-radius: 20px; }
             .fila-modal .f2, .fila-modal .f1 { min-width: 140px; }
+            .tabla-card-movil table { min-width: 0; border: none; box-shadow: none; }
+            .tabla-card-movil thead { display: none; }
+            .tabla-card-movil tbody tr { display: block; border: 1px solid #e3e8ef; border-radius: 14px; margin: 0 0 10px; padding: 6px 0; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+            .tabla-card-movil td { display: block; text-align: left !important; border: none; padding: 6px 12px; }
+            .tabla-card-movil td::before { content: attr(data-label); display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px; color: #8a93a3; font-weight: 700; margin-bottom: 2px; }
+            .tabla-card-movil td:not([data-label]) { all: unset; display: block; text-align: center; padding: 10px; }
+            .tabla-card-movil .botones-accion, .tabla-card-movil .acciones-fila { justify-content: flex-start; }
         }
 
         @media (max-width: 768px) {
@@ -423,7 +430,7 @@
             <span id="pendientesContador" class="pend-chip">🔔 0 PENDIENTES</span>
             <button type="button" id="btnRegistroIngresoAlm" onclick="toggleFormRegistroIngreso()" class="btn-agregar btn-agregar-ambar">➕ Registrar Ingreso</button>
         </div>
-        <div class="tabla-wrap">
+        <div class="tabla-wrap tabla-card-movil">
         <table>
             <thead>
                 <tr>
@@ -605,7 +612,7 @@
             <button onclick="filtrarIngresos('POR REGULARIZAR')" class="btn-filtro btn-filtro-regularizar">Por Regularizar (Diferencias)</button>
         </div>
 
-        <div class="tabla-wrap">
+        <div class="tabla-wrap tabla-card-movil">
         <table>
             <thead>
                 <tr>
@@ -633,7 +640,7 @@
             <h3 class="h-verde">STOCK DE PRODUCTO TERMINADO (CAJAS LISTAS)</h3>
             <button onclick="abrirModalAgregarPT()" class="btn-agregar btn-agregar-verde">➕ Agregar Producto Manual</button>
         </div>
-        <div class="tabla-wrap">
+        <div class="tabla-wrap tabla-card-movil">
         <table>
             <thead>
                 <tr>
@@ -674,7 +681,7 @@
             </div>
         </div>
 
-        <div class="tabla-wrap">
+        <div class="tabla-wrap tabla-card-movil">
         <table>
             <thead>
                 <tr>
@@ -1390,6 +1397,19 @@
             }
         }
 
+        function etiquetarTablas() {
+            document.querySelectorAll('.tabla-card-movil table').forEach(tabla => {
+                const ths = Array.from(tabla.querySelectorAll('thead th'))
+                    .map(th => th.textContent.replace(/\s+/g, ' ').trim());
+                if (!ths.length) return;
+                tabla.querySelectorAll('tbody tr').forEach(fila => {
+                    const celdas = Array.from(fila.cells);
+                    if (celdas.length !== ths.length) return;
+                    celdas.forEach((td, i) => { td.dataset.label = ths[i]; });
+                });
+            });
+        }
+
         async function cargarPendientes() {
             try {
                 const res = await fetch('/api/almacen/pendientes');
@@ -1428,9 +1448,10 @@
                                 <button onclick="darConformidad(${item.id})" class="btn-accion">Dar Conformidad</button>
                                 <button onclick="abrirModalRevisarAjuste(${item.id})" class="btn-accion btn-regularizar" style="margin-left: 5px;">Revisar y Ajustar</button>
                             </td>
-                        </tr>
-                    `;
+                            </tr>
+                        `;
                 });
+                etiquetarTablas();
             } catch(e) { console.error(e); }
         }
 
@@ -1660,8 +1681,7 @@
         }
 
         function renderIngresos(lista) {
-            const tbody = document.getElementById('tablaRegistroIngresos');
-            tbody.innerHTML = lista.length === 0 ? `<tr><td colspan="6" class="text-center">Sin registros.</td></tr>` : '';
+            const tbody = document.getElementById('tablaRegistroIngresos');            tbody.innerHTML = lista.length === 0 ? `<tr><td colspan="6" class="text-center">Sin registros.</td></tr>` : '';
             lista.forEach(row => {
                 const fecha = row.fecha_registro ? fechaLocalISO(row.fecha_registro) : '';
                 const badge = row.estado === 'POR REGULARIZAR'
@@ -1676,12 +1696,13 @@
                         <td><b>${row.producto_nombre}</b></td>
                         <td class="text-center celda-azul">${row.cantidad}</td>
                         <td class="text-center">${badge}${row.categoria ? `<div class="sub-text">${row.categoria} · ${row.unidad_medida || 'UNIDADES'}</div>` : ''}</td>
-                    </tr>
-                `;
-            });
-        }
+                            </tr>
+                        `;
+                    });
+                    etiquetarTablas();
+                }
 
-        function filtrarIngresos(tipo) {
+                function filtrarIngresos(tipo) {
             if (tipo === 'TODOS') renderIngresos(ingresosGlobal);
             else renderIngresos(ingresosGlobal.filter(i => i.estado === tipo));
         }
@@ -1695,9 +1716,10 @@
                 tbody.innerHTML = productoTerminadoGlobal.length === 0 ? `<tr><td colspan="3" class="text-center">Sin stock disponible.</td></tr>` : '';
                 productoTerminadoGlobal.forEach(item => {
                     tbody.innerHTML += `<tr><td><b>${item.nombre_producto}</b></td><td class="text-center celda-verde">${item.stock_cajas} CAJAS</td><td class="text-center"><button onclick="ajustarPT(${item.id}, '${item.nombre_producto}', ${item.stock_cajas})" class="btn-accion btn-ajustar">Ajustar</button></td></tr>`;
-                });
+                    });
 
-                poblarSelectSalida();
+                    etiquetarTablas();
+                    poblarSelectSalida();
             } catch(e) { console.error(e); }
         }
 
@@ -1816,9 +1838,10 @@
                     const estado = item.estado || 'STOCK SUFICIENTE';
                     const esSuficiente = estado === 'STOCK SUFICIENTE';
                     tbody.innerHTML += `<tr><td><b>${item.nombre}</b></td><td>${item.categoria || 'SIN CATEGORÍA'}</td><td class="text-center celda-azul">${item.stock} ${item.unidad_medida}</td><td class="text-center"><span class="${esSuficiente ? 'badge-stock-ok' : 'badge-stock-bajo'}">${estado}</span></td><td class="text-center"><button onclick="ajustarStock(${item.id}, '${item.nombre}', ${item.stock})" class="btn-accion btn-ajustar">Ajustar</button></td></tr>`;
-                });
             });
-        }
+                });
+                etiquetarTablas();
+            }
 
         function aplicarFiltros() {
             const categoria = document.getElementById('filtroCategoria').value;

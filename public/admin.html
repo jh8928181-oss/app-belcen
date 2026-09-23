@@ -33,6 +33,24 @@
         .botones-accion { display: flex; gap: 6px; justify-content: center; }
         .botones-accion button { border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; }
         .aviso-info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-top: 12px; }
+        .tabla-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 8px; }
+        .grid-3cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-top: 15px; }
+        .span-3 { grid-column: span 3; }
+        @media (max-width: 640px) {
+            body { padding: 10px; }
+            h2 { font-size: 18px; }
+            select, input { font-size: 16px; }
+            .grid-3cols { grid-template-columns: 1fr !important; }
+            .span-3 { grid-column: span 1 !important; }
+            .tabla-wrap.tabla-card-movil table { min-width: 0; border: none; }
+            .tabla-wrap.tabla-card-movil thead { display: none; }
+            .tabla-wrap.tabla-card-movil tbody tr { display: block; border: 1px solid #dee2e6; border-radius: 12px; margin: 0 0 10px; padding: 6px 0; background: #fff; }
+            .tabla-wrap.tabla-card-movil td { display: block; text-align: left !important; padding: 6px 12px; }
+            .tabla-wrap.tabla-card-movil td::before { content: attr(data-label); display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #8a93a3; font-weight: 700; margin-bottom: 2px; }
+            .tabla-wrap.tabla-card-movil td:not([data-label]) { all: unset; display: block; text-align: center; padding: 10px; }
+            .tabla-wrap.tabla-card-movil .botones-accion { justify-content: flex-start; }
+            .tarjeta { padding: 16px; }
+        }
     </style>
 </head>
 <body>
@@ -41,7 +59,7 @@
         <!-- CERRAR / EDITAR USUARIO -->
         <div id="panelEditar" class="tarjeta" style="border-top: 5px solid #ffc107; display: none;">
             <h3 style="border-bottom: 2px solid #ffc107; color: #856404;">✏️ EDITAR USUARIO</h3>
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-top: 15px;">
+            <div class="grid-3cols" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-top: 15px;">
                 <div>
                     <label><b>Usuario:</b></label>
                     <input type="text" id="editUsuario" placeholder="Nombre de usuario" style="margin-top:5px;">
@@ -64,7 +82,7 @@
         <!-- CREAR USUARIO -->
         <div class="tarjeta reveal" style="border-top: 5px solid #28a745;">
             <h3 class="crear">➕ CREAR NUEVO USUARIO</h3>
-            <form id="formCrearUsuario" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-top: 15px;">
+            <form id="formCrearUsuario" class="grid-3cols" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-top: 15px;">
                 <div>
                     <label><b>Usuario:</b></label>
                     <input type="text" id="nuevoUsuario" placeholder="Ej. almacen1" style="margin-top:5px;" required>
@@ -79,7 +97,7 @@
                         <option value="">-- Seleccionar rol --</option>
                     </select>
                 </div>
-                <div style="grid-column: span 3;">
+                <div class="span-3" style="grid-column: span 3;">
                     <button type="submit" class="btn-accion">👤 CREAR USUARIO</button>
                 </div>
             </form>
@@ -89,19 +107,21 @@
         <div class="tarjeta reveal" style="border-top: 5px solid #6f42c1;">
             <h3 class="admin">👥 USUARIOS REGISTRADOS (<span id="totalUsuarios">0</span>)</h3>
             <input id="filtroUsuarios" class="filtro" placeholder="🔍 Buscar por usuario o rol...">
-            <table>
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Usuario</th>
-                        <th>Rol</th>
-                        <th class="text-center">Acciones</th>
-                    </tr>
-                </thead>
-                <tbody id="tablaUsuarios">
-                    <tr><td colspan="4" class="text-center">Cargando usuarios...</td></tr>
-                </tbody>
-            </table>
+            <div class="tabla-wrap tabla-card-movil">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Usuario</th>
+                            <th>Rol</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaUsuarios">
+                        <tr><td colspan="4" class="text-center">Cargando usuarios...</td></tr>
+                    </tbody>
+                </table>
+            </div>
             <div class="aviso-info">ℹ️ No puedes eliminar tu propio usuario ni quitar el rol "admin" al último administrador.</div>
         </div>
 
@@ -139,6 +159,19 @@
         let editarId = null;
         let enviandoCrear = false;
         let enviandoEditar = false;
+
+        function etiquetarTablas() {
+            document.querySelectorAll('.tabla-card-movil table').forEach(tabla => {
+                const ths = Array.from(tabla.querySelectorAll('thead th'))
+                    .map(th => th.textContent.replace(/\s+/g, ' ').trim());
+                if (!ths.length) return;
+                tabla.querySelectorAll('tbody tr').forEach(fila => {
+                    const celdas = Array.from(fila.cells);
+                    if (celdas.length !== ths.length) return;
+                    celdas.forEach((td, i) => { td.dataset.label = ths[i]; });
+                });
+            });
+        }
 
         function llenarSelectRoles() {
             const selCrear = document.getElementById('nuevoRol');
@@ -200,6 +233,7 @@
                 `;
                 tbody.appendChild(tr);
             });
+            etiquetarTablas();
         }
 
         function abrirEditarUsuario(id) {

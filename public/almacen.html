@@ -306,6 +306,8 @@
             .tabla-card-movil td { display: block; text-align: left !important; border: none; padding: 6px 12px; }
             .tabla-card-movil td::before { content: attr(data-label); display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px; color: #8a93a3; font-weight: 700; margin-bottom: 2px; }
             .tabla-card-movil td:not([data-label]) { all: unset; display: block; text-align: center; padding: 10px; }
+            .tabla-card-movil tr.sep-categoria { background: transparent; border: none; box-shadow: none; margin: 0; padding: 6px 0 2px; }
+            .tabla-card-movil tr.sep-categoria td { all: unset; display: block; text-align: center; background: #edf2fa; color: #33475b; font-weight: 800; font-size: 12px; letter-spacing: 1px; border-radius: 10px; padding: 7px 10px; }
             .tabla-card-movil .botones-accion, .tabla-card-movil .acciones-fila { justify-content: flex-start; }
         }
 
@@ -774,16 +776,16 @@
                     <button type="button" onclick="agregarItemManual()" class="btn-agregar-item">+ Agregar Ítem</button>
                 </div>
 
-                <div class="tabla-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>PRODUCTO / INSUMO</th>
-                            <th class="text-center">CANTIDAD</th>
-                            <th class="text-center">QUITAR</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tablaItemsDespacho">
+        <div class="tabla-wrap tabla-card-movil">
+        <table>
+            <thead>
+                <tr>
+                    <th>PRODUCTO / INSUMO</th>
+                    <th class="text-center">CANTIDAD</th>
+                    <th class="text-center">QUITAR</th>
+                </tr>
+            </thead>
+            <tbody id="tablaItemsDespacho">
                         <tr><td colspan="3" class="text-center sin-registros">Sube un PDF o agrega ítems manualmente.</td></tr>
                     </tbody>
                 </table>
@@ -1403,6 +1405,13 @@
                     .map(th => th.textContent.replace(/\s+/g, ' ').trim());
                 if (!ths.length) return;
                 tabla.querySelectorAll('tbody tr').forEach(fila => {
+                    if (/sep-categoria|sep-cat/.test(fila.className)) {
+                        fila.cells.forEach(td => {
+                            td.setAttribute('data-label', '');
+                            td.classList.add('label-encabezado-grupo');
+                        });
+                        return;
+                    }
                     const celdas = Array.from(fila.cells);
                     if (celdas.length !== ths.length) return;
                     celdas.forEach((td, i) => { td.dataset.label = ths[i]; });
@@ -2013,9 +2022,10 @@
             itemsDespachoArray.forEach((item, idx) => {
                 const marcaRevisar = (item.cantidad === null || item.cantidad === undefined || isNaN(parseFloat(item.cantidad))) ? ' <span class="diff-alerta">⚠️ indicar cantidad</span>' : '';
                 const valCant = (item.cantidad !== null && item.cantidad !== undefined && !isNaN(parseFloat(item.cantidad))) ? item.cantidad : '';
-                tbody.innerHTML += `<tr><td><b>${item.nombre}</b>${marcaRevisar}</td><td class="text-center"><input type="number" min="0.01" step="any" class="input-cant-item" value="${valCant}" oninput="cambiarCantidadItem(${idx}, this.value)"></td><td class="text-center"><button type="button" onclick="quitarItem(${idx})" class="btn-x">X</button></td></tr>`;
-            });
-        }
+                    tbody.innerHTML += `<tr><td><b>${item.nombre}</b>${marcaRevisar}</td><td class="text-center"><input type="number" min="0.01" step="any" class="input-cant-item" value="${valCant}" oninput="cambiarCantidadItem(${idx}, this.value)"></td><td class="text-center"><button type="button" onclick="quitarItem(${idx})" class="btn-x">X</button></td></tr>`;
+                });
+                etiquetarTablas();
+            }
 
         async function cargarHistorialSalidas() {
             try {
@@ -2080,11 +2090,11 @@
                 });
 
                 contenedor.innerHTML += `
-                    <div class="grupo-fecha">
-                        <div class="grupo-fecha-head">
-                            📅 Fecha de Salida: ${fecha} | Despachos Realizados: ${salidasDia.length}
-                        </div>
-                        <div class="tabla-wrap">
+                        <div class="grupo-fecha">
+                            <div class="grupo-fecha-head">
+                                📅 Fecha de Salida: ${fecha} | Despachos Realizados: ${salidasDia.length}
+                            </div>
+                            <div class="tabla-wrap tabla-card-movil">
                         <table>
                             <thead>
                                 <tr>
@@ -2105,6 +2115,7 @@
                     </div>
                 `;
             });
+            etiquetarTablas();
         }
 
         let guardRegularizar = false;

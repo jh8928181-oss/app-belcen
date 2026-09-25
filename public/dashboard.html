@@ -323,24 +323,12 @@
             <span class="rol-badge" id="rolBadge">ROL</span>
         </section>
 
-        <!-- KPIS -->
+<!-- KPIS -->
         <section class="kpis">
-            <div class="glass kpi">
-                <div class="kpi-label">Total Artículos</div>
-                <div class="kpi-val" id="kpiArticulos">—</div>
-            </div>
-<div class="glass kpi warn kpi-btn" id="kpiBajoStockCard" role="button" tabindex="0" aria-pressed="false" title="Mostrar solo artículos con bajo stock" onclick="toggleFiltroBajoStock()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleFiltroBajoStock();}">
+            <div class="glass kpi warn kpi-btn" id="kpiBajoStockCard" role="button" tabindex="0" aria-pressed="false" title="Mostrar solo artículos con bajo stock" onclick="toggleFiltroBajoStock()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleFiltroBajoStock();}">
                 <div class="kpi-label">Bajo Stock</div>
                 <div class="kpi-val" id="kpiBajoStock">—</div>
                 <div class="kpi-hint" id="kpiBajoStockHint">Toca para ver bajos</div>
-            </div>
-            <div class="glass kpi">
-                <div class="kpi-label">Categorías</div>
-                <div class="kpi-val" id="kpiCategorias">—</div>
-            </div>
-            <div class="glass kpi">
-                <div class="kpi-label">Stock Acumulado</div>
-                <div class="kpi-val" id="kpiStock">—</div>
             </div>
         </section>
 
@@ -557,15 +545,9 @@ const filtrados = inventarioGlobal.filter(a =>
                 const articulos = await res.json();
                 inventarioGlobal = Array.isArray(articulos) ? articulos : [];
 
-                const bajoStock = inventarioGlobal.filter(a => (a.estado || '').trim() === 'REALIZAR PEDIDO').length;
-                const categorias = new Set(inventarioGlobal.map(a => (a.categoria || 'General').trim().toLowerCase()));
-                const stockTotal = inventarioGlobal.reduce((s, a) => s + (Number(a.stock) || 0), 0);
+const bajoStock = inventarioGlobal.filter(a => (a.estado || '').trim() === 'REALIZAR PEDIDO').length;
 
-                setearKpi('kpiArticulos', inventarioGlobal.length, 0);
                 setearKpi('kpiBajoStock', bajoStock, 0);
-                setearKpi('kpiCategorias', categorias.size, 0);
-                const decStock = Number.isInteger(stockTotal) ? 0 : 2;
-                setearKpi('kpiStock', stockTotal, decStock);
                 kpisInicializados = true;
 
                 const ahora = new Date();

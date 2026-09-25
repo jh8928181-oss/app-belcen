@@ -3069,83 +3069,53 @@ function requerirRolAlmacenInvRef(req, res, next) {
     next();
 }
 
-app.get('/api/almacen/inventario-refinado', requerirRolAlmacenInvRef, async (req, res) => {
+app.get('/api/almacen/stock-refinado', requerirRolAlmacenInvRef, async (req, res) => {
     try {
-        const fecha = String(req.query.fecha || '').trim();
-        const turno = String(req.query.turno || 'DIA').trim().toUpperCase();
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
-            return res.status(400).json({ success: false, mensaje: 'Indique una fecha válida (AAAA-MM-DD).' });
-        }
-        if (!['DIA', 'NOCHE'].includes(turno)) {
-            return res.status(400).json({ success: false, mensaje: 'Turno inválido. Use DIA o NOCHE.' });
-        }
-        const result = await pool.query('SELECT id, fecha_reporte, turno, insumos_json, usuario_registro FROM reportes_refinado WHERE fecha_reporte = $1 AND turno = $2', [fecha, turno]);
-        let reporte = null;
-        if (result.rows.length) {
-            const r = result.rows[0];
-            let insumos = [];
-            try { insumos = JSON.parse(r.insumos_json); } catch (e) {}
-            reporte = {
-                id: r.id,
-                fecha_reporte: r.fecha_reporte,
-                turno: r.turno,
-                insumos,
-                usuario_registro: r.usuario_registro
-            };
-        }
-        res.json({ success: true, reporte, insumosBase: INSUMOS_REFINADO_BASE });
+        const result = await pool.query('SELECT * FROM stock_insumos_refinado ORDER BY id ASC');
+        res.json({ success: true, insumos: result.rows, insumosBase: INSUMOS_REFINADO_BASE });
     } catch (err) {
-        console.error('Error GET inventario refinado:', err);
+        console.error('Error GET stock refinado:', err);
         res.status(500).json({ success: false, mensaje: err.message });
     }
 });
 
-app.post('/api/almacen/inventario-refinado', requerirRolAlmacenInvRef, async (req, res) => {
+app.post('/api/almacen/stock-refinado/ajustar', requerirRolAlmacenInvRef, async (req, res) => {
     try {
-        const { fecha_reporte, turno, insumos } = req.body || {};
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fecha_reporte || ''))) {
-            return res.status(400).json({ success: false, mensaje: 'Fecha inválida (use AAAA-MM-DD).' });
+        const { nombre, nuevo_stock } = req.body || {};
+        const cantidadNueva = Number(nuevo_stock);
+        if (!nombre || isNaN(cantidadNueva)) {
+            return res.status(400).json({ success: false, mensaje: 'Indique un insumo válido y que el nuevo stock sea un número.' });
         }
-        const turnoVal = String(turno || 'DIA').trim().toUpperCase();
-        if (!['DIA', 'NOCHE'].includes(turnoVal)) {
-            return res.status(400).json({ success: false, mensaje: 'Turno inválido. Use DIA o NOCHE.' });
+        const actual = await pool.query('SELECT id, nombre, stock FROM stock_insumos_refinado WHERE nombre = $1', [String(nombre)]);
+        if (actual.rows.length === 0) {
+            return res.status(404).json({ success: false, mensaje: 'El insumo de refinado no existe.' });
         }
-        if (!Array.isArray(insumos)) {
-            return res.status(400).json({ success: false, mensaje: 'La tabla de insumos es inválida.' });
-        }
-        const sanitizar = (obj) => {
-            const out = {};
-            for (const key of ['nombre', 'inv_inic', 'ingreso', 'consumo', 'en_linea', 'stock', 'um', 'dias', 'observaciones']) {
-                let val = obj[key];
-                if (['inv_inic', 'ingreso', 'consumo', 'en_linea', 'stock', 'dias'].includes(key)) {
-                    val = (val === null || val === undefined || val === '') ? null : Number(val);
-                    if (val !== null && isNaN(val)) val = null;
-                } else {
-                    val = (val === null || val === undefined) ? '' : String(val);
-                }
-                out[key] = val;
-            }
-            return out;
-        };
-        const insumosLimpios = insumos.map(o => {
-            const base = sanitizar(o);
-            base.estado = estadoInsumo(base.dias);
-            return base;
-        }).filter(it => it.nombre);
-
-        await pool.query(`
-            INSERT INTO reportes_refinado (fecha_reporte, turno, insumos_json, aceite_json, observaciones, usuario_registro)
-            VALUES ($1, $2, $3, '[]', '', $4)
-            ON CONFLICT (fecha_reporte, turno) DO UPDATE SET
-                insumos_json = EXCLUDED.insumos_json,
-                usuario_registro = EXCLUDED.usuario_registro,
-                fecha_registro = CURRENT_TIMESTAMP`, [
-            fecha_reporte, turnoVal, JSON.stringify(insumosLimpios), req.usuario
-        ]);
-
-        res.json({ success: true, mensaje: 'Inventario de insumos de refinado guardado correctamente.' });
+        const stockAnterior = Number(actual.rows[0].stock) || 0;
+        await pool.query(
+            `UPDATE stock_insumos_refinado
+             SET stock = $1::numeric,
+                 estado = CASE WHEN $1::numeric <= 0 THEN 'REALIZAR PEDIDO' ELSE 'STOCK SUFICIENTE' END,
+                 usuario_ajuste = $2,
+                 fecha_ajuste = CURRENT_TIMESTAMP
+             WHERE id = $3`,
+            [cantidadNueva, req.usuario, actual.rows[0].id]
+        );
+        const diferencia = cantidadNueva - stockAnterior;
+        await registrarHistorial(pool, {
+            tipo: 'AJUSTE',
+            origen: 'almacen',
+            producto: String(nombre),
+            articulo_id: actual.rows[0].id,
+            cantidad: Math.abs(diferencia),
+            tipo_cambio: diferencia >= 0 ? 'SUMA' : 'RESTA',
+            stock_anterior: stockAnterior,
+            stock_nuevo: cantidadNueva,
+            usuario: usuarioResponsable(req, req.body.usuario),
+            referencia: 'Ajuste manual de stock de refinado'
+        });
+        res.json({ success: true, mensaje: 'Stock de insumo de refinado ajustado manualmente.' });
     } catch (err) {
-        console.error("Error guardar inventario refinado:", err);
+        console.error('Error ajustar stock refinado:', err);
         res.status(500).json({ success: false, mensaje: 'Error en el servidor: ' + err.message });
     }
 });

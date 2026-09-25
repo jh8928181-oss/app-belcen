@@ -149,6 +149,58 @@ const inicializarBaseDeDatos = async () => {
             EXCEPTION WHEN duplicate_object THEN NULL;
             END $$;
 
+            -- STOCK ACTUAL DE INSUMOS DE REFINADO (ajuste manual, sin fecha/turno)
+            CREATE TEMP TABLE IF NOT EXISTS stock_ref_previo AS
+                SELECT 1 AS existe FROM pg_class WHERE relname = 'stock_insumos_refinado' AND relkind = 'r';
+
+            CREATE TABLE IF NOT EXISTS stock_insumos_refinado (
+                id SERIAL PRIMARY KEY,
+                nombre VARCHAR(150) UNIQUE NOT NULL,
+                um VARCHAR(20) NOT NULL DEFAULT 'KG',
+                stock NUMERIC(12,2) NOT NULL DEFAULT 0,
+                estado VARCHAR(50) NOT NULL DEFAULT 'STOCK SUFICIENTE',
+                usuario_ajuste VARCHAR(50),
+                fecha_ajuste TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            INSERT INTO stock_insumos_refinado (nombre, um) VALUES
+                ('ACEITE CRUDO DE SOYA TK-1', 'TON'),
+                ('ACEITE CRUDO DE SOYA TK-2', 'TON'),
+                ('TONSIL OPTIMUN 363', 'KG'),
+                ('TONSIL SUPREME 169', 'KG'),
+                ('ACIDO FOSFORICO', 'KG'),
+                ('SODA EN SOLUCION AL 50%', 'KG'),
+                ('SAL', 'KG'),
+                ('MANGAS FILTRANTES', 'UND'),
+                ('TELA', 'UND')
+            ON CONFLICT (nombre) DO NOTHING;
+
+            -- Solo la primera vez: copia el último stock conocido desde los reportes diarios previos
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM stock_ref_previo) THEN
+                    BEGIN
+                        UPDATE stock_insumos_refinado s
+                        SET stock = COALESCE(leg.stock, s.stock),
+                            estado = CASE WHEN COALESCE(leg.stock, s.stock) <= 0 THEN 'REALIZAR PEDIDO' ELSE 'STOCK SUFICIENTE' END
+                        FROM (
+                            SELECT DISTINCT ON (x.nombre) x.nombre, x.stock
+                            FROM reportes_refinado r,
+                                 jsonb_to_recordset(
+                                     CASE WHEN r.insumos_json ~ '^\s*\[[\s\S]*\]\s*$' THEN r.insumos_json::jsonb ELSE '[]'::jsonb END
+                                 ) AS x(nombre text, stock numeric)
+                            WHERE r.insumos_json IS NOT NULL
+                            ORDER BY x.nombre, r.id DESC
+                        ) AS leg
+                        WHERE s.nombre = leg.nombre;
+                    EXCEPTION WHEN OTHERS THEN
+                        NULL;
+                    END;
+                END IF;
+            END $$;
+
+            DROP TABLE IF EXISTS stock_ref_previo;
+
             CREATE TABLE IF NOT EXISTS reportes_soplado (
                 id SERIAL PRIMARY KEY,
                 fecha_reporte DATE DEFAULT CURRENT_DATE,

@@ -829,19 +829,8 @@
             <span id="invRefMsg" style="font-size:12px; color:#856404; font-weight:700;"></span>
         </div>
 
-        <div class="barra-filtros">
-            <label style="font-weight:700; font-size:13px; align-self:center;">📅 Fecha:</label>
-            <input type="date" id="fechaInvRef" style="max-width:180px;">
-            <label style="font-weight:700; font-size:13px; align-self:center;">🕐 Turno:</label>
-            <select id="turnoInvRef" style="max-width:150px;">
-                <option value="DIA">☀️ Turno DÍA</option>
-                <option value="NOCHE">🌙 Turno NOCHE</option>
-            </select>
-            <button onclick="guardarInvRef()" class="btn-filtro" style="border-radius:999px; padding:10px 18px; background:#1e7e34; color:#fff; font-weight:bold; border:none; cursor:pointer;">💾 Guardar Stock</button>
-        </div>
-
         <div class="aviso-info" style="padding:10px 14px; border-radius:10px; background:rgba(23,162,184,0.09); color:#0a6ea8; border:1px solid rgba(23,162,184,0.2); font-size:13px; margin-top:12px;">
-            ℹ️ <b>Considerar stock de crudo del tanque más en línea</b> para la real disponibilidad de aceite crudo. Los <b>lot</b>es se reportan en el módulo <b>Refinado</b>.
+            ℹ️ <b>Considerar stock de crudo del tanque más en línea</b> para la real disponibilidad de aceite crudo. Los <b>lotes</b> se reportan en el módulo <b>Refinado</b>. Use <b>🔧 Ajustar</b> para corregir la cantidad actual de cada insumo.
         </div>
 
         <div class="tabla-wrap tabla-card-movil">
@@ -849,19 +838,14 @@
             <thead>
                 <tr>
                     <th style="background-color:#0a6ea8; color:#fff;">Insumo</th>
-                    <th class="text-center" style="background-color:#0a6ea8; color:#fff; min-width:80px;">Inv. Inic.</th>
-                    <th class="text-center" style="background-color:#0a6ea8; color:#fff; min-width:80px;">Ingreso del Día</th>
-                    <th class="text-center" style="background-color:#0a6ea8; color:#fff; min-width:80px;">Consumo del Día</th>
-                    <th class="text-center" style="background-color:#0a6ea8; color:#fff; min-width:80px;">En Línea</th>
-                    <th class="text-center" style="background-color:#0a6ea8; color:#fff; min-width:90px;">Stock en Tanque Crudo</th>
-                    <th class="text-center" style="background-color:#0a6ea8; color:#fff;">UM</th>
-                    <th class="text-center" style="background-color:#0a6ea8; color:#fff; min-width:80px;">Días de Stock</th>
-                    <th style="background-color:#0a6ea8; color:#fff;">Observaciones</th>
+                    <th class="text-center" style="background-color:#0a6ea8; color:#fff;">UND</th>
+                    <th class="text-center" style="background-color:#0a6ea8; color:#fff;">Cantidad Actual</th>
                     <th class="text-center" style="background-color:#0a6ea8; color:#fff;">Estado</th>
+                    <th class="text-center" style="background-color:#0a6ea8; color:#fff;">Acción</th>
                 </tr>
             </thead>
             <tbody id="tablaInvRefAlmacen">
-                <tr><td colspan="10" class="text-center">Cargando inventario de refinado...</td></tr>
+                <tr><td colspan="5" class="text-center">Cargando stock de refinado...</td></tr>
             </tbody>
         </table>
         </div>
@@ -2515,22 +2499,9 @@
             }
         });
 
-        // 🛢️ INVENTARIO (STOCK) DE INSUMOS DE REFINADO — Gestionado desde Almacén
-        let invRefBase = [];
-
-        function invRefHoy() {
-            const f = new Date();
-            return f.getFullYear() + '-' + String(f.getMonth() + 1).padStart(2, '0') + '-' + String(f.getDate()).padStart(2, '0');
-        }
-
+        // 🛢️ STOCK DE INSUMOS DE REFINADO — Ajuste manual desde Almacén
         function escInvRef(str) {
             return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-        }
-
-        function invRefEstadoInsumo(dias) {
-            const d = Number(dias);
-            if (d !== null && !isNaN(d) && d <= 8) return 'REALIZAR PEDIDO';
-            return 'STOCK SUFICIENTE';
         }
 
         function invRefBadge(estado) {
@@ -2542,116 +2513,66 @@
             const tbody = document.getElementById('tablaInvRefAlmacen');
             tbody.innerHTML = '';
             if (!lista || !lista.length) {
-                tbody.innerHTML = '<tr><td colspan="10" class="text-center sin-registros">Sin insumos registrados.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center sin-registros">Sin insumos registrados.</td></tr>';
                 return;
             }
             lista.forEach((item) => {
                 if (!item) item = {};
-                const base = invRefBase.find(b => (b.nombre || '').toLowerCase() === (item.nombre || '').toLowerCase()) || {};
-                const um = item.um || base.um || 'KG';
                 const tr = document.createElement('tr');
                 tr.className = 'hover-row';
                 tr.innerHTML = `
                     <td><b>${escInvRef(item.nombre || '')}</b></td>
-                    <td class="text-center"><input class="num" type="number" step="0.01" min="0" data-k="inv_inic" value="${item.inv_inic ?? ''}" style="text-align:center; max-width:90px;"></td>
-                    <td class="text-center"><input class="num" type="number" step="0.01" min="0" data-k="ingreso" value="${item.ingreso ?? ''}" style="text-align:center; max-width:90px;"></td>
-                    <td class="text-center"><input class="num" type="number" step="0.01" min="0" data-k="consumo" value="${item.consumo ?? ''}" style="text-align:center; max-width:90px;"></td>
-                    <td class="text-center"><input class="num" type="number" step="0.01" min="0" data-k="en_linea" value="${item.en_linea ?? ''}" style="text-align:center; max-width:90px;"></td>
-                    <td class="text-center"><input class="num" type="number" step="0.01" min="0" data-k="stock" value="${item.stock ?? ''}" style="text-align:center; max-width:90px; font-weight:bold;"></td>
-                    <td class="text-center"><b>${escInvRef(um)}</b></td>
-                    <td class="text-center"><input class="num" type="number" step="0.1" min="0" data-k="dias" value="${item.dias ?? ''}" style="text-align:center; max-width:80px;"></td>
-                    <td><input type="text" data-k="observaciones" value="${escInvRef(item.observaciones || '')}" style="min-width:120px;"></td>
-                    <td class="text-center"><span class="estado-cell">${invRefBadge(invRefEstadoInsumo(item.dias))}</span></td>
+                    <td class="text-center"><b>${escInvRef(item.um || 'KG')}</b></td>
+                    <td class="text-center"><b>${Number(item.stock) || 0}</b></td>
+                    <td class="text-center"><span class="estado-cell">${invRefBadge(item.estado || 'STOCK SUFICIENTE')}</span></td>
+                    <td class="text-center"><button class="btn-ajustar-ref" data-nombre="${escInvRef(item.nombre || '')}" data-stock="${Number(item.stock) || 0}" style="border-radius:999px; padding:8px 14px; background:#0a6ea8; color:#fff; font-weight:bold; border:none; cursor:pointer;">🔧 Ajustar</button></td>
                 `;
                 tbody.appendChild(tr);
             });
             if (typeof etiquetarTablas === 'function') etiquetarTablas();
         }
 
-        function invRefRecalcularDias(tr) {
-            const campo = tr.querySelector('[data-k="dias"]');
-            const get = k => parseFloat((tr.querySelector('[data-k="' + k + '"]') || {}).value) || 0;
-            const stock = get('stock');
-            const consumo = get('consumo');
-            if ((campo.value === '' || campo.value == null) && stock > 0 && consumo > 0) {
-                campo.value = (stock / consumo).toFixed(1);
-                tr.querySelector('.estado-cell').innerHTML = invRefBadge(invRefEstadoInsumo(campo.value));
-            } else {
-                tr.querySelector('.estado-cell').innerHTML = invRefBadge(invRefEstadoInsumo(campo.value));
-            }
-        }
-
-        document.addEventListener('input', (e) => {
-            const tr = e.target.closest('tr');
-            if (!tr) return;
-            if (e.target.matches('#tablaInvRefAlmacen [data-k="stock"]') || e.target.matches('#tablaInvRefAlmacen [data-k="consumo"]')) {
-                invRefRecalcularDias(tr);
-            }
-        });
-
-        function leerInvRef() {
-            const filas = document.querySelectorAll('#tablaInvRefAlmacen tr.hover-row');
-            const lista = [];
-            filas.forEach(tr => {
-                const obj = {};
-                tr.querySelectorAll('input').forEach(inp => { obj[inp.dataset.k] = inp.value; });
-                obj.nombre = tr.cells[0] ? tr.cells[0].textContent.trim() : '';
-                if (obj.nombre) {
-                    obj.estado = invRefEstadoInsumo(obj.dias);
-                    lista.push(obj);
-                }
-            });
-            return lista;
-        }
-
-        async function cargarInvRef() {
-            const fechaEl = document.getElementById('fechaInvRef');
-            const turnoEl = document.getElementById('turnoInvRef');
-            const msg = document.getElementById('invRefMsg');
-            const fecha = fechaEl.value || invRefHoy();
-            fechaEl.value = fecha;
-            const turno = turnoEl.value || 'DIA';
+        let guardarStockRefLock = false;
+        async function ajustarStockRef(nombre, stockActual) {
+            if (guardarStockRefLock) return;
+            const nuevoStock = prompt('Ajustar stock del insumo:\n\n' + nombre + '\n\nCantidad actual: ' + stockActual, stockActual);
+            if (nuevoStock === null) return;
+            const valor = parseFloat(nuevoStock);
+            if (isNaN(valor)) { alert('❌ Ingrese un número válido.'); return; }
+            guardarStockRefLock = true;
             try {
-                const res = await fetch('/api/almacen/inventario-refinado?fecha=' + fecha + '&turno=' + turno);
-                const data = await res.json();
-                if (!res.ok || !data.success) throw new Error((data && data.mensaje) || 'Error.');
-                invRefBase = Array.isArray(data.insumosBase) ? data.insumosBase : [];
-                const rep = data.reporte;
-                if (rep && Array.isArray(rep.insumos) && rep.insumos.length) {
-                    renderInvRef(rep.insumos);
-                    msg.textContent = '✔ Guardado por ' + (rep.usuario_registro || '...');
-                    msg.style.color = '#1e7e34';
-                } else {
-                    renderInvRef(invRefBase.map(b => ({ ...b, inv_inic: '', ingreso: '', consumo: '', en_linea: '', stock: '', dias: '', observaciones: '' })));
-                    msg.textContent = 'Nueva plantilla para ' + turno + ' · ' + fecha;
-                    msg.style.color = '#856404';
-                }
-            } catch (err) {
-                console.error(err);
-                msg.textContent = 'Error al cargar el inventario de refinado.';
-                msg.style.color = 'red';
-            }
-        }
-
-        let guardarInvRefLock = false;
-        async function guardarInvRef() {
-            if (guardarInvRefLock) return;
-            const fecha = document.getElementById('fechaInvRef').value;
-            if (!fecha) { alert('❌ Selecciona una fecha.'); return; }
-            const turno = document.getElementById('turnoInvRef').value || 'DIA';
-            const insumos = leerInvRef();
-            guardarInvRefLock = true;
-            try {
-                const res = await fetch('/api/almacen/inventario-refinado', {
+                const res = await fetch('/api/almacen/stock-refinado/ajustar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ fecha_reporte: fecha, turno, insumos })
+                    body: JSON.stringify({ nombre, nuevo_stock: valor })
                 });
                 const data = await res.json();
                 alert(data.mensaje || 'Respuesta del servidor.');
                 if (data.success) cargarInvRef();
             } catch (err) { console.error(err); alert('❌ Error de conexión.'); }
-            finally { guardarInvRefLock = false; }
+            finally { guardarStockRefLock = false; }
+        }
+
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('.btn-ajustar-ref');
+            if (!btn) return;
+            ajustarStockRef(btn.dataset.nombre, Number(btn.dataset.stock));
+        });
+
+        async function cargarInvRef() {
+            const msg = document.getElementById('invRefMsg');
+            try {
+                const res = await fetch('/api/almacen/stock-refinado');
+                const data = await res.json();
+                if (!res.ok || !data.success) throw new Error((data && data.mensaje) || 'Error.');
+                renderInvRef(data.insumos);
+                msg.textContent = '✔ Stock actual · ajuste manual';
+                msg.style.color = '#1e7e34';
+            } catch (err) {
+                console.error(err);
+                msg.textContent = 'Error al cargar el stock de refinado.';
+                msg.style.color = 'red';
+            }
         }
 
         cargarPendientes();
@@ -2660,9 +2581,6 @@
         cargarInventarioAlmacen();
         cargarHistorialSalidas();
 
-        document.getElementById('fechaInvRef').value = invRefHoy();
-        document.getElementById('fechaInvRef').addEventListener('change', cargarInvRef);
-        document.getElementById('turnoInvRef').addEventListener('change', cargarInvRef);
         cargarInvRef();
 
         registrarAutoRefresco(() => {

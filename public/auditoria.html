@@ -499,28 +499,7 @@
                         </select>
                     </div>
                     <div class="aviso" id="avisoRefinado" style="display:none; padding:12px 14px; border-radius:4px; font-size:13px; margin-top:12px;"></div>
-                    <h4 style="margin:18px 0 4px 0; color:#117a8b;">STOCK DE INSUMOS DE REFINADO</h4>
-                    <div class="tabla-wrap">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th style="background-color:#117a8b;">Insumo</th>
-                                    <th class="text-center" style="background-color:#117a8b;">Inv. Inic.</th>
-                                    <th class="text-center" style="background-color:#117a8b;">Ingreso del Día</th>
-                                    <th class="text-center" style="background-color:#117a8b;">Consumo del Día</th>
-                                    <th class="text-center" style="background-color:#117a8b;">En Línea</th>
-                                    <th class="text-center" style="background-color:#117a8b;">Stock en Tanque</th>
-                                    <th class="text-center" style="background-color:#117a8b;">UM</th>
-                                    <th class="text-center" style="background-color:#117a8b;">Días de Stock</th>
-                                    <th style="background-color:#117a8b;">Observaciones</th>
-                                    <th class="text-center" style="background-color:#117a8b;">Estado</th>
-                                </tr>
-                            </thead>
-                            <tbody id="tablaRefinadoInsumos">
-                                <tr><td colspan="10" class="text-center">Cargando insumos de refinería...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
+                    <div style="font-size:12.5px; color:#0b7285; padding:8px 0 4px;">🛢️ El <b>STOCK DE INSUMOS DE REFINADO</b> se lleva en el módulo <b>Almacén</b> (pestaña Refinado). Aquí se muestra el <b>reporte de lotes</b> con los insumos usados por lote.</div>
                     <h4 style="margin:18px 0 4px 0; color:#8a6d00;">LOTES — ACEITE REFINADO DE SOYA (insumos usados por lote)</h4>
                     <div class="tabla-wrap">
                         <table>
@@ -532,12 +511,13 @@
                                     <th class="text-center" style="background-color:#8a6d00;">Tanque</th>
                                     <th style="background-color:#8a6d00;">Proveedor Aceite Crudo</th>
                                     <th class="text-center" style="background-color:#8a6d00;">Fecha Producción</th>
+                                    <th class="text-center" style="background-color:#8a6d00;">Hora</th>
                                     <th style="background-color:#8a6d00;">Estado</th>
                                     <th class="text-center" style="background-color:#8a6d00;">Insumos</th>
                                 </tr>
                             </thead>
                             <tbody id="tablaRefinadoAceite">
-                                <tr><td colspan="8" class="text-center">Cargando aceite refinado...</td></tr>
+                                <tr><td colspan="9" class="text-center">Cargando lotes de refinado...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1149,15 +1129,11 @@ tbody.appendChild(tr);
         // 🛢️ REFINERÍA
         function renderRefinado() {
             const reporte = refinadoActual;
-            const insumos = (reporte && Array.isArray(reporte.insumos)) ? reporte.insumos : [];
-            const aceite = (reporte && Array.isArray(reporte.aceite)) ? reporte.aceite : [];
-
-            const tIns = document.getElementById('tablaRefinadoInsumos');
+            const lotes = (reporte && Array.isArray(reporte.lotes)) ? reporte.lotes : [];
             const tAce = document.getElementById('tablaRefinadoAceite');
 
             if (!reporte) {
-                tIns.innerHTML = '<tr><td colspan="10" class="text-center sin-registros">No hay reporte de refinería para esta fecha.</td></tr>';
-                tAce.innerHTML = '<tr><td colspan="8" class="text-center sin-registros">Sin registros.</td></tr>';
+                tAce.innerHTML = '<tr><td colspan="9" class="text-center sin-registros">Sin registros.</td></tr>';
                 document.getElementById('totalesRefinado').innerHTML = '';
                 const aviso = document.getElementById('avisoRefinado');
                 aviso.style.display = 'block';
@@ -1170,38 +1146,21 @@ tbody.appendChild(tr);
 
             document.getElementById('avisoRefinado').style.display = 'none';
 
-            tIns.innerHTML = insumos.length === 0 ? '<tr><td colspan="10" class="text-center sin-registros">Sin insumos registrados.</td></tr>' : '';
-            insumos.forEach(it => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td><b>${it.nombre || 'N/D'}</b></td>
-                    <td class="text-center">${it.inv_inic ?? '-'}</td>
-                    <td class="text-center">${it.ingreso ?? '-'}</td>
-                    <td class="text-center">${it.consumo ?? '-'}</td>
-                    <td class="text-center">${it.en_linea ?? '-'}</td>
-                    <td class="text-center" style="font-weight:bold;">${it.stock ?? '-'}</td>
-                    <td class="text-center">${it.um || ''}</td>
-                    <td class="text-center" style="font-weight:bold;">${it.dias ?? '-'}</td>
-                    <td>${it.observaciones || ''}</td>
-                    <td class="text-center">${badgeEstadoInsumo(it.dias)}</td>
-                `;
-                tIns.appendChild(tr);
-            });
-
-            tAce.innerHTML = aceite.length === 0 ? '<tr><td colspan="8" class="text-center sin-registros">Sin lotes registrados.</td></tr>' : '';
-            aceite.forEach((it, i) => {
+            tAce.innerHTML = lotes.length === 0 ? '<tr><td colspan="9" class="text-center sin-registros">Sin lotes registrados.</td></tr>' : '';
+            lotes.forEach((it) => {
                 const ins = Array.isArray(it.insumos) ? it.insumos : [];
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td><b>${it.lote || '-'}</b></td>
-                    <td><b>${it.producto || 'ACEITE REFINADO DE SOYA'}</b></td>
+                    <td><b>${escaparHTML(it.lote)}</b></td>
+                    <td><b>${escaparHTML(it.producto) || 'ACEITE REFINADO DE SOYA'}</b></td>
                     <td class="text-center" style="font-weight:bold;">${Number(it.cantidad) || 0}</td>
                     <td class="text-center">${String(it.tanque || 'TK-1').toUpperCase()}</td>
                     <td>${escaparHTML(it.proveedor) || '-'}</td>
-                    <td class="text-center">${it.fecha_produccion || '-'}</td>
+                    <td class="text-center">${escaparHTML(it.fecha_produccion) || '-'}</td>
+                    <td class="text-center">${escaparHTML(it.hora) || '-'}</td>
                     <td class="text-center">${badgeEstadoAceite(it.estado)}</td>
                     <td class="text-center">
-                        <button type="button" class="detalle-toggle" data-num="${ins.length}" aria-expanded="true" title="Insumos usados en el lote ${it.lote || ''}">⏷ Insumos (${ins.length})</button>
+                        <button type="button" class="detalle-toggle" data-num="${ins.length}" aria-expanded="true" title="Insumos usados en el lote ${escaparHTML(it.lote) || ''}">⏷ Insumos (${ins.length})</button>
                     </td>
                 `;
                 tAce.appendChild(tr);
@@ -1218,7 +1177,7 @@ tbody.appendChild(tr);
                 const detalle = document.createElement('tr');
                 detalle.className = 'fila-detalle';
                 detalle.innerHTML = `
-                    <td colspan="8">
+                    <td colspan="9">
                         <b style="color:#8a6d00;">🧪 Insumos usados — Lote ${escaparHTML(it.lote) || '-'}</b>
                         <div class="tabla-wrap" style="margin-top:8px;">
                             <table>
@@ -1246,12 +1205,14 @@ tbody.appendChild(tr);
                 });
             });
 
-            const totalTM = aceite.reduce((s, a) => s + (Number(a.cantidad) || 0), 0);
-            const totalLotes = aceite.length;
+            const totalTM = lotes.reduce((s, a) => s + (Number(a.cantidad) || 0), 0);
+            const totalLotes = lotes.length;
+            const totalInsumos = lotes.reduce((s, a) => s + (Array.isArray(a.insumos) ? a.insumos.length : 0), 0);
             const pm = reporte.totales && reporte.totales.produccion_manana;
             document.getElementById('totalesRefinado').innerHTML =
                 `<span class="total-refinado">🕐 Turno: <b>${reporte.turno || '-'}</b></span>` +
                 `<span class="total-refinado">🧊 <b>${totalLotes}</b> lotes en planta</span>` +
+                `<span class="total-refinado">🧪 <b>${totalInsumos}</b> insumos usados</span>` +
                 `<span class="total-refinado">🛢️ Aceite refinado: <b>${totalTM.toFixed(2)} TM</b></span>` +
                 (pm != null ? `<span class="total-refinado">📦 Producción para mañana: <b>${Number(pm) || 0} TM</b></span>` : '') +
                 `<span class="total-refinado">👤 Registrado por: <b>${reporte.usuario_registro || '-'}</b></span>`;
@@ -1275,7 +1236,7 @@ tbody.appendChild(tr);
                 renderRefinado();
             } catch (err) {
                 console.error(err);
-                document.getElementById('tablaRefinadoInsumos').innerHTML = '<tr><td colspan="10" class="text-center" style="color:red;">Error al cargar el reporte de refinería.</td></tr>';
+                document.getElementById('tablaRefinadoAceite').innerHTML = '<tr><td colspan="9" class="text-center" style="color:red;">Error al cargar el reporte de refinería.</td></tr>';
             }
         }
 
@@ -1350,9 +1311,9 @@ tbody.appendChild(tr);
             const c4 = document.getElementById('contadorRefineria');
             if (c4) {
                 const rep = refinadoActual;
-                const nIns = (rep && Array.isArray(rep.insumos)) ? rep.insumos.length : 0;
-                const nAce = (rep && Array.isArray(rep.aceite)) ? rep.aceite.length : 0;
-                c4.textContent = nIns + ' insumos · ' + nAce + ' lotes';
+                const lotes = (rep && Array.isArray(rep.lotes)) ? rep.lotes : [];
+                const nIns = lotes.reduce((s, l) => s + (Array.isArray(l.insumos) ? l.insumos.length : 0), 0);
+                c4.textContent = nIns + ' insumos · ' + lotes.length + ' lotes';
             }
 
             // Barra de atajos
@@ -1365,9 +1326,9 @@ tbody.appendChild(tr);
             const a4 = document.getElementById('contAjoRef');
             if (a4) {
                 const rep = refinadoActual;
-                const nIns = (rep && Array.isArray(rep.insumos)) ? rep.insumos.length : 0;
-                const nAce = (rep && Array.isArray(rep.aceite)) ? rep.aceite.length : 0;
-                a4.textContent = nIns + nAce;
+                const lotes = (rep && Array.isArray(rep.lotes)) ? rep.lotes : [];
+                const nIns = lotes.reduce((s, l) => s + (Array.isArray(l.insumos) ? l.insumos.length : 0), 0);
+                a4.textContent = nIns + lotes.length;
             }
         }
 

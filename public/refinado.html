@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reporte de Refinado - Corporación Belcen</title>
+    <title>Reporte de Refinado por Lotes - Corporación Belcen</title>
     <link rel="stylesheet" href="/motion.css">
     <style>
         :root {
@@ -78,12 +78,12 @@
         th.ambar { background: rgba(255, 149, 0, 0.16); color: #a05a00; }
         tbody tr:last-child td { border-bottom: none; }
 
-        input[type=number], input[type=text], input[type=date], select {
+        input[type=number], input[type=text], input[type=date], input[type=time], select {
             width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 13px;
             border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 10px;
             background: rgba(255, 255, 255, 0.7); color: var(--texto); font-family: inherit;
         }
-        input[type=number]:focus, input[type=text]:focus, input[type=date]:focus, select:focus {
+        input[type=number]:focus, input[type=text]:focus, input[type=date]:focus, input[type=time]:focus, select:focus {
             outline: none; border-color: var(--azul); box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.15);
         }
         select { -webkit-appearance: none; appearance: none; background-image: linear-gradient(45deg, transparent 50%, #6c7280 50%), linear-gradient(135deg, #6c7280 50%, transparent 50%); background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
@@ -128,7 +128,6 @@
 
         .aviso { padding: 12px 14px; border-radius: 12px; font-size: 13px; margin-top: 12px; line-height: 1.5; }
         .aviso-info { background: rgba(23, 162, 184, 0.09); color: #0a6ea8; border: 1px solid rgba(23, 162, 184, 0.2); }
-        .aviso-warn { background: rgba(255, 149, 0, 0.12); color: #8a5a00; border: 1px solid rgba(255, 149, 0, 0.3); }
 
         .obs-global {
             width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid rgba(0, 0, 0, 0.08);
@@ -153,33 +152,15 @@
         .mensaje.ok { color: #1e8e3e; }
         .mensaje.err { color: #c7251e; }
 
-        .hover-row:hover td { background: rgba(0, 0, 0, 0.02); }
-        .en-linea-cell { background: rgba(0, 0, 0, 0.015); }
-        .clave { display: none; }
-
-        /* --- TARJETAS POR LOTE --- */
-        .lote-card {
-            border: 1px solid rgba(255, 149, 0, 0.35);
-            border-radius: 16px;
-            padding: 14px 16px;
-            margin-top: 14px;
-            background: rgba(255, 255, 255, 0.65);
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
-        }
-        .lote-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
-        .lote-campo { display: flex; flex-direction: column; gap: 3px; }
+        /* --- FORMULARIO DE UN LOTE --- */
+        .lote-form { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-top: 8px; }
+        .lote-campo { display: flex; flex-direction: column; gap: 4px; }
         .lote-campo label {
             font-size: 10.5px; color: var(--texto2); text-transform: uppercase;
             letter-spacing: 0.5px; font-weight: 700;
         }
-        .lote-insumos { margin-top: 12px; }
-        .insumos-head {
-            display: flex; justify-content: space-between; align-items: center;
-            flex-wrap: wrap; gap: 8px; margin-bottom: 6px;
-        }
-        .insumos-head b { font-size: 12px; color: #a05a00; letter-spacing: 0.3px; }
+        .lote-acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
         .btn-mini { padding: 7px 12px; font-size: 12px; }
-        .btn-quitar-lote { align-self: flex-end; }
 
         .turno-btn {
             border: 1px solid rgba(0, 0, 0, 0.12); background: rgba(255, 255, 255, 0.7);
@@ -196,7 +177,7 @@
 
         .btn-x-quitar {
             background: var(--rojo); color: white; border: none; border-radius: 999px; cursor: pointer;
-            padding: 6px 10px; margin-top: 6px; width: 100%; font-size: 12px; font-weight: 700; font-family: inherit;
+            padding: 6px 10px; font-size: 12px; font-weight: 700; font-family: inherit;
         }
 
         @media (max-width: 768px) {
@@ -209,7 +190,7 @@
         }
 
         @media (max-width: 640px) {
-            table { min-width: 860px; }
+            table { min-width: 760px; }
             .tabla-wrap input, .tabla-wrap select { font-size: 16px; }
             .filtro-bar > span[style*="flex:1"] { display: none; }
         }
@@ -228,7 +209,7 @@
     <div class="container">
 
         <div class="tarjeta borde-teal reveal" style="margin-bottom: 20px;">
-            <h1>🏭 REPORTE DE CONTROL E INVENTARIO DE REFINERÍA</h1>
+            <h1>🏭 REPORTE DE REFINADO POR LOTES</h1>
             <p class="sub">Corporación Belcen S.A.C. — Planta de Refinado de Aceite de Soya</p>
 
             <div class="filtro-bar">
@@ -241,7 +222,6 @@
                     <button type="button" id="turnoNOCHE" class="turno-btn turno-noche" onclick="seleccionarTurno('NOCHE')">🌙 NOCHE</button>
                 </div>
 
-                <button class="btn btn-verde" onclick="guardarReporte()">💾 Guardar Reporte</button>
                 <button class="btn btn-gris" onclick="nuevoDia()">➕ Nuevo Día</button>
 
                 <span style="flex:1;"></span>
@@ -255,49 +235,100 @@
             <div class="mensaje" id="mensaje"></div>
         </div>
 
-        <!-- SECCIÓN 1: STOCK DE INSUMOS DE REFINADO -->
-        <div class="tarjeta borde-teal reveal">
-            <h3>🛢️ STOCK DE INSUMOS DE REFINADO</h3>
+        <!-- REGISTRO DE UN LOTE -->
+        <div class="tarjeta borde-ambar reveal">
+            <h3 class="aceite">🛢️ REGISTRO DE LOTE — ACEITE REFINADO DE SOYA</h3>
+            <p class="sub" style="text-align:left; margin-bottom:0; margin-top:-8px;">
+                Registra un lote a la vez: fecha, hora, número de lote, cantidad (TM), tanque de origen, proveedor del aceite crudo y las cantidades de <b>todos los insumos usados</b>. Al guardar, el lote queda registrado y el formulario se limpia para el siguiente.
+            </p>
 
-            <div class="aviso aviso-info">ℹ️ <b>Considerar stock de crudo del tanque más en línea</b> para calcular la real disponibilidad de aceite crudo.</div>
-            <div class="aviso aviso-warn">⚡ <b>Alerta pedido para 3-4 días:</b> coordinar con los proveedores cuando los días de stock caigan a 3-4 días.</div>
+            <div class="lote-form">
+                <div class="lote-campo" style="width:150px;">
+                    <label>Fecha de producción</label>
+                    <input type="date" id="loteFecha">
+                </div>
+                <div class="lote-campo" style="width:120px;">
+                    <label>Hora</label>
+                    <input type="time" id="loteHora">
+                </div>
+                <div class="lote-campo" style="width:110px;">
+                    <label>Nº de lote</label>
+                    <input type="text" id="loteNumero" placeholder="0001">
+                </div>
+                <div class="lote-campo" style="width:140px;">
+                    <label>Cantidad del lote (TM)</label>
+                    <input type="number" id="loteCantidad" step="0.01" min="0" placeholder="0.00">
+                </div>
+                <div class="lote-campo" style="width:150px;">
+                    <label>Tanque de crudo</label>
+                    <select id="loteTanque">
+                        <option value="TK-1">TANQUE 1 (TK-1)</option>
+                        <option value="TK-2">TANQUE 2 (TK-2)</option>
+                    </select>
+                </div>
+                <div class="lote-campo" style="flex:1; min-width:180px;">
+                    <label>Proveedor del aceite crudo</label>
+                    <input type="text" id="loteProveedor" placeholder="Nombre del proveedor">
+                </div>
+                <div class="lote-campo" style="width:170px;">
+                    <label>Estado</label>
+                    <select id="loteEstado">
+                        <option value="DISPONIBLE">✅ Disponible</option>
+                        <option value="ENFRIA DE NOCHE">🌙 Enfría de Noche</option>
+                        <option value="ENFRIA DIA">☀️ Enfría Día</option>
+                    </select>
+                </div>
+            </div>
+
+            <h3 class="aceite" style="margin-top:22px;">🧪 LISTA DE TODOS LOS INSUMOS — CANTIDADES USADAS</h3>
+            <div class="aviso aviso-info">ℹ️ Ingresa la cantidad usada de cada insumo en este lote. Deja en blanco (0) el insumo que no se usó.</div>
 
             <div class="tabla-wrap">
-            <table>
-                <thead>
-                    <tr>
-                        <th class="azul">Insumo</th>
-                        <th class="azul text-center" style="width:70px;">Inv. Inic.</th>
-                        <th class="azul text-center" style="width:70px;">Ingreso del Día</th>
-                        <th class="azul text-center" style="width:70px;">Consumo del Día</th>
-                        <th class="azul text-center" style="width:70px;">En Línea</th>
-                        <th class="azul text-center" style="width:80px;">Stock en Tanque Crudo</th>
-                        <th class="azul text-center" style="width:55px;">UM</th>
-                        <th class="azul text-center" style="width:70px;">Días de Stock</th>
-                        <th class="azul">Observaciones</th>
-                        <th class="azul text-center" style="width:110px;">Estado</th>
-                    </tr>
-                </thead>
-                <tbody id="tablaInsumos">
-                    <tr><td colspan="10" class="text-center">Cargando insumos...</td></tr>
-                </tbody>
-            </table>
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="ambar">Insumo</th>
+                            <th class="ambar text-center" style="width:160px;">Cantidad usada</th>
+                            <th class="ambar text-center" style="width:80px;">UM</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbodyInsumosLote">
+                        <tr><td colspan="3" class="text-center sin-registros">Cargando insumos...</td></tr>
+                    </tbody>
+                </table>
             </div>
+
+            <div class="lote-acciones">
+                <button class="btn btn-verde" onclick="guardarLote()" type="button">💾 Guardar Lote</button>
+                <button class="btn btn-gris" onclick="limpiarFormLote(false)" type="button">🗑️ Limpiar Formulario</button>
+            </div>
+
+            <div class="aviso aviso-info" style="margin-top:14px;">ℹ️ El stock (inventario) de insumos de refinado se lleva ahora en el módulo <b>Almacén</b> en la pestaña <b>🛢️ Refinado</b>.</div>
         </div>
 
-        <!-- SECCIÓN 2: REPORTE DE LOTES DE ACEITE REFINADO -->
-        <div class="tarjeta borde-ambar reveal">
-            <h3 class="aceite">🛢️ REPORTE DE LOTES — ACEITE REFINADO DE SOYA</h3>
-            <p class="sub" style="text-align:left; margin-bottom:0; margin-top:-8px;">Por cada lote registra cantidad (TM), tanque de origen, proveedor del aceite crudo y los insumos usados con sus cantidades.</p>
+        <!-- LOTES REGISTRADOS DEL TURNO -->
+        <div class="tarjeta borde-teal reveal">
+            <h3>📋 LOTES REGISTRADOS DEL TURNO</h3>
 
-            <datalist id="insumosBaseList"></datalist>
-
-            <div id="listaLotes">
-                <div id="sinLotesMsg" class="sin-registros" style="padding:12px 0;">Sin lotes registrados para este turno.</div>
-            </div>
-
-            <div style="margin-top:14px;">
-                <button class="btn btn-ambar btn-mini" onclick="agregarLote()" type="button">＋ Nuevo Lote</button>
+            <div class="tabla-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="azul">Fecha Prod.</th>
+                            <th class="azul">Hora</th>
+                            <th class="azul">Nº Lote</th>
+                            <th class="azul text-center">Cantidad (TM)</th>
+                            <th class="azul text-center">Tanque</th>
+                            <th class="azul">Proveedor</th>
+                            <th class="azul text-center">Insumos</th>
+                            <th class="azul">Estado</th>
+                            <th class="azul text-center">Eliminar</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbodyLotesReg">
+                        <tr><td colspan="9" class="text-center sin-registros" id="sinLotesRegMsg">Sin lotes registrados para este turno.</td></tr>
+                    </tbody>
+                </table>
             </div>
 
             <div class="total-box">
@@ -320,15 +351,15 @@
             </div>
 
             <div style="margin-top:18px;">
-                <label for="observaciones" style="font-weight:bold; font-size:13px; display:block; margin-bottom:6px;">📝 Observaciones generales:</label>
+                <label for="observaciones" style="font-weight:bold; font-size:13px; display:block; margin-bottom:6px;">📝 Observaciones generales del turno:</label>
                 <textarea class="obs-global" id="observaciones" rows="3" placeholder="Incidencias, notas de producción, coordinaciones de pedido..."></textarea>
             </div>
         </div>
 
         <div class="footer-acciones">
-            <button class="btn btn-verde" onclick="guardarReporte()">💾 Guardar Reporte de Refinado</button>
+            <button class="btn btn-verde" onclick="guardarTurno()">💾 Guardar datos del turno (observaciones / producción mañana)</button>
             <br><br>
-            <span class="nota-legal">El reporte se guarda por día y por turno: al guardar otra vez el mismo día+turno se actualiza (no se duplica).</span>
+            <span class="nota-legal">Cada lote se guarda por separado al presionar "💾 Guardar Lote"; se reúne por día y turno (DÍA / NOCHE). Si el Nº de lote ya existe se actualiza, no se duplica.</span>
         </div>
     </div>
 
@@ -370,6 +401,7 @@
         function getTurno() { return turnoSeleccionado; }
 
         let insumosBase = [];
+        let lotesActuales = [];
 
         function hoyLocal() {
             const f = new Date();
@@ -396,254 +428,119 @@
             const el = document.getElementById('mensaje');
             el.textContent = texto || '';
             el.className = 'mensaje ' + (ok ? 'ok' : 'err');
-            setTimeout(() => { el.textContent = ''; el.className = 'mensaje'; }, 5000);
-        }
-
-        function estadoBadge(estado) {
-            if (estado === 'REALIZAR PEDIDO') return '<span class="badge badge-pedido">🔴 REALIZAR PEDIDO</span>';
-            return '<span class="badge badge-suficiente">🟢 STOCK SUFICIENTE</span>';
-        }
-
-        function estadoInsumo(dias) {
-            const d = Number(dias);
-            if (d !== null && !isNaN(d) && d <= 8) return 'REALIZAR PEDIDO';
-            return 'STOCK SUFICIENTE';
-        }
-
-        // --- RENDER: INSUMOS ---
-        function renderInsumos(lista) {
-            const tbody = document.getElementById('tablaInsumos');
-            tbody.innerHTML = '';
-            if (!lista.length) {
-                tbody.innerHTML = '<tr><td colspan="10" class="text-center sin-registros">Sin insumos registrados.</td></tr>';
-                return;
-            }
-            lista.forEach((item, i) => {
-                if (!item) item = {};
-                const base = insumosBase.find(b => (b.nombre || '').toLowerCase() === (item.nombre || '').toLowerCase()) || {};
-                const um = item.um || base.um || 'KG';
-                const tr = document.createElement('tr');
-                tr.className = 'hover-row';
-                tr.dataset.i = i;
-                tr.innerHTML = `
-                    <td><input class="nombre-insumo" type="text" value="${escapeHtml(item.nombre || '')}" data-k="nombre" style="font-weight:bold;"></td>
-                    <td><input class="num" type="number" step="0.01" min="0" value="${item.inv_inic ?? ''}" data-k="inv_inic"></td>
-                    <td><input class="num" type="number" step="0.01" min="0" value="${item.ingreso ?? ''}" data-k="ingreso"></td>
-                    <td><input class="num" type="number" step="0.01" min="0" value="${item.consumo ?? ''}" data-k="consumo"></td>
-                    <td><input class="num en-linea" type="number" step="0.01" min="0" value="${item.en_linea ?? ''}" data-k="en_linea"></td>
-                    <td><input class="num" type="number" step="0.01" min="0" value="${item.stock ?? ''}" data-k="stock"></td>
-                    <td class="text-center"><input type="text" value="${escapeHtml(um)}" data-k="um" style="text-align:center; font-weight:bold;"></td>
-                    <td><input class="num" type="number" step="0.01" min="0" value="${item.dias ?? ''}" data-k="dias"></td>
-                    <td><input type="text" value="${escapeHtml(item.observaciones || '')}" data-k="observaciones"></td>
-                    <td class="text-center"><span class="estado-cell">${estadoBadge(estadoInsumo(item.dias))}</span></td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
-
-        function crearFilaInsumo(it) {
-            it = it || {};
-            const tr = document.createElement('tr');
-            tr.className = 'hover-row';
-            tr.innerHTML = `
-                <td><input type="text" class="insumo-nombre" data-k="nombre" list="insumosBaseList" value="${escapeHtml(it.nombre || '')}" placeholder="Selecciona insumo..."></td>
-                <td class="text-center"><input class="num" type="number" step="0.01" min="0" data-k="cantidad" value="${it.cantidad ?? ''}" placeholder="0.00" style="text-align:center; max-width:110px;"></td>
-                <td class="text-center"><input type="text" data-k="um" value="${escapeHtml(it.um || '')}" placeholder="KG" style="text-align:center; max-width:80px;"></td>
-                <td class="text-center">
-                    <button type="button" class="btn btn-rojo btn-mini" onclick="quitarInsumoLote(this)" title="Quitar insumo">✕</button>
-                </td>
-            `;
-            return tr;
-        }
-
-        function crearLoteCard(datos) {
-            datos = datos || {};
-            const tanqueVal = String(datos.tanque || '').toUpperCase() === 'TK-2' ? 'TK-2' : 'TK-1';
-            const div = document.createElement('div');
-            div.className = 'lote-card';
-            div.innerHTML = `
-                <div class="lote-head">
-                    <div class="lote-campo" style="width:92px;">
-                        <label>Lote Nº</label>
-                        <input type="text" data-k="lote" placeholder="0001">
-                    </div>
-                    <div class="lote-campo" style="flex:1; min-width:170px;">
-                        <label>Producto</label>
-                        <input type="text" data-k="producto">
-                    </div>
-                    <div class="lote-campo" style="width:110px;">
-                        <label>Cantidad (TM)</label>
-                        <input class="num" type="number" step="0.01" min="0" data-k="cantidad" placeholder="0.00">
-                    </div>
-                    <div class="lote-campo" style="width:130px;">
-                        <label>Tanque</label>
-                        <select data-k="tanque">
-                            <option value="TK-1">TANQUE 1 (TK-1)</option>
-                            <option value="TK-2">TANQUE 2 (TK-2)</option>
-                        </select>
-                    </div>
-                    <div class="lote-campo" style="flex:1; min-width:170px;">
-                        <label>Proveedor Aceite Crudo</label>
-                        <input type="text" data-k="proveedor" placeholder="Nombre del proveedor">
-                    </div>
-                    <div class="lote-campo" style="width:130px;">
-                        <label>Fecha Producción</label>
-                        <input type="text" data-k="fecha_produccion" placeholder="10-Set">
-                    </div>
-                    <div class="lote-campo" style="width:150px;">
-                        <label>Estado</label>
-                        <select data-k="estado">
-                            <option value="DISPONIBLE">✅ Disponible</option>
-                            <option value="ENFRIA DE NOCHE">🌙 Enfría de Noche</option>
-                            <option value="ENFRIA DIA">☀️ Enfría Día</option>
-                        </select>
-                    </div>
-                    <button type="button" class="btn btn-rojo btn-mini btn-quitar-lote" onclick="quitarLote(this)" title="Quitar lote">✕ Quitar</button>
-                </div>
-                <div class="lote-insumos">
-                    <div class="insumos-head">
-                        <b>🧪 INSUMOS USADOS EN ESTE LOTE</b>
-                        <button type="button" class="btn btn-gris btn-mini" onclick="agregarInsumoLote(this)" title="Agregar insumo">➕ Agregar insumo</button>
-                    </div>
-                    <div class="tabla-wrap">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th class="ambar">Insumo</th>
-                                    <th class="ambar text-center" style="width:120px;">Cantidad</th>
-                                    <th class="ambar text-center" style="width:90px;">UM</th>
-                                    <th class="ambar text-center" style="width:44px;"></th>
-                                </tr>
-                            </thead>
-                            <tbody class="insumos-lote-body"></tbody>
-                        </table>
-                    </div>
-                </div>
-            `;
-            div.querySelector('[data-k="producto"]').value = datos.producto || 'ACEITE REFINADO DE SOYA';
-            div.querySelector('[data-k="lote"]').value = datos.lote || '';
-            div.querySelector('[data-k="cantidad"]').value = (datos.cantidad === null || datos.cantidad === undefined) ? '' : datos.cantidad;
-            div.querySelector('[data-k="tanque"]').value = tanqueVal;
-            div.querySelector('[data-k="proveedor"]').value = datos.proveedor || '';
-            div.querySelector('[data-k="fecha_produccion"]').value = datos.fecha_produccion || '';
-            div.querySelector('[data-k="estado"]').value = String(datos.estado || 'DISPONIBLE');
-            const tbody = div.querySelector('.insumos-lote-body');
-            const insumos = Array.isArray(datos.insumos) ? datos.insumos : [];
-            if (!insumos.length) {
-                tbody.appendChild(crearFilaInsumo({}));
-            } else {
-                insumos.forEach(it => tbody.appendChild(crearFilaInsumo(it)));
-            }
-            return div;
-        }
-
-        function renderAceite(lista) {
-            const cont = document.getElementById('listaLotes');
-            cont.querySelectorAll('.lote-card').forEach(c => c.remove());
-            const msg = document.getElementById('sinLotesMsg');
-            if (!lista || !lista.length) {
-                if (msg) msg.style.display = '';
-                actualizarTotales();
-                return;
-            }
-            if (msg) msg.style.display = 'none';
-            lista.forEach(item => cont.appendChild(crearLoteCard(item)));
-            actualizarTotales();
-        }
-
-        function leerAceite() {
-            const lista = [];
-            document.querySelectorAll('#listaLotes .lote-card').forEach(card => {
-                const obj = {};
-                card.querySelectorAll('.lote-head [data-k]').forEach(inp => { obj[inp.dataset.k] = inp.value; });
-                const insumos = [];
-                card.querySelectorAll('.insumos-lote-body tr').forEach(tr => {
-                    const it = {};
-                    tr.querySelectorAll('input').forEach(inp => { it[inp.dataset.k] = inp.value; });
-                    if (String(it.nombre || '').trim()) {
-                        insumos.push({ nombre: it.nombre, cantidad: it.cantidad, um: it.um });
-                    }
-                });
-                obj.insumos = insumos;
-                if (obj.lote || obj.producto) lista.push(obj);
-            });
-            // ordenar por lote ascendente (numérico)
-            lista.sort((a, b) => {
-                const na = parseInt(String(a.lote).replace(/\D/g, ''), 10) || 0;
-                const nb = parseInt(String(b.lote).replace(/\D/g, ''), 10) || 0;
-                return na - nb;
-            });
-            return lista;
-        }
-
-        function actualizarTotales() {
-            const aceite = leerAceite();
-            const totalLotes = aceite.length;
-            const totalTM = aceite.reduce((s, a) => s + (parseFloat(a.cantidad) || 0), 0);
-            document.getElementById('totalLotes').textContent = totalLotes;
-            document.getElementById('totalTM').textContent = totalTM.toFixed(2);
-            const fecha = document.getElementById('fechaReporte').value;
-            document.getElementById('fechaRef').textContent = fecha || '-';
+            setTimeout(() => { el.textContent = ''; el.className = 'mensaje'; }, 6000);
         }
 
         function escapeHtml(str) {
             return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
 
-        // --- LECTURA DE VALORES DESDE LA TABLA ---
-        function leerInsumos() {
-            const filas = document.querySelectorAll('#tablaInsumos tr.hover-row');
+        function badgeEstadoAceite(estado) {
+            const e = String(estado || '').toUpperCase();
+            if (e.indexOf('NOCHE') >= 0) return '<span class="badge badge-noche">🌙 ENFRÍA DE NOCHE</span>';
+            if (e.indexOf('ENFRIA DIA') >= 0) return '<span class="badge badge-dia">☀️ ENFRÍA DÍA</span>';
+            return '<span class="badge badge-disponible">✅ DISPONIBLE</span>';
+        }
+
+        // --- LISTA FIJA DE TODOS LOS INSUMOS ---
+        function poblarTablaInsumosLote() {
+            const tbody = document.getElementById('tbodyInsumosLote');
+            tbody.innerHTML = '';
+            if (!insumosBase.length) {
+                tbody.innerHTML = '<tr><td colspan="3" class="text-center sin-registros">Sin insumos base.</td></tr>';
+                return;
+            }
+            insumosBase.forEach(b => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover-row';
+                tr.innerHTML = `
+                    <td><span class="nombre-insumo">${escapeHtml(b.nombre)}</span></td>
+                    <td class="text-center"><input class="num" type="number" step="0.01" min="0" data-k="cantidad" placeholder="0.00" style="text-align:center; max-width:140px;"></td>
+                    <td class="text-center">${escapeHtml(b.um) || 'KG'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function leerInsumosFormulario() {
             const lista = [];
-            filas.forEach(tr => {
-                const obj = {};
-                tr.querySelectorAll('input').forEach(inp => {
-                    const k = inp.dataset.k;
-                    obj[k] = (k === 'dias' || k === 'inv_inic' || k === 'ingreso' || k === 'consumo' || k === 'en_linea' || k === 'stock') ? inp.value : inp.value;
-                });
-                if (obj.nombre) {
-                    obj.estado = estadoInsumo(obj.dias);
-                    lista.push(obj);
+            document.querySelectorAll('#tbodyInsumosLote tr.hover-row').forEach(tr => {
+                const nombre = tr.querySelector('.nombre-insumo') ? tr.querySelector('.nombre-insumo').textContent.trim() : '';
+                const cantidad = tr.querySelector('input[data-k="cantidad"]') ? tr.querySelector('input[data-k="cantidad"]').value : '';
+                const um = tr.children[2] ? tr.children[2].textContent.trim() : 'KG';
+                if (nombre && cantidad !== '' && !isNaN(Number(cantidad)) && Number(cantidad) > 0) {
+                    lista.push({ nombre, cantidad, um });
                 }
             });
             return lista;
         }
 
-        // --- AUTO-CÁLCULO DE DÍAS DE STOCK (solo si el campo está vacío) ---
-        function recalcularDias(tr) {
-            const campo = tr.querySelector('[data-k="dias"]');
-            const get = k => parseFloat(tr.querySelector(`[data-k="${k}"]`).value) || 0;
-            const stock = get('stock');
-            const consumo = get('consumo');
-            if ((campo.value === '' || campo.value == null) && stock > 0 && consumo > 0) {
-                const dias = (stock / consumo);
-                campo.value = dias.toFixed(1);
-                tr.querySelector('.estado-cell').innerHTML = estadoBadge(estadoInsumo(dias));
-            } else {
-                tr.querySelector('.estado-cell').innerHTML = estadoBadge(estadoInsumo(campo.value));
+        // --- FORMULARIO DE LOTE ---
+        function sugerirNumeroLote() {
+            let max = 0;
+            lotesActuales.forEach(l => {
+                const n = parseInt(String(l.lote || '').replace(/\D/g, ''), 10) || 0;
+                if (n > max) max = n;
+            });
+            return String(max + 1).padStart(4, '0');
+        }
+
+        function limpiarFormLote(trasGuardar) {
+            document.getElementById('loteHora').value = '';
+            document.getElementById('loteCantidad').value = '';
+            document.getElementById('loteFecha').value = hoyLocal();
+            document.querySelectorAll('#tbodyInsumosLote input[data-k="cantidad"]').forEach(i => i.value = '');
+            if (trasGuardar) {
+                document.getElementById('loteNumero').value = sugerirNumeroLote();
             }
         }
 
-        // --- DELEGACIÓN DE EVENTOS ---
-        document.addEventListener('input', (e) => {
-            const tr = e.target.closest('tr');
-            if (!tr) return;
-            if (e.target.matches('#tablaInsumos [data-k="stock"]') || e.target.matches('#tablaInsumos [data-k="consumo"]')) {
-                recalcularDias(tr);
-            }
-            if (e.target.matches('#listaLotes .lote-head input, #listaLotes .lote-head select')) {
+        // --- LOTES REGISTRADOS ---
+        function renderListaLotes() {
+            const tbody = document.getElementById('tbodyLotesReg');
+            tbody.querySelectorAll('tr[data-lote-fila]').forEach(r => r.remove());
+            const vacio = document.getElementById('sinLotesRegMsg');
+            if (!lotesActuales.length) {
+                if (vacio) vacio.style.display = '';
                 actualizarTotales();
+                return;
             }
-            if (e.target.matches('#listaLotes .insumo-nombre')) {
-                const nombre = e.target.value.trim().toLowerCase();
-                const base = insumosBase.find(b => (b.nombre || '').toLowerCase() === nombre);
-                if (base && tr) {
-                    const umInput = tr.querySelector('[data-k="um"]');
-                    if (umInput) umInput.value = base.um;
-                }
-            }
+            if (vacio) vacio.style.display = 'none';
+            lotesActuales.forEach(l => {
+                const ins = Array.isArray(l.insumos) ? l.insumos : [];
+                const tr = document.createElement('tr');
+                tr.setAttribute('data-lote-fila', '1');
+                tr.innerHTML = `
+                    <td>${escapeHtml(l.fecha_produccion) || '-'}</td>
+                    <td>${escapeHtml(l.hora) || '-'}</td>
+                    <td><b>${escapeHtml(l.lote)}</b></td>
+                    <td class="text-center" style="font-weight:bold;">${Number(l.cantidad) || 0}</td>
+                    <td class="text-center">${String(l.tanque || 'TK-1').toUpperCase()}</td>
+                    <td>${escapeHtml(l.proveedor) || '-'}</td>
+                    <td class="text-center">${ins.length}</td>
+                    <td class="text-center">${badgeEstadoAceite(l.estado)}</td>
+                    <td class="text-center">
+                        <button type="button" class="btn btn-rojo btn-mini" data-lote="${escapeHtml(l.lote)}" title="Eliminar lote ${escapeHtml(l.lote)}">✕</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+            actualizarTotales();
+        }
+
+        document.getElementById('tbodyLotesReg').addEventListener('click', (e) => {
+            const b = e.target.closest('button[data-lote]');
+            if (b) eliminarLote(b.dataset.lote);
         });
 
-        document.addEventListener('keydown', (e) => { if (e.target.matches('input[type=number]')) { if (e.key === 'e' || e.key === 'E' || e.key === '+' || e.key === '-') e.preventDefault(); } });
+        function actualizarTotales() {
+            const totalLotes = lotesActuales.length;
+            const totalTM = lotesActuales.reduce((s, a) => s + (parseFloat(a.cantidad) || 0), 0);
+            document.getElementById('totalLotes').textContent = totalLotes;
+            document.getElementById('totalTM').textContent = totalTM.toFixed(2);
+            const fecha = document.getElementById('fechaReporte').value;
+            document.getElementById('fechaRef').textContent = fecha || '-';
+        }
 
         // --- CARGAR REPORTE POR FECHA + TURNO ---
         async function cargarReporte() {
@@ -657,26 +554,27 @@
                 if (!res.ok) throw new Error('Error del servidor.');
                 const data = await res.json();
                 insumosBase = Array.isArray(data.insumosBase) ? data.insumosBase : [];
-                poblarDatalistInsumos();
+                poblarTablaInsumosLote();
                 const rep = data.reporte;
                 if (rep) {
-                    renderInsumos(Array.isArray(rep.insumos) ? rep.insumos : []);
-                    renderAceite(Array.isArray(rep.aceite) ? rep.aceite : []);
+                    lotesActuales = Array.isArray(rep.lotes) ? rep.lotes : [];
+                    renderListaLotes();
                     let pm = rep.totales && rep.totales.produccion_manana;
                     if (pm === null || pm === undefined || pm === '') pm = '';
                     document.getElementById('produccionManana').value = pm;
                     document.getElementById('observaciones').value = rep.observaciones || '';
                     document.getElementById('fechaRef').textContent = formatearFechaReporte(rep.fecha_reporte) || fecha;
-                    mostrarMensaje('✅ Reporte cargado — Turno ' + (rep.turno || turno) + ' (registrado por ' + (rep.usuario_registro || '-') + ').', true);
+                    mostrarMensaje('✅ Reporte cargado — Turno ' + (rep.turno || turno) + ' (' + lotesActuales.length + ' lote(s), registrado por ' + (rep.usuario_registro || '-') + ').', true);
                 } else {
-                    const plantilla = insumosBase.map(b => ({ ...b, inv_inic: '', ingreso: '', consumo: '', en_linea: '', stock: '', dias: '', observaciones: '' }));
-                    renderInsumos(plantilla);
-                    renderAceite([]);
+                    lotesActuales = [];
+                    renderListaLotes();
                     document.getElementById('produccionManana').value = '';
                     document.getElementById('observaciones').value = '';
                     document.getElementById('fechaRef').textContent = fecha;
-                    mostrarMensaje('ℹ️ Sin reporte para ' + turno + ': se cargó la plantilla base. Completa y guarda.', false);
+                    mostrarMensaje('ℹ️ Sin reporte para ' + turno + '. El lote que guardes creará el reporte.', false);
                 }
+                limpiarFormLote(false);
+                document.getElementById('loteNumero').value = sugerirNumeroLote();
                 actualizarTotales();
             } catch (err) {
                 console.error(err);
@@ -691,78 +589,44 @@
         }
 
         function nuevoDia() {
-            if (!confirm('¿Crear un reporte nuevo para el día seleccionado?')) return;
-            const fecha = document.getElementById('fechaReporte').value || hoyLocal();
-            document.getElementById('fechaReporte').value = fecha;
-            const plantilla = insumosBase.map(b => ({ ...b, inv_inic: '', ingreso: '', consumo: '', en_linea: '', stock: '', dias: '', observaciones: '' }));
-            renderInsumos(plantilla);
-            renderAceite([]);
+            if (!confirm('¿Empezar una plantilla nueva para el día y turno seleccionados?')) return;
+            lotesActuales = [];
+            renderListaLotes();
             document.getElementById('produccionManana').value = '';
             document.getElementById('observaciones').value = '';
-            document.getElementById('fechaRef').textContent = fecha;
-            actualizarTotales();
-            mostrarMensaje('✅ Plantilla nueva lista para el ' + fecha, true);
+            limpiarFormLote(false);
+            mostrarMensaje('✅ Nueva plantilla lista. Guarda el primer lote para crear el reporte del turno.', true);
         }
 
-        function agregarLote() {
-            const cont = document.getElementById('listaLotes');
-            const msg = document.getElementById('sinLotesMsg');
-            if (msg) msg.style.display = 'none';
-            cont.appendChild(crearLoteCard({}));
-            cont.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            actualizarTotales();
-        }
-
-        function quitarLote(boton) {
-            if (!confirm('¿Quitar este lote (con sus insumos)?')) return;
-            const cont = document.getElementById('listaLotes');
-            boton.closest('.lote-card').remove();
-            if (!cont.querySelector('.lote-card')) {
-                const msg = document.getElementById('sinLotesMsg');
-                if (msg) msg.style.display = '';
-            }
-            actualizarTotales();
-        }
-
-        function agregarInsumoLote(boton) {
-            const tbody = boton.closest('.lote-insumos').querySelector('.insumos-lote-body');
-            tbody.appendChild(crearFilaInsumo({}));
-        }
-
-        function quitarInsumoLote(boton) {
-            boton.closest('tr').remove();
-        }
-
-        function poblarDatalistInsumos() {
-            const dl = document.getElementById('insumosBaseList');
-            if (!dl) return;
-            dl.innerHTML = '';
-            insumosBase.forEach(b => {
-                const op = document.createElement('option');
-                op.value = b.nombre;
-                dl.appendChild(op);
-            });
-        }
-
-        // --- GUARDAR ---
-        let guardGuardarRefinado = false;
-        async function guardarReporte() {
-            if (guardGuardarRefinado) return;
+        // --- GUARDAR UN LOTE ---
+        let guardandoRefinado = false;
+        async function guardarLote() {
+            if (guardandoRefinado) return;
             const fecha = document.getElementById('fechaReporte').value;
             if (!fecha) { mostrarMensaje('❌ Selecciona una fecha.', false); return; }
-            const insumos = leerInsumos();
-            if (!insumos.length) { mostrarMensaje('❌ No hay insumos para guardar.', false); return; }
-            const aceite = leerAceite();
+            const lote = {
+                lote: document.getElementById('loteNumero').value.trim(),
+                hora: document.getElementById('loteHora').value,
+                fecha_produccion: document.getElementById('loteFecha').value,
+                cantidad: document.getElementById('loteCantidad').value,
+                tanque: document.getElementById('loteTanque').value,
+                proveedor: document.getElementById('loteProveedor').value,
+                estado: document.getElementById('loteEstado').value,
+                producto: 'ACEITE REFINADO DE SOYA',
+                insumos: leerInsumosFormulario()
+            };
+            if (!lote.lote) { mostrarMensaje('❌ Ingresa el número de lote.', false); return; }
+            if (!lote.cantidad || Number(lote.cantidad) <= 0) { mostrarMensaje('❌ Ingresa la cantidad del lote (TM).', false); return; }
+            if (!lote.hora) { mostrarMensaje('❌ Ingresa la hora del lote.', false); return; }
             const pm = document.getElementById('produccionManana').value;
             const payload = {
                 fecha_reporte: fecha,
                 turno: getTurno(),
-                insumos,
-                aceite,
-                totales: { produccion_manana: pm === '' ? null : parseInt(pm, 10) || 0 },
-                observaciones: document.getElementById('observaciones').value
+                lote,
+                observaciones: document.getElementById('observaciones').value,
+                produccion_manana: pm === '' ? null : Number(pm)
             };
-            guardGuardarRefinado = true;
+            guardandoRefinado = true;
             try {
                 const res = await fetch('/api/refinado/guardar', {
                     method: 'POST',
@@ -771,22 +635,73 @@
                 });
                 const data = await res.json();
                 mostrarMensaje(data.mensaje || 'Respuesta del servidor.', !!data.success);
-                if (data.success) cargarReporte();
+                if (data.success) {
+                    await cargarReporte();
+                    limpiarFormLote(true);
+                }
             } catch (err) {
                 console.error(err);
-                mostrarMensaje('❌ Error al guardar.', false);
+                mostrarMensaje('❌ Error al guardar el lote.', false);
             } finally {
-                guardGuardarRefinado = false;
+                guardandoRefinado = false;
             }
         }
 
+        async function guardarTurno() {
+            if (guardandoRefinado) return;
+            const fecha = document.getElementById('fechaReporte').value;
+            if (!fecha) { mostrarMensaje('❌ Selecciona una fecha.', false); return; }
+            const pm = document.getElementById('produccionManana').value;
+            const payload = {
+                fecha_reporte: fecha,
+                turno: getTurno(),
+                lote: null,
+                observaciones: document.getElementById('observaciones').value,
+                produccion_manana: pm === '' ? null : Number(pm)
+            };
+            guardandoRefinado = true;
+            try {
+                const res = await fetch('/api/refinado/guardar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                mostrarMensaje(data.mensaje || 'Respuesta del servidor.', !!data.success);
+                if (data.success) await cargarReporte();
+            } catch (err) {
+                console.error(err);
+                mostrarMensaje('❌ Error al guardar los datos del turno.', false);
+            } finally {
+                guardandoRefinado = false;
+            }
+        }
+
+        async function eliminarLote(lote) {
+            const fecha = document.getElementById('fechaReporte').value;
+            if (!fecha) { mostrarMensaje('❌ Selecciona una fecha.', false); return; }
+            if (!confirm('¿Eliminar el lote ' + lote + ' del turno?')) return;
+            try {
+                const res = await fetch('/api/refinado/lotes/eliminar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fecha_reporte: fecha, turno: getTurno(), lote })
+                });
+                const data = await res.json();
+                mostrarMensaje(data.mensaje || 'Respuesta del servidor.', !!data.success);
+                if (data.success) await cargarReporte();
+            } catch (err) {
+                console.error(err);
+                mostrarMensaje('❌ Error al eliminar el lote.', false);
+            }
+        }
+
+        document.addEventListener('keydown', (e) => { if (e.target.matches('input[type=number]')) { if (e.key === 'e' || e.key === 'E' || e.key === '+' || e.key === '-') e.preventDefault(); } });
+
         document.getElementById('fechaReporte').addEventListener('change', cargarReporte);
-        document.getElementById('produccionManana').addEventListener('input', () => {
-            const p = document.getElementById('produccionManana').value;
-            document.getElementById('produccionManana').value = p;
-        });
 
         document.getElementById('fechaReporte').value = hoyLocal();
+        document.getElementById('loteFecha').value = hoyLocal();
         setTurnoUI();
         cargarReporte();
     </script>

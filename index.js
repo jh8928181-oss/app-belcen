@@ -2889,16 +2889,14 @@ app.get('/api/refinado/reporte', requerirRolRefinado, async (req, res) => {
         let reporte = null;
         if (result.rows.length) {
             const r = result.rows[0];
-            let insumos = [], aceite = [], totales = null;
-            try { insumos = JSON.parse(r.insumos_json); } catch (e) {}
-            try { aceite = JSON.parse(r.aceite_json); } catch (e) {}
+            let lotes = [], totales = null;
+            try { lotes = JSON.parse(r.aceite_json); } catch (e) {}
             try { totales = JSON.parse(r.totales_json); } catch (e) {}
             reporte = {
                 id: r.id,
                 fecha_reporte: r.fecha_reporte,
                 turno: r.turno,
-                insumos,
-                aceite,
+                lotes,
                 totales,
                 observaciones: r.observaciones,
                 usuario_registro: r.usuario_registro,
@@ -2912,9 +2910,50 @@ app.get('/api/refinado/reporte', requerirRolRefinado, async (req, res) => {
     }
 });
 
+function ordenarLotes(lotes) {
+    return (lotes || []).slice().sort((a, b) => {
+        const na = parseInt(String(a.lote).replace(/\D/g, ''), 10) || 0;
+        const nb = parseInt(String(b.lote).replace(/\D/g, ''), 10) || 0;
+        return na - nb;
+    });
+}
+
+function sanitizarInsumoLote(it) {
+    const nombre = (it && it.nombre !== null && it.nombre !== undefined) ? String(it.nombre).trim() : '';
+    const um = (it && it.um !== null && it.um !== undefined) ? String(it.um).trim() : '';
+    let cantidad = (it && it.cantidad !== null && it.cantidad !== undefined) ? it.cantidad : null;
+    if (cantidad !== null && cantidad !== '') {
+        cantidad = Number(cantidad);
+        if (isNaN(cantidad) || cantidad < 0) cantidad = null;
+    } else {
+        cantidad = null;
+    }
+    return { nombre, cantidad, um };
+}
+
+function sanitizarLote(o) {
+    o = o || {};
+    const tanque = String(o.tanque || 'TK-1').trim().toUpperCase();
+    let cantidad = (o.cantidad === null || o.cantidad === undefined || o.cantidad === '') ? null : Number(o.cantidad);
+    if (cantidad !== null && (isNaN(cantidad) || cantidad < 0)) cantidad = null;
+    return {
+        lote: String(o.lote || '').trim(),
+        hora: String(o.hora || '').trim().slice(0, 5),
+        producto: String(o.producto || 'ACEITE REFINADO DE SOYA').trim(),
+        cantidad,
+        tanque: (tanque === 'TK-2') ? 'TK-2' : 'TK-1',
+        proveedor: (o.proveedor === null || o.proveedor === undefined) ? '' : String(o.proveedor).trim(),
+        fecha_produccion: String(o.fecha_produccion || '').trim(),
+        estado: String(o.estado || 'DISPONIBLE').trim(),
+        insumos: Array.isArray(o.insumos)
+            ? o.insumos.map(sanitizarInsumoLote).filter(it => it.nombre && it.cantidad !== null && !isNaN(Number(it.cantidad)) && Number(it.cantidad) > 0)
+            : []
+    };
+}
+
 app.post('/api/refinado/guardar', requerirRolRefinado, async (req, res) => {
     try {
-        const { fecha_reporte, turno, insumos, aceite, totales, observaciones } = req.body || {};
+        const { fecha_reporte, turno, lote, observaciones, produccion_manana } = req.body || {};
         if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fecha_reporte || ''))) {
             return res.status(400).json({ success: false, mensaje: 'Fecha inválida (use AAAA-MM-DD).' });
         }
@@ -2922,11 +2961,157 @@ app.post('/api/refinado/guardar', requerirRolRefinado, async (req, res) => {
         if (!['DIA', 'NOCHE'].includes(turnoVal)) {
             return res.status(400).json({ success: false, mensaje: 'Turno inválido. Use DIA o NOCHE.' });
         }
-        if (!Array.isArray(insumos) || !insumos.length) {
-            return res.status(400).json({ success: false, mensaje: 'La tabla de insumos no puede estar vacía.' });
+        const sel = await pool.query('SELECT aceite_json, totales_json, observaciones FROM reportes_refinado WHERE fecha_reporte = $1 AND turno = $2', [fecha_reporte, turnoVal]);
+        let lotes = [];
+        let obs = '';
+        let totales = null;
+        if (sel.rows.length) {
+            try { lotes = JSON.parse(sel.rows[0].aceite_json) || []; } catch (e) {}
+            try { totales = JSON.parse(sel.rows[0].totales_json) || null; } catch (e) {}
+            obs = sel.rows[0].observaciones || '';
         }
-        if (!Array.isArray(aceite)) {
-            return res.status(400).json({ success: false, mensaje: 'La tabla de aceite refinado es inválida.' });
+        if (lote && typeof lote === 'object') {
+            const limpio = sanitizarLote(lote);
+            if (!limpio.lote) {
+                return res.status(400).json({ success: false, mensaje: 'Ingrese el número de lote para registrarlo.' });
+            }
+            const idx = lotes.findIndex(x => String(x.lote || '').trim() === limpio.lote);
+            if (idx >= 0) {
+                lotes[idx] = limpio;
+            } else {
+                lotes.push(limpio);
+            }
+            lotes = ordenarLotes(lotes);
+        }
+        if (observaciones !== undefined && observaciones !== null) obs = String(observaciones);
+        let pmNuevo = (produccion_manana === null || produccion_manana === undefined || produccion_manana === '') ? null : Number(produccion_manana);
+        if (pmNuevo !== null && isNaN(pmNuevo)) pmNuevo = null;
+        const totalesLimpio = {
+            produccion_manana: pmNuevo !== null ? pmNuevo : ((totales && totales.produccion_manana) || null),
+            total_lotes: lotes.length,
+            total_tm: lotes.reduce((sum, a) => sum + (Number(a.cantidad) || 0), 0)
+        };
+
+        const result = await pool.query(`
+            INSERT INTO reportes_refinado (fecha_reporte, turno, insumos_json, aceite_json, totales_json, observaciones, usuario_registro)
+            VALUES ($1, $2, '[]', $3, $4, $5, $6)
+            ON CONFLICT (fecha_reporte, turno) DO UPDATE SET
+                aceite_json = EXCLUDED.aceite_json,
+                totales_json = EXCLUDED.totales_json,
+                observaciones = EXCLUDED.observaciones,
+                usuario_registro = EXCLUDED.usuario_registro,
+                fecha_registro = CURRENT_TIMESTAMP
+            RETURNING id`, [
+            fecha_reporte, turnoVal, JSON.stringify(lotes), JSON.stringify(totalesLimpio), obs, req.usuario
+        ]);
+
+        res.json({ success: true, mensaje: lote && typeof lote === 'object' ? 'Lote guardado correctamente.' : 'Datos del turno guardados correctamente.', id: result.rows[0].id });
+    } catch (err) {
+        console.error("Error guardar refinado:", err);
+        res.status(500).json({ success: false, mensaje: 'Error en el servidor: ' + err.message });
+    }
+});
+
+app.post('/api/refinado/lotes/eliminar', requerirRolRefinado, async (req, res) => {
+    try {
+        const { fecha_reporte, turno, lote } = req.body || {};
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fecha_reporte || ''))) {
+            return res.status(400).json({ success: false, mensaje: 'Fecha inválida (use AAAA-MM-DD).' });
+        }
+        const turnoVal = String(turno || 'DIA').trim().toUpperCase();
+        if (!['DIA', 'NOCHE'].includes(turnoVal)) {
+            return res.status(400).json({ success: false, mensaje: 'Turno inválido. Use DIA o NOCHE.' });
+        }
+        const numLote = String(lote || '').trim();
+        if (!numLote) {
+            return res.status(400).json({ success: false, mensaje: 'Indique el número de lote a eliminar.' });
+        }
+        const sel = await pool.query('SELECT aceite_json, totales_json FROM reportes_refinado WHERE fecha_reporte = $1 AND turno = $2', [fecha_reporte, turnoVal]);
+        if (!sel.rows.length) {
+            return res.json({ success: true, mensaje: 'No hay reporte para el turno indicado.' });
+        }
+        let lotes = [];
+        let totales = null;
+        try { lotes = JSON.parse(sel.rows[0].aceite_json) || []; } catch (e) {}
+        try { totales = JSON.parse(sel.rows[0].totales_json) || null; } catch (e) {}
+        const antes = lotes.length;
+        lotes = lotes.filter(x => String(x.lote || '').trim() !== numLote);
+        if (lotes.length === antes) {
+            return res.json({ success: true, mensaje: 'El lote no existía en este turno.' });
+        }
+        const totalesLimpio = {
+            produccion_manana: (totales && totales.produccion_manana) || null,
+            total_lotes: lotes.length,
+            total_tm: lotes.reduce((sum, a) => sum + (Number(a.cantidad) || 0), 0)
+        };
+        await pool.query(`
+            UPDATE reportes_refinado SET
+                aceite_json = $1,
+                totales_json = $2,
+                usuario_registro = $3,
+                fecha_registro = CURRENT_TIMESTAMP
+            WHERE fecha_reporte = $4 AND turno = $5`, [
+            JSON.stringify(lotes), JSON.stringify(totalesLimpio), req.usuario, fecha_reporte, turnoVal
+        ]);
+        res.json({ success: true, mensaje: 'Lote eliminado correctamente.' });
+    } catch (err) {
+        console.error("Error eliminar lote refinado:", err);
+        res.status(500).json({ success: false, mensaje: 'Error en el servidor: ' + err.message });
+    }
+});
+
+// --- ALMACÉN: INVENTARIO (STOCK) DE INSUMOS DE REFINADO ---
+const ROLES_ALMACEN_INV_REF = ['admin', 'supervisor', 'almacen', 'auditoria'];
+function requerirRolAlmacenInvRef(req, res, next) {
+    if (!ROLES_ALMACEN_INV_REF.includes(req.rol)) {
+        return res.status(403).json({ success: false, mensaje: 'Acceso no autorizado.' });
+    }
+    next();
+}
+
+app.get('/api/almacen/inventario-refinado', requerirRolAlmacenInvRef, async (req, res) => {
+    try {
+        const fecha = String(req.query.fecha || '').trim();
+        const turno = String(req.query.turno || 'DIA').trim().toUpperCase();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+            return res.status(400).json({ success: false, mensaje: 'Indique una fecha válida (AAAA-MM-DD).' });
+        }
+        if (!['DIA', 'NOCHE'].includes(turno)) {
+            return res.status(400).json({ success: false, mensaje: 'Turno inválido. Use DIA o NOCHE.' });
+        }
+        const result = await pool.query('SELECT id, fecha_reporte, turno, insumos_json, usuario_registro FROM reportes_refinado WHERE fecha_reporte = $1 AND turno = $2', [fecha, turno]);
+        let reporte = null;
+        if (result.rows.length) {
+            const r = result.rows[0];
+            let insumos = [];
+            try { insumos = JSON.parse(r.insumos_json); } catch (e) {}
+            reporte = {
+                id: r.id,
+                fecha_reporte: r.fecha_reporte,
+                turno: r.turno,
+                insumos,
+                usuario_registro: r.usuario_registro
+            };
+        }
+        res.json({ success: true, reporte, insumosBase: INSUMOS_REFINADO_BASE });
+    } catch (err) {
+        console.error('Error GET inventario refinado:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+app.post('/api/almacen/inventario-refinado', requerirRolAlmacenInvRef, async (req, res) => {
+    try {
+        const { fecha_reporte, turno, insumos } = req.body || {};
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fecha_reporte || ''))) {
+            return res.status(400).json({ success: false, mensaje: 'Fecha inválida (use AAAA-MM-DD).' });
+        }
+        const turnoVal = String(turno || 'DIA').trim().toUpperCase();
+        if (!['DIA', 'NOCHE'].includes(turnoVal)) {
+            return res.status(400).json({ success: false, mensaje: 'Turno inválido. Use DIA o NOCHE.' });
+        }
+        if (!Array.isArray(insumos)) {
+            return res.status(400).json({ success: false, mensaje: 'La tabla de insumos es inválida.' });
         }
         const sanitizar = (obj) => {
             const out = {};
@@ -2946,56 +3131,21 @@ app.post('/api/refinado/guardar', requerirRolRefinado, async (req, res) => {
             const base = sanitizar(o);
             base.estado = estadoInsumo(base.dias);
             return base;
-        });
-        const sanitizarInsumoLote = (it) => {
-            const nombre = (it && it.nombre !== null && it.nombre !== undefined) ? String(it.nombre).trim() : '';
-            const um = (it && it.um !== null && it.um !== undefined) ? String(it.um).trim() : '';
-            let cantidad = (it && it.cantidad !== null && it.cantidad !== undefined) ? it.cantidad : null;
-            if (cantidad !== null && cantidad !== '') {
-                cantidad = Number(cantidad);
-                if (isNaN(cantidad)) cantidad = null;
-            } else {
-                cantidad = null;
-            }
-            return { nombre, cantidad, um };
-        };
-        const aceiteLimpio = aceite.map(o => {
-            const tanque = String(o.tanque || 'TK-1').trim().toUpperCase();
-            return {
-                producto: String(o.producto || o.nombre || 'ACEITE REFINADO DE SOYA'),
-                cantidad: (o.cantidad === null || o.cantidad === undefined || o.cantidad === '') ? null : Number(o.cantidad),
-                lote: String(o.lote || ''),
-                fecha_produccion: String(o.fecha_produccion || ''),
-                estado: String(o.estado || 'DISPONIBLE'),
-                tanque: (tanque === 'TK-2') ? 'TK-2' : 'TK-1',
-                proveedor: (o.proveedor === null || o.proveedor === undefined) ? '' : String(o.proveedor).trim(),
-                insumos: Array.isArray(o.insumos) ? o.insumos.map(sanitizarInsumoLote).filter(it => it.nombre) : []
-            };
-        });
-        const totalesLimpio = {
-            produccion_manana: (totales && totales.produccion_manana !== null && totales.produccion_manana !== undefined && totales.produccion_manana !== '') ? Number(totales.produccion_manana) : null,
-            total_lotes: aceiteLimpio.length,
-            total_tm: aceiteLimpio.reduce((sum, a) => sum + (Number(a.cantidad) || 0), 0)
-        };
+        }).filter(it => it.nombre);
 
-        const result = await pool.query(`
-            INSERT INTO reportes_refinado (fecha_reporte, turno, insumos_json, aceite_json, totales_json, observaciones, usuario_registro)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+        await pool.query(`
+            INSERT INTO reportes_refinado (fecha_reporte, turno, insumos_json, aceite_json, observaciones, usuario_registro)
+            VALUES ($1, $2, $3, '[]', '', $4)
             ON CONFLICT (fecha_reporte, turno) DO UPDATE SET
                 insumos_json = EXCLUDED.insumos_json,
-                aceite_json = EXCLUDED.aceite_json,
-                totales_json = EXCLUDED.totales_json,
-                observaciones = EXCLUDED.observaciones,
                 usuario_registro = EXCLUDED.usuario_registro,
-                fecha_registro = CURRENT_TIMESTAMP
-            RETURNING id, fecha_reporte, turno`, [
-            fecha_reporte, turnoVal, JSON.stringify(insumosLimpios), JSON.stringify(aceiteLimpio),
-            JSON.stringify(totalesLimpio), String(observaciones || ''), req.usuario
+                fecha_registro = CURRENT_TIMESTAMP`, [
+            fecha_reporte, turnoVal, JSON.stringify(insumosLimpios), req.usuario
         ]);
 
-        res.json({ success: true, mensaje: 'Reporte de refinado guardado correctamente.', id: result.rows[0].id, turno: result.rows[0].turno });
+        res.json({ success: true, mensaje: 'Inventario de insumos de refinado guardado correctamente.' });
     } catch (err) {
-        console.error("Error guardar refinado:", err);
+        console.error("Error guardar inventario refinado:", err);
         res.status(500).json({ success: false, mensaje: 'Error en el servidor: ' + err.message });
     }
 });

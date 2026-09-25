@@ -521,20 +521,23 @@
                             </tbody>
                         </table>
                     </div>
-                    <h4 style="margin:18px 0 4px 0; color:#8a6d00;">ACEITE REFINADO DE SOYA EN PLANTA</h4>
+                    <h4 style="margin:18px 0 4px 0; color:#8a6d00;">LOTES — ACEITE REFINADO DE SOYA (insumos usados por lote)</h4>
                     <div class="tabla-wrap">
                         <table>
                             <thead>
                                 <tr>
+                                    <th style="background-color:#8a6d00;">Lote Nº</th>
                                     <th style="background-color:#8a6d00;">Producto</th>
                                     <th class="text-center" style="background-color:#8a6d00;">Cantidad (TM)</th>
-                                    <th class="text-center" style="background-color:#8a6d00;">Lote Nº</th>
-                                    <th class="text-center" style="background-color:#8a6d00;">Fecha de Producción</th>
-                                    <th style="background-color:#8a6d00;">Estado / Observaciones</th>
+                                    <th class="text-center" style="background-color:#8a6d00;">Tanque</th>
+                                    <th style="background-color:#8a6d00;">Proveedor Aceite Crudo</th>
+                                    <th class="text-center" style="background-color:#8a6d00;">Fecha Producción</th>
+                                    <th style="background-color:#8a6d00;">Estado</th>
+                                    <th class="text-center" style="background-color:#8a6d00;">Insumos</th>
                                 </tr>
                             </thead>
                             <tbody id="tablaRefinadoAceite">
-                                <tr><td colspan="5" class="text-center">Cargando aceite refinado...</td></tr>
+                                <tr><td colspan="8" class="text-center">Cargando aceite refinado...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1154,7 +1157,7 @@ tbody.appendChild(tr);
 
             if (!reporte) {
                 tIns.innerHTML = '<tr><td colspan="10" class="text-center sin-registros">No hay reporte de refinería para esta fecha.</td></tr>';
-                tAce.innerHTML = '<tr><td colspan="5" class="text-center sin-registros">Sin registros.</td></tr>';
+                tAce.innerHTML = '<tr><td colspan="8" class="text-center sin-registros">Sin registros.</td></tr>';
                 document.getElementById('totalesRefinado').innerHTML = '';
                 const aviso = document.getElementById('avisoRefinado');
                 aviso.style.display = 'block';
@@ -1185,17 +1188,62 @@ tbody.appendChild(tr);
                 tIns.appendChild(tr);
             });
 
-            tAce.innerHTML = aceite.length === 0 ? '<tr><td colspan="5" class="text-center sin-registros">Sin lotes registrados.</td></tr>' : '';
-            aceite.forEach(it => {
+            tAce.innerHTML = aceite.length === 0 ? '<tr><td colspan="8" class="text-center sin-registros">Sin lotes registrados.</td></tr>' : '';
+            aceite.forEach((it, i) => {
+                const ins = Array.isArray(it.insumos) ? it.insumos : [];
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
+                    <td><b>${it.lote || '-'}</b></td>
                     <td><b>${it.producto || 'ACEITE REFINADO DE SOYA'}</b></td>
                     <td class="text-center" style="font-weight:bold;">${Number(it.cantidad) || 0}</td>
-                    <td class="text-center"><b>${it.lote || '-'}</b></td>
+                    <td class="text-center">${String(it.tanque || 'TK-1').toUpperCase()}</td>
+                    <td>${escaparHTML(it.proveedor) || '-'}</td>
                     <td class="text-center">${it.fecha_produccion || '-'}</td>
-                    <td>${badgeEstadoAceite(it.estado)}</td>
+                    <td class="text-center">${badgeEstadoAceite(it.estado)}</td>
+                    <td class="text-center">
+                        <button type="button" class="detalle-toggle" data-num="${ins.length}" aria-expanded="true" title="Insumos usados en el lote ${it.lote || ''}">⏷ Insumos (${ins.length})</button>
+                    </td>
                 `;
                 tAce.appendChild(tr);
+
+                const filasIns = ins.length === 0
+                    ? '<tr><td colspan="3" class="text-center sin-registros">Sin insumos registrados.</td></tr>'
+                    : ins.map(x => `
+                        <tr>
+                            <td><b>${escaparHTML(x.nombre) || 'N/D'}</b></td>
+                            <td class="text-center" style="font-weight:bold;">${Number(x.cantidad) || 0}</td>
+                            <td class="text-center">${escaparHTML(x.um) || ''}</td>
+                        </tr>`).join('');
+
+                const detalle = document.createElement('tr');
+                detalle.className = 'fila-detalle';
+                detalle.innerHTML = `
+                    <td colspan="8">
+                        <b style="color:#8a6d00;">🧪 Insumos usados — Lote ${escaparHTML(it.lote) || '-'}</b>
+                        <div class="tabla-wrap" style="margin-top:8px;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style="background-color:#8a6d00;">Insumo</th>
+                                        <th class="text-center" style="background-color:#8a6d00;">Cantidad</th>
+                                        <th class="text-center" style="background-color:#8a6d00;">UM</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${filasIns}</tbody>
+                            </table>
+                        </div>
+                    </td>
+                `;
+                tAce.appendChild(detalle);
+
+                const btnToggle = tr.querySelector('.detalle-toggle');
+                if (btnToggle) btnToggle.addEventListener('click', function () {
+                    const oculto = detalle.style.display === 'none';
+                    detalle.style.display = oculto ? '' : 'none';
+                    btnToggle.setAttribute('aria-expanded', String(oculto));
+                    const n = btnToggle.getAttribute('data-num') || '0';
+                    btnToggle.innerHTML = (oculto ? '⏷' : '⏵') + ' Insumos (' + n + ')';
+                });
             });
 
             const totalTM = aceite.reduce((s, a) => s + (Number(a.cantidad) || 0), 0);

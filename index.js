@@ -2947,13 +2947,31 @@ app.post('/api/refinado/guardar', requerirRolRefinado, async (req, res) => {
             base.estado = estadoInsumo(base.dias);
             return base;
         });
-        const aceiteLimpio = aceite.map(o => ({
-            producto: String(o.producto || o.nombre || 'ACEITE REFINADO DE SOYA'),
-            cantidad: (o.cantidad === null || o.cantidad === undefined || o.cantidad === '') ? null : Number(o.cantidad),
-            lote: String(o.lote || ''),
-            fecha_produccion: String(o.fecha_produccion || ''),
-            estado: String(o.estado || 'DISPONIBLE')
-        }));
+        const sanitizarInsumoLote = (it) => {
+            const nombre = (it && it.nombre !== null && it.nombre !== undefined) ? String(it.nombre).trim() : '';
+            const um = (it && it.um !== null && it.um !== undefined) ? String(it.um).trim() : '';
+            let cantidad = (it && it.cantidad !== null && it.cantidad !== undefined) ? it.cantidad : null;
+            if (cantidad !== null && cantidad !== '') {
+                cantidad = Number(cantidad);
+                if (isNaN(cantidad)) cantidad = null;
+            } else {
+                cantidad = null;
+            }
+            return { nombre, cantidad, um };
+        };
+        const aceiteLimpio = aceite.map(o => {
+            const tanque = String(o.tanque || 'TK-1').trim().toUpperCase();
+            return {
+                producto: String(o.producto || o.nombre || 'ACEITE REFINADO DE SOYA'),
+                cantidad: (o.cantidad === null || o.cantidad === undefined || o.cantidad === '') ? null : Number(o.cantidad),
+                lote: String(o.lote || ''),
+                fecha_produccion: String(o.fecha_produccion || ''),
+                estado: String(o.estado || 'DISPONIBLE'),
+                tanque: (tanque === 'TK-2') ? 'TK-2' : 'TK-1',
+                proveedor: (o.proveedor === null || o.proveedor === undefined) ? '' : String(o.proveedor).trim(),
+                insumos: Array.isArray(o.insumos) ? o.insumos.map(sanitizarInsumoLote).filter(it => it.nombre) : []
+            };
+        });
         const totalesLimpio = {
             produccion_manana: (totales && totales.produccion_manana !== null && totales.produccion_manana !== undefined && totales.produccion_manana !== '') ? Number(totales.produccion_manana) : null,
             total_lotes: aceiteLimpio.length,

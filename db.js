@@ -165,6 +165,8 @@ const inicializarBaseDeDatos = async () => {
 
             DELETE FROM stock_insumos_refinado WHERE nombre IN ('ACEITE CRUDO DE SOYA TK-1', 'ACEITE CRUDO DE SOYA TK-2');
 
+            UPDATE stock_insumos_refinado SET nombre = 'TELA (para filtro prensa)' WHERE nombre = 'TELA';
+
             INSERT INTO stock_insumos_refinado (nombre, um) VALUES
                 ('TONSIL OPTIMUN 363', 'KG'),
                 ('TONSIL SUPREME 169', 'KG'),
@@ -172,7 +174,7 @@ const inicializarBaseDeDatos = async () => {
                 ('SODA EN SOLUCION AL 50%', 'KG'),
                 ('SAL', 'KG'),
                 ('MANGAS FILTRANTES', 'UND'),
-                ('TELA', 'UND')
+                ('TELA (para filtro prensa)', 'UND')
             ON CONFLICT (nombre) DO NOTHING;
 
             -- Solo la primera vez: copia el último stock conocido desde los reportes diarios previos

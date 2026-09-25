@@ -2951,6 +2951,47 @@ function sanitizarLote(o) {
     };
 }
 
+// Descuenta/restaura un insumo del stock de refinado (Almacén) según el reporte de lotes.
+async function aplicarMovimientoStockInsumoRefinado(nombre, cantidad, signo, usuario, referencia) {
+    if (!nombre || !(Number(cantidad) > 0)) return;
+    const res = await pool.query('SELECT id, nombre, stock FROM stock_insumos_refinado WHERE LOWER(BTRIM(nombre)) = $1', [String(nombre).trim().toLowerCase()]);
+    if (!res.rows.length) return;
+    const item = res.rows[0];
+    const stockAnterior = Number(item.stock) || 0;
+    const stockNuevo = Math.max(0, stockAnterior + signo * Number(cantidad));
+    await pool.query(
+        `UPDATE stock_insumos_refinado SET
+             stock = $1::numeric,
+             estado = CASE WHEN $1::numeric <= 0 THEN 'REALIZAR PEDIDO' ELSE 'STOCK SUFICIENTE' END,
+             usuario_ajuste = $2,
+             fecha_ajuste = CURRENT_TIMESTAMP
+         WHERE id = $3`,
+        [stockNuevo, usuario, item.id]
+    );
+    await registrarHistorial(pool, {
+        tipo: signo < 0 ? 'SALIDA' : 'ENTRADA',
+        origen: 'refinado',
+        producto: item.nombre,
+        articulo_id: item.id,
+        cantidad: Number(cantidad),
+        tipo_cambio: signo < 0 ? 'RESTA' : 'SUMA',
+        stock_anterior: stockAnterior,
+        stock_nuevo: stockNuevo,
+        usuario: usuario,
+        referencia: referencia || 'Movimiento por lote de refinado'
+    });
+}
+
+async function aplicarInsumosLoteStock(insumos, signo, usuario, referencia) {
+    insumos = Array.isArray(insumos) ? insumos : [];
+    for (const it of insumos) {
+        const cant = (it && it.cantidad !== null && it.cantidad !== undefined) ? Number(it.cantidad) : 0;
+        if ((it && it.nombre) && cant > 0) {
+            await aplicarMovimientoStockInsumoRefinado(it.nombre, cant, signo, usuario, referencia);
+        }
+    }
+}
+
 app.post('/api/refinado/guardar', requerirRolRefinado, async (req, res) => {
     try {
         const { fecha_reporte, turno, lote, observaciones, produccion_manana } = req.body || {};
@@ -2977,10 +3018,12 @@ app.post('/api/refinado/guardar', requerirRolRefinado, async (req, res) => {
             }
             const idx = lotes.findIndex(x => String(x.lote || '').trim() === limpio.lote);
             if (idx >= 0) {
+                await aplicarInsumosLoteStock(lotes[idx].insumos, 1, req.usuario, 'Restauración por edición del lote ' + limpio.lote);
                 lotes[idx] = limpio;
             } else {
                 lotes.push(limpio);
             }
+            await aplicarInsumosLoteStock(limpio.insumos, -1, req.usuario, 'Descuento por registro del lote de refinado ' + limpio.lote);
             lotes = ordenarLotes(lotes);
         }
         if (observaciones !== undefined && observaciones !== null) obs = String(observaciones);
@@ -3035,7 +3078,11 @@ app.post('/api/refinado/lotes/eliminar', requerirRolRefinado, async (req, res) =
         try { lotes = JSON.parse(sel.rows[0].aceite_json) || []; } catch (e) {}
         try { totales = JSON.parse(sel.rows[0].totales_json) || null; } catch (e) {}
         const antes = lotes.length;
+        const loteEliminado = lotes.find(x => String(x.lote || '').trim() === numLote);
         lotes = lotes.filter(x => String(x.lote || '').trim() !== numLote);
+        if (loteEliminado) {
+            await aplicarInsumosLoteStock(loteEliminado.insumos, 1, req.usuario, 'Restauración por eliminación del lote de refinado ' + numLote);
+        }
         if (lotes.length === antes) {
             return res.json({ success: true, mensaje: 'El lote no existía en este turno.' });
         }

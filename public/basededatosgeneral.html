@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Base de Datos General - Corporación Belcen</title>
+    <link rel="stylesheet" href="/motion.css">
+    <style>
+        :root {
+            --bg: #f2f2f7;
+            --card: rgba(255, 255, 255, 0.72);
+            --card-bord: rgba(0, 0, 0, 0.07);
+            --texto: #1c1c1e;
+            --texto2: #6c7280;
+            --azul: #0a84ff;
+            --verde: #34c759;
+            --rojo: #ff3b30;
+            --ambar: #ff9500;
+            --teal: #17a2b8;
+            --sombra: 0 8px 30px rgba(0, 0, 0, 0.08);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--texto);
+            margin: 0;
+            padding: 24px 16px 56px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container { max-width: 1400px; margin: auto; }
+
+        .tarjeta {
+            background: var(--card);
+            backdrop-filter: blur(20px) saturate(160%);
+            -webkit-backdrop-filter: blur(20px) saturate(160%);
+            border: 1px solid var(--card-bord);
+            border-radius: 20px;
+            box-shadow: var(--sombra);
+            padding: 25px;
+            margin-bottom: 25px;
+        }
+        @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+            .tarjeta { background: rgba(255, 255, 255, 0.94); }
+        }
+        .borde-azul { border-top: 6px solid var(--azul); }
+        .borde-ambar { border-top: 5px solid var(--ambar); }
+
+        h1 { color: var(--texto); text-align: center; margin: 0 0 5px 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px; }
+        .sub { text-align: center; color: var(--texto2); margin: 0 0 20px 0; font-size: 14px; }
+        h3 {
+            color: var(--texto);
+            padding: 0 0 10px;
+            margin: 0 0 14px;
+            border-bottom: 2px solid rgba(10, 132, 255, 0.35);
+            font-size: 18px;
+            font-weight: 800;
+        }
+
+        .tabla-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 14px; margin-top: 15px; }
+        .tabla-wrap::-webkit-scrollbar { height: 6px; }
+        .tabla-wrap::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.18); border-radius: 999px; }
+        table {
+            width: 100%; border-collapse: separate; border-spacing: 0; margin: 0;
+            border: 1px solid rgba(0, 0, 0, 0.07); border-radius: 14px; overflow: hidden;
+            background: rgba(255, 255, 255, 0.6);
+        }
+        th, td { border: none; border-bottom: 1px solid rgba(0, 0, 0, 0.04); padding: 8px 10px; text-align: left; font-size: 12.5px; vertical-align: middle; }
+        th {
+            background: #f5f5f7; color: var(--texto2);
+            font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;
+        }
+        tbody tr:last-child td { border-bottom: none; }
+
+        .filtro-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 15px 0; }
+        .filtro-bar label { font-weight: 700; font-size: 13px; color: var(--texto2); }
+
+        .btn {
+            background: var(--azul); border: none; padding: 11px 18px; color: white;
+            border-radius: 999px; font-weight: 700; cursor: pointer; font-size: 13px; font-family: inherit;
+            box-shadow: 0 4px 12px rgba(10, 132, 255, 0.22);
+        }
+        .btn:hover { filter: brightness(0.95); }
+        .btn:active { transform: scale(0.98); }
+        .btn-verde { background: var(--verde); box-shadow: 0 4px 12px rgba(52, 199, 89, 0.25); }
+        .btn-gris { background: rgba(120, 120, 128, 0.42); box-shadow: none; }
+
+        .logout {
+            background-color: var(--rojo); border: none; padding: 11px 20px; text-decoration: none;
+            color: white; border-radius: 999px; font-weight: 700; cursor: pointer; font-size: 13px;
+            font-family: inherit; box-shadow: 0 4px 12px rgba(255, 59, 48, 0.25);
+        }
+        .logout:hover { filter: brightness(0.95); }
+
+        .link-aux { color: var(--azul); font-weight: 700; text-decoration: none; margin-right: 12px; }
+        .link-aux:hover { text-decoration: underline; }
+
+        .text-center { text-align: center; }
+        .sin-registros { color: var(--texto2); font-style: italic; }
+
+        .aviso { padding: 12px 14px; border-radius: 12px; font-size: 13px; margin-top: 12px; line-height: 1.5; }
+        .aviso-info { background: rgba(10, 132, 255, 0.09); color: #0a50a8; border: 1px solid rgba(10, 132, 255, 0.2); }
+
+        .footer-acciones { text-align: center; margin-top: 10px; padding: 16px 4px 0; border-top: 1px solid rgba(0, 0, 0, 0.08); }
+        .nota-legal { color: var(--texto2); font-size: 13px; }
+
+        .mensaje { text-align: center; font-weight: 700; margin-top: 12px; min-height: 20px; }
+        .mensaje.ok { color: #1e8e3e; }
+        .mensaje.err { color: #c7251e; }
+
+        @media (max-width: 768px) {
+            body { padding: 12px 10px calc(16px + env(safe-area-inset-bottom)); }
+            .tarjeta { padding: 18px; }
+            h1 { font-size: 20px; }
+            .filtro-bar { gap: 10px; }
+            .link-aux { margin-right: 8px; font-size: 13px; }
+        }
+
+        @media (max-width: 640px) {
+            .tarjeta { padding: 15px; }
+            h1 { font-size: 19px; }
+            .filtro-bar { gap: 10px; }
+            .filtro-bar > span[style*="flex:1"] { display: none; }
+            .filtro-bar .btn, .footer-acciones .btn, .logout { width: 100%; }
+
+            .tabla-wrap { overflow: visible; }
+            .tabla-wrap table { min-width: 0; border: none; box-shadow: none; background: transparent; }
+            .tabla-wrap thead { display: none; }
+            .tabla-wrap tbody tr {
+                display: block; border: 1px solid rgba(0, 0, 0, 0.08);
+                border-radius: 14px; margin: 0 0 10px; padding: 6px 0;
+                background: rgba(255, 255, 255, 0.75); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            }
+            .tabla-wrap tbody tr:hover td { background: transparent; }
+            .tabla-wrap td {
+                display: block; text-align: left !important; border: none;
+                border-bottom: 1px solid #f0f0f3; padding: 8px 12px;
+            }
+            .tabla-wrap tbody tr:last-child td { border-bottom: none; }
+            .tabla-wrap td::before {
+                content: attr(data-label); display: block; font-size: 10.5px;
+                text-transform: uppercase; letter-spacing: 0.5px;
+                color: #8a93a3; font-weight: 700; margin-bottom: 2px;
+            }
+            .tabla-wrap td:not([data-label]) {
+                all: unset; display: block; text-align: center;
+                padding: 12px; color: var(--texto2); font-style: italic;
+            }
+            .tabla-wrap input, .tabla-wrap select { font-size: 16px; }
+            .tabla-wrap input[type=number], .tabla-wrap input[type=text], .tabla-wrap input[type=date], .tabla-wrap input[type=time], .tabla-wrap select { max-width: none !important; width: 100% !important; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+
+        <div class="tarjeta borde-azul reveal" style="margin-bottom: 20px;">
+            <h1>🗄️ BASE DE DATOS GENERAL</h1>
+            <p class="sub">Corporación Belcen S.A.C. — ERP Interno</p>
+
+            <div class="filtro-bar">
+                <span style="flex:1;"></span>
+                <a href="dashboard.html" id="linkDashboard" class="link-aux">🏠 Dashboard</a>
+                <button class="logout" onclick="cerrarSesion()">🔒 Cerrar Sesión</button>
+            </div>
+            <div class="mensaje" id="mensaje"></div>
+        </div>
+
+        <!-- ESPACIO DE TRABAJO -->
+        <div class="tarjeta borde-ambar reveal">
+            <h3>🚧 ÁREA DE TRABAJO</h3>
+            <p class="sub" style="text-align:left; margin-bottom:0; margin-top:-8px;">
+                Este módulo está listo para crecer. Aquí se irán agregando, poco a poco, las secciones y funcionalidades de la base de datos general.
+            </p>
+            <div class="aviso aviso-info">ℹ️ Nuevas herramientas aparecerán aquí conforme se habiliten.</div>
+        </div>
+
+        <div class="footer-acciones">
+            <span class="nota-legal">Corporación Belcen S.A.C. · Base de Datos General · Módulo en construcción</span>
+        </div>
+    </div>
+
+    <script src="/motion.js" defer></script>
+    <script src="/auth-client.js"></script>
+    <script>
+        const rolUsuario = localStorage.getItem('rol_actual') || localStorage.getItem('rol_usuario');
+        if (!rolUsuario || (rolUsuario !== 'admin' && rolUsuario !== 'auditoria')) {
+            alert('❌ Acceso no autorizado.');
+            window.location.href = 'index.html';
+        }
+        if (rolUsuario !== 'admin') {
+            document.getElementById('linkDashboard').style.display = 'none';
+        }
+
+        function cerrarSesion() {
+            if (confirm('¿Estás seguro de que deseas cerrar sesión?')) {
+                limpiarSesion();
+                window.location.href = 'index.html';
+            }
+        }
+
+        function mostrarMensaje(texto, ok) {
+            const el = document.getElementById('mensaje');
+            el.textContent = texto || '';
+            el.className = 'mensaje ' + (ok ? 'ok' : 'err');
+            setTimeout(() => { el.textContent = ''; el.className = 'mensaje'; }, 6000);
+        }
+    </script>
+</body>
+</html>

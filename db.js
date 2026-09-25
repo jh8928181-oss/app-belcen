@@ -242,6 +242,85 @@ const inicializarBaseDeDatos = async () => {
             CREATE INDEX IF NOT EXISTS idx_historial_fecha ON historial_inventario (fecha DESC);
             CREATE INDEX IF NOT EXISTS idx_historial_tipo ON historial_inventario (tipo);
 
+            -- ===== BASE DE DATOS GENERAL: PROVEEDORES, OC/OS Y STOCK DE PROVEEDORES =====
+            CREATE TABLE IF NOT EXISTS proveedores (
+                id SERIAL PRIMARY KEY,
+                nombre VARCHAR(150) UNIQUE NOT NULL,
+                categoria VARCHAR(50),
+                ruc VARCHAR(20),
+                telefono VARCHAR(50),
+                direccion VARCHAR(200),
+                email VARCHAR(100),
+                contacto VARCHAR(150),
+                usuario_registro VARCHAR(50),
+                fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS ruc VARCHAR(20);
+            ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS telefono VARCHAR(50);
+            ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS direccion VARCHAR(200);
+            ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS email VARCHAR(100);
+            ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS contacto VARCHAR(150);
+            ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS usuario_registro VARCHAR(50);
+
+            CREATE TABLE IF NOT EXISTS ordenes_compras_servicios (
+                id SERIAL PRIMARY KEY,
+                tipo VARCHAR(5) NOT NULL,
+                numero VARCHAR(50) NOT NULL,
+                fecha_orden DATE,
+                proveedor_id INT,
+                proveedor_nombre VARCHAR(150),
+                estado VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
+                observaciones TEXT,
+                total NUMERIC(12,2) DEFAULT 0,
+                usuario_registro VARCHAR(50),
+                fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(tipo, numero)
+            );
+            ALTER TABLE ordenes_compras_servicios ADD COLUMN IF NOT EXISTS proveedor_nombre VARCHAR(150);
+            ALTER TABLE ordenes_compras_servicios ADD COLUMN IF NOT EXISTS estado VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE';
+            ALTER TABLE ordenes_compras_servicios ADD COLUMN IF NOT EXISTS observaciones TEXT;
+            ALTER TABLE ordenes_compras_servicios ADD COLUMN IF NOT EXISTS total NUMERIC(12,2) DEFAULT 0;
+            ALTER TABLE ordenes_compras_servicios ADD COLUMN IF NOT EXISTS usuario_registro VARCHAR(50);
+
+            CREATE TABLE IF NOT EXISTS ordenes_items (
+                id SERIAL PRIMARY KEY,
+                orden_id INT NOT NULL REFERENCES ordenes_compras_servicios(id) ON DELETE CASCADE,
+                descripcion VARCHAR(200) NOT NULL,
+                unidad VARCHAR(20) DEFAULT 'UNIDADES',
+                cantidad NUMERIC(12,2) NOT NULL DEFAULT 0,
+                precio NUMERIC(12,2) DEFAULT 0,
+                subtotal NUMERIC(12,2) DEFAULT 0,
+                recibido NUMERIC(12,2) DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS stock_proveedores (
+                id SERIAL PRIMARY KEY,
+                proveedor_nombre VARCHAR(150) NOT NULL,
+                producto VARCHAR(200) NOT NULL,
+                unidad VARCHAR(20) DEFAULT 'UNIDADES',
+                stock NUMERIC(12,2) NOT NULL DEFAULT 0,
+                usuario_registro VARCHAR(50),
+                fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_stock_proveedores
+                ON stock_proveedores (LOWER(BTRIM(proveedor_nombre)), LOWER(BTRIM(producto)));
+            ALTER TABLE stock_proveedores ADD COLUMN IF NOT EXISTS usuario_registro VARCHAR(50);
+
+            CREATE TABLE IF NOT EXISTS stock_proveedores_historial (
+                id SERIAL PRIMARY KEY,
+                tipo VARCHAR(20) NOT NULL,
+                origen VARCHAR(30),
+                proveedor VARCHAR(150),
+                producto VARCHAR(200),
+                unidad VARCHAR(20),
+                cantidad NUMERIC(12,2) NOT NULL DEFAULT 0,
+                orden_ref VARCHAR(50),
+                guia_ref VARCHAR(100),
+                usuario VARCHAR(50),
+                fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_stock_prov_hist_fecha ON stock_proveedores_historial (fecha_registro DESC);
+
             -- Usuarios de turno de Refinado (idempotente)
             INSERT INTO usuarios_sistema (usuario, password, rol) VALUES
                 ('usuario1', 'a49a94603f9a105326f880170b9342a6fd3ed71157b4dd16da4fbd46648c7f45721b25e49f83a1038bb333e4af25a59be35725e5e8b3b19e79a87fdb648299f3:8222cb2d385b1216e4e53a27ab34e4eb', 'refinado'),

@@ -48,6 +48,7 @@
         }
         .borde-azul { border-top: 6px solid var(--azul); }
         .borde-ambar { border-top: 5px solid var(--ambar); }
+        .borde-teal { border-top: 6px solid var(--teal); }
 
         h1 { color: var(--texto); text-align: center; margin: 0 0 5px 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px; }
         .sub { text-align: center; color: var(--texto2); margin: 0 0 20px 0; font-size: 14px; }
@@ -59,6 +60,8 @@
             font-size: 18px;
             font-weight: 800;
         }
+        h3.teal { border-bottom-color: rgba(23, 162, 184, 0.35); color: #0a6ea8; }
+        h3.ambar { border-bottom-color: rgba(255, 149, 0, 0.4); color: #a05a00; }
 
         .tabla-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 14px; margin-top: 15px; }
         .tabla-wrap::-webkit-scrollbar { height: 6px; }
@@ -75,8 +78,20 @@
         }
         tbody tr:last-child td { border-bottom: none; }
 
+        input[type=number], input[type=text], input[type=date], input[type=time], input[type=tel], input[type=email], select {
+            width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 13px;
+            border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 10px;
+            background: rgba(255, 255, 255, 0.7); color: var(--texto); font-family: inherit;
+        }
+        input:focus, select:focus {
+            outline: none; border-color: var(--azul); box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.15);
+        }
+        select { -webkit-appearance: none; appearance: none; background-image: linear-gradient(45deg, transparent 50%, #6c7280 50%), linear-gradient(135deg, #6c7280 50%, transparent 50%); background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
+
         .filtro-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 15px 0; }
         .filtro-bar label { font-weight: 700; font-size: 13px; color: var(--texto2); }
+        .campo-flex { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 150px; }
+        .campo-flex label { font-size: 10.5px; color: var(--texto2); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
 
         .btn {
             background: var(--azul); border: none; padding: 11px 18px; color: white;
@@ -86,7 +101,15 @@
         .btn:hover { filter: brightness(0.95); }
         .btn:active { transform: scale(0.98); }
         .btn-verde { background: var(--verde); box-shadow: 0 4px 12px rgba(52, 199, 89, 0.25); }
+        .btn-ambar { background: var(--ambar); color: #fff; box-shadow: 0 4px 12px rgba(255, 149, 0, 0.28); }
+        .btn-teal { background: var(--teal); box-shadow: 0 4px 12px rgba(23, 162, 184, 0.25); }
         .btn-gris { background: rgba(120, 120, 128, 0.42); box-shadow: none; }
+        .btn-rojo { background: var(--rojo); box-shadow: 0 4px 12px rgba(255, 59, 48, 0.25); }
+        .btn-mini { padding: 6px 12px; font-size: 12px; }
+        .btn-x-quitar {
+            background: var(--rojo); color: white; border: none; border-radius: 999px; cursor: pointer;
+            padding: 5px 9px; font-size: 12px; font-weight: 700; font-family: inherit;
+        }
 
         .logout {
             background-color: var(--rojo); border: none; padding: 11px 20px; text-decoration: none;
@@ -103,6 +126,8 @@
 
         .aviso { padding: 12px 14px; border-radius: 12px; font-size: 13px; margin-top: 12px; line-height: 1.5; }
         .aviso-info { background: rgba(10, 132, 255, 0.09); color: #0a50a8; border: 1px solid rgba(10, 132, 255, 0.2); }
+        .aviso-teal { background: rgba(23, 162, 184, 0.09); color: #0a6ea8; border: 1px solid rgba(23, 162, 184, 0.2); }
+        .aviso-ambar { background: rgba(255, 149, 0, 0.1); color: #8a5a00; border: 1px solid rgba(255, 149, 0, 0.22); }
 
         .footer-acciones { text-align: center; margin-top: 10px; padding: 16px 4px 0; border-top: 1px solid rgba(0, 0, 0, 0.08); }
         .nota-legal { color: var(--texto2); font-size: 13px; }
@@ -110,6 +135,56 @@
         .mensaje { text-align: center; font-weight: 700; margin-top: 12px; min-height: 20px; }
         .mensaje.ok { color: #1e8e3e; }
         .mensaje.err { color: #c7251e; }
+
+        .badge { padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; display: inline-block; }
+        .badge-pedido { background: rgba(255, 59, 48, 0.14); color: #a3201a; border: 1px solid rgba(255, 59, 48, 0.25); }
+        .badge-suficiente { background: rgba(52, 199, 89, 0.16); color: #1e8e3e; border: 1px solid rgba(52, 199, 89, 0.25); }
+        .badge-noche { background: rgba(10, 132, 255, 0.14); color: #0a50a8; border: 1px solid rgba(10, 132, 255, 0.25); }
+        .badge-dia { background: rgba(255, 149, 0, 0.16); color: #8a5a00; border: 1px solid rgba(255, 149, 0, 0.25); }
+
+        /* --- PESTAÑAS --- */
+        .pestanas { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 20px; }
+        .pestana {
+            flex: 1; min-width: 180px; padding: 13px 16px; border-radius: 14px; cursor: pointer;
+            border: 1px solid rgba(0, 0, 0, 0.08); background: rgba(255, 255, 255, 0.6);
+            font-family: inherit; font-size: 14px; font-weight: 800; color: var(--texto2); text-align: center;
+            transition: all .2s;
+        }
+        .pestana:hover { background: rgba(255, 255, 255, 0.85); }
+        .pestana.activa { background: #fff; color: var(--azul); border-color: var(--azul); box-shadow: var(--sombra); }
+        .pestana.activa.teal-act { color: var(--teal); border-color: var(--teal); }
+        .pestana.activa.ambar-act { color: #a05a00; border-color: var(--ambar); }
+
+        .oculto { display: none !important; }
+
+        .acciones-celda { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .acciones-celda .btn-mini { margin: 0; }
+
+        .total-box { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 15px; }
+        .total-item { background: rgba(255, 255, 255, 0.7); border: 1px solid rgba(0, 0, 0, 0.07); border-radius: 14px; padding: 12px 16px; flex: 1; min-width: 160px; }
+        .total-item label { font-size: 11px; color: var(--texto2); text-transform: uppercase; letter-spacing: .5px; }
+        .total-item .valor { font-size: 20px; font-weight: 800; color: var(--texto); margin-top: 4px; }
+
+        /* --- MODAL --- */
+        .modal-fondo {
+            position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 100;
+            display: flex; align-items: center; justify-content: center; padding: 16px;
+        }
+        .modal {
+            background: #fff; border-radius: 18px; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 22px; width: 100%; max-width: 620px; max-height: 90vh; overflow-y: auto;
+        }
+        .modal h3 { margin-bottom: 6px; }
+        .modal .fila-item-rec { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f3; }
+        .modal .fila-item-rec .nom { flex: 1; min-width: 180px; font-size: 13px; }
+        .modal .fila-item-rec span { font-size: 12px; color: var(--texto2); }
+
+        .pres {
+            display: inline-block; background: rgba(0,0,0,.07); border-radius: 8px;
+            padding: 3px 9px; font-weight: 700; font-size: 11px; margin-right: 6px;
+        }
+        .pres.oc { background: rgba(52,199,89,.15); color: #1e8e3e; }
+        .pres.os { background: rgba(138,90,0,.13); color: #8a5a00; }
 
         @media (max-width: 768px) {
             body { padding: 12px 10px calc(16px + env(safe-area-inset-bottom)); }
@@ -125,6 +200,8 @@
             .filtro-bar { gap: 10px; }
             .filtro-bar > span[style*="flex:1"] { display: none; }
             .filtro-bar .btn, .footer-acciones .btn, .logout { width: 100%; }
+            .campo-flex { min-width: 100%; }
+            .pestana { min-width: 100%; }
 
             .tabla-wrap { overflow: visible; }
             .tabla-wrap table { min-width: 0; border: none; box-shadow: none; background: transparent; }
@@ -150,7 +227,10 @@
                 padding: 12px; color: var(--texto2); font-style: italic;
             }
             .tabla-wrap input, .tabla-wrap select { font-size: 16px; }
-            .tabla-wrap input[type=number], .tabla-wrap input[type=text], .tabla-wrap input[type=date], .tabla-wrap input[type=time], .tabla-wrap select { max-width: none !important; width: 100% !important; }
+            .tabla-wrap input[type=number], .tabla-wrap input[type=text], .tabla-wrap input[type=date], .tabla-wrap input[type=tel], .tabla-wrap input[type=email], .tabla-wrap select { max-width: none !important; width: 100% !important; }
+            .total-item { min-width: 100%; }
+            .acciones-celda { width: 100%; }
+            .modal-fondo { padding: 10px; }
         }
 
         @media (prefers-reduced-motion: reduce) {
@@ -168,7 +248,7 @@
 
         <div class="tarjeta borde-azul reveal" style="margin-bottom: 20px;">
             <h1>🗄️ BASE DE DATOS GENERAL</h1>
-            <p class="sub">Corporación Belcen S.A.C. — ERP Interno</p>
+            <p class="sub">Corporación Belcen S.A.C. — Proveedores · Órdenes · Stock</p>
 
             <div class="filtro-bar">
                 <span style="flex:1;"></span>
@@ -178,17 +258,323 @@
             <div class="mensaje" id="mensaje"></div>
         </div>
 
-        <!-- ESPACIO DE TRABAJO -->
-        <div class="tarjeta borde-ambar reveal">
-            <h3>🚧 ÁREA DE TRABAJO</h3>
-            <p class="sub" style="text-align:left; margin-bottom:0; margin-top:-8px;">
-                Este módulo está listo para crecer. Aquí se irán agregando, poco a poco, las secciones y funcionalidades de la base de datos general.
-            </p>
-            <div class="aviso aviso-info">ℹ️ Nuevas herramientas aparecerán aquí conforme se habiliten.</div>
+        <!-- PESTAÑAS -->
+        <div class="pestanas reveal">
+            <button class="pestana activa" id="pestanaBtnProv" onclick="mostrarPestana('prov')">🏢 Proveedores y Categorías</button>
+            <button class="pestana teal-act" id="pestanaBtnOrden" onclick="mostrarPestana('orden')">📑 Órdenes OC / OS</button>
+            <button class="pestana ambar-act" id="pestanaBtnStock" onclick="mostrarPestana('stock')">📦 Stock de Proveedores</button>
+        </div>
+
+        <!-- ============ PESTAÑA 1: PROVEEDORES ============ -->
+        <div id="pestanaProv">
+
+            <div class="tarjeta borde-teal reveal">
+                <h3 class="teal">🏢 REGISTRAR / EDITAR PROVEEDOR</h3>
+                <div class="filtro-bar">
+                    <div class="campo-flex" style="flex:2; min-width:200px;">
+                        <label>Nombre del proveedor *</label>
+                        <input type="text" id="provNombre" placeholder="Razón social / nombre">
+                    </div>
+                    <div class="campo-flex" style="min-width:140px;">
+                        <label>Categoría *</label>
+                        <select id="provCategoria">
+                            <option value="Materia Prima">Materia Prima</option>
+                            <option value="Embalajes">Embalajes</option>
+                            <option value="Servicios">Servicios</option>
+                            <option value="Otros">Otros</option>
+                        </select>
+                    </div>
+                    <div class="campo-flex" style="min-width:130px;">
+                        <label>RUC</label>
+                        <input type="text" id="provRuc" placeholder="RUC">
+                    </div>
+                    <div class="campo-flex" style="min-width:130px;">
+                        <label>Teléfono</label>
+                        <input type="tel" id="provTelefono" placeholder="Teléfono">
+                    </div>
+                    <div class="campo-flex" style="min-width:180px;">
+                        <label>Dirección</label>
+                        <input type="text" id="provDireccion" placeholder="Dirección">
+                    </div>
+                    <div class="campo-flex" style="min-width:160px;">
+                        <label>E-mail</label>
+                        <input type="email" id="provEmail" placeholder="correo@empresa.com">
+                    </div>
+                    <div class="campo-flex" style="min-width:130px;">
+                        <label>Contacto</label>
+                        <input type="text" id="provContacto" placeholder="Nombre de contacto">
+                    </div>
+                    <div class="campo-flex" style="min-width:120px; justify-content:flex-end;">
+                        <label>&nbsp;</label>
+                        <button class="btn btn-verde" onclick="guardarProveedor()">💾 Guardar</button>
+                    </div>
+                    <div class="campo-flex" style="min-width:120px; justify-content:flex-end;">
+                        <label>&nbsp;</label>
+                        <button class="btn btn-gris" onclick="limpiarFormProveedor()">🧹 Limpiar</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tarjeta borde-teal reveal">
+                <h3 class="teal">📋 LISTA DE PROVEEDORES</h3>
+                <div class="tabla-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Proveedor</th>
+                                <th>Categoría</th>
+                                <th>RUC</th>
+                                <th>Teléfono</th>
+                                <th>Dirección</th>
+                                <th>E-mail</th>
+                                <th>Contacto</th>
+                                <th class="text-center">Órdenes activas</th>
+                                <th class="text-center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaProveedores">
+                            <tr><td colspan="9" class="text-center sin-registros">Cargando proveedores...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============ PESTAÑA 2: ÓRDENES OC/OS ============ -->
+        <div id="pestanaOrden" class="oculto">
+
+            <div class="tarjeta borde-ambar reveal">
+                <h3 class="ambar">📑 ÓRDENES DE COMPRA (OC) Y ORDENES DE SERVICIO (OS)</h3>
+                <div class="filtro-bar">
+                    <div class="campo-flex" style="min-width:130px;">
+                        <label>Tipo</label>
+                        <select id="filtroOrdenTipo">
+                            <option value="">Todos</option>
+                            <option value="OC">OC — Compra</option>
+                            <option value="OS">OS — Servicio</option>
+                        </select>
+                    </div>
+                    <div class="campo-flex" style="min-width:140px;">
+                        <label>Estado</label>
+                        <select id="filtroOrdenEstado">
+                            <option value="">Todos</option>
+                            <option value="PENDIENTE">Pendiente</option>
+                            <option value="EMITIDA">Emitida</option>
+                            <option value="RECIBIDA">Recibida / En ejecución</option>
+                            <option value="COMPLETADA">Completada</option>
+                            <option value="CANCELADA">Cancelada</option>
+                        </select>
+                    </div>
+                    <div class="campo-flex" style="min-width:160px;">
+                        <label>Proveedor</label>
+                        <select id="filtroOrdenProveedor"><option value="">Todos</option></select>
+                    </div>
+                    <div class="campo-flex" style="min-width:120px; justify-content:flex-end;">
+                        <label>&nbsp;</label>
+                        <button class="btn" onclick="cargarOrdenes()">🔍 Filtrar</button>
+                    </div>
+                    <div class="campo-flex" style="min-width:140px; justify-content:flex-end;">
+                        <label>&nbsp;</label>
+                        <button class="btn btn-teal" onclick="nuevaOrden()">➕ Nueva Orden</button>
+                    </div>
+                </div>
+
+                <div id="formOrden" class="oculto" style="margin-top:18px; padding-top:16px; border-top:1px solid rgba(0,0,0,0.08);">
+                    <div class="filtro-bar">
+                        <div class="campo-flex" style="min-width:110px;">
+                            <label>Tipo</label>
+                            <select id="ordenTipo">
+                                <option value="OC">OC — Compra de bienes</option>
+                                <option value="OS">OS — Servicio</option>
+                            </select>
+                        </div>
+                        <div class="campo-flex" style="min-width:120px;">
+                            <label>Número de orden *</label>
+                            <input type="text" id="ordenNumero" placeholder="Ej. 0001">
+                        </div>
+                        <div class="campo-flex" style="min-width:140px;">
+                            <label>Fecha</label>
+                            <input type="date" id="ordenFecha">
+                        </div>
+                        <div class="campo-flex" style="min-width:170px;">
+                            <label>Proveedor *</label>
+                            <select id="ordenProveedor"><option value="">Seleccione...</option></select>
+                        </div>
+                        <div class="campo-flex" style="min-width:140px;">
+                            <label>Estado</label>
+                            <select id="ordenEstado">
+                                <option value="PENDIENTE">Pendiente</option>
+                                <option value="EMITIDA">Emitida</option>
+                                <option value="RECIBIDA">Recibida / En ejecución</option>
+                                <option value="COMPLETADA">Completada</option>
+                                <option value="CANCELADA">Cancelada</option>
+                            </select>
+                        </div>
+                        <div class="campo-flex" style="flex:2; min-width:160px;">
+                            <label>Observaciones</label>
+                            <input type="text" id="ordenObs" placeholder="Notas de la orden">
+                        </div>
+                    </div>
+
+                    <h3 class="ambar" style="margin-top:18px;">🧾 ÍTEMS DE LA ORDEN</h3>
+                    <div class="aviso aviso-ambar" style="margin-top:0;">ℹ️ Al guardar una orden en estado <b>EMITIDA</b>, la cantidad solicitada se <b>suma</b> al Stock de Proveedores. Al llegar la guía, se <b>resta</b> (botón "Recibir" o automáticamente desde la conformidad de la guía).</div>
+                    <div class="tabla-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Producto / Servicio *</th>
+                                    <th style="width:110px;">Unidad</th>
+                                    <th style="width:100px;">Cantidad *</th>
+                                    <th style="width:110px;">Precio</th>
+                                    <th style="width:110px;">Subtotal</th>
+                                    <th style="width:50px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyItemsOrden"></tbody>
+                        </table>
+                    </div>
+                    <div style="text-align:center; margin-top:12px;">
+                        <button class="btn btn-gris btn-mini" onclick="agregarFilaItem()">➕ Agregar ítem</button>
+                    </div>
+
+                    <div class="total-box">
+                        <div class="total-item">
+                            <label>Total de la orden (S/)</label>
+                            <div class="valor" id="ordenTotal">0.00</div>
+                        </div>
+                    </div>
+
+                    <div class="footer-acciones">
+                        <button class="btn btn-verde" onclick="guardarOrden()">💾 Guardar Orden</button>
+                        <button class="btn btn-gris" onclick="cancelarEdicionOrden()">✖ Cancelar edición</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tarjeta borde-ambar reveal">
+                <h3 class="ambar">📋 LISTA DE ÓRDENES</h3>
+                <div class="tabla-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Nº</th>
+                                <th>Tipo</th>
+                                <th>Número</th>
+                                <th>Fecha</th>
+                                <th>Proveedor</th>
+                                <th class="text-center">Ítems</th>
+                                <th class="text-center">Cantidad</th>
+                                <th class="text-center">Recibido</th>
+                                <th class="text-center">Total (S/)</th>
+                                <th>Estado</th>
+                                <th class="text-center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaOrdenes">
+                            <tr><td colspan="11" class="text-center sin-registros">Cargando órdenes...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============ PESTAÑA 3: STOCK DE PROVEEDORES ============ -->
+        <div id="pestanaStock" class="oculto">
+
+            <div class="tarjeta borde-azul reveal">
+                <h3>📦 STOCK DE PROVEEDORES</h3>
+                <div class="aviso aviso-info">ℹ️ Acumula lo <b>emitido</b> en Órdenes de Compra/Servicio (suma) y se <b>resta cuando llega la guía</b> de la cantidad emitida. Dos formas de restar: con el botón <b>Recibir</b> de cada orden, o automáticamente cuando se hace la conformidad de una guía en Almacén/Vigilancia con el mismo proveedor y producto.</div>
+                <div class="filtro-bar">
+                    <div class="campo-flex" style="min-width:180px;">
+                        <label>Filtrar por proveedor</label>
+                        <select id="filtroStockProveedor"><option value="">Todos</option></select>
+                    </div>
+                    <div class="campo-flex" style="min-width:120px; justify-content:flex-end;">
+                        <label>&nbsp;</label>
+                        <button class="btn" onclick="cargarStock()">🔍 Filtrar</button>
+                    </div>
+                </div>
+                <div class="tabla-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Proveedor</th>
+                                <th>Producto</th>
+                                <th>Unidad</th>
+                                <th class="text-center">Stock (por recibir)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaStockProv">
+                            <tr><td colspan="4" class="text-center sin-registros">Cargando stock...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="total-box">
+                    <div class="total-item">
+                        <label>Total de ítems</label>
+                        <div class="valor" id="stockTotItems">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tarjeta borde-azul reveal">
+                <h3>🕓 MOVIMIENTOS RECIENTES</h3>
+                <div class="tabla-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Tipo</th>
+                                <th>Origen</th>
+                                <th>Proveedor</th>
+                                <th>Producto</th>
+                                <th class="text-center">Cantidad</th>
+                                <th>Orden</th>
+                                <th>Guía</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaMovProv" class="oculto">
+                            <tr><td colspan="8" class="text-center sin-registros">Sin movimientos.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <div class="footer-acciones">
-            <span class="nota-legal">Corporación Belcen S.A.C. · Base de Datos General · Módulo en construcción</span>
+            <span class="nota-legal">Corporación Belcen S.A.C. · Base de Datos General · Proveedores, Órdenes y Stock</span>
+        </div>
+    </div>
+
+    <!-- MODAL RECIBIR -->
+    <div class="modal-fondo oculto" id="modalRecibir">
+        <div class="modal">
+            <h3>📥 Recibir (Restar del Stock de Proveedores)</h3>
+            <p class="sub" style="text-align:left; margin-bottom:14px;" id="recibirInfoOrden">Orden #</p>
+            <div class="tabla-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Producto / Servicio</th>
+                            <th class="text-center">Emitido</th>
+                            <th class="text-center">Recibido</th>
+                            <th class="text-center">Por recibir</th>
+                            <th class="text-center">Recibe ahora</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbodyRecibir"></tbody>
+                </table>
+            </div>
+            <div class="filtro-bar" style="margin-top:14px;">
+                <div class="campo-flex" style="min-width:150px;">
+                    <label>N° de guía</label>
+                    <input type="text" id="recibirGuia" placeholder="N° de guía">
+                </div>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;">
+                <button class="btn btn-verde" onclick="confirmarRecibir()">✅ Confirmar Recepción</button>
+                <button class="btn btn-gris" onclick="cerrarModalRecibir()">✖ Cerrar</button>
+            </div>
         </div>
     </div>
 
@@ -204,6 +590,10 @@
             document.getElementById('linkDashboard').style.display = 'none';
         }
 
+        let proveedorEditando = null;
+        let ordenEditando = null;
+        let ordenRecibir = null;
+
         function cerrarSesion() {
             if (confirm('¿Estás seguro de que deseas cerrar sesión?')) {
                 limpiarSesion();
@@ -217,6 +607,496 @@
             el.className = 'mensaje ' + (ok ? 'ok' : 'err');
             setTimeout(() => { el.textContent = ''; el.className = 'mensaje'; }, 6000);
         }
+
+        function escapeHtml(str) {
+            return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function fmtN(n) {
+            const v = Number(n) || 0;
+            return Number.isInteger(v) ? String(v) : v.toFixed(2);
+        }
+
+        function etiquetarTablas() {
+            document.querySelectorAll('.tabla-wrap table').forEach(tabla => {
+                const ths = Array.from(tabla.querySelectorAll('thead th'))
+                    .map(th => th.textContent.replace(/\s+/g, ' ').trim());
+                if (!ths.length) return;
+                tabla.querySelectorAll('tbody tr').forEach(fila => {
+                    const celdas = Array.from(fila.cells);
+                    if (celdas.length !== ths.length) return;
+                    celdas.forEach((td, i) => { td.dataset.label = ths[i]; });
+                });
+            });
+        }
+
+        function estadoBadge(estado) {
+            const e = String(estado || '');
+            if (e === 'COMPLETADA') return '<span class="badge badge-suficiente">✅ COMPLETADA</span>';
+            if (e === 'CANCELADA') return '<span class="badge badge-pedido">⛔ CANCELADA</span>';
+            if (e === 'RECIBIDA') return '<span class="badge badge-dia">📥 RECIBIDA / EN EJECUCIÓN</span>';
+            if (e === 'EMITIDA') return '<span class="badge badge-noche">🚀 EMITIDA</span>';
+            return '<span class="badge badge-dia">📝 PENDIENTE</span>';
+        }
+
+        function mostrarPestana(nombre) {
+            document.getElementById('pestanaProv').classList.toggle('oculto', nombre !== 'prov');
+            document.getElementById('pestanaOrden').classList.toggle('oculto', nombre !== 'orden');
+            document.getElementById('pestanaStock').classList.toggle('oculto', nombre !== 'stock');
+            document.getElementById('pestanaBtnProv').classList.toggle('activa', nombre === 'prov');
+            document.getElementById('pestanaBtnOrden').classList.toggle('activa', nombre === 'orden');
+            document.getElementById('pestanaBtnStock').classList.toggle('activa', nombre === 'stock');
+            if (nombre === 'prov') cargarProveedores();
+            if (nombre === 'orden') { poblarSelectProveedores(); cargarOrdenes(); }
+            if (nombre === 'stock') { poblarSelectProveedores(); cargarStock(); cargarMovimientos(); }
+        }
+
+        async function api(url, opciones) {
+            const res = await fetch(url, opciones);
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.success === false) {
+                throw new Error(data.mensaje || 'Error del servidor.');
+            }
+            return data;
+        }
+
+        // ============ PROVEEDORES ============
+        function limpiarFormProveedor() {
+            proveedorEditando = null;
+            document.getElementById('provNombre').value = '';
+            document.getElementById('provCategoria').value = 'Materia Prima';
+            document.getElementById('provRuc').value = '';
+            document.getElementById('provTelefono').value = '';
+            document.getElementById('provDireccion').value = '';
+            document.getElementById('provEmail').value = '';
+            document.getElementById('provContacto').value = '';
+        }
+
+        async function cargarProveedores() {
+            try {
+                const data = await api('/api/bd/proveedores');
+                const tbody = document.getElementById('tablaProveedores');
+                if (!data.proveedores.length) {
+                    tbody.innerHTML = '<tr><td colspan="9" class="text-center sin-registros">Sin proveedores registrados.</td></tr>';
+                } else {
+                    tbody.innerHTML = data.proveedores.map(p => `
+                        <tr>
+                            <td><b>${escapeHtml(p.nombre)}</b></td>
+                            <td>${escapeHtml(p.categoria)}</td>
+                            <td>${escapeHtml(p.ruc) || '-'}</td>
+                            <td>${escapeHtml(p.telefono) || '-'}</td>
+                            <td>${escapeHtml(p.direccion) || '-'}</td>
+                            <td>${escapeHtml(p.email) || '-'}</td>
+                            <td>${escapeHtml(p.contacto) || '-'}</td>
+                            <td class="text-center"><b>${p.ordenes_activas}</b></td>
+                            <td class="text-center">
+                                <div class="acciones-celda" style="justify-content:center;">
+                                    <button class="btn btn-mini" onclick="editarProveedor(${p.id})">✏️ Editar</button>
+                                    <button class="btn btn-mini btn-rojo" onclick="eliminarProveedor(${p.id})">🗑️</button>
+                                </div>
+                            </td>
+                        </tr>`).join('');
+                }
+                etiquetarTablas();
+                poblarSelectProveedores();
+            } catch (err) {
+                document.getElementById('tablaProveedores').innerHTML = `<tr><td colspan="9" class="text-center sin-registros">${escapeHtml(err.message)}</td></tr>`;
+            }
+        }
+
+        async function guardarProveedor() {
+            const nombre = document.getElementById('provNombre').value.trim();
+            if (!nombre) { alert('❌ Ingrese el nombre del proveedor.'); return; }
+            const cuerpo = {
+                nombre,
+                categoria: document.getElementById('provCategoria').value,
+                ruc: document.getElementById('provRuc').value,
+                telefono: document.getElementById('provTelefono').value,
+                direccion: document.getElementById('provDireccion').value,
+                email: document.getElementById('provEmail').value,
+                contacto: document.getElementById('provContacto').value
+            };
+            try {
+                if (proveedorEditando) {
+                    await api('/api/bd/proveedores/' + proveedorEditando, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
+                    mostrarMensaje('✅ Proveedor actualizado.', true);
+                } else {
+                    await api('/api/bd/proveedores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
+                    mostrarMensaje('✅ Proveedor registrado.', true);
+                }
+                limpiarFormProveedor();
+                cargarProveedores();
+            } catch (err) {
+                alert('❌ ' + err.message);
+            }
+        }
+
+        function editarProveedor(id) {
+            api('/api/bd/proveedores').then(data => {
+                const p = data.proveedores.find(x => x.id === id);
+                if (!p) return;
+                proveedorEditando = id;
+                document.getElementById('provNombre').value = p.nombre;
+                document.getElementById('provCategoria').value = p.categoria;
+                document.getElementById('provRuc').value = p.ruc || '';
+                document.getElementById('provTelefono').value = p.telefono || '';
+                document.getElementById('provDireccion').value = p.direccion || '';
+                document.getElementById('provEmail').value = p.email || '';
+                document.getElementById('provContacto').value = p.contacto || '';
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+        }
+
+        async function eliminarProveedor(id) {
+            if (!confirm('¿Eliminar este proveedor?')) return;
+            try {
+                await api('/api/bd/proveedores/' + id, { method: 'DELETE' });
+                mostrarMensaje('✅ Proveedor eliminado.', true);
+                cargarProveedores();
+            } catch (err) {
+                alert('❌ ' + err.message);
+            }
+        }
+
+        function poblarSelectProveedores() {
+            api('/api/bd/proveedores').then(data => {
+                const opts = data.proveedores.map(p => `<option value="${p.id}">${escapeHtml(p.nombre)}</option>`).join('');
+                const selects = ['ordenProveedor', 'filtroOrdenProveedor', 'filtroStockProveedor'];
+                selects.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    const actual = el.value;
+                    el.innerHTML = `<option value="">${id === 'ordenProveedor' ? 'Seleccione...' : 'Todos'}</option>` + opts;
+                    if (actual) el.value = actual;
+                });
+            }).catch(() => {});
+        }
+
+        // ============ ÓRDENES OC/OS ============
+        function nuevaOrden() {
+            ordenEditando = null;
+            document.getElementById('formOrden').classList.remove('oculto');
+            document.getElementById('ordenTipo').value = 'OC';
+            document.getElementById('ordenNumero').value = '';
+            document.getElementById('ordenFecha').value = new Date().toISOString().slice(0, 10);
+            document.getElementById('ordenProveedor').value = '';
+            document.getElementById('ordenEstado').value = 'EMITIDA';
+            document.getElementById('ordenObs').value = '';
+            document.getElementById('tbodyItemsOrden').innerHTML = '';
+            agregarFilaItem();
+            recalcularTotalOrden();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function cancelarEdicionOrden() {
+            ordenEditando = null;
+            document.getElementById('formOrden').classList.add('oculto');
+        }
+
+        function agregarFilaItem() {
+            const tbody = document.getElementById('tbodyItemsOrden');
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><input type="text" class="item-desc" placeholder="Producto o servicio"></td>
+                <td><input type="text" class="item-uni" value="UNIDADES"></td>
+                <td><input type="number" class="item-cant" min="0" step="0.01" value="0" oninput="recalcularTotalOrden()"></td>
+                <td><input type="number" class="item-prec" min="0" step="0.01" value="0" oninput="recalcularTotalOrden()"></td>
+                <td class="text-center item-sub">0.00</td>
+                <td class="text-center"><button class="btn-x-quitar" onclick="quitarFilaItem(this)">✖</button></td>
+            `;
+            tbody.appendChild(tr);
+            etiquetarTablas();
+        }
+
+        function quitarFilaItem(btn) {
+            const tbody = document.getElementById('tbodyItemsOrden');
+            if (tbody.rows.length <= 1) { alert('La orden necesita al menos un ítem.'); return; }
+            btn.closest('tr').remove();
+            recalcularTotalOrden();
+        }
+
+        function recalcularTotalOrden() {
+            let total = 0;
+            document.querySelectorAll('#tbodyItemsOrden tr').forEach(tr => {
+                const cant = Number(tr.querySelector('.item-cant').value) || 0;
+                const prec = Number(tr.querySelector('.item-prec').value) || 0;
+                const sub = cant * prec;
+                tr.querySelector('.item-sub').textContent = sub.toFixed(2);
+                total += sub;
+            });
+            document.getElementById('ordenTotal').textContent = total.toFixed(2);
+        }
+
+        function leerItemsFormulario() {
+            const items = [];
+            document.querySelectorAll('#tbodyItemsOrden tr').forEach(tr => {
+                const descripcion = tr.querySelector('.item-desc').value.trim();
+                const cantidad = Number(tr.querySelector('.item-cant').value);
+                if (!descripcion || !(cantidad > 0)) return;
+                items.push({
+                    id: tr.dataset.itemId ? parseInt(tr.dataset.itemId, 10) : null,
+                    descripcion,
+                    unidad: tr.querySelector('.item-uni').value.trim().toUpperCase() || 'UNIDADES',
+                    cantidad,
+                    precio: Number(tr.querySelector('.item-prec').value) || 0
+                });
+            });
+            return items;
+        }
+
+        async function cargarOrdenes() {
+            try {
+                const tipo = document.getElementById('filtroOrdenTipo').value;
+                const estado = document.getElementById('filtroOrdenEstado').value;
+                const provId = document.getElementById('filtroOrdenProveedor').value;
+                const qs = new URLSearchParams({ tipo, estado, proveedor_id: provId || '' });
+                const data = await api('/api/bd/ordenes?' + qs.toString());
+                const tbody = document.getElementById('tablaOrdenes');
+                if (!data.ordenes.length) {
+                    tbody.innerHTML = '<tr><td colspan="11" class="text-center sin-registros">Sin órdenes para los filtros seleccionados.</td></tr>';
+                } else {
+                    tbody.innerHTML = data.ordenes.map(o => `
+                        <tr>
+                            <td><span class="pres ${o.tipo === 'OC' ? 'oc' : 'os'}">${o.tipo}</span></td>
+                            <td><b>#${escapeHtml(o.numero)}</b></td>
+                            <td>${escapeHtml(o.fecha_orden) || '-'}</td>
+                            <td>${escapeHtml(o.proveedor_nombre)}</td>
+                            <td class="text-center">${o.n_items}</td>
+                            <td class="text-center">${fmtN(o.total_cantidad)}</td>
+                            <td class="text-center">${fmtN(o.total_recibido)}</td>
+                            <td class="text-center"><b>S/ ${Number(o.total).toFixed(2)}</b></td>
+                            <td>${estadoBadge(o.estado)}</td>
+                            <td class="text-center">
+                                <div class="acciones-celda" style="justify-content:center;">
+                                    <button class="btn btn-mini" onclick="editarOrden(${o.id})">✏️ Editar</button>
+                                    <button class="btn btn-mini btn-verde" onclick="abrirRecibir(${o.id})" ${String(o.estado) === 'CANCELADA' ? 'disabled' : ''}>📥 Recibir</button>
+                                    <button class="btn btn-mini btn-gris" onclick="cambiarEstadoOrden(${o.id})">C🔄</button>
+                                    <button class="btn btn-mini btn-rojo" onclick="eliminarOrden(${o.id})">🗑️</button>
+                                </div>
+                            </td>
+                        </tr>`).join('');
+                }
+                etiquetarTablas();
+            } catch (err) {
+                document.getElementById('tablaOrdenes').innerHTML = `<tr><td colspan="11" class="text-center sin-registros">${escapeHtml(err.message)}</td></tr>`;
+            }
+        }
+
+        async function guardarOrden() {
+            const tipo = document.getElementById('ordenTipo').value;
+            const numero = document.getElementById('ordenNumero').value.trim();
+            const proveedorId = document.getElementById('ordenProveedor').value;
+            if (!numero) { alert('❌ Ingrese el número de la orden.'); return; }
+            if (!proveedorId) { alert('❌ Seleccione un proveedor.'); return; }
+            const items = leerItemsFormulario();
+            if (!items.length) { alert('❌ Agregue al menos un ítem válido.'); return; }
+            const cuerpo = {
+                tipo,
+                numero,
+                fecha_orden: document.getElementById('ordenFecha').value,
+                proveedor_id: parseInt(proveedorId, 10),
+                estado: document.getElementById('ordenEstado').value,
+                observaciones: document.getElementById('ordenObs').value.trim(),
+                items
+            };
+            try {
+                if (ordenEditando) {
+                    await api('/api/bd/ordenes/' + ordenEditando, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
+                    mostrarMensaje('✅ Orden actualizada.', true);
+                } else {
+                    await api('/api/bd/ordenes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
+                    mostrarMensaje('✅ Orden creada. Stock de proveedores actualizado.', true);
+                }
+                cancelarEdicionOrden();
+                cargarOrdenes();
+                cargarStock();
+            } catch (err) {
+                alert('❌ ' + err.message);
+            }
+        }
+
+        async function editarOrden(id) {
+            try {
+                const data = await api('/api/bd/ordenes/' + id);
+                ordenEditando = id;
+                document.getElementById('formOrden').classList.remove('oculto');
+                document.getElementById('ordenTipo').value = data.orden.tipo;
+                document.getElementById('ordenNumero').value = data.orden.numero;
+                document.getElementById('ordenFecha').value = String(data.orden.fecha_orden || '').slice(0, 10);
+                document.getElementById('ordenProveedor').value = data.orden.proveedor_id || '';
+                document.getElementById('ordenEstado').value = data.orden.estado;
+                document.getElementById('ordenObs').value = data.orden.observaciones || '';
+                const tbody = document.getElementById('tbodyItemsOrden');
+                tbody.innerHTML = '';
+                data.items.forEach(it => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><input type="text" class="item-desc" value="${escapeHtml(it.descripcion)}"></td>
+                        <td><input type="text" class="item-uni" value="${escapeHtml(it.unidad)}"></td>
+                        <td><input type="number" class="item-cant" min="0" step="0.01" value="${Number(it.cantidad)}" oninput="recalcularTotalOrden()"></td>
+                        <td><input type="number" class="item-prec" min="0" step="0.01" value="${Number(it.precio) || 0}" oninput="recalcularTotalOrden()"></td>
+                        <td class="text-center item-sub">0.00</td>
+                        <td class="text-center"><button class="btn-x-quitar" onclick="quitarFilaItem(this)">✖</button></td>
+                    `;
+                    tr.dataset.itemId = it.id;
+                    tbody.appendChild(tr);
+                });
+                if (!data.items.length) agregarFilaItem();
+                recalcularTotalOrden();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                cargarOrdenes();
+            } catch (err) {
+                alert('❌ ' + err.message);
+            }
+        }
+
+        async function eliminarOrden(id) {
+            if (!confirm('¿Eliminar esta orden? Se restaurará el stock de proveedores (lo no recibido).')) return;
+            try {
+                await api('/api/bd/ordenes/' + id, { method: 'DELETE' });
+                mostrarMensaje('✅ Orden eliminada. Stock restaurado.', true);
+                cargarOrdenes();
+                cargarStock();
+            } catch (err) {
+                alert('❌ ' + err.message);
+            }
+        }
+
+        async function cambiarEstadoOrden(id) {
+            const estados = ['PENDIENTE', 'EMITIDA', 'RECIBIDA', 'COMPLETADA', 'CANCELADA'];
+            const nuevo = prompt('Nuevo estado de la orden:\n' + estados.map(e => '• ' + e).join('\n'), 'EMITIDA');
+            if (!nuevo) return;
+            const val = String(nuevo).trim().toUpperCase();
+            if (!estados.includes(val)) { alert('❌ Estado no válido.'); return; }
+            try {
+                await api('/api/bd/ordenes/' + id + '/estado', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ estado: val })
+                });
+                mostrarMensaje('✅ Estado actualizado. Stock de proveedores recalculado.', true);
+                cargarOrdenes();
+                cargarStock();
+            } catch (err) {
+                alert('❌ ' + err.message);
+            }
+        }
+
+        async function abrirRecibir(id) {
+            try {
+                const data = await api('/api/bd/ordenes/' + id);
+                if (String(data.orden.estado) === 'CANCELADA') { alert('❌ No se puede recibir una orden cancelada.'); return; }
+                ordenRecibir = data;
+                document.getElementById('recibirInfoOrden').textContent = `Orden ${data.orden.tipo} #${data.orden.numero} — ${data.orden.proveedor_nombre || ''} — Estado: ${data.orden.estado}`;
+                const tbody = document.getElementById('tbodyRecibir');
+                tbody.innerHTML = data.items.map(it => {
+                    const pendiente = Math.max(0, Number(it.cantidad) - Number(it.recibido));
+                    return `
+                        <tr data-item-id="${it.id}">
+                            <td><b>${escapeHtml(it.descripcion)}</b></td>
+                            <td class="text-center">${fmtN(it.cantidad)}</td>
+                            <td class="text-center">${fmtN(it.recibido)}</td>
+                            <td class="text-center">${fmtN(pendiente)}</td>
+                            <td class="text-center"><input type="number" class="rec-cant" min="0" step="0.01" value="${pendiente > 0 ? fmtN(pendiente) : '0'}"></td>
+                        </tr>`;
+                }).join('');
+                document.getElementById('recibirGuia').value = '';
+                document.getElementById('modalRecibir').classList.remove('oculto');
+                etiquetarTablas();
+            } catch (err) {
+                alert('❌ ' + err.message);
+            }
+        }
+
+        function cerrarModalRecibir() {
+            ordenRecibir = null;
+            document.getElementById('modalRecibir').classList.add('oculto');
+        }
+
+        async function confirmarRecibir() {
+            if (!ordenRecibir) return;
+            const items = [];
+            document.querySelectorAll('#tbodyRecibir tr').forEach(tr => {
+                const cant = Number(tr.querySelector('.rec-cant').value) || 0;
+                if (cant > 0) items.push({ item_id: parseInt(tr.dataset.itemId, 10), cantidad_recibida: cant });
+            });
+            if (!items.length) { alert('❌ Ingrese una cantidad a recibir.'); return; }
+            try {
+                const data = await api('/api/bd/ordenes/' + ordenRecibir.orden.id + '/recibir', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ items, numero_guia: document.getElementById('recibirGuia').value.trim() })
+                });
+                mostrarMensaje('✅ Recepción registrada. Stock de proveedores actualizado.', true);
+                cerrarModalRecibir();
+                cargarOrdenes();
+                cargarStock();
+            } catch (err) {
+                alert('❌ ' + err.message);
+            }
+        }
+
+        // ============ STOCK DE PROVEEDORES ============
+        async function cargarStock() {
+            try {
+                const provId = document.getElementById('filtroStockProveedor').value;
+                const qs = provId ? '?proveedor_id=' + provId : '';
+                const data = await api('/api/bd/stock-proveedores' + qs);
+                const tbody = document.getElementById('tablaStockProv');
+                if (!data.stock.length) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-center sin-registros">No hay stock acumulado. Emite una OC/OS para comenzar.</td></tr>';
+                    document.getElementById('stockTotItems').textContent = '0';
+                } else {
+                    let tot = 0;
+                    tbody.innerHTML = data.stock.map(s => {
+                        tot += Number(s.stock) || 0;
+                        return `
+                            <tr>
+                                <td><b>${escapeHtml(s.proveedor_nombre)}</b>${s.categoria_proveedor ? '<br><small>' + escapeHtml(s.categoria_proveedor) + '</small>' : ''}</td>
+                                <td>${escapeHtml(s.producto)}</td>
+                                <td>${escapeHtml(s.unidad)}</td>
+                                <td class="text-center"><b>${fmtN(s.stock)}</b></td>
+                            </tr>`;
+                    }).join('');
+                    document.getElementById('stockTotItems').textContent = fmtN(tot);
+                }
+                etiquetarTablas();
+            } catch (err) {
+                document.getElementById('tablaStockProv').innerHTML = `<tr><td colspan="4" class="text-center sin-registros">${escapeHtml(err.message)}</td></tr>`;
+            }
+        }
+
+        async function cargarMovimientos() {
+            try {
+                const provId = document.getElementById('filtroStockProveedor').value;
+                const qs = provId ? '?proveedor_id=' + provId : '';
+                const data = await api('/api/bd/stock-proveedores/movimientos' + qs);
+                const tbody = document.getElementById('tablaMovProv');
+                tbody.classList.remove('oculto');
+                if (!data.movimientos.length) {
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center sin-registros">Sin movimientos aún.</td></tr>';
+                } else {
+                    tbody.innerHTML = data.movimientos.map(m => `
+                        <tr>
+                            <td>${String(m.fecha_registro || '').slice(0, 16).replace('T', ' ')}</td>
+                            <td>${m.tipo === 'RESTA' ? '<span class="badge badge-pedido">RESTA</span>' : '<span class="badge badge-suficiente">SUMA</span>'}</td>
+                            <td>${escapeHtml(m.origen)}</td>
+                            <td>${escapeHtml(m.proveedor)}</td>
+                            <td>${escapeHtml(m.producto)}</td>
+                            <td class="text-center"><b>${fmtN(m.cantidad)}</b> ${escapeHtml(m.unidad)}</td>
+                            <td>${escapeHtml(m.orden_ref) || '-'}</td>
+                            <td>${escapeHtml(m.guia_ref) || '-'}</td>
+                        </tr>`).join('');
+                }
+                etiquetarTablas();
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        document.getElementById('ordenFecha').value = new Date().toISOString().slice(0, 10);
+        cargarProveedores();
+        registrarAutoRefresco(cargarProveedores, 30000);
     </script>
 </body>
 </html>

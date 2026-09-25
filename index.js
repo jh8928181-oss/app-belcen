@@ -457,6 +457,13 @@ app.post('/api/almacen/conformidad', async (req, res) => {
             `, [ingreso.numero_guia, ingreso.proveedor, nombreFinal, cantidadFisica, estadoItem, targetArticuloId]);
         }
 
+        // BASE DE DATOS GENERAL: disminuye el stock de proveedores por la cantidad que llegó en la guía.
+        try {
+            await aplicarGuiaAStockProveedores(client, ingreso.proveedor, items, ingreso.numero_guia, usuarioResponsable(req, usuario_almacen));
+        } catch (eAuto) {
+            console.error('Guía -> stock proveedores (conformidad):', eAuto.message);
+        }
+
         const estadoFinalIngreso = tieneDiferencias ? 'CONFORME CON DIFERENCIAS (POR REGULARIZAR)' : `RECIBIDO POR ${usuario_almacen}`;
         await client.query(`UPDATE ingresos_vigilancia SET estado = $1 WHERE id = $2`, [estadoFinalIngreso, ingreso_id]);
 
@@ -569,6 +576,13 @@ app.post('/api/almacen/registrar-conforme', upload.single('foto_guia'), async (r
                  VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6)`,
                 [numero_guia, proveedor, item.nombre, item.cantidad_fisica, estadoItem, targetArticuloId]
             );
+        }
+
+        // BASE DE DATOS GENERAL: disminuye el stock de proveedores por la cantidad que llegó en la guía.
+        try {
+            await aplicarGuiaAStockProveedores(client, proveedor, items, numero_guia, usuarioRegistro);
+        } catch (eAuto) {
+            console.error('Guía -> stock proveedores (registrar-conforme):', eAuto.message);
         }
 
         await client.query('COMMIT');
@@ -3165,6 +3179,655 @@ app.post('/api/almacen/stock-refinado/ajustar', requerirRolAlmacenInvRef, async 
     } catch (err) {
         console.error('Error ajustar stock refinado:', err);
         res.status(500).json({ success: false, mensaje: 'Error en el servidor: ' + err.message });
+    }
+});
+
+// ================== BASE DE DATOS GENERAL: PROVEEDORES, OC/OS Y STOCK DE PROVEEDORES ==================
+const ROLES_BD_GENERAL = ['admin', 'auditoria'];
+function requerirRolBDGeneral(req, res, next) {
+    if (!ROLES_BD_GENERAL.includes(req.rol)) {
+        return res.status(403).json({ success: false, mensaje: 'Acceso no autorizado.' });
+    }
+    next();
+}
+
+const CATEGORIAS_PROVEEDOR = ['Materia Prima', 'Embalajes', 'Servicios', 'Otros'];
+const ESTADOS_ORDEN = ['PENDIENTE', 'EMITIDA', 'RECIBIDA', 'COMPLETADA', 'CANCELADA'];
+// Estados en los que la cantidad emitida de la orden ya se sumó al stock de proveedores.
+const ESTADOS_EMITIDOS = new Set(['EMITIDA', 'RECIBIDA', 'COMPLETADA']);
+function esEmitida(o) { return !!(o && ESTADOS_EMITIDOS.has(String(o.estado || ''))); }
+
+async function registrarHistorialStockProveedor(q, datos) {
+    try {
+        await q.query(
+            `INSERT INTO stock_proveedores_historial (tipo, origen, proveedor, producto, unidad, cantidad, orden_ref, guia_ref, usuario)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [
+                datos.tipo || 'SUMA',
+                datos.origen || 'OC/OS',
+                (datos.proveedor || '').trim(),
+                (datos.producto || '').trim(),
+                datos.unidad || 'UNIDADES',
+                Number(datos.cantidad) || 0,
+                datos.orden_ref || null,
+                datos.guia_ref || null,
+                datos.usuario || 'sistema'
+            ]
+        );
+    } catch (err) {
+        console.error("No se pudo registrar en stock_proveedores_historial:", err.message);
+    }
+}
+
+// Suma (signo=1) o resta (signo=-1) un producto al stock agregado de un proveedor (nunca baja de 0).
+async function upsertStockProveedor(q, datos) {
+    const proveedor = String(datos.proveedor || '').trim();
+    const producto = String(datos.producto || '').trim();
+    const cantidad = Number(datos.cantidad);
+    if (!proveedor || !producto || !(cantidad > 0)) return;
+    const signo = Number(datos.signo) >= 0 ? 1 : -1;
+    const unidad = datos.unidad || 'UNIDADES';
+    const usuario = datos.usuario || 'sistema';
+
+    const res = await q.query(
+        `SELECT id, stock FROM stock_proveedores
+         WHERE LOWER(BTRIM(proveedor_nombre)) = LOWER(BTRIM($1)) AND LOWER(BTRIM(producto)) = LOWER(BTRIM($2))`,
+        [proveedor, producto]
+    );
+    let stockAnterior = 0;
+    let stockNuevo = 0;
+    if (res.rows.length) {
+        stockAnterior = Number(res.rows[0].stock) || 0;
+        stockNuevo = Math.max(0, stockAnterior + signo * cantidad);
+        await q.query(
+            `UPDATE stock_proveedores
+             SET stock = $1::numeric, unidad = $2, usuario_registro = $3, fecha_actualizacion = CURRENT_TIMESTAMP
+             WHERE id = $4`,
+            [stockNuevo, unidad, usuario, res.rows[0].id]
+        );
+    } else {
+        stockNuevo = signo < 0 ? 0 : cantidad;
+        await q.query(
+            `INSERT INTO stock_proveedores (proveedor_nombre, producto, unidad, stock, usuario_registro)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [proveedor, producto, unidad, stockNuevo, usuario]
+        );
+    }
+    await registrarHistorialStockProveedor(q, {
+        tipo: signo < 0 ? 'RESTA' : 'SUMA',
+        origen: datos.origen || 'OC/OS',
+        proveedor, producto, unidad, cantidad,
+        orden_ref: datos.orden_ref, guia_ref: datos.guia_ref, usuario
+    });
+}
+
+// Aplica el neto emitido de una orden a los ítems del stock de proveedores.
+// signo=1 emite (suma cantidad); signo=-1 revierte lo emitido (resta cantidad - recibido).
+async function aplicarItemsOrdenStock(q, items, proveedor, signo, usuario, ordenRef) {
+    for (const it of items || []) {
+        if (it === null || it === undefined) continue;
+        let cantidad = Number(it.cantidad) || 0;
+        if (signo < 0) {
+            cantidad = Math.max(0, cantidad - (Number(it.recibido) || 0));
+        }
+        if (!it.descripcion || !(cantidad > 0)) continue;
+        await upsertStockProveedor(q, {
+            proveedor, producto: it.descripcion, unidad: it.unidad || 'UNIDADES',
+            cantidad, signo, usuario, orden_ref: ordenRef || null,
+            origen: signo < 0 ? 'CANCELACION' : 'EMISION'
+        });
+    }
+}
+
+// Resta automáticamente la cantidad de una guía conformada del stock de proveedores (best-effort por nombre).
+async function aplicarGuiaAStockProveedores(q, proveedor, items, numeroGuia, usuario) {
+    if (!String(proveedor || '').trim()) return;
+    items = Array.isArray(items) ? items : [];
+    for (const it of items) {
+        const producto = String(it && (it.nombre || it.producto_nombre || it.descripcion) || '').trim();
+        const cant = Number(it && it.cantidad_fisica !== null && it.cantidad_fisica !== undefined ? it.cantidad_fisica : (it && it.cantidad)) || 0;
+        if (!producto || !(cant > 0)) continue;
+        const res = await q.query(
+            `SELECT id, stock FROM stock_proveedores
+             WHERE LOWER(BTRIM(proveedor_nombre)) = LOWER(BTRIM($1)) AND LOWER(BTRIM(producto)) = LOWER(BTRIM($2))`,
+            [String(proveedor).trim(), producto]
+        );
+        if (!res.rows.length) continue;
+        const disponible = Number(res.rows[0].stock) || 0;
+        if (disponible <= 0) continue;
+        const aRestar = Math.min(disponible, cant);
+        const nuevo = disponible - aRestar;
+        await q.query('UPDATE stock_proveedores SET stock = $1::numeric, fecha_actualizacion = CURRENT_TIMESTAMP WHERE id = $2', [nuevo, res.rows[0].id]);
+        await registrarHistorialStockProveedor(q, {
+            tipo: 'RESTA', origen: 'GUIA',
+            proveedor: String(proveedor).trim(), producto,
+            unidad: it.unidad_medida || it.unidad || 'UNIDADES', cantidad: aRestar,
+            orden_ref: null, guia_ref: numeroGuia || null, usuario: usuario || 'sistema'
+        });
+    }
+}
+
+function normalizarItemsOrden(items) {
+    const limpios = [];
+    let total = 0;
+    for (const it of Array.isArray(items) ? items : []) {
+        const descripcion = String(it && it.descripcion ? it.descripcion : '').trim();
+        const cantidad = Number(it && it.cantidad);
+        const precio = it && it.precio !== null && it.precio !== undefined && it.precio !== '' ? Number(it.precio) : 0;
+        if (!descripcion || !(cantidad > 0) || isNaN(precio)) continue;
+        const uni = String(it && it.unidad ? it.unidad : 'UNIDADES').trim().toUpperCase() || 'UNIDADES';
+        const subtotal = cantidad * precio;
+        total += subtotal;
+        limpios.push({
+            id: it.id ? parseInt(it.id, 10) : null,
+            descripcion, unidad: uni, cantidad, precio, subtotal, recibido: 0
+        });
+    }
+    return { items: limpios, total };
+}
+
+// ---- PROVEEDORES ----
+app.get('/api/bd/proveedores', requerirRolBDGeneral, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT p.*,
+                (SELECT COUNT(*)::int FROM ordenes_compras_servicios o WHERE o.proveedor_id = p.id AND o.estado <> 'CANCELADA') AS ordenes_activas
+            FROM proveedores p
+            ORDER BY LOWER(p.nombre) ASC`);
+        res.json({ success: true, proveedores: result.rows });
+    } catch (err) {
+        console.error('Error GET proveedores:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+app.post('/api/bd/proveedores', requerirRolBDGeneral, async (req, res) => {
+    try {
+        const cuerpo = req.body || {};
+        const nombre = String(cuerpo.nombre || '').trim();
+        if (!nombre) return res.status(400).json({ success: false, mensaje: 'Ingrese el nombre del proveedor.' });
+        const categoria = String(cuerpo.categoria || 'Otros').trim();
+        const catFinal = CATEGORIAS_PROVEEDOR.includes(categoria) ? categoria : 'Otros';
+        const result = await pool.query(
+            `INSERT INTO proveedores (nombre, categoria, ruc, telefono, direccion, email, contacto, usuario_registro)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+            [
+                nombre, catFinal,
+                String(cuerpo.ruc || '').trim(), String(cuerpo.telefono || '').trim(),
+                String(cuerpo.direccion || '').trim(), String(cuerpo.email || '').trim(),
+                String(cuerpo.contacto || '').trim(), req.usuario
+            ]
+        );
+        res.json({ success: true, mensaje: 'Proveedor registrado correctamente.', proveedor: result.rows[0] });
+    } catch (err) {
+        if (err.code === '23505') {
+            return res.status(400).json({ success: false, mensaje: 'Ya existe un proveedor con ese nombre.' });
+        }
+        console.error('Error crear proveedor:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al crear proveedor: ' + err.message });
+    }
+});
+
+app.put('/api/bd/proveedores/:id', requerirRolBDGeneral, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ success: false, mensaje: 'ID de proveedor no válido.' });
+        }
+        const cuerpo = req.body || {};
+        const nombre = String(cuerpo.nombre || '').trim();
+        if (!nombre) return res.status(400).json({ success: false, mensaje: 'Ingrese el nombre del proveedor.' });
+        const categoria = String(cuerpo.categoria || 'Otros').trim();
+        const catFinal = CATEGORIAS_PROVEEDOR.includes(categoria) ? categoria : 'Otros';
+        await client.query('BEGIN');
+
+        const actual = await client.query('SELECT id, nombre FROM proveedores WHERE id = $1', [id]);
+        if (!actual.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'El proveedor no existe.' });
+        }
+        const nombreAntiguo = actual.rows[0].nombre;
+
+        const upd = await client.query(
+            `UPDATE proveedores SET nombre = $1, categoria = $2, ruc = $3, telefono = $4, direccion = $5, email = $6, contacto = $7, usuario_registro = $8
+             WHERE id = $9 RETURNING *`,
+            [
+                nombre, catFinal,
+                String(cuerpo.ruc || '').trim(), String(cuerpo.telefono || '').trim(),
+                String(cuerpo.direccion || '').trim(), String(cuerpo.email || '').trim(),
+                String(cuerpo.contacto || '').trim(), req.usuario, id
+            ]
+        );
+
+        // Mantiene el snapshot de nombre en órdenes y stock si el proveedor se renombra.
+        if (nombreAntiguo.toLowerCase().trim() !== nombre.toLowerCase().trim()) {
+            await client.query('UPDATE ordenes_compras_servicios SET proveedor_nombre = $1 WHERE proveedor_id = $2', [nombre, id]);
+            await client.query(
+                `UPDATE stock_proveedores SET proveedor_nombre = $1
+                 WHERE LOWER(BTRIM(proveedor_nombre)) = LOWER(BTRIM($2))`,
+                [nombre, nombreAntiguo]
+            );
+        }
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: 'Proveedor actualizado correctamente.', proveedor: upd.rows[0] });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        if (err.code === '23505') {
+            return res.status(400).json({ success: false, mensaje: 'Ya existe un proveedor con ese nombre.' });
+        }
+        console.error('Error editar proveedor:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al editar proveedor: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
+app.delete('/api/bd/proveedores/:id', requerirRolBDGeneral, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ success: false, mensaje: 'ID de proveedor no válido.' });
+        }
+        const ordenes = await pool.query('SELECT COUNT(*)::int AS total FROM ordenes_compras_servicios WHERE proveedor_id = $1', [id]);
+        if (ordenes.rows[0].total > 0) {
+            return res.status(400).json({ success: false, mensaje: 'No se puede eliminar: el proveedor tiene órdenes registradas.' });
+        }
+        const stock = await pool.query(`SELECT COUNT(*)::int AS total FROM stock_proveedores WHERE LOWER(BTRIM(proveedor_nombre)) IN (SELECT LOWER(BTRIM(nombre)) FROM proveedores WHERE id = $1)`, [id]);
+        if (stock.rows[0].total > 0) {
+            return res.status(400).json({ success: false, mensaje: 'No se puede eliminar: el proveedor tiene stock de proveedores acumulado.' });
+        }
+        await pool.query('DELETE FROM proveedores WHERE id = $1', [id]);
+        res.json({ success: true, mensaje: 'Proveedor eliminado correctamente.' });
+    } catch (err) {
+        console.error('Error eliminar proveedor:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al eliminar proveedor: ' + err.message });
+    }
+});
+
+// ---- ÓRDENES OC/OS ----
+app.get('/api/bd/ordenes', requerirRolBDGeneral, async (req, res) => {
+    try {
+        const tipo = String(req.query.tipo || '').trim();
+        const estado = String(req.query.estado || '').trim();
+        const proveedorId = req.query.proveedor_id ? parseInt(req.query.proveedor_id, 10) : null;
+        const result = await pool.query(`
+            SELECT o.*,
+                (SELECT COUNT(*)::int FROM ordenes_items it WHERE it.orden_id = o.id) AS n_items,
+                COALESCE((SELECT SUM(it.cantidad) FROM ordenes_items it WHERE it.orden_id = o.id), 0) AS total_cantidad,
+                COALESCE((SELECT SUM(it.recibido) FROM ordenes_items it WHERE it.orden_id = o.id), 0) AS total_recibido
+            FROM ordenes_compras_servicios o
+            WHERE ($1 = '' OR o.tipo = $1)
+              AND ($2 = '' OR o.estado = $2)
+              AND ($3::int IS NULL OR o.proveedor_id = $3)
+            ORDER BY o.id DESC`, [tipo, estado, proveedorId]);
+        res.json({ success: true, ordenes: result.rows });
+    } catch (err) {
+        console.error('Error GET ordenes:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+app.get('/api/bd/ordenes/:id', requerirRolBDGeneral, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        const ordenRes = await pool.query('SELECT * FROM ordenes_compras_servicios WHERE id = $1', [id]);
+        if (!ordenRes.rows.length) {
+            return res.status(404).json({ success: false, mensaje: 'La orden no existe.' });
+        }
+        const itemsRes = await pool.query('SELECT * FROM ordenes_items WHERE orden_id = $1 ORDER BY id ASC', [id]);
+        const movimientosRes = await pool.query(
+            `SELECT * FROM stock_proveedores_historial
+             WHERE orden_ref = $1 AND origen IN ('EMISION','RECIBIR','CANCELACION')
+             ORDER BY id DESC LIMIT 100`, [ordenRes.rows[0].numero]);
+        res.json({ success: true, orden: ordenRes.rows[0], items: itemsRes.rows, movimientos: movimientosRes.rows });
+    } catch (err) {
+        console.error('Error GET orden detalle:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+app.post('/api/bd/ordenes', requerirRolBDGeneral, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const cuerpo = req.body || {};
+        const tipo = String(cuerpo.tipo || '').trim().toUpperCase();
+        const numero = String(cuerpo.numero || '').trim();
+        const estado = ESTADOS_ORDEN.includes(String(cuerpo.estado || '')) ? String(cuerpo.estado).trim() : 'PENDIENTE';
+        const proveedorId = parseInt(cuerpo.proveedor_id, 10);
+        if (!['OC', 'OS'].includes(tipo)) {
+            return res.status(400).json({ success: false, mensaje: 'Tipo de orden inválido (use OC u OS).' });
+        }
+        if (!numero) {
+            return res.status(400).json({ success: false, mensaje: 'Ingrese el número de la orden.' });
+        }
+        if (!Number.isInteger(proveedorId) || proveedorId <= 0) {
+            return res.status(400).json({ success: false, mensaje: 'Seleccione un proveedor.' });
+        }
+        const fechaOrden = String(cuerpo.fecha_orden || '').trim();
+
+        await client.query('BEGIN');
+        const prov = await client.query('SELECT id, nombre FROM proveedores WHERE id = $1', [proveedorId]);
+        if (!prov.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'El proveedor no existe.' });
+        }
+        const { items, total } = normalizarItemsOrden(cuerpo.items);
+        if (!items.length) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: 'Agregue al menos un ítem válido con cantidad mayor a 0.' });
+        }
+
+        const ins = await client.query(
+            `INSERT INTO ordenes_compras_servicios (tipo, numero, fecha_orden, proveedor_id, proveedor_nombre, estado, observaciones, total, usuario_registro)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+            [tipo, numero, fechaOrden || null, proveedorId, prov.rows[0].nombre, estado, String(cuerpo.observaciones || '').trim(), total, req.usuario]
+        );
+        for (const it of items) {
+            await client.query(
+                `INSERT INTO ordenes_items (orden_id, descripcion, unidad, cantidad, precio, subtotal)
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [ins.rows[0].id, it.descripcion, it.unidad, it.cantidad, it.precio, it.subtotal]
+            );
+        }
+        if (esEmitida({ estado })) {
+            await aplicarItemsOrdenStock(client, items, prov.rows[0].nombre, 1, req.usuario, numero);
+        }
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: 'Orden creada correctamente.', id: ins.rows[0].id });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        if (err.code === '23505') {
+            return res.status(400).json({ success: false, mensaje: 'Ya existe una orden con ese número para el tipo indicado.' });
+        }
+        console.error('Error crear orden:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al crear la orden: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
+app.put('/api/bd/ordenes/:id', requerirRolBDGeneral, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ success: false, mensaje: 'ID de orden no válido.' });
+        }
+        const cuerpo = req.body || {};
+        const estadoNuevo = ESTADOS_ORDEN.includes(String(cuerpo.estado || '')) ? String(cuerpo.estado).trim() : 'PENDIENTE';
+        const proveedorId = parseInt(cuerpo.proveedor_id, 10);
+        const numero = String(cuerpo.numero || '').trim();
+        if (!numero) {
+            return res.status(400).json({ success: false, mensaje: 'Ingrese el número de la orden.' });
+        }
+        if (!Number.isInteger(proveedorId) || proveedorId <= 0) {
+            return res.status(400).json({ success: false, mensaje: 'Seleccione un proveedor.' });
+        }
+
+        await client.query('BEGIN');
+        const ordenRes = await client.query('SELECT * FROM ordenes_compras_servicios WHERE id = $1', [id]);
+        if (!ordenRes.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'La orden no existe.' });
+        }
+        const vieja = ordenRes.rows[0];
+        const prov = await client.query('SELECT id, nombre FROM proveedores WHERE id = $1', [proveedorId]);
+        if (!prov.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'El proveedor no existe.' });
+        }
+        const { items, total } = normalizarItemsOrden(cuerpo.items);
+        if (!items.length) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: 'Agregue al menos un ítem válido con cantidad mayor a 0.' });
+        }
+
+        const itemsViejos = (await client.query('SELECT * FROM ordenes_items WHERE orden_id = $1', [id])).rows;
+
+        // Revierte el efecto neto de la versión anterior si estaba emitida.
+        if (esEmitida(vieja)) {
+            await aplicarItemsOrdenStock(client, itemsViejos, vieja.proveedor_nombre || prov.rows[0].nombre, -1, req.usuario, numero);
+        }
+
+        const numeroAnterior = vieja.numero;
+        await client.query(
+            `UPDATE ordenes_compras_servicios SET tipo = $1, numero = $2, fecha_orden = $3, proveedor_id = $4, proveedor_nombre = $5, estado = $6, observaciones = $7, total = $8, usuario_registro = $9
+             WHERE id = $10`,
+            [
+                String(cuerpo.tipo || '').trim().toUpperCase(), numero,
+                String(cuerpo.fecha_orden || '').trim() || null,
+                proveedorId, prov.rows[0].nombre, estadoNuevo,
+                String(cuerpo.observaciones || '').trim(), total, req.usuario, id
+            ]
+        );
+
+        // Impacta los ítems: conserva el "recibido" de los que ya existían.
+        const mapViejos = new Map(itemsViejos.map(it => [it.id, it]));
+        const idsNuevos = [];
+        for (const it of items) {
+            if (it.id && mapViejos.has(it.id)) {
+                const prev = mapViejos.get(it.id);
+                const rec = Number(prev.recibido) || 0;
+                await client.query(
+                    `UPDATE ordenes_items SET descripcion = $1, unidad = $2, cantidad = $3, precio = $4, subtotal = $5
+                     WHERE id = $6`,
+                    [it.descripcion, it.unidad, it.cantidad, it.precio, it.subtotal, it.id]
+                );
+                it.recibido = rec;
+                idsNuevos.push(it.id);
+            } else {
+                const ins = await client.query(
+                    `INSERT INTO ordenes_items (orden_id, descripcion, unidad, cantidad, precio, subtotal)
+                     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+                    [id, it.descripcion, it.unidad, it.cantidad, it.precio, it.subtotal]
+                );
+                idsNuevos.push(ins.rows[0].id);
+            }
+        }
+        // Elimina ítems que dejaron de estar en la orden.
+        for (const prev of itemsViejos) {
+            if (!idsNuevos.includes(prev.id)) {
+                await client.query('DELETE FROM ordenes_items WHERE id = $1', [prev.id]);
+            }
+        }
+
+        if (esEmitida({ estado: estadoNuevo })) {
+            await aplicarItemsOrdenStock(client, items, prov.rows[0].nombre, 1, req.usuario, numero);
+        }
+        if (numeroAnterior && numeroAnterior !== numero) {
+            await client.query(
+                `UPDATE stock_proveedores_historial SET orden_ref = $1 WHERE orden_ref = $2 AND origen IN ('EMISION','RECIBIR','CANCELACION')`,
+                [numero, numeroAnterior]);
+        }
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: 'Orden actualizada correctamente.' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        if (err.code === '23505') {
+            return res.status(400).json({ success: false, mensaje: 'Ya existe una orden con ese número para el tipo indicado.' });
+        }
+        console.error('Error editar orden:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al editar la orden: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
+app.delete('/api/bd/ordenes/:id', requerirRolBDGeneral, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ success: false, mensaje: 'ID de orden no válido.' });
+        }
+        await client.query('BEGIN');
+        const ordenRes = await client.query('SELECT * FROM ordenes_compras_servicios WHERE id = $1', [id]);
+        if (!ordenRes.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'La orden no existe.' });
+        }
+        const orden = ordenRes.rows[0];
+        if (esEmitida(orden)) {
+            const itemsViejos = (await client.query('SELECT * FROM ordenes_items WHERE orden_id = $1', [id])).rows;
+            await aplicarItemsOrdenStock(client, itemsViejos, orden.proveedor_nombre || 'N/D', -1, req.usuario, orden.numero);
+        }
+        await client.query('DELETE FROM ordenes_compras_servicios WHERE id = $1', [id]);
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: 'Orden eliminada correctamente (stock de proveedores restaurado).' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Error eliminar orden:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al eliminar la orden: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
+app.post('/api/bd/ordenes/:id/estado', requerirRolBDGeneral, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const id = parseInt(req.params.id, 10);
+        const estado = String(req.body && req.body.estado || '').trim();
+        if (!Number.isInteger(id) || id <= 0 || !ESTADOS_ORDEN.includes(estado)) {
+            return res.status(400).json({ success: false, mensaje: 'Estado u orden no válidos.' });
+        }
+        await client.query('BEGIN');
+        const ordenRes = await client.query('SELECT * FROM ordenes_compras_servicios WHERE id = $1', [id]);
+        if (!ordenRes.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'La orden no existe.' });
+        }
+        const orden = ordenRes.rows[0];
+        const viejaEmitida = esEmitida(orden);
+        const nuevaEmitida = esEmitida({ estado }) && (estado !== 'CANCELADA');
+
+        if (estado === 'CANCELADA' && viejaEmitida) {
+            const itemsViejos = (await client.query('SELECT * FROM ordenes_items WHERE orden_id = $1', [id])).rows;
+            await aplicarItemsOrdenStock(client, itemsViejos, orden.proveedor_nombre || 'N/D', -1, req.usuario, orden.numero);
+        } else if (!viejaEmitida && nuevaEmitida) {
+            const items = (await client.query('SELECT * FROM ordenes_items WHERE orden_id = $1', [id])).rows;
+            await aplicarItemsOrdenStock(client, items, orden.proveedor_nombre || 'N/D', 1, req.usuario, orden.numero);
+        }
+
+        await client.query('UPDATE ordenes_compras_servicios SET estado = $1, usuario_registro = $2 WHERE id = $3', [estado, req.usuario, id]);
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: 'Estado de la orden actualizado correctamente.' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Error estado orden:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al actualizar el estado: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// Recibe (parcial o total) una cantidad de los ítems de una orden y resta del stock de proveedores.
+app.post('/api/bd/ordenes/:id/recibir', requerirRolBDGeneral, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const id = parseInt(req.params.id, 10);
+        const cuerpo = req.body || {};
+        const numeroGuia = String(cuerpo.numero_guia || '').trim();
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ success: false, mensaje: 'ID de orden no válido.' });
+        }
+        await client.query('BEGIN');
+        const ordenRes = await client.query('SELECT * FROM ordenes_compras_servicios WHERE id = $1', [id]);
+        if (!ordenRes.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'La orden no existe.' });
+        }
+        const orden = ordenRes.rows[0];
+        if (String(orden.estado) === 'CANCELADA') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: 'No se puede recibir una orden cancelada.' });
+        }
+        const recibidos = Array.isArray(cuerpo.items) ? cuerpo.items : [];
+        const itemsDeOrden = (await client.query('SELECT * FROM ordenes_items WHERE orden_id = $1', [id])).rows;
+
+        // Si la orden aún está PENDIENTE y se recibe, primero se emite (suma) y luego se resta lo recibido.
+        if (String(orden.estado) === 'PENDIENTE') {
+            await aplicarItemsOrdenStock(client, itemsDeOrden, orden.proveedor_nombre || 'N/D', 1, req.usuario, orden.numero);
+        }
+
+        let huboRecepcion = false;
+        for (const sol of recibidos) {
+            const itemId = parseInt(sol && sol.item_id, 10);
+            const cant = Number(sol && sol.cantidad_recibida);
+            if (!itemId || !(cant > 0)) continue;
+            const item = itemsDeOrden.find(x => x.id === itemId);
+            if (!item) continue;
+            const pendiente = (Number(item.cantidad) || 0) - (Number(item.recibido) || 0);
+            if (pendiente <= 0) continue;
+            const cantAplicada = Math.min(pendiente, cant);
+            const nuevoRecibido = (Number(item.recibido) || 0) + cantAplicada;
+            await client.query('UPDATE ordenes_items SET recibido = $1::numeric WHERE id = $2', [nuevoRecibido, itemId]);
+            await upsertStockProveedor(client, {
+                proveedor: orden.proveedor_nombre || 'N/D', producto: item.descripcion,
+                unidad: item.unidad || 'UNIDADES', cantidad: cantAplicada, signo: -1,
+                usuario: req.usuario, orden_ref: orden.numero,
+                origen: 'RECIBIR', guia_ref: numeroGuia || null
+            });
+            huboRecepcion = true;
+        }
+
+        if (!huboRecepcion) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: 'Indique una cantidad válida a recibir para al menos un ítem.' });
+        }
+
+        const itemsActualizados = (await client.query('SELECT * FROM ordenes_items WHERE orden_id = $1', [id])).rows;
+        const todosRecibidos = itemsActualizados.every(x => (Number(x.recibido) || 0) >= (Number(x.cantidad) || 0));
+        const algunRecibido = itemsActualizados.some(x => (Number(x.recibido) || 0) > 0);
+        let estadoNuevo = orden.estado;
+        if (String(orden.estado) === 'PENDIENTE' && algunRecibido) estadoNuevo = 'RECIBIDA';
+        else if (todosRecibidos) estadoNuevo = 'COMPLETADA';
+        else if (algunRecibido) estadoNuevo = 'RECIBIDA';
+        if (estadoNuevo !== orden.estado) {
+            await client.query('UPDATE ordenes_compras_servicios SET estado = $1 WHERE id = $2', [estadoNuevo, id]);
+        }
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: 'Recepción registrada. Stock de proveedores actualizado.', estado: estadoNuevo });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Error recibir orden:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al registrar la recepción: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// ---- STOCK DE PROVEEDORES ----
+app.get('/api/bd/stock-proveedores', requerirRolBDGeneral, async (req, res) => {
+    try {
+        const proveedorId = req.query.proveedor_id ? parseInt(req.query.proveedor_id, 10) : null;
+        const result = await pool.query(`
+            SELECT s.*, p.categoria AS categoria_proveedor
+            FROM stock_proveedores s
+            LEFT JOIN proveedores p ON LOWER(BTRIM(p.nombre)) = LOWER(BTRIM(s.proveedor_nombre))
+            WHERE ($1::int IS NULL OR p.id = $1)
+            ORDER BY LOWER(s.proveedor_nombre) ASC, LOWER(s.producto) ASC`, [proveedorId]);
+        res.json({ success: true, stock: result.rows });
+    } catch (err) {
+        console.error('Error GET stock proveedores:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+app.get('/api/bd/stock-proveedores/movimientos', requerirRolBDGeneral, async (req, res) => {
+    try {
+        const proveedorId = req.query.proveedor_id ? parseInt(req.query.proveedor_id, 10) : null;
+        const result = await pool.query(`
+            SELECT h.*, p.nombre AS proveedor_registrado
+            FROM stock_proveedores_historial h
+            LEFT JOIN proveedores p ON LOWER(BTRIM(p.nombre)) = LOWER(BTRIM(h.proveedor))
+            WHERE ($1::int IS NULL OR p.id = $1)
+            ORDER BY h.id DESC LIMIT 300`, [proveedorId]);
+        res.json({ success: true, movimientos: result.rows });
+    } catch (err) {
+        console.error('Error GET movimientos stock proveedores:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
     }
 });
 

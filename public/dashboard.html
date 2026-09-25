@@ -81,6 +81,7 @@
         .mod:nth-child(5) { animation-delay: 0.25s; }
         .mod:nth-child(6) { animation-delay: 0.30s; }
         .mod:nth-child(7) { animation-delay: 0.35s; }
+        .mod:nth-child(8) { animation-delay: 0.40s; }
 
         .hidden { display: none !important; }
 
@@ -205,7 +206,8 @@
         .a-sop { --ac: #4ade80; }
         .a-env { --ac: #a78bfa; }
         .a-aud { --ac: #cbd5e1; }
-        .a-sim { --ac: #2dd4bf; }
+.a-sim { --ac: #2dd4bf; }
+        .a-ref { --ac: #117a8b; }
         .a-adm { --ac: #f472b6; }
 
         /* ---------- INVENTARIO ---------- */
@@ -370,6 +372,7 @@
                 <a href="almacen.html" class="mod a-alm"><span class="mod-ico">📦</span><span class="mod-nom">Almacén</span><span class="mod-rol">Conformidad y stock</span></a>
                 <a href="soplado.html" class="mod a-sop"><span class="mod-ico">🏭</span><span class="mod-nom">Soplado</span><span class="mod-rol">Botellas y etiquetas</span></a>
                 <a href="envasado.html" class="mod a-env"><span class="mod-ico">🧴</span><span class="mod-nom">Envasado</span><span class="mod-rol">Línea de producción</span></a>
+                <a href="refinado.html" class="mod a-ref"><span class="mod-ico">🛢️</span><span class="mod-nom">Refinado</span><span class="mod-rol">Aceite de soya</span></a>
                 <a href="auditoria.html" class="mod a-aud"><span class="mod-ico">📋</span><span class="mod-nom">Auditoría</span><span class="mod-rol">Movimientos y cierres</span></a>
                 <a href="basededatosdeplanta.html" class="mod a-sim"><span class="mod-ico">🧮</span><span class="mod-nom">Simulador de Insumos</span><span class="mod-rol">Base de datos de planta</span></a>
                 <a href="admin.html" id="btnModuloUsuarios" class="mod a-adm hidden"><span class="mod-ico">👮</span><span class="mod-nom">Usuarios</span><span class="mod-rol">Administración</span></a>
@@ -429,7 +432,7 @@
             }
 
             // Operadores específicos son redirigidos directo a su módulo y bloqueados del dashboard general
-            const rolesOperativos = ['vigilancia', 'almacen', 'soplado', 'envasado', 'auditoria'];
+            const rolesOperativos = ['vigilancia', 'almacen', 'soplado', 'envasado', 'refinado', 'auditoria'];
             if (rolesOperativos.includes(rol)) {
                 window.location.href = rol + '.html';
             }

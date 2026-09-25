@@ -163,9 +163,9 @@ const inicializarBaseDeDatos = async () => {
                 fecha_ajuste TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
+            DELETE FROM stock_insumos_refinado WHERE nombre IN ('ACEITE CRUDO DE SOYA TK-1', 'ACEITE CRUDO DE SOYA TK-2');
+
             INSERT INTO stock_insumos_refinado (nombre, um) VALUES
-                ('ACEITE CRUDO DE SOYA TK-1', 'TON'),
-                ('ACEITE CRUDO DE SOYA TK-2', 'TON'),
                 ('TONSIL OPTIMUN 363', 'KG'),
                 ('TONSIL SUPREME 169', 'KG'),
                 ('ACIDO FOSFORICO', 'KG'),

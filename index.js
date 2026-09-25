@@ -3072,7 +3072,8 @@ function requerirRolAlmacenInvRef(req, res, next) {
 app.get('/api/almacen/stock-refinado', requerirRolAlmacenInvRef, async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM stock_insumos_refinado ORDER BY id ASC');
-        res.json({ success: true, insumos: result.rows, insumosBase: INSUMOS_REFINADO_BASE });
+        const baseSinTanques = INSUMOS_REFINADO_BASE.filter(b => b.nombre !== 'ACEITE CRUDO DE SOYA TK-1' && b.nombre !== 'ACEITE CRUDO DE SOYA TK-2');
+        res.json({ success: true, insumos: result.rows, insumosBase: baseSinTanques });
     } catch (err) {
         console.error('Error GET stock refinado:', err);
         res.status(500).json({ success: false, mensaje: err.message });

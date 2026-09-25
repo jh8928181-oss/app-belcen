@@ -3191,7 +3191,7 @@ function requerirRolBDGeneral(req, res, next) {
     next();
 }
 
-const CATEGORIAS_PROVEEDOR = ['Materia Prima', 'Embalajes', 'Servicios', 'Otros'];
+const CATEGORIAS_PROVEEDOR = ['CAJAS', 'TAPAS Y ACCESORIOS', 'PREFORMAS Y SERVICIOS', 'BOTELLAS Y GALONERAS', 'ETIQUETAS', 'General', 'REFINADO'];
 const ESTADOS_ORDEN = ['PENDIENTE', 'EMITIDA', 'RECIBIDA', 'COMPLETADA', 'CANCELADA'];
 // Estados en los que la cantidad emitida de la orden ya se sumó al stock de proveedores.
 const ESTADOS_EMITIDOS = new Set(['EMITIDA', 'RECIBIDA', 'COMPLETADA']);
@@ -3346,8 +3346,8 @@ app.post('/api/bd/proveedores', requerirRolBDGeneral, async (req, res) => {
         const cuerpo = req.body || {};
         const nombre = String(cuerpo.nombre || '').trim();
         if (!nombre) return res.status(400).json({ success: false, mensaje: 'Ingrese el nombre del proveedor.' });
-        const categoria = String(cuerpo.categoria || 'Otros').trim();
-        const catFinal = CATEGORIAS_PROVEEDOR.includes(categoria) ? categoria : 'Otros';
+        const categoria = String(cuerpo.categoria || 'General').trim();
+        const catFinal = CATEGORIAS_PROVEEDOR.includes(categoria) ? categoria : 'General';
         const result = await pool.query(
             `INSERT INTO proveedores (nombre, categoria, ruc, telefono, direccion, email, contacto, usuario_registro)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
@@ -3378,8 +3378,8 @@ app.put('/api/bd/proveedores/:id', requerirRolBDGeneral, async (req, res) => {
         const cuerpo = req.body || {};
         const nombre = String(cuerpo.nombre || '').trim();
         if (!nombre) return res.status(400).json({ success: false, mensaje: 'Ingrese el nombre del proveedor.' });
-        const categoria = String(cuerpo.categoria || 'Otros').trim();
-        const catFinal = CATEGORIAS_PROVEEDOR.includes(categoria) ? categoria : 'Otros';
+        const categoria = String(cuerpo.categoria || 'General').trim();
+        const catFinal = CATEGORIAS_PROVEEDOR.includes(categoria) ? categoria : 'General';
         await client.query('BEGIN');
 
         const actual = await client.query('SELECT id, nombre FROM proveedores WHERE id = $1', [id]);

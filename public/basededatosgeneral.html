@@ -278,10 +278,13 @@
                     <div class="campo-flex" style="min-width:140px;">
                         <label>Categoría *</label>
                         <select id="provCategoria">
-                            <option value="Materia Prima">Materia Prima</option>
-                            <option value="Embalajes">Embalajes</option>
-                            <option value="Servicios">Servicios</option>
-                            <option value="Otros">Otros</option>
+                            <option value="CAJAS">CAJAS</option>
+                            <option value="TAPAS Y ACCESORIOS">TAPAS Y ACCESORIOS</option>
+                            <option value="PREFORMAS Y SERVICIOS">PREFORMAS Y SERVICIOS</option>
+                            <option value="BOTELLAS Y GALONERAS">BOTELLAS Y GALONERAS</option>
+                            <option value="ETIQUETAS">ETIQUETAS</option>
+                            <option value="General">General</option>
+                            <option value="REFINADO">REFINADO</option>
                         </select>
                     </div>
                     <div class="campo-flex" style="min-width:130px;">
@@ -317,6 +320,15 @@
 
             <div class="tarjeta borde-teal reveal">
                 <h3 class="teal">📋 LISTA DE PROVEEDORES</h3>
+                <div class="filtro-bar">
+                    <div class="campo-flex" style="min-width:180px;">
+                        <label>Filtrar por categoría</label>
+                        <select id="filtroProvCategoria" onchange="filtrarProveedores()">
+                            <option value="">Todas las categorías</option>
+                        </select>
+                    </div>
+                    <span style="flex:1;"></span>
+                </div>
                 <div class="tabla-wrap">
                     <table>
                         <thead>
@@ -661,10 +673,23 @@
         }
 
         // ============ PROVEEDORES ============
+        const CATEGORIAS_BASE_GENERAL = ['CAJAS', 'TAPAS Y ACCESORIOS', 'PREFORMAS Y SERVICIOS', 'BOTELLAS Y GALONERAS', 'ETIQUETAS', 'General', 'REFINADO'];
+        let proveedoresCache = [];
+
+        function rellenarSelectCategorias() {
+            const opts = CATEGORIAS_BASE_GENERAL.map(c => `<option value="${c}">${c}</option>`).join('');
+            const sel = document.getElementById('filtroProvCategoria');
+            if (sel) {
+                const actual = sel.value;
+                sel.innerHTML = `<option value="">Todas las categorías</option>` + opts;
+                if (actual) sel.value = actual;
+            }
+        }
+
         function limpiarFormProveedor() {
             proveedorEditando = null;
             document.getElementById('provNombre').value = '';
-            document.getElementById('provCategoria').value = 'Materia Prima';
+            document.getElementById('provCategoria').value = 'General';
             document.getElementById('provRuc').value = '';
             document.getElementById('provTelefono').value = '';
             document.getElementById('provDireccion').value = '';
@@ -672,32 +697,47 @@
             document.getElementById('provContacto').value = '';
         }
 
+        function renderProveedores() {
+            const tbody = document.getElementById('tablaProveedores');
+            const filtro = String(document.getElementById('filtroProvCategoria').value || '').trim();
+            const lista = filtro
+                ? proveedoresCache.filter(p => String(p.categoria || '').trim().toUpperCase() === filtro.toUpperCase())
+                : proveedoresCache;
+            if (!lista.length) {
+                const sinRegistros = proveedoresCache.length ? 'No hay proveedores en la categoría seleccionada.' : 'Sin proveedores registrados.';
+                tbody.innerHTML = `<tr><td colspan="9" class="text-center sin-registros">${sinRegistros}</td></tr>`;
+            } else {
+                tbody.innerHTML = lista.map(p => `
+                    <tr>
+                        <td><b>${escapeHtml(p.nombre)}</b></td>
+                        <td>${escapeHtml(p.categoria)}</td>
+                        <td>${escapeHtml(p.ruc) || '-'}</td>
+                        <td>${escapeHtml(p.telefono) || '-'}</td>
+                        <td>${escapeHtml(p.direccion) || '-'}</td>
+                        <td>${escapeHtml(p.email) || '-'}</td>
+                        <td>${escapeHtml(p.contacto) || '-'}</td>
+                        <td class="text-center"><b>${p.ordenes_activas}</b></td>
+                        <td class="text-center">
+                            <div class="acciones-celda" style="justify-content:center;">
+                                <button class="btn btn-mini" onclick="editarProveedor(${p.id})">✏️ Editar</button>
+                                <button class="btn btn-mini btn-rojo" onclick="eliminarProveedor(${p.id})">🗑️</button>
+                            </div>
+                        </td>
+                    </tr>`).join('');
+            }
+            etiquetarTablas();
+        }
+
+        function filtrarProveedores() {
+            renderProveedores();
+        }
+
         async function cargarProveedores() {
             try {
                 const data = await api('/api/bd/proveedores');
-                const tbody = document.getElementById('tablaProveedores');
-                if (!data.proveedores.length) {
-                    tbody.innerHTML = '<tr><td colspan="9" class="text-center sin-registros">Sin proveedores registrados.</td></tr>';
-                } else {
-                    tbody.innerHTML = data.proveedores.map(p => `
-                        <tr>
-                            <td><b>${escapeHtml(p.nombre)}</b></td>
-                            <td>${escapeHtml(p.categoria)}</td>
-                            <td>${escapeHtml(p.ruc) || '-'}</td>
-                            <td>${escapeHtml(p.telefono) || '-'}</td>
-                            <td>${escapeHtml(p.direccion) || '-'}</td>
-                            <td>${escapeHtml(p.email) || '-'}</td>
-                            <td>${escapeHtml(p.contacto) || '-'}</td>
-                            <td class="text-center"><b>${p.ordenes_activas}</b></td>
-                            <td class="text-center">
-                                <div class="acciones-celda" style="justify-content:center;">
-                                    <button class="btn btn-mini" onclick="editarProveedor(${p.id})">✏️ Editar</button>
-                                    <button class="btn btn-mini btn-rojo" onclick="eliminarProveedor(${p.id})">🗑️</button>
-                                </div>
-                            </td>
-                        </tr>`).join('');
-                }
-                etiquetarTablas();
+                proveedoresCache = data.proveedores || [];
+                renderProveedores();
+                rellenarSelectCategorias();
                 poblarSelectProveedores();
             } catch (err) {
                 document.getElementById('tablaProveedores').innerHTML = `<tr><td colspan="9" class="text-center sin-registros">${escapeHtml(err.message)}</td></tr>`;

@@ -262,6 +262,11 @@ const inicializarBaseDeDatos = async () => {
             ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS contacto VARCHAR(150);
             ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS usuario_registro VARCHAR(50);
 
+            -- Categorías de proveedores alineadas con las del Almacén (+ Refinado); migración idempotente
+            UPDATE proveedores SET categoria = 'CAJAS' WHERE LOWER(BTRIM(categoria)) = 'embalajes';
+            UPDATE proveedores SET categoria = 'PREFORMAS Y SERVICIOS' WHERE LOWER(BTRIM(categoria)) = 'servicios';
+            UPDATE proveedores SET categoria = 'General' WHERE LOWER(BTRIM(categoria)) IN ('materia prima', 'otros');
+
             CREATE TABLE IF NOT EXISTS ordenes_compras_servicios (
                 id SERIAL PRIMARY KEY,
                 tipo VARCHAR(5) NOT NULL,

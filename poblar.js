@@ -94,7 +94,10 @@ async function poblarInventarioReal() {
                 usuario_vigilancia VARCHAR(50),
                 items_json TEXT,
                 estado VARCHAR(100) DEFAULT 'PENDIENTE CONFORMIDAD',
-                fecha_ingreso TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                fecha_ingreso TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                fecha_anulacion TIMESTAMP,
+                anulado_por VARCHAR(50),
+                observacion_anulacion TEXT
             );
 
             CREATE TABLE registro_ingresos_almacen (

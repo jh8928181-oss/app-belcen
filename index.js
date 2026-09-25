@@ -385,7 +385,7 @@ app.get('/api/almacen/pendientes', async (req, res) => {
 app.post('/api/almacen/conformidad', async (req, res) => {
     const client = await pool.connect();
     try {
-        const { ingreso_id, usuario_almacen } = req.body;
+        const { ingreso_id, usuario_almacen, items_ajustados } = req.body;
         await client.query('BEGIN');
 
         const ingresoRes = await client.query('SELECT * FROM ingresos_vigilancia WHERE id = $1', [ingreso_id]);
@@ -396,18 +396,31 @@ app.post('/api/almacen/conformidad', async (req, res) => {
         const ingreso = ingresoRes.rows[0];
         const items = JSON.parse(ingreso.items_json || '[]');
 
+        // Ajustes manuales opcionales (integración manual de ítems que no existen en el inventario).
+        const ajustes = new Map();
+        if (Array.isArray(items_ajustados)) {
+            items_ajustados.forEach(a => {
+                if (a && a.nombre) ajustes.set(String(a.nombre).trim().toLowerCase(), a);
+            });
+        }
+
         let tieneDiferencias = false;
 
         for (const item of items) {
+            const ajuste = ajustes.get((item.nombre || '').trim().toLowerCase());
+            const nombreFinal = (ajuste && ajuste.nombre_ajustado && ajuste.nombre_ajustado.trim()) ? ajuste.nombre_ajustado.trim() : item.nombre;
+            const categoriaFinal = (ajuste && ajuste.categoria) ? ajuste.categoria : 'General';
+            const unidadFinal = (ajuste && ajuste.unidad_medida) ? ajuste.unidad_medida : 'UNIDADES';
+            const cantidadFisica = ajuste && ajuste.cantidad_fisica !== undefined && ajuste.cantidad_fisica !== '' ? Number(ajuste.cantidad_fisica) : Number(item.cantidad_fisica) || 0;
+
             let estadoItem = 'CON GUIA';
-            if (Number(item.cantidad_guia) !== Number(item.cantidad_fisica)) {
+            if (Number(item.cantidad_guia) !== Number(cantidadFisica)) {
                 tieneDiferencias = true;
                 estadoItem = 'POR REGULARIZAR';
             }
 
             let targetArticuloId = null;
-            const cantidadFisica = Number(item.cantidad_fisica) || 0;
-            const existeRes = await client.query('SELECT id, stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [item.nombre]);
+            const existeRes = await client.query('SELECT id, stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [nombreFinal]);
             
             if (existeRes.rows.length > 0) {
                 targetArticuloId = existeRes.rows[0].id;
@@ -415,7 +428,7 @@ app.post('/api/almacen/conformidad', async (req, res) => {
                 await client.query(`UPDATE inventario SET stock = stock + $1 WHERE id = $2`, [cantidadFisica, targetArticuloId]);
                 await registrarHistorial(client, {
                     tipo: 'ENTRADA', origen: 'conformidad',
-                    producto: item.nombre, articulo_id: targetArticuloId,
+                    producto: nombreFinal, articulo_id: targetArticuloId,
                     cantidad: cantidadFisica, tipo_cambio: 'SUMA',
                     stock_anterior: stockAnterior, stock_nuevo: stockAnterior + cantidadFisica,
                     usuario: usuarioResponsable(req, usuario_almacen),
@@ -423,25 +436,25 @@ app.post('/api/almacen/conformidad', async (req, res) => {
                 });
             } else {
                 const nuevoArt = await client.query(
-                    `INSERT INTO inventario (nombre, categoria, stock, unidad_medida, estado) VALUES ($1, 'General', $2, 'UNIDADES', 'STOCK SUFICIENTE') RETURNING id`,
-                    [item.nombre, cantidadFisica]
+                    `INSERT INTO inventario (nombre, categoria, stock, unidad_medida, estado) VALUES ($1, $2, $3, $4, 'STOCK SUFICIENTE') RETURNING id`,
+                    [nombreFinal, categoriaFinal || 'General', cantidadFisica, unidadFinal || 'UNIDADES']
                 );
                 targetArticuloId = nuevoArt.rows[0].id;
                 await registrarHistorial(client, {
                     tipo: 'ENTRADA', origen: 'conformidad',
-                    producto: item.nombre, articulo_id: targetArticuloId,
+                    producto: nombreFinal, articulo_id: targetArticuloId,
                     cantidad: cantidadFisica, tipo_cambio: 'SUMA',
                     stock_anterior: 0, stock_nuevo: cantidadFisica,
                     usuario: usuarioResponsable(req, usuario_almacen),
-                    referencia: 'Conformidad (artículo nuevo) - guía ' + (ingreso.numero_guia || 'S/N')
+                    referencia: 'Conformidad (artículo nuevo - integración manual) - guía ' + (ingreso.numero_guia || 'S/N')
                 });
             }
-            await actualizarEstadoArticulo(client, item.nombre);
+            await actualizarEstadoArticulo(client, nombreFinal);
 
             await client.query(`
                 INSERT INTO registro_ingresos_almacen (fecha_registro, numero_guia, proveedor, producto_nombre, cantidad, estado, articulo_id)
                 VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6);
-            `, [ingreso.numero_guia, ingreso.proveedor, item.nombre, item.cantidad_fisica, estadoItem, targetArticuloId]);
+            `, [ingreso.numero_guia, ingreso.proveedor, nombreFinal, cantidadFisica, estadoItem, targetArticuloId]);
         }
 
         const estadoFinalIngreso = tieneDiferencias ? 'CONFORME CON DIFERENCIAS (POR REGULARIZAR)' : `RECIBIDO POR ${usuario_almacen}`;
@@ -666,6 +679,52 @@ app.post('/api/almacen/conformidad-ajustada', async (req, res) => {
         await client.query('ROLLBACK');
         console.error("Error en conformidad ajustada:", err);
         res.status(500).json({ success: false, mensaje: 'Error al procesar la conformidad ajustada: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// --- ALMACÉN: ANULAR PENDIENTE DE VIGILANCIA (marca ANULADO, no toca stock) ---
+app.post('/api/almacen/pendientes/anular', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { ingreso_id, usuario_almacen, observacion } = req.body;
+        if (!ingreso_id) {
+            return res.status(400).json({ success: false, mensaje: 'Falta el identificador del ingreso.' });
+        }
+        await client.query('BEGIN');
+
+        const upd = await client.query(
+            `UPDATE ingresos_vigilancia
+             SET estado = 'ANULADO',
+                 fecha_anulacion = CURRENT_TIMESTAMP,
+                 anulado_por = $2,
+                 observacion_anulacion = $3
+             WHERE id = $1 AND estado = 'PENDIENTE CONFORMIDAD'
+             RETURNING id, numero_guia, proveedor`,
+            [ingreso_id, usuarioResponsable(req, usuario_almacen), observacion || null]
+        );
+        if (upd.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: 'No se pudo anular: el pendiente no existe o ya fue procesado.' });
+        }
+
+        const pend = upd.rows[0];
+        await registrarHistorial(client, {
+            tipo: 'ANULACION', origen: 'almacen_anulacion',
+            producto: pend.proveedor || 'N/D', articulo_id: null,
+            cantidad: 0, tipo_cambio: 'SUMA',
+            stock_anterior: null, stock_nuevo: null,
+            usuario: usuarioResponsable(req, usuario_almacen),
+            referencia: 'Anulación ingreso #' + pend.id + ' - guía ' + (pend.numero_guia || 'S/N') + (observacion ? ' | ' + observacion : '')
+        });
+
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: 'Pendiente anulado correctamente (sin cambios de stock).' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error("Error al anular pendiente:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al anular el pendiente: ' + err.message });
     } finally {
         client.release();
     }

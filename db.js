@@ -55,6 +55,9 @@ const inicializarBaseDeDatos = async () => {
             ALTER TABLE ingresos_vigilancia ADD COLUMN IF NOT EXISTS placa VARCHAR(50);
             ALTER TABLE ingresos_vigilancia ADD COLUMN IF NOT EXISTS observaciones TEXT;
             ALTER TABLE ingresos_vigilancia ADD COLUMN IF NOT EXISTS items_json TEXT;
+            ALTER TABLE ingresos_vigilancia ADD COLUMN IF NOT EXISTS fecha_anulacion TIMESTAMP;
+            ALTER TABLE ingresos_vigilancia ADD COLUMN IF NOT EXISTS anulado_por VARCHAR(50);
+            ALTER TABLE ingresos_vigilancia ADD COLUMN IF NOT EXISTS observacion_anulacion TEXT;
 
             CREATE TABLE IF NOT EXISTS salidas_almacen (
                 id SERIAL PRIMARY KEY,

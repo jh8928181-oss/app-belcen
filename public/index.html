@@ -760,14 +760,24 @@
                 errorDiv.classList.add('shake');
             };
 
+            const controlador = new AbortController();
+            const timeoutMs = 12000;
+            const timer = setTimeout(() => controlador.abort(), timeoutMs);
+
             try {
                 const response = await fetch('/api/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ usuario, password })
+                    body: JSON.stringify({ usuario, password }),
+                    signal: controlador.signal
                 });
 
-                const data = await response.json();
+                let data;
+                try {
+                    data = await response.json();
+                } catch (e) {
+                    data = {};
+                }
 
                 if (response.ok && data.success) {
                     recordarClave();
@@ -810,8 +820,9 @@
                 }
             } catch (err) {
                 console.error(err);
-                mostrarError('Error de conexión con el servidor.');
+                mostrarError(err && err.name === 'AbortError' ? 'El servidor tardó demasiado en responder. Inténtalo de nuevo.' : 'Error de conexión con el servidor.');
             } finally {
+                clearTimeout(timer);
                 enviandoLogin = false;
                 btn.disabled = false;
                 btn.classList.remove('cargando');

@@ -12,7 +12,8 @@
     "migrate:down": "node-pg-migrate down",
     "migrate:create": "node-pg-migrate create",
     "migrate:status": "node-pg-migrate status",
-    "seed:dev": "NODE_ENV=development node scripts/seed-dev.js"
+    "seed:dev": "NODE_ENV=development node scripts/seed-dev.js",
+    "create:users": "NODE_ENV=development node scripts/create-users.js"
   },
   "keywords": [],
   "author": "",

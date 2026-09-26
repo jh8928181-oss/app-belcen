@@ -1,4 +1,6 @@
+require('dotenv').config();
 const pool = require('./db');
+const { normalizar, estadoDe } = require('./utils/helpers');
 
 const articulos = [
     ['Botella de 200 ml - B-1', 23326, 'UNIDADES'],
@@ -80,14 +82,6 @@ const articulos = [
     ['Etiqueta couche 90 gr x 900ml TIMONEL', 11.00, 'MILL', 'ETIQUETAS', true],
     ['Etiqueta couche 90 gr x 900 ml VEGA', 6.60, 'MILL', 'ETIQUETAS', true]
 ];
-
-function normalizar(str) {
-    return String(str || '').toLowerCase().replace(/°|º|\.|\(|\)|\/|,|-|\s+/g, '');
-}
-
-function estadoDe(stock) {
-    return Number(stock) > 0 ? 'STOCK SUFICIENTE' : 'REALIZAR PEDIDO';
-}
 
 function selftest() {
     const nuevos = articulos.filter(a => a[4] === true).length;

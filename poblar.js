@@ -3,9 +3,40 @@ const crypto = require('crypto');
 const { promisify } = require('util');
 const scryptP = promisify(crypto.scrypt);
 
+if (process.env.NODE_ENV === 'production') {
+    console.error('❌ ERROR: Este script NO debe ejecutarse en producción. Borraría todos los datos.');
+    process.exit(1);
+}
+
 async function hashPassword(password, salt) {
     const buf = await scryptP(password, salt, 64);
     return buf.toString('hex');
+}
+
+function getSeedUsers() {
+    const users = [];
+    const defaultUsers = [
+        { usuario: 'vigilancia1', rol: 'vigilancia' },
+        { usuario: 'almacen1', rol: 'almacen' },
+        { usuario: 'soplado_user', rol: 'soplado' },
+        { usuario: 'envasado_user', rol: 'envasado' },
+        { usuario: 'auditor_user', rol: 'auditoria' },
+        { usuario: 'ing_blas', rol: 'produccion' },
+        { usuario: 'pariona', rol: 'supervisor' },
+        { usuario: 'acceso_1', rol: 'invitado' },
+        { usuario: 'acceso_2', rol: 'invitado' },
+        { usuario: 'admin1', rol: 'admin' }
+    ];
+
+    for (const u of defaultUsers) {
+        const pwd = process.env[`SEED_PWD_${u.usuario.toUpperCase()}`];
+        if (!pwd) {
+            console.warn(`⚠️  SEED_PWD_${u.usuario.toUpperCase()} no definido en .env, saltando usuario ${u.usuario}`);
+            continue;
+        }
+        users.push({ usuario: u.usuario, password: pwd, rol: u.rol });
+    }
+    return users;
 }
 
 async function poblarInventarioReal() {
@@ -56,24 +87,16 @@ async function poblarInventarioReal() {
             );
         `);
 
-        const usuariosSeed = [
-            ['vigilancia1', 'belcen2026*', 'vigilancia'],
-            ['almacen1', 'almacenpass1', 'almacen'],
-            ['soplado_user', 'soplado123', 'soplado'],
-            ['envasado_user', 'envasado123', 'envasado'],
-            ['auditor_user', 'auditor123', 'auditoria'],
-            ['ing_blas', 'Blas2026_Sec', 'produccion'],
-            ['pariona', 'Pariona#987', 'supervisor'],
-            ['acceso_1', 'AccesoOne*01', 'invitado'],
-            ['acceso_2', 'AccesoTwo*02', 'invitado'],
-            ['admin1', 'gYz4-UBK5mkkeYpF', 'admin']
-        ];
-        for (const [usu, pwd, rol] of usuariosSeed) {
+        const usuariosSeed = getSeedUsers();
+        if (usuariosSeed.length === 0) {
+            console.warn('⚠️  No hay usuarios semilla configurados (faltan SEED_PWD_* en .env)');
+        }
+        for (const { usuario, password, rol } of usuariosSeed) {
             const salt = crypto.randomBytes(16).toString('hex');
-            const hash = await hashPassword(pwd, salt);
+            const hash = await hashPassword(password, salt);
             await client.query(
                 `INSERT INTO usuarios_sistema (usuario, password, rol) VALUES ($1, $2, $3) ON CONFLICT (usuario) DO NOTHING;`,
-                [usu, `${hash}:${salt}`, rol]
+                [usuario, `${hash}:${salt}`, rol]
             );
         }
 

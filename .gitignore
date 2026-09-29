@@ -1,3 +1,9 @@
-public/uploads/*
+node_modules/
+coverage/
+Temp/
+public/uploads/
 *.traineddata
+*.log
 .env
+.DS_Store
+Thumbs.db

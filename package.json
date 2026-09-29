@@ -7,13 +7,17 @@
     "start": "node index.js",
     "dev": "node index.js",
     "test": "jest",
-    "lint": "eslint .",
+    "test:coverage": "jest --coverage",
+    "test:watch": "jest --watch",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix",
+    "check": "npm run lint && npm test",
     "migrate": "node-pg-migrate up",
     "migrate:down": "node-pg-migrate down",
     "migrate:create": "node-pg-migrate create",
     "migrate:status": "node-pg-migrate status",
-    "seed:dev": "NODE_ENV=development node scripts/seed-dev.js",
-    "create:users": "NODE_ENV=development node scripts/create-users.js"
+    "seed:dev": "node scripts/seed-dev.js",
+    "create:users": "node scripts/create-users.js"
   },
   "keywords": [],
   "author": "",
@@ -29,7 +33,9 @@
     "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "eslint": "^9.39.5",
+    "globals": "^14.0.0",
     "jest": "^29.7.0",
     "node-pg-migrate": "^7.0.0"
   }

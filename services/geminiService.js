@@ -3,8 +3,15 @@
  * Maneja reintentos, circuit breaker y selección de modelo de forma encapsulada
  */
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+
+/**
+ * Lee la API key en el momento de usarla, no al cargar el módulo.
+ * Así los tests pueden alternarla sin tener que recargar todo el registro de módulos.
+ */
+function apiKey() {
+  return process.env.GEMINI_API_KEY || '';
+}
 
 // Estado interno encapsulado (no expuesto globalmente)
 const state = {
@@ -59,7 +66,8 @@ function resetState() {
  * Llama a Gemini con un modelo específico
  */
 async function llamarGemini(modelo, partes, timeoutMs = 25000) {
-  if (!GEMINI_API_KEY || typeof fetch !== 'function') {
+  const key = apiKey();
+  if (!key || typeof fetch !== 'function') {
     throw new Error('GEMINI_API_KEY no configurada o fetch no disponible');
   }
 
@@ -68,7 +76,7 @@ async function llamarGemini(modelo, partes, timeoutMs = 25000) {
 
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${key}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -125,7 +133,7 @@ async function primeroExitoso(promesas) {
  * Incluye circuit breaker y fallback de modelos
  */
 async function analizarDocumentoConGemini(dataBuffer, mimetype, textoExtraido) {
-  if (!GEMINI_API_KEY || typeof fetch !== 'function') return null;
+  if (!apiKey() || typeof fetch !== 'function') return null;
   if (isCircuitOpen()) return null;
 
   const esImagen = mimetype && mimetype.startsWith('image/');

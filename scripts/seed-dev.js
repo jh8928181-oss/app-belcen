@@ -1,4 +1,9 @@
 require('dotenv').config();
+
+// Se marca como desarrollo si el entorno no dice lo contrario.
+// El ||= respeta un NODE_ENV=production ya definido, para que la guarda de abajo siga bloqueando.
+process.env.NODE_ENV ||= 'development';
+
 const pool = require('../db');
 const crypto = require('crypto');
 const { promisify } = require('util');

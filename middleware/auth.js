@@ -59,6 +59,57 @@ function requerirRolAdmin(req, res, next) {
 
 const ROLES_PERMITIDOS = ['admin', 'supervisor', 'produccion', 'auditoria', 'vigilancia', 'almacen', 'soplado', 'envasado', 'refinado', 'invitado'];
 
+/**
+ * Control de acceso por rol.
+ *
+ * Por defecto corre en MODO OBSERVACIÓN: no bloquea, solo registra en consola
+ * los accesos que quedarían rechazados. Así se pueden gathered los roles reales
+ * que usa la planta antes de activar el bloqueo, sin arriesgar dejar fuera a
+ * nadie. Se activa poniendo ENFORCE_ROLES=true en el entorno.
+ */
+const ENFORCE_ROLES = /^(1|true|yes|si|sí)$/i.test(String(process.env.ENFORCE_ROLES || '').trim());
+
+/**
+ * Crea un middleware que restringe una ruta a los roles indicados.
+ * @param {string[]|string[]} roles - Roles permitidos
+ * @param {{enforce?: boolean, mensaje?: string}} [opciones]
+ *   enforce: fuerza el bloqueo aunque ENFORCE_ROLES esté apagado.
+ *   Se usa en las rutas que ya estaban protegidas antes de este mecanismo.
+ * @returns {Function} Middleware Express
+ */
+function crearGuardRoles(roles, opciones = {}) {
+  const { enforce = false, mensaje = 'Acceso no autorizado.' } = opciones;
+  const permitidos = [].concat(roles);
+
+  return function(req, res, next) {
+    if (permitidos.includes(req.rol)) return next();
+
+    if (enforce || ENFORCE_ROLES) {
+      return res.status(403).json({ success: false, mensaje });
+    }
+
+    console.warn(
+      `[observa-roles] ${req.method} ${req.originalUrl} | usuario=${req.usuario || '-'} rol=${req.rol || '-'} ` +
+      `| permitidos=${permitidos.join(',')}`
+    );
+    next();
+  };
+}
+
+/** Grupos de roles por módulo, derivados del mapa de acceso de dashboard.html:463-465 */
+const ROLES_MODULO = {
+  admin: ['admin'],
+  supervision: ['admin', 'supervisor'],
+  vigilancia: ['admin', 'supervisor', 'vigilancia'],
+  almacen: ['admin', 'supervisor', 'almacen'],
+  soplado: ['admin', 'supervisor', 'soplado'],
+  envasado: ['admin', 'supervisor', 'envasado', 'produccion'],
+  produccion: ['admin', 'supervisor', 'produccion'],
+  auditoria: ['admin', 'supervisor', 'auditoria', 'produccion'],
+  // Lectura de documentos con IA: consume la cuota de Gemini, no se restringe por módulo.
+  ia: ['admin', 'supervisor', 'vigilancia', 'almacen', 'soplado', 'envasado', 'refinado', 'auditoria', 'produccion']
+};
+
 function validarUsuarioBody(req, res, next) {
   const { usuario, password, rol } = req.body;
   const usu = String(usuario || '').trim();
@@ -86,6 +137,9 @@ module.exports = {
   authMiddleware,
   requerirRolAdmin,
   validarUsuarioBody,
+  crearGuardRoles,
+  ROLES_MODULO,
+  ENFORCE_ROLES,
   ROLES_PERMITIDOS,
   TOKEN_SECRET,
   TOKEN_DURACION_MS

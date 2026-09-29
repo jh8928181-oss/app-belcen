@@ -6,14 +6,10 @@ const multer = require('multer');
 const { PDFParse } = require('pdf-parse');
 const fs = require('fs');
 const os = require('os');
-const crypto = require('crypto');
-const { promisify } = require('util');
 const tesseract = require('tesseract.js');
 const { analizarDocumentoConGemini } = require('./services/geminiService');
-const { authMiddleware } = require('./middleware/auth');
-
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const MODELO_GEMINI = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+const { initRedis } = require('./services/rateLimiter');
+const { authMiddleware, crearGuardRoles, ROLES_MODULO } = require('./middleware/auth');
 
 process.on('unhandledRejection', (reason) => {
     console.error('Rechazo no manejado:', reason);
@@ -63,8 +59,20 @@ app.use('/api', (req, res, next) => {
   authMiddleware(req, res, next);
 });
 
+// --- GUARDS DE ROL ---
+// Los guards marcados con { enforce: true } ya existían antes y siempre bloquearon.
+// Los nuevos nacen en MODO OBSERVACIÓN: registran en consola en vez de rechazar.
+// Actívalos con ENFORCE_ROLES=true en el entorno cuando hayas revisado el log.
+const gVigilancia    = crearGuardRoles(ROLES_MODULO.vigilancia, { mensaje: 'Solo vigilancia, supervisor o administrador pueden registrar ingresos.' });
+const gAlmacen       = crearGuardRoles(ROLES_MODULO.almacen,    { mensaje: 'Solo almacén, supervisor o administrador pueden modificar el almacén.' });
+const gSoplado       = crearGuardRoles(ROLES_MODULO.soplado,    { mensaje: 'Solo soplado, supervisor o administrador pueden registrar soplado.' });
+const gEnvasado      = crearGuardRoles(ROLES_MODULO.envasado,   { mensaje: 'Solo envasado, producción, supervisor o administrador pueden modificar la línea.' });
+const gProduccion    = crearGuardRoles(ROLES_MODULO.produccion, { mensaje: 'Solo producción, supervisor o administrador pueden modificar producción.' });
+const gAuditoria     = crearGuardRoles(ROLES_MODULO.auditoria,  { mensaje: 'Solo auditoría, producción, supervisor o administrador pueden ver la auditoría.' });
+const gIA            = crearGuardRoles(ROLES_MODULO.ia,         { mensaje: 'No tienes acceso al lector de documentos.' });
+
 // --- VIGILANCIA (SOPORTE MÚLTIPLE DE PRODUCTOS Y DATOS DE TRANSPORTE) ---
-app.post('/api/vigilancia/registrar', upload.single('foto_guia'), async (req, res) => {
+app.post('/api/vigilancia/registrar', gVigilancia, upload.single('foto_guia'), async (req, res) => {
     try {
         const { 
             tipo_documento, 
@@ -114,7 +122,7 @@ app.post('/api/vigilancia/registrar', upload.single('foto_guia'), async (req, re
 });
 
 // --- ALMACÉN: PENDIENTES Y CONFORMIDAD ---
-app.get('/api/almacen/pendientes', async (req, res) => {
+app.get('/api/almacen/pendientes', gAlmacen, async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM ingresos_vigilancia WHERE estado = 'PENDIENTE CONFORMIDAD' ORDER BY id DESC");
         res.json(result.rows);
@@ -124,7 +132,7 @@ app.get('/api/almacen/pendientes', async (req, res) => {
     }
 });
 
-app.post('/api/almacen/conformidad', async (req, res) => {
+app.post('/api/almacen/conformidad', gAlmacen, async (req, res) => {
     const client = await pool.connect();
     try {
         const { ingreso_id, usuario_almacen, items_ajustados } = req.body;
@@ -221,7 +229,7 @@ app.post('/api/almacen/conformidad', async (req, res) => {
 });
 
 // --- ALMACÉN: REGISTRO DIRECTO DE INGRESO CONFORME (con IA / guía) ---
-app.post('/api/almacen/registrar-conforme', upload.single('foto_guia'), async (req, res) => {
+app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia'), async (req, res) => {
     const client = await pool.connect();
     try {
         const {
@@ -347,7 +355,7 @@ app.get('/api/almacen/registro-ingresos', async (req, res) => {
     }
 });
 
-app.post('/api/almacen/conformidad-ajustada', async (req, res) => {
+app.post('/api/almacen/conformidad-ajustada', gAlmacen, async (req, res) => {
     const client = await pool.connect();
     try {
         const { ingreso_id, usuario_almacen, items } = req.body;
@@ -441,7 +449,7 @@ app.post('/api/almacen/conformidad-ajustada', async (req, res) => {
 });
 
 // --- ALMACÉN: ANULAR PENDIENTE DE VIGILANCIA (marca ANULADO, no toca stock) ---
-app.post('/api/almacen/pendientes/anular', async (req, res) => {
+app.post('/api/almacen/pendientes/anular', gAlmacen, async (req, res) => {
     const client = await pool.connect();
     try {
         const { ingreso_id, usuario_almacen, observacion } = req.body;
@@ -487,7 +495,7 @@ app.post('/api/almacen/pendientes/anular', async (req, res) => {
 });
 
 // --- ALMACÉN: CREAR NUEVO PRODUCTO EN INVENTARIO ---
-app.post('/api/inventario/nuevo', async (req, res) => {
+app.post('/api/inventario/nuevo', gAlmacen, async (req, res) => {
     try {
         const { nombre, categoria, unidad_medida, stock } = req.body;
         const nom = (nombre || '').trim();
@@ -518,7 +526,7 @@ app.post('/api/inventario/nuevo', async (req, res) => {
 });
 
 // --- ALMACÉN: AJUSTE MANUAL DE INVENTARIO INSUMOS ---
-app.post('/api/almacen/ajustar-stock', async (req, res) => {
+app.post('/api/almacen/ajustar-stock', gAlmacen, async (req, res) => {
     try {
         const { articulo_id, nuevo_stock } = req.body;
         const cantidadNueva = Number(nuevo_stock);
@@ -582,7 +590,7 @@ app.get('/api/producto-terminado', async (req, res) => {
     }
 });
 
-app.post('/api/producto-terminado/ajustar', async (req, res) => {
+app.post('/api/producto-terminado/ajustar', gEnvasado, async (req, res) => {
     try {
         const { id, nuevo_stock } = req.body;
         const cantidadNueva = Number(nuevo_stock);
@@ -630,7 +638,7 @@ app.post('/api/producto-terminado/minimo', async (req, res) => {
 });
 
 // Alta manual de producto terminado SIN descontar insumos (por ejemplo, lotes ya producidos que ingresan a almacén)
-app.post('/api/producto-terminado/agregar-manual', async (req, res) => {
+app.post('/api/producto-terminado/agregar-manual', gEnvasado, async (req, res) => {
     try {
         const { producto_tipo, cantidad } = req.body;
         const cajas = parseInt(cantidad);
@@ -683,7 +691,7 @@ app.get('/api/inventario', async (req, res) => {
 });
 
 // --- SOPLADO (CON PREFORMA SELECCIONADA Y ETIQUETA AUTOMÁTICA) ---
-app.post('/api/soplado/registrar', async (req, res) => {
+app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
     const client = await pool.connect();
     try {
         const { preforma_nombre, botella_tipo, cantidad_producida, usuario } = req.body;
@@ -861,7 +869,7 @@ app.get('/api/estado-lineas', async (req, res) => {
     }
 });
 
-app.post('/api/estado-linea', async (req, res) => {
+app.post('/api/estado-linea', gEnvasado, async (req, res) => {
     try {
         const { area, estado, usuario, proximo_producto } = req.body;
         const areaValida = area === 'envasado' || area === 'soplado';
@@ -923,19 +931,6 @@ async function registrarHistorial(q, datos) {
 // Resuelve el nombre de usuario priorizando la sesión (token) y luego el enviado por el formulario.
 function usuarioResponsable(req, bodyUsuario) {
     return (req && req.usuario) || bodyUsuario || 'sistema';
-}
-
-// Lee el stock actual de un artículo de inventario (para registrar stock anterior/nuevo).
-async function leerStockArticulo(q, articuloId, nombre) {
-    const cad = 'SELECT id, nombre, stock FROM inventario WHERE ' + (articuloId ? 'id = $1' : 'LOWER(nombre) = LOWER($1)');
-    const res = await q.query(cad, [articuloId || nombre]);
-    return res.rows.length > 0 ? res.rows[0] : null;
-}
-
-// Lee el stock actual de un producto terminado.
-async function leerStockProductoTerminado(q, productoKey) {
-    const res = await q.query('SELECT producto_key, nombre_producto, stock_cajas FROM producto_terminado WHERE producto_key = $1', [productoKey]);
-    return res.rows.length > 0 ? res.rows[0] : null;
 }
 
 // --- FUNCIÓN AUXILIAR PARA RECETAS DE ENVASADO ---
@@ -1164,18 +1159,37 @@ function normalizarGuia(txt) {
     return (txt || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-// Último número con sentido de una línea (quita separadores de miles y usa coma como decimal cuando aplica)
-function ultimoNumeroLinea(linea) {
-    const nums = (linea || '').match(/\d[\d.,]*/g);
-    if (!nums || nums.length === 0) return null;
-    for (let i = nums.length - 1; i >= 0; i--) {
-        const raw = nums[i].replace(/,/g, '');
-        if (/^\d+(\.\d+)?$/.test(raw)) {
-            const v = parseFloat(raw);
-            if (v > 0 && v < 100000) return v;
-        }
+// Convierte un alias de producto de la guía ("B-1 X 200 ML") en un patrón que
+// tolera los espacios y guiones que el OCR mete entre los tokens. La "X" de
+// separador es opcional porque la misma presentación aparece como "B-1 200 ML".
+function regexDesdeAlias(alias) {
+    const tokens = (alias || '').toUpperCase().match(/[A-Z]+|\d+/g) || [];
+    const partes = tokens.map((t, i) => (t === 'X' && i > 0 ? '(?:[\\s\\-.]*X)?' : '[\\s\\-.]*' + t));
+    return partes.length ? new RegExp(partes.join(''), 'i') : null;
+}
+
+// Cantidad de una fila de productos.
+//
+// En la guía el producto llega con su presentación pegada ("B-1 X 200 ML
+// ACEITE DE SOYA"), así que el último número de la línea era la medida y no la
+// cantidad pedida. Primero se borra el alias del producto y solo después se
+// toma el último número que queda, que es la columna Cantidad. Si tras borrar
+// el alias no queda ninguna cifra se devuelve null (y el item queda para
+// revisión manual) en vez de inventar un número.
+function extraerCantidadFila(linea, alias) {
+    const reAlias = regexDesdeAlias(alias);
+    const resto = reAlias ? linea.replace(reAlias, ' ') : linea;
+    const numeros = (resto.match(/\d[\d.,]*/g) || [])
+        .map(n => n.replace(/,/g, ''))
+        .filter(n => /^\d+(\.\d+)?$/.test(n))
+        .map(Number)
+        .filter(v => v > 0 && v < 100000);
+    if (numeros.length === 0) return { valor: null, avisos: [] };
+    const avisos = [];
+    if (numeros.length > 1) {
+        avisos.push(`La fila "${linea.slice(0, 60)}" tiene varias cifras (${numeros.join(', ')}); se tomó la última como cantidad. Revísala.`);
     }
-    return null;
+    return { valor: numeros[numeros.length - 1], avisos };
 }
 
 // Claques de productos tal como aparecen en la guía de remisión electrónica SUNAT
@@ -1215,37 +1229,51 @@ function detectarItemsTabla(textoPdf) {
         if (linea.length < 10) continue;
         if (/Peso Bruto|KGM|Indicador|Documentos|Observaci|^NO$|Bien normalizado|Descripci[oó]n Detallada|Partida arancelaria|Unidad de medida|^TOTAL|Datos del traslado|Número de|Principal:|Secundario|Habiltaci|TUCE|Certificado de|de la carga:|^normalizado|^medida$|^Cantidad$|^C[óo]digo$|^GTIN$|^SUNAT$|^Bien$|^Descripci|^Partida$|Fecha Emisi[oó]n|Motivo Traslado|Modalidad de Transporte|Número de Bultos|Número de placa|Raz[oó]n Social|Vendedor|Direcci[oó]n|Conductor|Licencia del conductor|^DESTINATARIO$|^ENVIO$|^TRANSPORTE$|^Item\b|^GUIA DE REMISI[OÓ]N|^Para consultar|^P\.?Partida|^P\.?Llegada|^T\d{3}-\d|^\d{1,2} de \d{1,2} de|^CORPORACION DON LALO|CIPRESES|LURIGANCHO|CAJAMARQUILLA/i.test(linea)) continue;
         const normLinea = normalizarGuia(linea);
-        if (!normLinea || normLinea.length < 15) continue;
+        if (!normLinea) continue;
 
-        const cantidad = ultimoNumeroLinea(linea);
-        let reconocida = false;
-        for (const prod of PRODUCTOS_PDF_KEYWORDS) {
-            const veces = contadorKeys[prod.product_key] || 0;
-            if (veces >= 4) continue;
-            if (prod.nombres.some(n => normLinea.includes(normalizarGuia(n)))) {
-                reconocida = true;
-                contadorKeys[prod.product_key] = veces + 1;
-                const nombre = PRODUCTOS_TERMINADOS_MAP[prod.product_key] || prod.product_key;
-                items.push({ product_key: prod.product_key, nombre, cantidad, cantidad_auto: cantidad !== null });
-                if (cantidad === null) {
-                    advertencias.push(`Se detectó "${nombre}" en el PDF sin una cantidad clara. Revísala en la lista.`);
-                }
-                break;
-            }
+        // Se identifica el producto antes que nada: su presentación ("200 ML")
+        // forma parte del alias y hay que quitarla para no leerla como cantidad.
+        let prod = null;
+        let alias = null;
+        for (const p of PRODUCTOS_PDF_KEYWORDS) {
+            if ((contadorKeys[p.product_key] || 0) >= 4) continue;
+            const encontrado = p.nombres.find(n => normLinea.includes(normalizarGuia(n)));
+            if (encontrado) { prod = p; alias = encontrado; break; }
         }
-        if (!reconocida) {
+
+        // El mínimo de 15 caracteres sirve para descartar ruido, pero no se
+        // aplica si la línea ya coincidió con un producto conocido: "B-1 X 1 LT"
+        // es una fila válida y solo mide 10 caracteres.
+        if (!prod) {
+            if (normLinea.length < 15) continue;
             noReconocidas++;
             if (noReconocidas <= 5) {
                 advertencias.push(`Línea del PDF sin reconocer (revísala): "${linea.slice(0, 80)}..."`);
             }
+            continue;
         }
+
+        contadorKeys[prod.product_key] = (contadorKeys[prod.product_key] || 0) + 1;
+        const nombre = PRODUCTOS_TERMINADOS_MAP[prod.product_key] || prod.product_key;
+        const { valor: cantidad, avisos } = extraerCantidadFila(linea, alias);
+        items.push({ product_key: prod.product_key, nombre, cantidad, cantidad_auto: cantidad !== null });
+        if (cantidad === null) {
+            advertencias.push(`Se detectó "${nombre}" en el PDF sin una cantidad clara. Revísala en la lista.`);
+        }
+        advertencias.push(...avisos);
     }
     return { items, advertencias };
 }
 
 // Extrae las direcciones de partida y llegada de la guía SUNAT (bloque antes de "Punto de ...")
+// Una dirección queda terminada cuando su último segmento con guion es una
+// palabra suelta: la localidad ("JR. LAS BEGONIAS 123 - SAN MARTIN - LIMA") o
+// el país ("AV. LOS CIPRESES 450 - LURIGANCHO - PERU"). El patrón anterior
+// exigía un segmento de UNA sola palabra en el medio de la dirección, así que
+// cualquier localidad de varias palabras no cerraba el patrón y se pegaba a la
+// línea siguiente.
 function extraerDireccionSUNAT(lineas) {
-    const finAddr = /-\s*([A-ZÁÉÍÓÚÑÜ]{3,})\s+-\s+([A-ZÁÉÍÓÚÑÜ\s]{3,}?)\s*$/i;
+    const finAddr = /-\s*[A-ZÁÉÍÓÚÑÜ]{3,}\s*$/i;
     const esPlantaBelcen = (d) => /LOS CIPRESES|CAJAMARQUILLA|LURIGANCHO/i.test(d);
     const idxLabel = lineas.findIndex(l => /^Punto de (llegada|partida)/i.test(l));
     if (idxLabel === -1) return { partida: '', llegada: '' };
@@ -1267,19 +1295,31 @@ function extraerDireccionSUNAT(lineas) {
     }
 
     const direcciones = [];
+    const cerrar = (texto) => {
+        const t = texto.trim();
+        if (!t) return;
+        // La guía solo trae dos direcciones. Si se acumularon más, la sobrante
+        // se funde con la segunda en lugar de inventar un tercer destino.
+        if (direcciones.length >= 2) {
+            direcciones[1] = direcciones[1] + ' ' + t;
+            return;
+        }
+        direcciones.push(t);
+    };
+
     const inicio = idxStart !== -1 ? idxStart + 1 : 0;
     for (let i = inicio; i < idxLabel; i++) {
-        let l = lineas[i].replace(/^Venta\s+/i, '').trim();
+        const l = lineas[i].replace(/^Venta\s+/i, '').trim();
         if (l.length < 8 || !/[A-ZÁÉÍÓÚÑÜ]/.test(l)) continue;
         if (/^\d{1,2}\/\d{1,2}\/\d{4}\s*$/.test(l)) continue;
         if (/[:]/.test(l) && !/-/.test(l)) continue;
         buf = buf ? buf + ' ' + l : l;
         if (finAddr.test(buf)) {
-            direcciones.push(buf.trim());
+            cerrar(buf);
             buf = '';
         }
     }
-    if (buf.trim() && direcciones.length < 2) direcciones.push(buf.trim());
+    if (buf.trim()) cerrar(buf);
 
     if (direcciones.length === 0) return { partida: '', llegada: '' };
     if (direcciones.length === 1) return { partida: '', llegada: direcciones[0] };
@@ -1300,7 +1340,7 @@ function parsearCabeceraSUNAT(textoPdf) {
     const lineas = textoPdf.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
     const res = { numero_guia: '', ruc: '', empresa: '', destino: '', punto_partida: '', placa: '', chofer: '', licencia: '' };
 
-    let m = textoPdf.match(/N[°º\.]?\s*([A-Z0-9]{2,8})\s*[-–]\s*(\d{4,8})/i);
+    let m = textoPdf.match(/N[°º.]?\s*([A-Z0-9]{2,8})\s*[-–]\s*(\d{4,8})/i);
     if (m) {
         res.numero_guia = (m[1] + '-' + m[2]).toUpperCase();
     } else {
@@ -1308,7 +1348,7 @@ function parsearCabeceraSUNAT(textoPdf) {
         if (m) res.numero_guia = m[1].replace(/\s+/g, '').toUpperCase();
     }
 
-    m = textoPdf.match(/Datos del\s+[Dd]estinatario\s*:?\s*(.+?)\s*-\s*REGISTRO\s*ÚNICO\s*DE\s*CONTRIBUYENTES\s*N[°º]?\s*(\d{11})/i);
+    m = textoPdf.match(/Datos del\s+[Dd]estinatario\s*:?\s*(.+?)\s*-\s*REGISTRO\s*[UÚ]?NICO\s*DE\s*CONTRIBUYENTES\s*N[°º]?\s*(\d{11})/i);
     if (m) {
         res.empresa = m[1].trim();
         res.ruc = m[2];
@@ -1323,11 +1363,11 @@ function parsearCabeceraSUNAT(textoPdf) {
         if (m) res.ruc = m[1];
     }
     if (!res.empresa) {
-        const seg = textoPdf.match(/N[°º\.]\s*[A-Z]{1,4}\s*[-–]\s*\d{4,8}\s*\r?\n+\s*([A-ZÁÉÍÓÚÑÜ0-9.& ]{4,60})/i);
+        const seg = textoPdf.match(/N[°º.]\s*[A-Z]{1,4}\s*[-–]\s*\d{4,8}\s*\r?\n+\s*([A-ZÁÉÍÓÚÑÜ0-9.& ]{4,60})/i);
         if (seg) res.empresa = seg[1].trim();
     }
     if (!res.empresa) {
-        const seg2 = textoPdf.match(/Datos del\s+[Rr]emitente\s*:?\s*(.+?)\s*-\s*(?:REGISTRO\s*ÚNICO\s*DE\s*CONTRIBUYENTES|RUC)\s*N[°º]?\s*(\d{11})/);
+        const seg2 = textoPdf.match(/Datos del\s+[Rr]emitente\s*:?\s*(.+?)\s*-\s*(?:REGISTRO\s*[UÚ]?NICO\s*DE\s*CONTRIBUYENTES|RUC)\s*N[°º]?\s*(\d{11})/);
         if (seg2) res.empresa = seg2[1].trim();
     }
     if (!res.empresa) {
@@ -1362,14 +1402,14 @@ function parsearCabeceraSUNAT(textoPdf) {
     if (pm) res.placa = pm[1].trim().replace(/\s+/g, '').toUpperCase();
 
     let cm = textoPdf.match(/Principal[:\s]+([A-ZÁÉÍÓÚÑÜ .]{3,}?)\s*-\s*DOCUMENTO NACIONAL/i);
-    if (!cm) cm = textoPdf.match(/Conductor[:\s]*([A-ZÁÉÍÓÚÑÜ .]{3,}?)(?=\s*\r?\n|$|\s*(?:D[\.\s]?N[\.\s]?I|DNI|Licencia|LIC|Brevete|Placa|Veh[ií]culo|RUC)[:\s])/i);
+    if (!cm) cm = textoPdf.match(/Conductor[:\s]*([A-ZÁÉÍÓÚÑÜ .]{3,}?)(?=\s*\r?\n|$|\s*(?:D[.\s]?N[.\s]?I|DNI|Licencia|LIC|Brevete|Placa|Veh[ií]culo|RUC)[:\s])/i);
     if (!cm) cm = textoPdf.match(/Conductor[:\s]*(\d{8})/i);
     if (cm) res.chofer = cm[1].trim().replace(/\s+/g, ' ');
 
-    let lm = textoPdf.match(/Número de licencia de conducir[:\s]*([A-Z0-9][A-Z0-9\-]*[0-9])/i)
-        || textoPdf.match(/Número de lincencia de conducir[:\s]*([A-Z0-9][A-Z0-9\-]*[0-9])/i)
-        || textoPdf.match(/Licencia del conductor[:\s]*([A-Z0-9][A-Z0-9\-]*[0-9])/i)
-        || textoPdf.match(/Licencia[:\s]*([A-Z0-9][A-Z0-9\-]*[0-9])/i);
+    const lm = textoPdf.match(/Número de licencia de conducir[:\s]*([A-Z0-9][A-Z0-9-]*[0-9])/i)
+        || textoPdf.match(/Número de lincencia de conducir[:\s]*([A-Z0-9][A-Z0-9-]*[0-9])/i)
+        || textoPdf.match(/Licencia del conductor[:\s]*([A-Z0-9][A-Z0-9-]*[0-9])/i)
+        || textoPdf.match(/Licencia[:\s]*([A-Z0-9][A-Z0-9-]*[0-9])/i);
     if (lm) res.licencia = lm[1].trim().toUpperCase();
 
     return res;
@@ -1488,12 +1528,12 @@ function componerCamposDesdeTexto(texto) {
         },
         items: []
     };
-    const rem = texto.match(/Datos del\s+[Rr]emitente\s*:?\s*(.+?)\s*-\s*(?:REGISTRO\s*ÚNICO\s*DE\s*CONTRIBUYENTES|RUC)\s*N[°º]?\s*(\d{11})/i);
+    const rem = texto.match(/Datos del\s+[Rr]emitente\s*:?\s*(.+?)\s*-\s*(?:REGISTRO\s*[UÚ]?NICO\s*DE\s*CONTRIBUYENTES|RUC)\s*N[°º]?\s*(\d{11})/i);
     if (rem) {
         res.campos.proveedor = rem[1].trim();
         if (!res.campos.ruc) res.campos.ruc = rem[2];
     }
-    const mDNI = texto.match(/D[\.\s]?N[\.\s]?I[:\s]*[N°º]?\s*(\d{8})/i);
+    const mDNI = texto.match(/D[.\s]?N[.\s]?I[:\s]*[N°º]?\s*(\d{8})/i);
     if (mDNI) res.campos.dni_chofer = mDNI[1];
     const t = texto.toLowerCase();
     if (t.includes('factura')) res.campos.tipo_documento = 'FACTURA';
@@ -1507,7 +1547,7 @@ function componerCamposDesdeTexto(texto) {
     let enBienes = false;
     for (const fila of filas) {
         if (/bienes por transportar/i.test(fila)) { enBienes = true; continue; }
-        const m = fila.match(/^(.{3,120}?)[\s]+([\d][\d\.,]{1,10})$/);
+            const m = fila.match(/^(.{3,120}?)[\s]+([\d][\d.,]{1,10})$/);
         if (!m) continue;
         const nombre = m[1].trim().replace(/\s+/g, ' ');
         if (enBienes && !rechazar.test(nombre) && !/^[A-Z]{2,3}-?\d{3,4}$/i.test(nombre)) {
@@ -1516,7 +1556,7 @@ function componerCamposDesdeTexto(texto) {
     }
     if (candidatos.length === 0) {
         for (const fila of filas) {
-            const m = fila.match(/^(.{3,120}?)[\s]+([\d][\d\.,]{1,10})$/);
+        const m = fila.match(/^(.{3,120}?)[\s]+([\d][\d.,]{1,10})$/);
             if (!m) continue;
             const nombre = m[1].trim().replace(/\s+/g, ' ');
             if (/^(?:botella|etiqueta|tapa|ca[ja]s?|preforma|paleta|insumo|aceite|don lalo|belini|corporacion)/i.test(nombre) && !rechazar.test(nombre)) {
@@ -1535,7 +1575,7 @@ function componerCamposDesdeTexto(texto) {
 }
 
 // --- LECTOR INTELIGENTE DE DOCUMENTOS PARA SALIDAS ---
-app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res) => {
+app.post('/api/salidas/leer-pdf', gIA, upload.single('archivo_guia'), async (req, res) => {
     const limpiarArchivo = () => { if (req.file) fs.promises.unlink(req.file.path).catch(() => {}); };
     try {
         if (!req.file) {
@@ -1551,7 +1591,7 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
             return res.json({ success: false, mensaje: 'No se pudo reconocer contenido legible en el documento (ni texto ni OCR). Carga los datos manualmente.' });
         }
 
-        let cabecera = parsearCabeceraSUNAT(textoPdf);
+        const cabecera = parsearCabeceraSUNAT(textoPdf);
         let chofer_licencia = [cabecera.chofer, cabecera.licencia ? 'Lic: ' + cabecera.licencia : ''].filter(Boolean).join(' - ');
 
         // Refuerzo con IA (Gemini): completa cabecera e ítems cuando los parsers locales no alcanzan.
@@ -1601,7 +1641,7 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
 
         if (itemsDetectados.length === 0) {
             const ptRes = await pool.query('SELECT * FROM producto_terminado');
-            for (let pt of ptRes.rows) {
+            for (const pt of ptRes.rows) {
                 const nombreBusq = pt.nombre_producto.toLowerCase().replace('aceite de soya', '').trim();
                 if (!nombreBusq) continue;
                 if (!textoPdf.toLowerCase().includes(nombreBusq)) continue;
@@ -1650,7 +1690,7 @@ app.post('/api/salidas/leer-pdf', upload.single('archivo_guia'), async (req, res
 });
 
 // --- LECTOR IA GENÉRICO PARA VIGILANCIA / ALMACÉN (imagen o PDF, rellena campos) ---
-app.post('/api/documento/leer', upload.single('archivo_documento'), async (req, res) => {
+app.post('/api/documento/leer', gIA, upload.single('archivo_documento'), async (req, res) => {
     const limpiarArchivo = () => { if (req.file) fs.promises.unlink(req.file.path).catch(() => {}); };
     try {
         if (!req.file) {
@@ -1720,7 +1760,7 @@ app.post('/api/documento/leer', upload.single('archivo_documento'), async (req, 
 });
 
 // --- SALIDAS DE ALMACÉN ---
-app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, res) => {
+app.post('/api/salidas/registrar', gAlmacen, upload.single('archivo_guia'), async (req, res) => {
     const client = await pool.connect();
     try {
         const { tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, fecha_salida, usuario, items_json } = req.body;
@@ -1732,13 +1772,13 @@ app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, re
         }
 
         await client.query('BEGIN');
-        let estadoGuia = tipo_registro === 'CON GUIA' ? 'REGULARIZADO' : 'PENDIENTE REGULARIZAR';
-        let guiaFinal = numero_guia || 'S/N';
+        const estadoGuia = tipo_registro === 'CON GUIA' ? 'REGULARIZADO' : 'PENDIENTE REGULARIZAR';
+        const guiaFinal = numero_guia || 'S/N';
         const guia_url = req.file ? `/uploads/${req.file.filename}` : null;
 
         for (const item of items) {
-            let idArticuloFinal = item.articulo_id ? parseInt(item.articulo_id) : null;
-            let productoKeyFinal = item.producto_key || null;
+            const idArticuloFinal = item.articulo_id ? parseInt(item.articulo_id) : null;
+            const productoKeyFinal = item.producto_key || null;
             const cantidad = parseFloat(item.cantidad);
             const nombreItem = (item.nombre || productoKeyFinal || 'producto sin nombre').toString();
 
@@ -1823,7 +1863,7 @@ app.post('/api/salidas/registrar', upload.single('archivo_guia'), async (req, re
     }
 });
 
-app.post('/api/salidas/regularizar', async (req, res) => {
+app.post('/api/salidas/regularizar', gAlmacen, async (req, res) => {
     try {
         const { salida_id, nuevo_numero_guia } = req.body;
         await pool.query(`UPDATE salidas_almacen SET numero_guia = $1, estado_guia = 'REGULARIZADO' WHERE id = $2`, [nuevo_numero_guia, salida_id]);
@@ -1834,7 +1874,7 @@ app.post('/api/salidas/regularizar', async (req, res) => {
     }
 });
 
-app.post('/api/salidas/eliminar', async (req, res) => {
+app.post('/api/salidas/eliminar', gAlmacen, async (req, res) => {
     const client = await pool.connect();
     try {
         const { despacho_id, salida_id } = req.body;
@@ -1898,7 +1938,7 @@ app.post('/api/salidas/eliminar', async (req, res) => {
     }
 });
 
-app.post('/api/salidas/editar', upload.single('archivo_guia'), async (req, res) => {
+app.post('/api/salidas/editar', gAlmacen, upload.single('archivo_guia'), async (req, res) => {
     const client = await pool.connect();
     try {
         const { despacho_id, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, fecha_salida, usuario, items_json } = req.body;
@@ -1951,8 +1991,8 @@ app.post('/api/salidas/editar', upload.single('archivo_guia'), async (req, res) 
         const guia_url = req.file ? `/uploads/${req.file.filename}` : (filas[0].guia_url || null);
 
         for (const item of items) {
-            let idArticuloFinal = item.articulo_id ? parseInt(item.articulo_id) : null;
-            let productoKeyFinal = item.producto_key || null;
+            const idArticuloFinal = item.articulo_id ? parseInt(item.articulo_id) : null;
+            const productoKeyFinal = item.producto_key || null;
             const cantidad = parseFloat(item.cantidad);
             const nombreItem = (item.nombre || productoKeyFinal || 'producto sin nombre').toString();
 
@@ -2058,7 +2098,7 @@ app.get('/api/salidas/historial', async (req, res) => {
 });
 
 // --- AUDITORÍA: ENTRADAS (VIGILANCIA + ALMACÉN) Y SALIDAS ---
-app.get('/api/auditoria/entradas', async (req, res) => {
+app.get('/api/auditoria/entradas', gAuditoria, async (req, res) => {
     try {
         const vig = await pool.query(`SELECT * FROM ingresos_vigilancia ORDER BY fecha_ingreso DESC`);
         const alm = await pool.query(`SELECT * FROM registro_ingresos_almacen ORDER BY fecha_registro DESC, id DESC`);
@@ -2118,7 +2158,7 @@ app.get('/api/auditoria/entradas', async (req, res) => {
     }
 });
 
-app.get('/api/auditoria/vigilancia', async (req, res) => {
+app.get('/api/auditoria/vigilancia', gAuditoria, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM ingresos_vigilancia ORDER BY id DESC`);
         res.json(result.rows);
@@ -2127,7 +2167,7 @@ app.get('/api/auditoria/vigilancia', async (req, res) => {
     }
 });
 
-app.get('/api/auditoria/salidas', async (req, res) => {
+app.get('/api/auditoria/salidas', gAuditoria, async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT s.*,
@@ -2146,7 +2186,7 @@ app.get('/api/auditoria/salidas', async (req, res) => {
 });
 
 // --- AUDITORÍA: HISTORIAL DE MOVIMIENTOS DE INVENTARIO ---
-app.get('/api/auditoria/historial', async (req, res) => {
+app.get('/api/auditoria/historial', gAuditoria, async (req, res) => {
     try {
         const { tipo, desde, hasta, q } = req.query;
         const params = [];
@@ -2203,7 +2243,7 @@ function detectarProductoTipo(presentacion) {
 function extraerTapaDeObservaciones(observaciones) {
     if (!observaciones || !observaciones.includes('Tapa:')) return null;
     const partes = observaciones.split('|');
-    for (let parte of partes) {
+    for (const parte of partes) {
         if (parte.includes('Tapa:')) return parte.replace('Tapa:', '').trim();
     }
     return null;
@@ -2217,7 +2257,7 @@ function safeParseJson(str) {
     }
 }
 
-app.post('/api/produccion/reporte', async (req, res) => {
+app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
     try {
         const { fecha_produccion, presentacion, cantidad_cajas, toneladas, observaciones, usuario } = req.body;
         const producto_tipo = detectarProductoTipo(presentacion || '');
@@ -2384,7 +2424,7 @@ app.get('/api/produccion/informes', async (req, res) => {
     }
 });
 
-app.post('/api/produccion/eliminar', async (req, res) => {
+app.post('/api/produccion/eliminar', gProduccion, async (req, res) => {
     const client = await pool.connect();
     try {
         const { reporte_id } = req.body;
@@ -2451,7 +2491,7 @@ app.post('/api/produccion/eliminar', async (req, res) => {
     }
 });
 
-app.post('/api/produccion/cierre', async (req, res) => {
+app.post('/api/produccion/cierre', gProduccion, async (req, res) => {
     const client = await pool.connect();
     try {
         const { fecha_cierre, usuario } = req.body;
@@ -2516,12 +2556,8 @@ app.get('/api/produccion/historial-cierres', async (req, res) => {
 // --- REFINERÍA: REPORTE DIARIO DE CONTROL E INVENTARIO ---
 const ROLES_REFINADO = ['auditoria', 'supervisor', 'produccion', 'refinado'];
 
-function requerirRolRefinado(req, res, next) {
-    if (!ROLES_REFINADO.includes(req.rol)) {
-        return res.status(403).json({ success: false, mensaje: 'Acceso no autorizado.' });
-    }
-    next();
-}
+// enforce: true porque estas rutas ya bloqueaban antes de existir el modo observación.
+const requerirRolRefinado = crearGuardRoles(ROLES_REFINADO, { enforce: true });
 
 const INSUMOS_REFINADO_BASE = [
     { nombre: 'ACEITE CRUDO DE SOYA TK-1', um: 'TON' },
@@ -2534,12 +2570,6 @@ const INSUMOS_REFINADO_BASE = [
     { nombre: 'MANGAS FILTRANTES', um: 'UND' },
     { nombre: 'TELA (para filtro prensa)', um: 'UND' }
 ];
-
-function estadoInsumo(dias) {
-    const d = Number(dias);
-    if (d !== null && !isNaN(d) && d <= 8) return 'REALIZAR PEDIDO';
-    return 'STOCK SUFICIENTE';
-}
 
 app.get('/api/refinado/reporte', requerirRolRefinado, async (req, res) => {
     try {
@@ -2775,12 +2805,7 @@ app.post('/api/refinado/lotes/eliminar', requerirRolRefinado, async (req, res) =
 
 // --- ALMACÉN: INVENTARIO (STOCK) DE INSUMOS DE REFINADO ---
 const ROLES_ALMACEN_INV_REF = ['admin', 'supervisor', 'almacen', 'auditoria'];
-function requerirRolAlmacenInvRef(req, res, next) {
-    if (!ROLES_ALMACEN_INV_REF.includes(req.rol)) {
-        return res.status(403).json({ success: false, mensaje: 'Acceso no autorizado.' });
-    }
-    next();
-}
+const requerirRolAlmacenInvRef = crearGuardRoles(ROLES_ALMACEN_INV_REF, { enforce: true });
 
 app.get('/api/almacen/stock-refinado', requerirRolAlmacenInvRef, async (req, res) => {
     try {
@@ -2836,12 +2861,7 @@ app.post('/api/almacen/stock-refinado/ajustar', requerirRolAlmacenInvRef, async 
 
 // ================== BASE DE DATOS GENERAL: PROVEEDORES, OC/OS Y STOCK DE PROVEEDORES ==================
 const ROLES_BD_GENERAL = ['admin', 'auditoria'];
-function requerirRolBDGeneral(req, res, next) {
-    if (!ROLES_BD_GENERAL.includes(req.rol)) {
-        return res.status(403).json({ success: false, mensaje: 'Acceso no autorizado.' });
-    }
-    next();
-}
+const requerirRolBDGeneral = crearGuardRoles(ROLES_BD_GENERAL, { enforce: true });
 
 const CATEGORIAS_PROVEEDOR = ['CAJAS', 'TAPAS Y ACCESORIOS', 'PREFORMAS Y SERVICIOS', 'BOTELLAS Y GALONERAS', 'ETIQUETAS', 'General', 'REFINADO'];
 const ESTADOS_ORDEN = ['PENDIENTE', 'EMITIDA', 'RECIBIDA', 'COMPLETADA', 'CANCELADA'];
@@ -3507,8 +3527,15 @@ app.get('/api/refinado/historial', requerirRolRefinado, async (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`Servidor ejecutándose en http://localhost:${PORT}`);
-});
+// Solo arranca el servidor cuando este archivo es el punto de entrada.
+// Si otro módulo lo importa (por ejemplo un test), no se ocupa el puerto.
+if (require.main === module) {
+    // Rate limiter: usa Redis si hay REDIS_URL; si no, sigue con memoria.
+    initRedis().catch(() => {});
+
+    app.listen(PORT, () => {
+        console.log(`Servidor ejecutándose en http://localhost:${PORT}`);
+    });
+}
 
 module.exports = { app, parsearCabeceraSUNAT, detectarItemsTabla, extraerDireccionSUNAT };

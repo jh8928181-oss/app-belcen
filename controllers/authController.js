@@ -4,7 +4,6 @@ const {
   hashPassword,
   esPasswordHasheada,
   generarToken,
-  verificarToken,
   ROLES_PERMITIDOS
 } = require('../middleware/auth');
 const { checkRateLimit } = require('../services/rateLimiter');

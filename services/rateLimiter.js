@@ -44,8 +44,10 @@ async function initRedis() {
 // Almacén en memoria como fallback
 const memoryStore = new Map();
 
-// Limpieza periódica de memoria
-setInterval(() => {
+// Limpieza periódica de memoria.
+// unref() evita que este temporizador sea lo único que mantiene vivo el proceso:
+// en los tests, Jest puede terminar sin esperar a que expire el intervalo.
+const cleanupTimer = setInterval(() => {
   const now = Date.now();
   for (const [key, record] of memoryStore.entries()) {
     if (record.resetTime < now) {
@@ -53,6 +55,7 @@ setInterval(() => {
     }
   }
 }, 60 * 60 * 1000); // Cada hora
+if (typeof cleanupTimer.unref === 'function') cleanupTimer.unref();
 
 /**
  * Rate limiter con sliding window
@@ -181,13 +184,19 @@ async function shutdown() {
   }
 }
 
-// Inicializar Redis al cargar el módulo (no await para no bloquear)
-initRedis().catch(() => {});
-
+/**
+ * Inicializa el backend de Redis, si hay REDIS_URL configurada.
+ *
+ * NO se llama automáticamente al importar el módulo: durante los tests dispararía
+ * un require('ioredis') en cada importación. El servidor la invoca desde index.js
+ * al arrancar; si falla, el rate limiter sigue operando con el almacén en memoria.
+ */
 module.exports = {
   checkRateLimit,
   rateLimitMiddleware,
   initRedis,
   shutdown,
-  isUsingRedis: () => useRedis
+  isUsingRedis: () => useRedis,
+  /** Vacía el almacén en memoria. Lo usan los tests para partir de cero. */
+  _resetMemoryStore: () => memoryStore.clear()
 };

@@ -7,3 +7,6 @@ public/uploads/
 .env
 .DS_Store
 Thumbs.db
+
+# Scripts ad-hoc locales con la DATABASE_URL escrita en el archivo.
+verify-*.js

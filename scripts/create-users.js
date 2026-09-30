@@ -45,6 +45,11 @@ function getSeedUsers() {
   return users;
 }
 
+// Por defecto el script SOLO inserta los que faltan: un usuario ya existente
+// conserva su contraseña y su rol, aunque las variables SEED_PWD_* hayan cambiado.
+// Con --reset-passwordes se sobrescriben contraseña y rol de los usuarios semilla.
+const RESETEAR = process.argv.includes('--reset-passwordes');
+
 async function createUsersOnly() {
   const client = await pool.connect();
   try {
@@ -60,15 +65,32 @@ async function createUsersOnly() {
     for (const { usuario, password, rol } of usuariosSeed) {
       const salt = crypto.randomBytes(16).toString('hex');
       const hash = await hashPassword(password, salt);
-      await client.query(
-        `INSERT INTO usuarios_sistema (usuario, password, rol) VALUES ($1, $2, $3) ON CONFLICT (usuario) DO NOTHING;`,
-        [usuario, `${hash}:${salt}`, rol]
-      );
-      console.log(`✅ Usuario creado/actualizado: ${usuario} (${rol})`);
+
+      if (RESETEAR) {
+        const r = await client.query(
+          `INSERT INTO usuarios_sistema (usuario, password, rol) VALUES ($1, $2, $3)
+           ON CONFLICT (usuario) DO UPDATE SET password = EXCLUDED.password, rol = EXCLUDED.rol
+           RETURNING (xmax = 0) AS insertado;`,
+          [usuario, `${hash}:${salt}`, rol]
+        );
+        console.log(`${r.rows[0].insertado ? '✅ Creado' : '🔄 Actualizado'}: ${usuario} (${rol})`);
+      } else {
+        const r = await client.query(
+          `INSERT INTO usuarios_sistema (usuario, password, rol) VALUES ($1, $2, $3)
+           ON CONFLICT (usuario) DO NOTHING
+           RETURNING id;`,
+          [usuario, `${hash}:${salt}`, rol]
+        );
+        console.log(
+          r.rows.length
+            ? `✅ Creado: ${usuario} (${rol})`
+            : `➖ Sin cambios: ${usuario} ya existía (use --reset-passwordes para actualizar)`
+        );
+      }
     }
 
     await client.query('COMMIT');
-    console.log('✅ Usuarios creados exitosamente.');
+    console.log('✅ Usuarios procesados exitosamente.');
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('❌ Error:', error);

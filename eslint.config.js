@@ -17,6 +17,9 @@ module.exports = [
       'migrations/**',
       'scripts/**',
       'check-*.js',
+      // Scripts ad-hoc locales con credenciales de BD escritas en el archivo.
+      // No se versionan: ver .gitignore.
+      'verify-*.js',
       'poblar.js',
       'actualizar_inventario.js'
     ]

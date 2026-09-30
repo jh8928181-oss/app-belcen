@@ -65,12 +65,27 @@ npm run migrate:create   # crea una migración nueva
 
 ## Usuarios de desarrollo
 
-Los scripts de semilla se niegan a correr si `NODE_ENV=production`:
+## Scripts de semilla
+
+| Script | Qué hace |
+| --- | --- |
+| `npm run create:users` | Inserta los usuarios de las variables `SEED_PWD_*`. **No destructivo.** |
+| `node scripts/create-users.js --reset-passwordes` | Igual, pero además sobrescribe contraseña y rol de los que ya existen. **No destructivo.** |
+| `npm run seed:dev` | **DESTRUCTIVO.** Borra las 18 tablas y las recrea vacías, con los usuarios. |
+| `node poblar.js` | **DESTRUCTIVO.** Borra tablas y las repuebla con datos de ejemplo. |
+
+`seed:dev` y `poblar.js` están protegidos por `scripts/guard-destructivo.js`:
+se niegan a correr si `NODE_ENV=production`, si la base no es de desarrollo
+(host local o nombre con sufijo `_dev`/`_test`/`_demo`…) o si faltan las dos
+confirmaciones:
 
 ```bash
-npm run seed:dev      # crea los usuarios con las SEED_PWD_* definidas
-npm run create:users  # interactivo
+node scripts/seed-dev.js --i-borrar-todo     # y ALLOW_DESTRUCTIVE_SQL=1
 ```
+
+`NODE_ENV=production` por sí solo no alcanza: tras cambiar de proveedor, un
+`.env.local` puede apuntar a la base de producción mientras `NODE_ENV` sigue
+en `development` en local. La guarda también mira a dónde apunta la URL.
 
 En producción los usuarios se administran desde el panel, no con estos scripts.
 

@@ -1,12 +1,13 @@
 const pool = require('./db');
 const crypto = require('crypto');
 const { promisify } = require('util');
+const { exigirBaseDeDesarrollo } = require('./scripts/guard-destructivo');
 const scryptP = promisify(crypto.scrypt);
 
-if (process.env.NODE_ENV === 'production') {
-    console.error('❌ ERROR: Este script NO debe ejecutarse en producción. Borraría todos los datos.');
-    process.exit(1);
-}
+// Hace DROP TABLE sobre inventario y usuarios: se detiene salvo que la base
+// sea de desarrollo y se confirme por partida doble.
+// Ver scripts/guard-destructivo.js.
+exigirBaseDeDesarrollo('poblar.js');
 
 async function hashPassword(password, salt) {
     const buf = await scryptP(password, salt, 64);

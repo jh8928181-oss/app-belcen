@@ -7,12 +7,12 @@ process.env.NODE_ENV ||= 'development';
 const pool = require('../db');
 const crypto = require('crypto');
 const { promisify } = require('util');
+const { exigirBaseDeDesarrollo } = require('./guard-destructivo');
 const scryptP = promisify(crypto.scrypt);
 
-if (process.env.NODE_ENV === 'production') {
-  console.error('❌ ERROR: Este script NO debe ejecutarse en producción. Borraría todos los datos.');
-  process.exit(1);
-}
+// Borra las 18 tablas: se detiene salvo que la base sea de desarrollo y se
+// confirme por partida doble. Ver scripts/guard-destructivo.js.
+exigirBaseDeDesarrollo('scripts/seed-dev.js');
 
 async function hashPassword(password, salt) {
   const buf = await scryptP(password, salt, 64);
@@ -69,6 +69,11 @@ async function seedDev() {
     await client.query('DROP TABLE IF EXISTS ordenes_items CASCADE;');
     await client.query('DROP TABLE IF EXISTS stock_proveedores CASCADE;');
     await client.query('DROP TABLE IF EXISTS stock_proveedores_historial CASCADE;');
+
+    // node-pg-migrate registra lo aplicado en pgmigrations. Si esa tabla sobrevive
+    // al DROP de arriba, cree que el esquema ya existe y se salta las migraciones:
+    // la base queda VACIA y sin tablas. Por eso se limpia tambien.
+    await client.query('DROP TABLE IF EXISTS pgmigrations CASCADE;');
 
     // 2. Ejecutar migraciones (recrear esquema limpio)
     console.log('🔄 Ejecutando migraciones...');

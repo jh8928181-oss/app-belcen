@@ -1,4 +1,5 @@
 const { Pool } = require('pg');
+const dns = require('dns');
 
 if (!process.env.DATABASE_URL) {
   throw new Error('DATABASE_URL no está definido en variables de entorno');
@@ -14,7 +15,11 @@ const config = {
   password: url.password,
   ssl: { rejectUnauthorized: false },
   connectionTimeoutMillis: 10000,
-  family: 4
+  // Forzar resolución DNS a IPv4
+  lookup: (hostname, options, callback) => {
+    options.family = 4;
+    dns.lookup(hostname, options, callback);
+  }
 };
 
 const pool = new Pool(config);

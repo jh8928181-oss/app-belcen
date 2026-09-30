@@ -1,7 +1,15 @@
 const mockQuery = jest.fn();
 
+// Los clientes transaccionales enrutan BEGIN/COMMIT/ROLLBACK/SET LOCAL sin tocar
+// mockQuery, de modo que las consultas "reales" se indexan igual que antes.
+const SQL_CONTROL = /^\s*(BEGIN|COMMIT|ROLLBACK|SET LOCAL)\b/i;
+
 jest.mock('../db', () => ({
-  query: (...args) => mockQuery(...args)
+  query: (...args) => mockQuery(...args),
+  connect: () => Promise.resolve({
+    query: (sql, params) => SQL_CONTROL.test(sql) ? Promise.resolve({ rows: [] }) : mockQuery(sql, params),
+    release: () => {}
+  })
 }));
 
 jest.mock('../services/rateLimiter', () => ({

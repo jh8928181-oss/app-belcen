@@ -23,7 +23,6 @@ async function login(req, res) {
       return res.status(400).json({ success: false, mensaje: 'Ingrese usuario y contraseña.' });
     }
 
-    // Rate limiting con nuevo servicio (5 intentos por 5 minutos por IP+usuario)
     const rateLimitKey = `login:${ipCliente(req)}:${usu}`;
     const rateLimitResult = await checkRateLimit({
       key: rateLimitKey,
@@ -42,8 +41,8 @@ async function login(req, res) {
     const result = await pool.query('SELECT * FROM usuarios_sistema WHERE usuario = $1', [usu]);
     const user = result.rows[0];
     if (!user) {
-      // Registrar intento fallido (incrementa contador en rate limiter)
       await checkRateLimit({ key: rateLimitKey, maxRequests: 5, windowMs: 5 * 60 * 1000 });
+      await pool.query('INSERT INTO historial_accesos (usuario, accion, ip, user_agent, exito, mensaje_error) VALUES ($1, \'LOGIN_FAILED\', $2, $3, false, $4)', [usu, ipCliente(req), req.headers['user-agent'] || '', 'Usuario no existe']);
       return res.status(401).json({ success: false, mensaje: 'Usuario o contraseña incorrectos' });
     }
 
@@ -62,12 +61,15 @@ async function login(req, res) {
     }
 
     if (!ok) {
-      // Registrar intento fallido
       await checkRateLimit({ key: rateLimitKey, maxRequests: 5, windowMs: 5 * 60 * 1000 });
+      await pool.query('INSERT INTO historial_accesos (usuario, accion, ip, user_agent, exito, mensaje_error) VALUES ($1, \'LOGIN_FAILED\', $2, $3, false, $4)', [usu, ipCliente(req), req.headers['user-agent'] || '', 'Contraseña incorrecta']);
       return res.status(401).json({ success: false, mensaje: 'Usuario o contraseña incorrectos' });
     }
 
     const token = generarToken(user.usuario, user.rol);
+
+    await pool.query('INSERT INTO historial_accesos (usuario, accion, ip, user_agent, exito) VALUES ($1, \'LOGIN\', $2, $3, true)', [user.usuario, ipCliente(req), req.headers['user-agent'] || '']);
+
     res.json({ success: true, rol: user.rol, usuario: user.usuario, token });
   } catch (err) {
     console.error('Error en login:', err);
@@ -86,37 +88,52 @@ async function listarUsuarios(req, res) {
 }
 
 async function crearUsuario(req, res) {
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+    await client.query('SET LOCAL app.current_user = $1', [req.usuario || 'admin']);
+
     const { usu, pwd, rolOk } = req.validated;
 
-    const existe = await pool.query('SELECT id FROM usuarios_sistema WHERE LOWER(usuario) = LOWER($1)', [usu]);
+    const existe = await client.query('SELECT id FROM usuarios_sistema WHERE LOWER(usuario) = LOWER($1)', [usu]);
     if (existe.rows.length) {
+      await client.query('ROLLBACK');
       return res.status(409).json({ success: false, mensaje: 'El usuario ya existe.' });
     }
 
     const salt = crypto.randomBytes(16).toString('hex');
     const hash = await hashPassword(pwd, salt);
-    const result = await pool.query(
+    const result = await client.query(
       'INSERT INTO usuarios_sistema (usuario, password, rol) VALUES ($1, $2, $3) RETURNING id, usuario, rol',
       [usu, `${hash}:${salt}`, rolOk]
     );
+    await client.query('COMMIT');
     res.json({ success: true, mensaje: 'Usuario creado correctamente.', usuario: result.rows[0] });
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('Error al crear usuario:', err);
     res.status(500).json({ success: false, mensaje: 'Error al crear usuario: ' + err.message });
+  } finally {
+    client.release();
   }
 }
 
 async function editarUsuario(req, res) {
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+    await client.query('SET LOCAL app.current_user = $1', [req.usuario || 'admin']);
+
     const id = parseInt(req.params.id, 10);
     const { usuario, rol, password } = req.body;
     if (!Number.isInteger(id) || id <= 0) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ success: false, mensaje: 'ID de usuario no válido.' });
     }
 
-    const target = await pool.query('SELECT * FROM usuarios_sistema WHERE id = $1', [id]);
+    const target = await client.query('SELECT * FROM usuarios_sistema WHERE id = $1', [id]);
     if (!target.rows.length) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ success: false, mensaje: 'El usuario no existe.' });
     }
     const targetUser = target.rows[0];
@@ -126,24 +143,29 @@ async function editarUsuario(req, res) {
     const nuevoPassword = (password !== undefined && password !== null) ? String(password) : '';
 
     if (!/^[A-Za-z0-9_]{3,50}$/.test(nuevoUsuario)) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ success: false, mensaje: 'El usuario debe tener entre 3 y 50 caracteres (letras, números y guión bajo).' });
     }
     if (!ROLES_PERMITIDOS.includes(nuevoRol)) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ success: false, mensaje: 'Rol no válido.' });
     }
     if (nuevoPassword && nuevoPassword.length < 6) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ success: false, mensaje: 'La contraseña debe tener al menos 6 caracteres.' });
     }
     if (nuevoUsuario.toLowerCase() !== targetUser.usuario.toLowerCase()) {
-      const duplicado = await pool.query('SELECT id FROM usuarios_sistema WHERE LOWER(usuario) = LOWER($1) AND id <> $2', [nuevoUsuario, id]);
+      const duplicado = await client.query('SELECT id FROM usuarios_sistema WHERE LOWER(usuario) = LOWER($1) AND id <> $2', [nuevoUsuario, id]);
       if (duplicado.rows.length) {
+        await client.query('ROLLBACK');
         return res.status(409).json({ success: false, mensaje: 'Ya existe otro usuario con ese nombre.' });
       }
     }
 
     if (targetUser.rol === 'admin' && nuevoRol !== 'admin') {
-      const admins = await pool.query("SELECT COUNT(*)::int AS total FROM usuarios_sistema WHERE rol = 'admin'");
+      const admins = await client.query("SELECT COUNT(*)::int AS total FROM usuarios_sistema WHERE rol = 'admin'");
       if (admins.rows[0].total <= 1) {
+        await client.query('ROLLBACK');
         return res.status(400).json({ success: false, mensaje: 'Debe existir al menos un administrador. No puedes quitar el rol de admin al último administrador.' });
       }
     }
@@ -151,44 +173,66 @@ async function editarUsuario(req, res) {
     if (nuevoPassword) {
       const salt = crypto.randomBytes(16).toString('hex');
       const hash = await hashPassword(nuevoPassword, salt);
-      await pool.query('UPDATE usuarios_sistema SET usuario = $1, rol = $2, password = $3 WHERE id = $4', [nuevoUsuario, nuevoRol, `${hash}:${salt}`, id]);
+      await client.query('UPDATE usuarios_sistema SET usuario = $1, rol = $2, password = $3 WHERE id = $4', [nuevoUsuario, nuevoRol, `${hash}:${salt}`, id]);
     } else {
-      await pool.query('UPDATE usuarios_sistema SET usuario = $1, rol = $2 WHERE id = $3', [nuevoUsuario, nuevoRol, id]);
+      await client.query('UPDATE usuarios_sistema SET usuario = $1, rol = $2 WHERE id = $3', [nuevoUsuario, nuevoRol, id]);
     }
 
+    await client.query('COMMIT');
     res.json({ success: true, mensaje: 'Usuario actualizado correctamente.' });
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('Error al editar usuario:', err);
     res.status(500).json({ success: false, mensaje: 'Error al editar usuario: ' + err.message });
+  } finally {
+    client.release();
   }
 }
 
 async function eliminarUsuario(req, res) {
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+    await client.query('SET LOCAL app.current_user = $1', [req.usuario || 'admin']);
+
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {
+      await client.query('ROLLBACK');
       return res.status(400).json({ success: false, mensaje: 'ID de usuario no válido.' });
     }
 
-    const target = await pool.query('SELECT * FROM usuarios_sistema WHERE id = $1', [id]);
+    const target = await client.query('SELECT * FROM usuarios_sistema WHERE id = $1', [id]);
     if (!target.rows.length) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ success: false, mensaje: 'El usuario no existe.' });
     }
     const targetUser = target.rows[0];
 
     if (targetUser.rol === 'admin') {
-      const admins = await pool.query("SELECT COUNT(*)::int AS total FROM usuarios_sistema WHERE rol = 'admin'");
+      const admins = await client.query("SELECT COUNT(*)::int AS total FROM usuarios_sistema WHERE rol = 'admin'");
       if (admins.rows[0].total <= 1) {
+        await client.query('ROLLBACK');
         return res.status(400).json({ success: false, mensaje: 'No se puede eliminar al último administrador.' });
       }
     }
 
-    await pool.query('DELETE FROM usuarios_sistema WHERE id = $1', [id]);
+    await client.query('DELETE FROM usuarios_sistema WHERE id = $1', [id]);
+    await client.query('COMMIT');
     res.json({ success: true, mensaje: 'Usuario eliminado correctamente.' });
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('Error al eliminar usuario:', err);
     res.status(500).json({ success: false, mensaje: 'Error al eliminar usuario: ' + err.message });
+  } finally {
+    client.release();
   }
+}
+
+async function logout(req, res) {
+  try {
+    await pool.query('INSERT INTO historial_accesos (usuario, accion, ip, user_agent, exito) VALUES ($1, \'LOGOUT\', $2, $3, true)', [req.usuario, ipCliente(req), req.headers['user-agent'] || '']);
+    res.json({ success: true, mensaje: 'Sesión cerrada' });
+  } catch (err) { res.status(500).json({ success: false, mensaje: err.message }); }
 }
 
 module.exports = {
@@ -196,5 +240,6 @@ module.exports = {
   listarUsuarios,
   crearUsuario,
   editarUsuario,
-  eliminarUsuario
+  eliminarUsuario,
+  logout
 };

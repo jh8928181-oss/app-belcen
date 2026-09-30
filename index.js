@@ -15,6 +15,7 @@ const tesseract = require('tesseract.js');
 const { analizarDocumentoConGemini } = require('./services/geminiService');
 const { initRedis } = require('./services/rateLimiter');
 const { authMiddleware, crearGuardRoles, ROLES_MODULO } = require('./middleware/auth');
+const { calcularInsumosProduccion } = require('./services/recipeService');
 
 process.on('unhandledRejection', (reason) => {
     console.error('Rechazo no manejado:', reason);
@@ -938,196 +939,9 @@ function usuarioResponsable(req, bodyUsuario) {
     return (req && req.usuario) || bodyUsuario || 'sistema';
 }
 
-// --- FUNCIÓN AUXILIAR PARA RECETAS DE ENVASADO ---
-function obtenerInsumosReceta(producto_tipo, cantidad, tapa_elegida) {
-    const tapaProceso = tapa_elegida || 'Tapa dosif. N° 26 blanco / Dorado';
-    let insumos = [];
-
-    switch (producto_tipo) {
-        case 'b1_200ml':
-            insumos = [
-                { nombre: 'Botella de 200 ml - B-1', cantidad: cantidad * 24 },
-                { nombre: 'Tapa Tapon 26mm (200ml)', cantidad: (cantidad * 24) / 1000 },
-                { nombre: 'Caja B-1 x 200 ml', cantidad: cantidad }
-            ];
-            break;
-        case 'b1_500ml':
-            insumos = [
-                { nombre: 'Botella de 500 ml - B-1', cantidad: cantidad * 12 },
-                { nombre: tapaProceso, cantidad: (cantidad * 12) / 1000 },
-                { nombre: 'Caja B-1 x 500 ml', cantidad: cantidad }
-            ];
-            break;
-        case 'b1_900ml':
-            insumos = [
-                { nombre: 'Botella de 900 ml - B-1', cantidad: cantidad * 12 },
-                { nombre: tapaProceso, cantidad: (cantidad * 12) / 1000 },
-                { nombre: 'Caja B-1 x 900 ml', cantidad: cantidad }
-            ];
-            break;
-        case 'b1_1lt':
-            insumos = [
-                { nombre: 'Botella de 1 Lt - B-1', cantidad: cantidad * 12 },
-                { nombre: tapaProceso, cantidad: (cantidad * 12) / 1000 },
-                { nombre: 'Caja B-1 x 1 lt', cantidad: cantidad }
-            ];
-            break;
-        case 'b1_2lt':
-            insumos = [
-                { nombre: 'Botella de 2 Lt - B-1', cantidad: cantidad * 6 },
-                { nombre: 'Tapa color Rojo 2lt', cantidad: (cantidad * 6) / 1000 },
-                { nombre: 'Caja B-1 x 2 lt', cantidad: cantidad }
-            ];
-            break;
-        case 'b1_5lt':
-            insumos = [
-                { nombre: 'Galonera B-1 x 5 lt', cantidad: cantidad * 4 },
-                { nombre: 'Tapa color rojo 5lt', cantidad: (cantidad * 4) / 1000 },
-                { nombre: 'Caja B-1 x 5 lt', cantidad: cantidad }
-            ];
-            break;
-        case 'donlalo_800ml':
-            insumos = [
-                { nombre: 'Botella de 800ml - Don Lalo', cantidad: cantidad * 12 },
-                { nombre: tapaProceso, cantidad: (cantidad * 12) / 1000 },
-                { nombre: 'Caja Don Lalo x 800ml x 12 und', cantidad: cantidad }
-            ];
-            break;
-        case 'donlalo_20lt':
-            insumos = [
-                { nombre: 'Balde Don Lalo x 20lt', cantidad: cantidad * 1 },
-                { nombre: 'TAAAAPA BALDE DON LALO', cantidad: cantidad * 1 }
-            ];
-            break;
-        case 'belini_200ml':
-            insumos = [
-                { nombre: 'Botella Belini x 200 ml', cantidad: cantidad * 24 },
-                { nombre: 'Tapa Tapon 26mm (200ml)', cantidad: (cantidad * 24) / 1000 },
-                { nombre: 'Caja Belini x 200 ml', cantidad: cantidad }
-            ];
-            break;
-        case 'belini_500ml':
-            insumos = [
-                { nombre: 'Botella Belini x 500 ml', cantidad: cantidad * 12 },
-                { nombre: tapaProceso, cantidad: (cantidad * 12) / 1000 },
-                { nombre: 'Caja Belini x 500 ml', cantidad: cantidad }
-            ];
-            break;
-        case 'belini_900ml':
-            insumos = [
-                { nombre: 'Botella Belini x 900 ml', cantidad: cantidad * 12 },
-                { nombre: tapaProceso, cantidad: (cantidad * 12) / 1000 },
-                { nombre: 'Caja Belini x 900 ml', cantidad: cantidad }
-            ];
-            break;
-        case 'belini_1lt':
-            insumos = [
-                { nombre: 'Botella Belini x 1 Lt', cantidad: cantidad * 12 },
-                { nombre: tapaProceso, cantidad: (cantidad * 12) / 1000 },
-                { nombre: 'CAJA BELINI X 1 LITRO', cantidad: cantidad }
-            ];
-            break;
-        case 'belini_2lt':
-            insumos = [
-                { nombre: 'Galonera Belini x 2 lt', cantidad: cantidad * 6 },
-                { nombre: 'Tapa color Rojo 2lt', cantidad: (cantidad * 6) / 1000 },
-                { nombre: 'Caja Belini x 2 lt', cantidad: cantidad }
-            ];
-            break;
-        case 'belini_3lt':
-            insumos = [
-                { nombre: 'Botella Belini x 3 lt', cantidad: cantidad * 4 },
-                { nombre: 'Tapa color Celeste 3lt', cantidad: (cantidad * 4) / 1000 },
-                { nombre: 'Asas plasticas color celeste pico 45', cantidad: (cantidad * 4) / 1000 },
-                { nombre: 'Caja BELINI X 3 LITROS', cantidad: cantidad }
-            ];
-            break;
-        case 'belini_5lt':
-            insumos = [
-                { nombre: 'Galonera Belini x 5 lt', cantidad: cantidad * 4 },
-                { nombre: 'Tapa color rojo 5lt', cantidad: (cantidad * 4) / 1000 },
-                { nombre: 'Caja Belini x 5 lt', cantidad: cantidad }
-            ];
-            break;
-        case 'belini_lata18lt':
-            insumos = [
-                { nombre: 'Lata Belini 18lt', cantidad: cantidad * 1 }
-            ];
-            break;
-        case 'belini_balde18lt':
-            insumos = [
-                { nombre: 'Balde Belini x 18 lt', cantidad: cantidad * 1 },
-                { nombre: 'Tapa BALDE BELINI color amarillo', cantidad: cantidad * 1 }
-            ];
-            break;
-        default:
-            throw new Error('Tipo de producto desconocido para la receta de envasado.');
-    }
-    return insumos;
-}
-
-// Productos cuya receta descuenta la tapa dinámica (el operario elige el color/modelo en el formulario)
-const PRODUCTOS_TAPA_DINAMICA = ['b1_500ml', 'b1_900ml', 'b1_1lt', 'donlalo_800ml', 'belini_500ml', 'belini_900ml', 'belini_1lt'];
-
-const TAPA_DEFECTO_RECETA = 'Tapa dosif. N° 26 blanco / Dorado';
-
-// --- RECETAS: EXPONE LA FÓRMULA DE INSUMOS POR PRODUCTO (FUENTE ÚNICA DE VERDAD PARA EL SIMULADOR) ---
-app.get('/api/recetas', async (req, res) => {
-    try {
-        res.json({
-            success: true,
-            productos_tapa_dinamica: PRODUCTOS_TAPA_DINAMICA,
-            tapa_por_defecto: TAPA_DEFECTO_RECETA
-        });
-    } catch (err) {
-        console.error("Error en /api/recetas catálogo:", err);
-        res.status(500).json({ success: false, mensaje: 'Error al obtener el catálogo de recetas: ' + err.message });
-    }
-});
-
-app.get('/api/recetas/:producto_tipo', async (req, res) => {
-    try {
-        const producto_tipo = String(req.params.producto_tipo || '').trim();
-        const cajasRaw = parseFloat(req.query.cajas);
-        const cajas = (!isNaN(cajasRaw) && cajasRaw > 0) ? cajasRaw : 1;
-
-        let insumos;
-        try {
-            insumos = obtenerInsumosReceta(producto_tipo, cajas);
-        } catch (e) {
-            return res.status(400).json({ success: false, mensaje: String(e.message || 'Tipo de producto desconocido.') });
-        }
-
-        const requiereSelectorTapa = PRODUCTOS_TAPA_DINAMICA.includes(producto_tipo);
-
-        const conUnidad = await Promise.all(insumos.map(async (ins) => {
-            let unidad_medida = 'UNIDADES';
-            try {
-                const uRes = await pool.query('SELECT unidad_medida FROM inventario WHERE LOWER(nombre) = LOWER($1)', [ins.nombre]);
-                if (uRes.rows.length > 0) unidad_medida = uRes.rows[0].unidad_medida || 'UNIDADES';
-            } catch (e) { /* si no hay stock del artículo se deja UNIDADES */ }
-            return {
-                nombre: ins.nombre,
-                cantidad: Number(ins.cantidad),
-                cantidad_por_caja: Number(ins.cantidad) / cajas,
-                unidad_medida,
-                tapa_dinamica: requiereSelectorTapa && ins.nombre === TAPA_DEFECTO_RECETA
-            };
-        }));
-
-        res.json({
-            success: true,
-            producto_tipo,
-            cajas,
-            requiere_selector_tapa: requiereSelectorTapa,
-            tapa_por_defecto: TAPA_DEFECTO_RECETA,
-            insumos: conUnidad
-        });
-    } catch (err) {
-        console.error("Error en /api/recetas:", err);
-        res.status(500).json({ success: false, mensaje: 'Error al obtener la receta: ' + err.message });
-    }
-});
+// --- RECETAS: ahora gestionadas por BD (ver routes/recipes.js y services/recipeService.js) ---
+// La lógica de recetas hardcoded ha sido movida a BD (tablas recetas y receta_insumos)
+// Endpoints: /api/recetas/* (ver routes/recipes.js)
 
 // --- ENVASADO: la producción de envasado se registra por /api/produccion/reporte ---
 
@@ -2283,12 +2097,18 @@ app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
+            await client.query(`SET LOCAL app.current_user = $1`, [usuarioResponsable(req, usuario) || 'produccion']);
 
-            const insumosADescontar = obtenerInsumosReceta(producto_tipo, cajas, tapa_elegida);
+            const insumosADescontar = await calcularInsumosProduccion(producto_tipo, cajas, tapa_elegida, client);
+            if (!insumosADescontar || insumosADescontar.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: `No existe receta vigente para "${presentacion}". Contacte a producción para registrar la receta desde el módulo de Recetas.` });
+            }
 
             const faltantes = [];
             for (const insumo of insumosADescontar) {
-                const stockRes = await client.query('SELECT stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [insumo.nombre]);
+                if (insumo.obligatorio === false) continue;
+                const stockRes = await client.query('SELECT stock FROM inventario WHERE LOWER(nombre) = LOWER($1) FOR UPDATE', [insumo.nombre]);
                 const stockActual = stockRes.rows.length > 0 ? Number(stockRes.rows[0].stock || 0) : 0;
                 if (stockActual < insumo.cantidad) {
                     faltantes.push(`${insumo.nombre}: requiere ${insumo.cantidad} | stock: ${stockActual}`);
@@ -2315,7 +2135,8 @@ app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
             const desgloseJson = JSON.stringify(desglose);
 
             for (const insumo of insumosADescontar) {
-                const st = await client.query('SELECT stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [insumo.nombre]);
+                if (insumo.obligatorio === false) continue;
+                const st = await client.query('SELECT stock FROM inventario WHERE LOWER(nombre) = LOWER($1) FOR UPDATE', [insumo.nombre]);
                 const stockAnterior = st.rows.length > 0 ? Number(st.rows[0].stock) || 0 : 0;
                 await client.query(
                     `UPDATE inventario SET stock = stock - $1 WHERE LOWER(nombre) = LOWER($2)`,
@@ -2410,11 +2231,11 @@ app.get('/api/produccion/informes', async (req, res) => {
                 const tipo = detectarProductoTipo(inf.presentacion);
                 if (tipo) {
                     const tapaElegida = extraerTapaDeObservaciones(inf.observaciones);
-                    const insumos = obtenerInsumosReceta(tipo, parseInt(inf.cantidad_cajas, 10) || 0, tapaElegida);
-                    inf.desglose = insumos.map(i => ({
+                    const insumos = await calcularInsumosProduccion(tipo, parseInt(inf.cantidad_cajas, 10) || 0, tapaElegida);
+                    inf.desglose = insumos.filter(i => i.obligatorio !== false).map(i => ({
                         nombre: i.nombre,
                         cantidad: Number(i.cantidad),
-                        unidad_medida: 'UNIDADES',
+                        unidad_medida: i.unidad || 'UNIDADES',
                         categoria: ''
                     }));
                 } else {
@@ -2447,7 +2268,7 @@ app.post('/api/produccion/eliminar', gProduccion, async (req, res) => {
         const cantidad_cajas = parseInt(reporte.cantidad_cajas, 10);
 
         if (producto_tipo) {
-            const insumosADevolver = obtenerInsumosReceta(producto_tipo, cantidad_cajas, tapa_elegida);
+            const insumosADevolver = (await calcularInsumosProduccion(producto_tipo, cantidad_cajas, tapa_elegida)).filter(i => i.obligatorio !== false);
             for (const insumo of insumosADevolver) {
                 const st = await client.query('SELECT stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [insumo.nombre]);
                 const stockAnterior = st.rows.length > 0 ? Number(st.rows[0].stock) || 0 : 0;

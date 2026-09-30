@@ -91,7 +91,7 @@ async function crearUsuario(req, res) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('SET LOCAL app.current_user = $1', [req.usuario || 'admin']);
+    await client.query("SELECT set_config('app.current_user', $1, true)", [req.usuario || 'admin']);
 
     const { usu, pwd, rolOk } = req.validated;
 
@@ -122,7 +122,7 @@ async function editarUsuario(req, res) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('SET LOCAL app.current_user = $1', [req.usuario || 'admin']);
+    await client.query("SELECT set_config('app.current_user', $1, true)", [req.usuario || 'admin']);
 
     const id = parseInt(req.params.id, 10);
     const { usuario, rol, password } = req.body;
@@ -193,7 +193,7 @@ async function eliminarUsuario(req, res) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('SET LOCAL app.current_user = $1', [req.usuario || 'admin']);
+    await client.query("SELECT set_config('app.current_user', $1, true)", [req.usuario || 'admin']);
 
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {

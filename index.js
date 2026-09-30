@@ -2097,7 +2097,7 @@ app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
-            await client.query(`SET LOCAL app.current_user = $1`, [usuarioResponsable(req, usuario) || 'produccion']);
+            await client.query(`SELECT set_config('app.current_user', $1, true)`, [usuarioResponsable(req, usuario) || 'produccion']);
 
             const insumosADescontar = await calcularInsumosProduccion(producto_tipo, cajas, tapa_elegida, client);
             if (!insumosADescontar || insumosADescontar.length === 0) {

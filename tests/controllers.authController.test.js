@@ -1,8 +1,8 @@
 const mockQuery = jest.fn();
 
-// Los clientes transaccionales enrutan BEGIN/COMMIT/ROLLBACK/SET LOCAL sin tocar
+// Los clientes transaccionales enrutan BEGIN/COMMIT/ROLLBACK/SELECT set_config sin tocar
 // mockQuery, de modo que las consultas "reales" se indexan igual que antes.
-const SQL_CONTROL = /^\s*(BEGIN|COMMIT|ROLLBACK|SET LOCAL)\b/i;
+const SQL_CONTROL = /^\s*(BEGIN|COMMIT|ROLLBACK|SET LOCAL)\b|SELECT set_config\(/i;
 
 jest.mock('../db', () => ({
   query: (...args) => mockQuery(...args),

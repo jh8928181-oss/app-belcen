@@ -51,7 +51,7 @@ export const up = (pgm) => {
 
   pgm.createTable('historial_recetas', {
     id: { type: 'bigserial', primaryKey: true },
-    receta_id: { type: 'int', notNull: true, references: 'recetas(id)' },
+    receta_id: { type: 'int', notNull: true },
     accion: { type: 'varchar(20)', notNull: true },
     usuario_ejecutor: { type: 'varchar(50)', notNull: true },
     valores_anteriores: { type: 'jsonb' },
@@ -90,14 +90,13 @@ export const up = (pgm) => {
         SELECT to_jsonb(r) || jsonb_build_object('insumos', (SELECT jsonb_agg(to_jsonb(ri)) FROM receta_insumos ri WHERE ri.receta_id = OLD.id)) INTO v_old FROM recetas r WHERE r.id = OLD.id;
         SELECT to_jsonb(r) || jsonb_build_object('insumos', (SELECT jsonb_agg(to_jsonb(ri)) FROM receta_insumos ri WHERE ri.receta_id = NEW.id)) INTO v_new FROM recetas r WHERE r.id = NEW.id;
         INSERT INTO historial_recetas (receta_id, accion, usuario_ejecutor, valores_anteriores, valores_nuevos) VALUES (OLD.id, 'UPDATE', v_usuario_ejecutor, v_old, v_new);
-      ELSIF TG_OP = 'DELETE' THEN
-        SELECT to_jsonb(r) || jsonb_build_object('insumos', (SELECT jsonb_agg(to_jsonb(ri)) FROM receta_insumos ri WHERE ri.receta_id = OLD.id)) INTO v_old FROM recetas r WHERE r.id = OLD.id;
-        INSERT INTO historial_recetas (receta_id, accion, usuario_ejecutor, valores_anteriores) VALUES (OLD.id, 'DELETE', v_usuario_ejecutor, v_old);
       END IF;
       RETURN NEW;
     END; $$ LANGUAGE plpgsql;
   `);
-  pgm.sql(`CREATE TRIGGER trg_historial_recetas AFTER INSERT OR UPDATE OR DELETE ON recetas FOR EACH ROW EXECUTE FUNCTION trg_historial_recetas();`);
+  // Nota: el trigger no cubre DELETE. La ruta DELETE inserta explícitamente el registro
+  // de auditoría (con valores_anteriores) antes de eliminar la receta.
+  pgm.sql(`CREATE TRIGGER trg_historial_recetas AFTER INSERT OR UPDATE ON recetas FOR EACH ROW EXECUTE FUNCTION trg_historial_recetas();`);
 
   pgm.sql(`ALTER TABLE inventario ADD CONSTRAINT chk_stock_no_negativo CHECK (stock >= 0);`);
   pgm.sql(`ALTER TABLE producto_terminado ADD CONSTRAINT chk_stock_cajas_no_negativo CHECK (stock_cajas >= 0);`);

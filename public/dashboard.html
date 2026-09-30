@@ -209,6 +209,7 @@
 .a-sim { --ac: #2dd4bf; }
         .a-ref { --ac: #117a8b; }
         .a-adm { --ac: #f472b6; }
+        .a-rec { --ac: #f472b6; }
 
         /* ---------- INVENTARIO ---------- */
         .inv { padding: 20px 24px; }
@@ -403,7 +404,8 @@
                 <a href="refinado.html" class="mod a-ref"><span class="mod-ico">🛢️</span><span class="mod-nom">Refinado</span><span class="mod-rol">Aceite de soya</span></a>
                 <a href="auditoria.html" class="mod a-aud"><span class="mod-ico">📋</span><span class="mod-nom">Auditoría</span><span class="mod-rol">Movimientos y cierres</span></a>
                 <a href="basededatosdeplanta.html" class="mod a-sim"><span class="mod-ico">🧮</span><span class="mod-nom">Simulador de Insumos</span><span class="mod-rol">Base de datos de planta</span></a>
-                <a href="admin.html" id="btnModuloUsuarios" class="mod a-adm hidden"><span class="mod-ico">👮</span><span class="mod-nom">Usuarios</span><span class="mod-rol">Administración</span></a>
+<a href="admin.html" id="btnModuloUsuarios" class="mod a-adm hidden"><span class="mod-ico">👮</span><span class="mod-nom">Usuarios</span><span class="mod-rol">Administración</span></a>
+                <a href="recetas.html" id="btnModuloRecetas" class="mod a-rec hidden"><span class="mod-ico">🧪</span><span class="mod-nom">Recetas</span><span class="mod-rol">Gestión de recetas</span></a>
             </div>
         </section>
 
@@ -483,8 +485,9 @@
         document.getElementById('chipNombre').textContent = usuarioActual + ' · ' + (rolActual || '');
         document.getElementById('rolBadge').textContent = String(rolActual || 'ROL').toUpperCase();
 
-        if (rolActual === 'admin') {
+if (rolActual === 'admin') {
             document.getElementById('btnModuloUsuarios').classList.remove('hidden');
+            document.getElementById('btnModuloRecetas').classList.remove('hidden');
         }
 
         // Reloj en vivo

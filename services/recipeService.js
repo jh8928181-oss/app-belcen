@@ -1,4 +1,14 @@
 const pool = require('../db');
+const { normalizar } = require('../utils/helpers');
+
+// Devuelve los nombres de insumo que NO existen en inventario. Comparación tolerante
+// (insensible a mayúsculas, acentos, °, espacios, signos de puntuación) porque los
+// nombres cargados desde fórmulas anteriores pueden diferir de los del catálogo.
+async function insumosFaltantesEnInventario(insumos, db = pool) {
+  const inv = await db.query('SELECT nombre FROM inventario');
+  const catalogo = new Set(inv.rows.map(r => normalizar(r.nombre)));
+  return (insumos || []).filter(i => !i || !catalogo.has(normalizar(i.nombre))).map(i => i.nombre);
+}
 
 async function obtenerRecetaVigente(producto_key, db = pool) {
   const receta = await db.query(`
@@ -54,7 +64,7 @@ async function crearReceta({ producto_key, insumos, observaciones, created_by })
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('SET LOCAL app.current_user = $1', [created_by || 'system']);
+    await client.query("SELECT set_config('app.current_user', $1, true)", [created_by || 'system']);
     const versionRes = await client.query('SELECT COALESCE(MAX(version), 0) + 1 as next_version FROM recetas WHERE producto_key = $1', [producto_key]);
     const version = versionRes.rows[0].next_version;
     const recetaRes = await client.query(`
@@ -78,7 +88,7 @@ async function activarReceta(id, usuario) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('SET LOCAL app.current_user = $1', [usuario || 'system']);
+    await client.query("SELECT set_config('app.current_user', $1, true)", [usuario || 'system']);
     const receta = await client.query('SELECT producto_key FROM recetas WHERE id = $1', [id]);
     if (!receta.rows.length) throw new Error('Receta no encontrada');
     await client.query('UPDATE recetas SET activa = false WHERE producto_key = $1 AND id != $2', [receta.rows[0].producto_key, id]);
@@ -100,4 +110,4 @@ async function clonarRecetaParaEdicion(id, usuario) {
   });
 }
 
-module.exports = { obtenerRecetaVigente, calcularInsumosProduccion, listarRecetas, obtenerRecetaPorId, crearReceta, activarReceta, clonarRecetaParaEdicion };
+module.exports = { obtenerRecetaVigente, calcularInsumosProduccion, listarRecetas, obtenerRecetaPorId, crearReceta, activarReceta, clonarRecetaParaEdicion, insumosFaltantesEnInventario };

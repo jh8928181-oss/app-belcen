@@ -23,6 +23,24 @@ npm start
 El servidor escucha en el puerto de `PORT` (3000 por defecto) y sirve el
 frontend estático desde `public/`.
 
+### `.env` vs `.env.local`
+
+La base de datos activa se resuelve en este orden:
+
+1. Variables ya presentes en el entorno del sistema.
+2. `.env` — configuración compartida, normalmente la que documenta el despliegue.
+3. `.env.local` — **tiene prioridad sobre `.env`**.
+
+`.env.local` está en `.gitignore`. Úsalo para apuntar a otra base en tu
+máquina sin editar el `.env` compartido, por ejemplo durante una migración de
+proveedor:
+
+```bash
+echo 'DATABASE_URL=postgresql://usuario:clave@host:puerto/basedb' > .env.local
+```
+
+Si `.env.local` no existe, todo funciona igual usando solo `.env`.
+
 ### Variables de entorno
 
 | Variable | Obligatoria | Descripción |

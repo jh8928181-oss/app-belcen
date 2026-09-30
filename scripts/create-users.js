@@ -27,7 +27,7 @@ function getSeedUsers() {
     { usuario: 'soplado_user', rol: 'soplado' },
     { usuario: 'envasado_user', rol: 'envasado' },
     { usuario: 'auditor_user', rol: 'auditoria' },
-    { usuario: 'ing_blas', rol: 'produccion' },
+    { usuario: 'ing_blas', rol: 'supervisor' },
     { usuario: 'pariona', rol: 'supervisor' },
     { usuario: 'acceso_1', rol: 'invitado' },
     { usuario: 'acceso_2', rol: 'invitado' },
@@ -40,7 +40,10 @@ function getSeedUsers() {
       console.warn(`⚠️  SEED_PWD_${u.usuario.toUpperCase()} no definido en .env, saltando usuario ${u.usuario}`);
       continue;
     }
-    users.push({ usuario: u.usuario, password: pwd, rol: u.rol });
+    // El rol puede sobreescribirse por entorno (SEED_ROL_<USUARIO>), para no tener
+    // que editar el codigo cuando alguien cambia de puesto.
+    const rol = process.env[`SEED_ROL_${u.usuario.toUpperCase()}`] || u.rol;
+    users.push({ usuario: u.usuario, password: pwd, rol });
   }
   return users;
 }

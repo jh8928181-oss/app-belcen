@@ -1,7 +1,12 @@
+// .env.local se carga al final y con override: si existe, sus valores ganan sobre
+// .env. Permite apuntar a otra base en local (p. ej. Supabase) sin editar el .env
+// compartido, que sigue documentando la base vieja de Render.
+const path = require('path');
 require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '.env.local'), override: true });
+
 const express = require('express');
 const pool = require('./db');
-const path = require('path');
 const multer = require('multer');
 const { PDFParse } = require('pdf-parse');
 const fs = require('fs');

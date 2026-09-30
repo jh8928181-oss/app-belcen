@@ -1,5 +1,12 @@
 const { Pool } = require('pg');
 const dns = require('dns');
+const path = require('path');
+
+// db.js se puede require()-ear desde scripts sueltos (create-users.js, poblar.js)
+// que no cargan dotenv. Se resuelve el env aqui para no depender del orden de carga.
+// Respeta la precedencia: .env primero, .env.local despues con override.
+require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '.env.local'), override: true });
 
 if (!process.env.DATABASE_URL) {
   throw new Error('DATABASE_URL no está definido en variables de entorno');

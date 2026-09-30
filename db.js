@@ -4,11 +4,20 @@ if (!process.env.DATABASE_URL) {
   throw new Error('DATABASE_URL no está definido en variables de entorno');
 }
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
-  connectionTimeoutMillis: 10000
-});
+// Parsear connection string y forzar IPv4
+const url = new URL(process.env.DATABASE_URL);
+const config = {
+  host: url.hostname,
+  port: parseInt(url.port || '5432', 10),
+  database: url.pathname.slice(1),
+  user: url.username,
+  password: url.password,
+  ssl: { rejectUnauthorized: false },
+  connectionTimeoutMillis: 10000,
+  family: 4
+};
+
+const pool = new Pool(config);
 
 pool.on('error', (err) => {
   console.error('❌ Error inesperado en pool de PostgreSQL:', err);

@@ -4,12 +4,17 @@
 
 /**
  * Normaliza un string para comparación insensible a mayúsculas, acentos, signos y espacios
- * Elimina: ° º . ( ) / , - y múltiples espacios
+ * Elimina: acentos, ° º . ( ) / , - y múltiples espacios
  * @param {string} str - String a normalizar
  * @returns {string} String normalizado en minúsculas sin caracteres especiales
  */
 function normalizar(str) {
-  return String(str || '').toLowerCase().replace(/°|º|\.|\(|\)|\/|,|-|\s+/g, '');
+  return String(str || '')
+    .normalize('NFD')
+    // Se quitan los diacríticos (combinantes) que deja NFD: "Ácido" -> "Acido".
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/°|º|\.|\(|\)|\/|,|-|\s+/g, '');
 }
 
 /**

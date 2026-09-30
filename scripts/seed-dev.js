@@ -27,7 +27,7 @@ function getSeedUsers() {
     { usuario: 'soplado_user', rol: 'soplado' },
     { usuario: 'envasado_user', rol: 'envasado' },
     { usuario: 'auditor_user', rol: 'auditoria' },
-    { usuario: 'ing_blas', rol: 'produccion' },
+        { usuario: 'ing_blas', rol: 'supervisor' },
     { usuario: 'pariona', rol: 'supervisor' },
     { usuario: 'acceso_1', rol: 'invitado' },
     { usuario: 'acceso_2', rol: 'invitado' },

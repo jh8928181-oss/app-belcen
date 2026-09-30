@@ -14,6 +14,7 @@
         h3.admin { border-bottom: 2px solid #6f42c1; color: #6f42c1; }
         h3.crear { border-bottom: 2px solid #28a745; color: #1e7e34; }
         h3.detalle { border-bottom: 2px solid #ffc107; color: #856404; }
+        h4 { margin: 18px 0 8px; font-size: 15px; color: #343a40; }
         select, input, textarea { padding: 9px 12px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; box-sizing: border-box; width: 100%; }
         textarea { resize: vertical; min-height: 60px; }
         select:focus, input:focus, textarea:focus { outline: none; border-color: #6f42c1; box-shadow: 0 0 0 2px rgba(111,66,193,0.2); }
@@ -24,6 +25,9 @@
         .badge { padding: 4px 10px; border-radius: 4px; color: white; font-weight: bold; font-size: 12px; white-space: nowrap; }
         .badge-activa { background: #28a745; }
         .badge-borrador { background: #6c757d; }
+        .badge-ok { background: #28a745; }
+        .badge-falta { background: #dc3545; }
+        .badge-aviso { background: #ffc107; color: #000; }
         .btn-accion { padding: 9px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px; }
         .btn-accion:hover { background: #218838; }
         .btn-primario { background: #6f42c1; }
@@ -44,10 +48,10 @@
         .botones-accion button { border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; }
         .aviso-info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-top: 12px; }
         .aviso-warn { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-top: 12px; }
+        .aviso-error { background: #f8d7da; color: #842029; border: 1px solid #f5c2c7; padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-top: 12px; }
         .tabla-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 8px; }
         .grid-3cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-top: 15px; }
         .span-3 { grid-column: span 3; }
-        .grid-linea-insumo { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 2fr auto; gap: 10px; align-items: end; margin-top: 8px; }
         .btn-remover { background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; padding: 9px 12px; font-weight: bold; font-size: 14px; }
         .btn-remover:hover { background: #c82333; }
         .btn-agregar { background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; padding: 9px 14px; font-weight: bold; font-size: 14px; }
@@ -56,6 +60,19 @@
         .etiqueta-check input { width: auto; margin: 0; }
         .acciones-superior { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
         .chip-info { font-size: 12px; color: #495057; }
+        .cabecera-lineas { display: none; }
+        .fila-insumo { border: 1px solid #dee2e6; border-radius: 8px; padding: 10px; margin-top: 10px; background: #fbfcfe; }
+        .fila-insumo .g-fila { display: grid; grid-template-columns: 130px 2fr 120px 110px 130px 1fr auto; gap: 8px; align-items: end; }
+        .fila-insumo .etiqueta-mini { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #8a93a3; font-weight: 700; margin-bottom: 3px; }
+        .stock-chip { display: inline-block; font-size: 11px; padding: 2px 7px; border-radius: 10px; background: #eef2f7; color: #495057; margin-top: 5px; }
+        .stock-chip.bajo { background: #f8d7da; color: #842029; }
+        .stock-chip.ok { background: #d4edda; color: #155724; }
+        .impacto-cajas { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; margin-top: 10px; }
+        .impacto-cajas > div { width: 130px; }
+        .lista-faltantes { margin: 8px 0 0 18px; font-size: 13px; }
+        .chips-productos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        .chips-productos span { background: #eef2f7; border: 1px solid #dee2e6; border-radius: 12px; padding: 4px 10px; font-size: 12px; color: #495057; }
+        .diff-fila { font-size: 13px; padding: 8px 0; border-bottom: 1px solid #eee; }
         @media (max-width: 640px) {
             body { padding: 10px; }
             h2 { font-size: 18px; }
@@ -63,7 +80,8 @@
             select, input, textarea { font-size: 16px; }
             .grid-3cols { grid-template-columns: 1fr !important; }
             .span-3 { grid-column: span 1 !important; }
-            .grid-linea-insumo { grid-template-columns: 1fr; align-items: stretch; }
+            .fila-insumo .g-fila { grid-template-columns: 1fr; }
+            .impacto-cajas > div { width: 100%; }
             .tabla-wrap.tabla-card-movil table { min-width: 0; border: none; }
             .tabla-wrap.tabla-card-movil thead { display: none; }
             .tabla-wrap.tabla-card-movil tbody tr { display: block; border: 1px solid #dee2e6; border-radius: 12px; margin: 0 0 10px; padding: 6px 0; background: #fff; }
@@ -85,8 +103,18 @@
             </div>
             <div class="grid-3cols">
                 <div>
-                    <label><b>Producto:</b></label>
+                    <label><b>Producto del catálogo:</b></label>
                     <select id="nuevoProducto" style="margin-top:5px;"><option value="">-- Seleccionar presentación --</option></select>
+                    <div class="chip-info" style="margin-top:6px;">Producto_key se toma del catálogo. Para uno nuevo, escribe abajo.</div>
+                </div>
+                <div>
+                    <label><b>Producto nuevo (opcional):</b></label>
+                    <input id="nuevoProductoTexto" placeholder="Ej. B-1 2 lt" style="margin-top:5px;">
+                    <div class="chip-info" style="margin-top:6px;">Si lo llenas, se crea la receta para un producto que todavía no existe en el catálogo.</div>
+                </div>
+                <div>
+                    <label><b>Nombre legible (opcional):</b></label>
+                    <input id="nuevoNombreProducto" placeholder="Ej. Bidón B-1 2 litros" style="margin-top:5px;">
                 </div>
                 <div class="span-3" style="grid-column: span 3;">
                     <label><b>Observaciones:</b></label>
@@ -94,10 +122,13 @@
                 </div>
             </div>
             <div style="margin-top: 15px;">
-                <label><b>Insumos por caja:</b></label>
-                <datalist id="dlInsumos"></datalist>
+                <label><b>Composición por caja:</b></label>
                 <div id="filasNueva"></div>
-                <button type="button" class="btn-agregar" onclick="agregarFilaInsumo('filasNueva')" style="margin-top:10px;">➕ Agregar insumo</button>
+                <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+                    <button type="button" class="btn-agregar" onclick="agregarFila('filasNueva','insumo')">➕ Agregar insumo</button>
+                    <button type="button" class="btn-clonar" onclick="agregarFila('filasNueva','componente')" style="border:none; border-radius:4px; padding:9px 14px; font-weight:bold; cursor:pointer;">🧩 Agregar sub-receta</button>
+                </div>
+                <div class="chip-info" style="margin-top:8px;">Una sub-receta se produce con su propia receta: sus insumos se suman al total y no se descuentan por separado.</div>
             </div>
             <div style="margin-top: 18px;">
                 <button onclick="guardarNuevaReceta()" id="btnGuardarNueva" class="btn-accion">💾 CREAR RECETA</button>
@@ -124,16 +155,36 @@
                     <div id="detVigencia" style="margin-top:5px;">—</div>
                 </div>
                 <div class="span-3">
-                    <label><b>Observaciones:</b></label>
-                    <div id="detObservaciones" style="margin-top:5px; color:#495057;">—</div>
+                    <label><b>Observaciones (editables):</b></label>
+                    <textarea id="detObservaciones" placeholder="Notas de la receta" style="margin-top:5px;"></textarea>
                 </div>
             </div>
             <div id="avisoEditor" class="aviso-warn" style="display:none;"></div>
             <div style="margin-top: 15px;">
-                <label><b>Insumos por caja:</b></label>
+                <label><b>Composición por caja:</b></label>
                 <div id="filasDetalle"></div>
+                <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+                    <button type="button" class="btn-agregar" onclick="agregarFila('filasDetalle','insumo')">➕ Agregar insumo</button>
+                    <button type="button" class="btn-clonar" onclick="agregarFila('filasDetalle','componente')" style="border:none; border-radius:4px; padding:9px 14px; font-weight:bold; cursor:pointer;">🧩 Agregar sub-receta</button>
+                </div>
             </div>
             <div class="botones-accion" id="botonesAccionDetalle" style="justify-content:flex-start; margin-top: 18px;"></div>
+
+            <!-- IMPACTO -->
+            <div style="margin-top: 22px; border-top: 1px solid #eee; padding-top: 14px;">
+                <h4>🧮 Impacto en inventario</h4>
+                <div class="impacto-cajas">
+                    <div>
+                        <span class="etiqueta-mini">Cajas a producir</span>
+                        <input type="number" id="detCajas" value="1" min="1" step="1" onchange="calcularImpacto()">
+                    </div>
+                    <div style="width:auto;">
+                        <button class="btn-accion btn-primario" onclick="calcularImpacto()" style="border:none; border-radius:4px; padding:9px 16px; font-weight:bold; cursor:pointer;">🔄 Simular</button>
+                    </div>
+                </div>
+                <div id="detImpacto"></div>
+                <div id="detDiff" style="margin-top:14px;"></div>
+            </div>
         </div>
 
         <!-- LISTADO DE RECETAS -->
@@ -150,7 +201,7 @@
                             <th>Producto</th>
                             <th>Versión</th>
                             <th>Estado</th>
-                            <th class="text-center">N° Insumos</th>
+                            <th class="text-center">Líneas</th>
                             <th>Vigente desde</th>
                             <th>Creado por</th>
                             <th class="text-center">Acciones</th>
@@ -161,7 +212,7 @@
                     </tbody>
                 </table>
             </div>
-            <div class="aviso-info">ℹ️ Solo puedes <b>editar o eliminar</b> recetas en estado "borrador". Para modificar una receta <b>activa</b>, clónala primero y luego activa la nueva versión.</div>
+            <div class="aviso-info">ℹ️ Puedes editar <b>cualquier</b> receta. Si la que editas está <b>activa</b>, los cambios se guardan en un <b>borrador</b>: la versión activa sigue rigiendo la producción hasta que actives el borrador.</div>
         </div>
 
         <div style="text-align: center; margin-top: 10px; padding: 15px; border-top: 1px solid #ddd;">
@@ -186,7 +237,7 @@
         let inventarioGlobal = [];
         let productosGlobal = [];
         let detalleId = null;
-        let editandoDetalle = false;
+        let detalleReceta = null;
         let enviandoNueva = false;
         let enviandoEdicion = false;
 
@@ -216,12 +267,18 @@
                 .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
+        function num(v) {
+            const n = Number(v);
+            return Number.isFinite(n) ? String(Math.round(n * 1e6) / 1e6) : '';
+        }
+
         function badgeEstado(activa) {
             return activa
                 ? '<span class="badge badge-activa">✅ ACTIVA</span>'
                 : '<span class="badge badge-borrador">📝 BORRADOR</span>';
         }
 
+        // ---------- DATOS INICIALES ----------
         async function cargarDatosIniciales() {
             try {
                 const [resInv, resPt] = await Promise.all([
@@ -236,8 +293,6 @@
                     const pt = await resPt.json();
                     productosGlobal = Array.isArray(pt) ? pt : (pt.items || pt.productos || []);
                 }
-                const dl = document.getElementById('dlInsumos');
-                dl.innerHTML = inventarioGlobal.map(i => `<option value="${escHTML(i.nombre)}"></option>`).join('');
                 const sel = document.getElementById('nuevoProducto');
                 const unicos = new Map();
                 productosGlobal.forEach(p => {
@@ -262,6 +317,7 @@
                 const datos = await res.json();
                 recetasGlobal = Array.isArray(datos.recetas) ? datos.recetas : [];
                 renderRecetas();
+                renderOpcionesComponentes();
             } catch (err) {
                 console.error(err);
                 document.getElementById('tablaRecetas').innerHTML = '<tr><td colspan="7" class="text-center" style="color:red;">Error al cargar las recetas.</td></tr>';
@@ -283,16 +339,19 @@
             filtrados.forEach(r => {
                 const tr = document.createElement('tr');
                 const obs = r.observaciones ? `<div style="font-size:12px; color:#888;">${escHTML(r.observaciones)}</div>` : '';
+                const sub = Number(r.num_subrecetas) > 0
+                    ? `<div class="chip-info">🧩 ${escHTML(r.num_subrecetas)} sub-receta(s)</div>`
+                    : '';
                 tr.innerHTML = `
                     <td><b>${escHTML(r.nombre_producto || r.producto_key)}</b><div style="font-size:12px; color:#888;">${escHTML(r.producto_key)}</div>${obs}</td>
                     <td class="text-center"><b>v${escHTML(r.version)}</b></td>
                     <td>${badgeEstado(!!r.activa)}</td>
-                    <td class="text-center">${escHTML(r.num_insumos)}</td>
+                    <td class="text-center">${escHTML(r.num_insumos)}${sub}</td>
                     <td>${escHTML(r.vigente_desde)}</td>
                     <td>${escHTML(r.created_by)}</td>
                     <td class="text-center">
                         <div class="botones-accion">
-                            <button onclick="abrirDetalle(${r.id})" style="background:#007bff; color:white;" title="Ver / gestionar">🔍</button>
+                            <button onclick="abrirDetalle(${r.id})" style="background:#007bff; color:white;" title="Ver / editar">🔍</button>
                             <button onclick="clonarReceta(${r.id})" style="background:#007bff; color:white;" title="Clonar para edición">📋</button>
                             ${r.activa ? `<button onclick="desactivarReceta(${r.id})" style="background:#6c757d; color:white;" title="Desactivar">⏸</button>` : `<button onclick="activarReceta(${r.id})" style="background:#17a2b8; color:white;" title="Activar versión">✅</button>`}
                             ${r.activa ? '' : `<button onclick="eliminarReceta(${r.id}, '${escHTML(String(r.nombre_producto || r.producto_key)).replace(/'/g, "\\'")}', ${r.version})" class="btn-comer" title="Eliminar"><span class="ico-papelera"><span class="tapa"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/></svg></span><span class="base"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></span></span><span class="texto-papelera"><span class="letra">D</span><span class="letra">e</span><span class="letra">l</span><span class="letra">e</span><span class="letra">t</span><span class="letra">e</span></span></button>`}
@@ -304,11 +363,177 @@
             etiquetarTablas();
         }
 
+        // ---------- EDITOR DE LÍNEAS ----------
+        function opcionesInventario(seleccionado) {
+            return inventarioGlobal
+                .slice()
+                .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)))
+                .map(i => `<option value="${i.id}" ${String(i.id) === String(seleccionado) ? 'selected' : ''}>${escHTML(i.nombre)} (stock: ${num(i.stock)} ${escHTML(i.unidad_medida || 'UN')})</option>`)
+                .join('');
+        }
+
+        function opcionesComponentes(seleccionado, excluirId) {
+            const actuales = recetasGlobal
+                .filter(r => !r.activa || r.id === detalleReceta?.id)
+                .filter(r => r.id !== excluirId);
+            return actuales
+                .slice()
+                .sort((a, b) => String(a.nombre_producto || a.producto_key).localeCompare(String(b.nombre_producto || b.producto_key)))
+                .map(r => `<option value="${r.id}" ${String(r.id) === String(seleccionado) ? 'selected' : ''}>v${escHTML(r.version)} · ${escHTML(r.nombre_producto || r.producto_key)}${r.activa ? ' (activa)' : ''}</option>`)
+                .join('');
+        }
+
+        function renderOpcionesComponentes() {
+            document.querySelectorAll('.f-linea-item').forEach(sel => {
+                const fila = sel.closest('.fila-insumo');
+                const previo = sel.value;
+                sel.innerHTML = fila.dataset.tipo === 'componente'
+                    ? opcionesComponentes(previo, detalleReceta?.id)
+                    : opcionesInventario(previo);
+            });
+        }
+
+        function cambiarTipoLinea(sel) {
+            const fila = sel.closest('.fila-insumo');
+            const nuevo = sel.value;
+            fila.dataset.tipo = nuevo;
+            const item = fila.querySelector('.f-linea-item');
+            const unidad = fila.querySelector('.f-unidad');
+            const stockWrap = fila.querySelector('.f-stock-wrap');
+            if (nuevo === 'componente') {
+                item.innerHTML = opcionesComponentes('', detalleReceta?.id);
+                unidad.value = 'UNIDADES';
+                unidad.disabled = true;
+                stockWrap.style.display = 'none';
+            } else {
+                item.innerHTML = opcionesInventario('');
+                unidad.disabled = false;
+                stockWrap.style.display = 'block';
+                sincronizarUnidad(item);
+            }
+        }
+
+        function sincronizarUnidad(itemSel) {
+            const fila = itemSel.closest('.fila-insumo');
+            if (!fila || fila.dataset.tipo === 'componente') return;
+            const inv = inventarioGlobal.find(i => String(i.id) === String(itemSel.value));
+            if (!inv) return;
+            fila.querySelector('.f-unidad').value = inv.unidad_medida || 'UNIDADES';
+            actualizarChipStock(fila, inv);
+        }
+
+        function actualizarChipStock(fila, inv) {
+            const chip = fila.querySelector('.f-stock-chip');
+            if (!chip) return;
+            const stock = Number(inv.stock) || 0;
+            const pedido = Number(fila.querySelector('.f-cant').value || 0) || 0;
+            chip.className = 'stock-chip' + (stock <= 0 ? ' bajo' : (pedido > 0 && stock < pedido ? ' bajo' : ' ok'));
+            chip.textContent = `Stock: ${num(stock)} ${inv.unidad_medida || 'UN'}`;
+        }
+
+        function filaHTML(linea) {
+            const l = linea || {};
+            const esSub = l.componente_receta_id != null;
+            return `
+            <div class="fila-insumo" data-tipo="${esSub ? 'componente' : 'insumo'}">
+                <div class="g-fila">
+                    <div>
+                        <span class="etiqueta-mini">Tipo</span>
+                        <select class="f-tipo" onchange="cambiarTipoLinea(this)">
+                            <option value="insumo" ${esSub ? '' : 'selected'}>🧪 Insumo</option>
+                            <option value="componente" ${esSub ? 'selected' : ''}>🧩 Sub-receta</option>
+                        </select>
+                    </div>
+                    <div>
+                        <span class="etiqueta-mini">${esSub ? 'Receta componente' : 'Insumo de inventario'}</span>
+                        <select class="f-linea-item" onchange="sincronizarUnidad(this)">
+                            ${esSub ? opcionesComponentes(l.componente_receta_id, detalleReceta?.id) : opcionesInventario(l.insumo_id)}
+                        </select>
+                        <span class="stock-chip f-stock-chip ${esSub ? '' : 'ok'}" style="${esSub ? 'display:none;' : ''}"></span>
+                    </div>
+                    <div>
+                        <span class="etiqueta-mini">Cant. por caja</span>
+                        <input type="number" step="any" min="0" class="f-cant" value="${num(l.cantidad_por_caja)}" oninput="actualizarStockChipFila(this)">
+                    </div>
+                    <div>
+                        <span class="etiqueta-mini">Merma %</span>
+                        <input type="number" step="any" min="0" max="99.999" class="f-merma" value="${num(l.merma_pct || 0)}" placeholder="0">
+                    </div>
+                    <div>
+                        <span class="etiqueta-mini">Stock seguridad</span>
+                        <input type="number" step="any" min="0" class="f-seguridad" value="${l.stock_minimo === '' || l.stock_minimo === null || l.stock_minimo === undefined ? '' : num(l.stock_minimo)}" placeholder="—">
+                    </div>
+                    <div>
+                        <span class="etiqueta-mini">Unidad / Notas</span>
+                        <div style="display:flex; gap:6px;">
+                            <input class="f-unidad" value="${escHTML(l.unidad || 'UNIDADES')}" placeholder="UNIDADES" ${esSub ? 'disabled' : ''} style="max-width:110px;">
+                            <input class="f-notas" value="${escHTML(l.notas || '')}" placeholder="Notas">
+                        </div>
+                        <label class="etiqueta-check"><input type="checkbox" class="f-oblig" ${l.obligatorio !== false ? 'checked' : ''}> Obligatorio</label>
+                    </div>
+                    <div>
+                        <button type="button" class="btn-remover" onclick="this.closest('.fila-insumo').remove()">🗑</button>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        function actualizarStockChipFila(input) {
+            const fila = input.closest('.fila-insumo');
+            if (!fila || fila.dataset.tipo === 'componente') return;
+            const inv = inventarioGlobal.find(i => String(i.id) === String(fila.querySelector('.f-linea-item').value));
+            if (inv) actualizarChipStock(fila, inv);
+        }
+
+        function agregarFila(contenedorId, tipo = 'insumo') {
+            document.getElementById(contenedorId).insertAdjacentHTML('beforeend', filaHTML({ componente_receta_id: tipo === 'componente' ? '' : null }));
+            if (tipo === 'componente') {
+                const ultima = document.getElementById(contenedorId).lastElementChild;
+                if (ultima) {
+                    const sel = ultima.querySelector('.f-linea-item');
+                    sel.innerHTML = opcionesComponentes('', detalleReceta?.id);
+                }
+            }
+        }
+
+        function leerFilas(contenedorId) {
+            return Array.from(document.querySelectorAll('#' + contenedorId + ' .fila-insumo')).map(fila => {
+                const item = fila.querySelector('.f-linea-item').value;
+                const base = {
+                    cantidad_por_caja: parseFloat(fila.querySelector('.f-cant').value),
+                    merma_pct: parseFloat(fila.querySelector('.f-merma').value || '0') || 0,
+                    stock_minimo: fila.querySelector('.f-seguridad').value === ''
+                        ? null
+                        : parseFloat(fila.querySelector('.f-seguridad').value),
+                    unidad: (fila.querySelector('.f-unidad').value || 'UNIDADES').trim(),
+                    obligatorio: fila.querySelector('.f-oblig').checked,
+                    notas: (fila.querySelector('.f-notas').value || '').trim()
+                };
+                if (fila.dataset.tipo === 'componente') {
+                    return Object.assign(base, { componente_receta_id: Number(item) });
+                }
+                return Object.assign(base, { insumo_id: Number(item) });
+            }).filter(l => l.insumo_id || l.componente_receta_id);
+        }
+
+        function validarFilas(insumos) {
+            if (!insumos.length) return 'Agrega al menos una línea con insumo o sub-receta.';
+            const vistos = new Set();
+            for (const l of insumos) {
+                if (!(l.cantidad_por_caja > 0)) return 'Todas las líneas deben tener cantidad por caja mayor que 0.';
+                if (!(l.merma_pct >= 0 && l.merma_pct < 100)) return 'La merma debe estar entre 0 y 99.99 %.';
+                const clave = l.componente_receta_id ? 'c' + l.componente_receta_id : 'i' + l.insumo_id;
+                if (vistos.has(clave)) return 'Hay una línea repetida (mismo insumo o misma sub-receta).';
+                vistos.add(clave);
+            }
+            return null;
+        }
+
         // ---------- NUEVA RECETA ----------
         function abrirPanelNueva() {
             document.getElementById('panelNueva').style.display = 'block';
             document.getElementById('filasNueva').innerHTML = '';
-            agregarFilaInsumo('filasNueva');
+            agregarFila('filasNueva', 'insumo');
             document.getElementById('panelNueva').scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
 
@@ -316,73 +541,21 @@
             document.getElementById('panelNueva').style.display = 'none';
         }
 
-        function unidadesConocidas(nombre) {
-            const inv = inventarioGlobal.find(i => String(i.nombre).trim().toLowerCase() === String(nombre).trim().toLowerCase());
-            return inv ? (inv.unidad_medida || 'UNIDADES') : 'UNIDADES';
-        }
-
-        function filaInsumoHTML(nombre, cantidad, unidad, obligatorio, notas) {
-            return `
-                <div class="grid-linea-insumo">
-                    <div>
-                        <input list="dlInsumos" class="f-insumo-nombre" value="${escHTML(nombre)}" placeholder="Nombre del insumo" onchange="autocompletarUnidad(this)">
-                    </div>
-                    <div>
-                        <input type="number" step="any" min="0" class="f-insumo-cant" value="${escHTML(cantidad)}" placeholder="Cant. por caja">
-                    </div>
-                    <div>
-                        <input class="f-insumo-unidad" value="${escHTML(unidad || 'UNIDADES')}" placeholder="Unidad">
-                    </div>
-                    <div>
-                        <label class="etiqueta-check"><input type="checkbox" class="f-insumo-oblig" ${obligatorio !== false ? 'checked' : ''}> Obligatorio</label>
-                    </div>
-                    <div>
-                        <input class="f-insumo-notas" value="${escHTML(notas || '')}" placeholder="Notas (opcional)">
-                    </div>
-                    <div>
-                        <button type="button" class="btn-remover" onclick="this.parentElement.parentElement.remove()">🗑</button>
-                    </div>
-                </div>
-            `;
-        }
-
-        function agregarFilaInsumo(contenedorId) {
-            document.getElementById(contenedorId).insertAdjacentHTML('beforeend', filaInsumoHTML('', '', 'UNIDADES', true, ''));
-        }
-
-        function autocompletarUnidad(el) {
-            const fila = el.closest('.grid-linea-insumo');
-            if (!fila) return;
-            const unidad = unidadesConocidas(el.value);
-            const inp = fila.querySelector('.f-insumo-unidad');
-            if (inp && unidad) inp.value = unidad;
-        }
-
-        function leerFilas(contenedorId) {
-            return Array.from(document.querySelectorAll('#' + contenedorId + ' .grid-linea-insumo')).map(fila => {
-                const nombre = (fila.querySelector('.f-insumo-nombre').value || '').trim();
-                const cantidad = parseFloat(fila.querySelector('.f-insumo-cant').value);
-                return {
-                    nombre,
-                    cantidad_por_caja: cantidad,
-                    unidad: (fila.querySelector('.f-insumo-unidad').value || 'UNIDADES').trim(),
-                    obligatorio: fila.querySelector('.f-insumo-oblig').checked,
-                    notas: (fila.querySelector('.f-insumo-notas').value || '').trim()
-                };
-            }).filter(i => i.nombre);
-        }
-
         async function guardarNuevaReceta() {
             if (enviandoNueva) return;
-            const producto_key = document.getElementById('nuevoProducto').value;
+            const delCatalogo = document.getElementById('nuevoProducto').value;
+            const textoNuevo = document.getElementById('nuevoProductoTexto').value.trim();
+            const nombreProducto = document.getElementById('nuevoNombreProducto').value.trim();
             const observaciones = document.getElementById('nuevasObservaciones').value.trim();
             const insumos = leerFilas('filasNueva');
 
-            if (!producto_key) { alert('❌ Selecciona un producto.'); return; }
-            if (!insumos.length) { alert('❌ Agrega al menos un insumo con nombre.'); return; }
-            for (const insumo of insumos) {
-                if (!(insumo.cantidad_por_caja > 0)) { alert('❌ Todos los insumos deben tener cantidad_por_caja > 0.'); return; }
+            let producto_key = delCatalogo;
+            if (!producto_key && textoNuevo) {
+                producto_key = slugProducto(textoNuevo);
             }
+            if (!producto_key) { alert('❌ Selecciona un producto del catálogo o escribe el nombre del producto nuevo.'); return; }
+            const error = validarFilas(insumos);
+            if (error) { alert('❌ ' + error); return; }
 
             enviandoNueva = true;
             const btn = document.getElementById('btnGuardarNueva');
@@ -391,13 +564,19 @@
                 const res = await fetch('/api/recetas', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ producto_key, insumos, observaciones })
+                    body: JSON.stringify({
+                        producto_key,
+                        nombre_producto: nombreProducto || (delCatalogo ? '' : textoNuevo),
+                        insumos,
+                        observaciones
+                    })
                 });
                 const data = await res.json();
                 if (res.ok && data.success) {
                     alert('✅ ' + data.mensaje);
                     cerrarPanelNueva();
                     await cargarRecetas();
+                    await cargarDatosIniciales();
                     if (data.receta && data.receta.id) abrirDetalle(data.receta.id);
                 } else {
                     alert('❌ ' + (data.mensaje || 'Error al crear la receta.'));
@@ -411,7 +590,16 @@
             }
         }
 
-        // ---------- DETALLE / EDICION ----------
+        function slugProducto(texto) {
+            return String(texto)
+                .toLowerCase()
+                .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-z0-9]+/g, '_')
+                .replace(/^_+|_+$/g, '')
+                .slice(0, 60);
+        }
+
+        // ---------- DETALLE / EDICIÓN ----------
         async function abrirDetalle(id) {
             try {
                 const res = await fetch('/api/recetas/detalle/' + id);
@@ -420,42 +608,48 @@
                 if (!data.success) throw new Error(data.mensaje);
                 const r = data.receta;
                 detalleId = r.id;
-                editandoDetalle = false;
+                detalleReceta = r;
 
                 document.getElementById('detId').textContent = r.id;
                 document.getElementById('detProducto').textContent = (r.nombre_producto ? r.nombre_producto + ' (' + r.producto_key + ')' : r.producto_key);
                 document.getElementById('detVersion').innerHTML = `v${escHTML(r.version)} · ${badgeEstado(!!r.activa)} · Creado por ${escHTML(r.created_by)}`;
                 document.getElementById('detVigencia').textContent = `Desde ${r.vigente_desde || '—'} hasta ${r.vigente_hasta || 'vigente'}`;
-                document.getElementById('detObservaciones').textContent = r.observaciones || '(sin observaciones)';
+                document.getElementById('detObservaciones').value = r.observaciones || '';
 
                 const aviso = document.getElementById('avisoEditor');
                 const filas = document.getElementById('filasDetalle');
+                filas.innerHTML = r.insumos.length ? r.insumos.map(filaHTML).join('') : '';
+                agregarFila('filasDetalle', 'insumo');
+                // El chip de stock se pinta sobre CADA fila segun lo que tenga
+                // seleccionado, no sobre la ultima fila que se acabo de agregar.
+                filas.querySelectorAll('.fila-insumo').forEach(fila => {
+                    const sel = fila.querySelector('.f-linea-item');
+                    if (!sel || !sel.value) return;
+                    const inv = inventarioGlobal.find(i => String(i.id) === String(sel.value));
+                    if (inv) actualizarChipStock(fila, inv);
+                });
+
                 if (r.activa) {
                     aviso.style.display = 'block';
-                    aviso.innerHTML = '⚠️ Esta receta está <b>ACTIVA</b>. No se puede editar ni eliminar directamente. Usa <b>📋 Clonar</b> para crear una nueva versión y luego actívala.';
-                    filas.innerHTML = r.insumos.length
-                        ? r.insumos.map(i => filaInsumoHTML(i.insumo_nombre, i.cantidad_por_caja, i.unidad_medida, i.obligatorio, i.notas)).join('')
-                        : '<p class="sin-registros">Sin insumos registrados.</p>';
-                    filas.querySelectorAll('input, button').forEach(el => { el.disabled = true; });
+                    aviso.className = 'aviso-warn';
+                    aviso.innerHTML = '⚠️ Esta receta está <b>ACTIVA</b> y hoy gobierna lo que descuenta la producción. Si guardas cambios se creará un <b>borrador</b> con ellos; la activa seguirá vigente hasta que actives el borrador.';
                 } else {
                     aviso.style.display = 'block';
-                    aviso.innerHTML = 'ℹ️ Receta en estado <b>BORRADOR</b>. Puedes editar insumos y observaciones, luego <b>activar</b> cuando esté lista.';
                     aviso.className = 'aviso-info';
-                    filas.innerHTML = r.insumos.length
-                        ? r.insumos.map(i => filaInsumoHTML(i.insumo_nombre, i.cantidad_por_caja, i.unidad_medida, i.obligatorio, i.notas)).join('')
-                        : '';
-                    agregarFilaInsumo('filasDetalle');
-                    editandoDetalle = true;
+                    aviso.innerHTML = 'ℹ️ Receta en estado <b>BORRADOR</b>. Edita lo que necesites y actívala cuando esté lista.';
                 }
 
-                document.getElementById('botonesAccionDetalle').innerHTML = r.activa
-                    ? `<button onclick="clonarReceta(${r.id})" class="btn-clonar" style="border:none; border-radius:4px; padding:9px 16px; cursor:pointer; font-weight:bold;">📋 CLONAR PARA EDICIÓN</button>
-                       <button onclick="desactivarReceta(${r.id})" style="background:#6c757d; color:white; border:none; border-radius:4px; padding:9px 16px; cursor:pointer; font-weight:bold;">⏸ DESACTIVAR</button>`
-                    : `<button onclick="guardarEdicionDetalle()" id="btnGuardarDetalle" class="btn-accion" style="border:none; border-radius:4px; padding:9px 16px; cursor:pointer; font-weight:bold;">💾 GUARDAR CAMBIOS</button>
-                       <button onclick="activarReceta(${r.id})" class="btn-activar" style="border:none; border-radius:4px; padding:9px 16px; cursor:pointer; font-weight:bold;">✅ ACTIVAR ESTA VERSIÓN</button>`;
+                document.getElementById('botonesAccionDetalle').innerHTML = `
+                    <button onclick="guardarEdicionDetalle()" id="btnGuardarDetalle" class="btn-accion" style="border:none; border-radius:4px; padding:9px 16px; cursor:pointer; font-weight:bold;">💾 GUARDAR CAMBIOS</button>
+                    <button onclick="guardarYActivar()" id="btnGuardarActivar" class="btn-accion btn-activar" style="border:none; border-radius:4px; padding:9px 16px; cursor:pointer; font-weight:bold;">💾 GUARDAR Y ACTIVAR</button>
+                    ${r.activa
+                        ? `<button onclick="desactivarReceta(${r.id})" style="background:#6c757d; color:white; border:none; border-radius:4px; padding:9px 16px; cursor:pointer; font-weight:bold;">⏸ DESACTIVAR</button>`
+                        : `<button onclick="activarReceta(${r.id})" class="btn-activar" style="border:none; border-radius:4px; padding:9px 16px; cursor:pointer; font-weight:bold;">✅ ACTIVAR ESTA VERSIÓN</button>`}
+                    <button onclick="clonarReceta(${r.id})" class="btn-clonar" style="border:none; border-radius:4px; padding:9px 16px; cursor:pointer; font-weight:bold;">📋 CLONAR</button>`;
 
                 document.getElementById('panelDetalle').style.display = 'block';
                 document.getElementById('panelDetalle').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                await Promise.all([calcularImpacto(), cargarDiff()]);
             } catch (err) {
                 console.error(err);
                 alert('❌ ' + err.message);
@@ -464,33 +658,54 @@
 
         function cerrarPanelDetalle() {
             detalleId = null;
-            editandoDetalle = false;
+            detalleReceta = null;
             document.getElementById('panelDetalle').style.display = 'none';
         }
 
-        async function guardarEdicionDetalle() {
+        function recolectarEdicion() {
+            return {
+                insumos: leerFilas('filasDetalle'),
+                observaciones: document.getElementById('detObservaciones').value.trim()
+            };
+        }
+
+        async function guardarEdicionDetalle(activar) {
             if (enviandoEdicion || detalleId === null) return;
-            const insumos = leerFilas('filasDetalle');
-            if (!insumos.length) { alert('❌ Debe haber al menos un insumo.'); return; }
-            for (const insumo of insumos) {
-                if (!(insumo.cantidad_por_caja > 0)) { alert('❌ Todos los insumos deben tener cantidad_por_caja > 0.'); return; }
-            }
-            const observaciones = document.getElementById('detObservaciones').textContent.trim();
+            const { insumos, observaciones } = recolectarEdicion();
+            const error = validarFilas(insumos);
+            if (error) { alert('❌ ' + error); return; }
 
             enviandoEdicion = true;
             const btn = document.getElementById('btnGuardarDetalle');
+            const btn2 = document.getElementById('btnGuardarActivar');
             if (btn) btn.disabled = true;
+            if (btn2) btn2.disabled = true;
             try {
+                // Si falta stock, el servidor NO activa: responde 409 pidiendo
+                // confirmacion. Primero se guarda el borrador, se pregunta, y solo
+                // si el usuario dice que sí se fuerza la activacion.
                 const res = await fetch('/api/recetas/' + detalleId, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ insumos, observaciones })
+                    body: JSON.stringify({ insumos, observaciones, activar: activar === true })
                 });
                 const data = await res.json();
+
+                if (res.status === 409 && data.requiere_confirmacion) {
+                    alert('💾 ' + data.mensaje);
+                    await cargarRecetas();
+                    const pendiente = data.receta && data.receta.id;
+                    if (pendiente && confirm('⚠️ ' + data.advertencia + '\n\n¿Activar de todas formas?')) {
+                        await forzarActivacion(pendiente);
+                    }
+                    if (detalleId !== null) await abrirDetalle(pendiente !== null ? pendiente : detalleId);
+                    return;
+                }
+
                 if (res.ok && data.success) {
                     alert('✅ ' + data.mensaje);
                     await cargarRecetas();
-                    abrirDetalle(detalleId);
+                    if (data.receta && data.receta.id) await abrirDetalle(data.receta.id);
                 } else {
                     alert('❌ ' + (data.mensaje || 'Error al actualizar la receta.'));
                 }
@@ -500,6 +715,101 @@
             } finally {
                 enviandoEdicion = false;
                 if (btn) btn.disabled = false;
+                if (btn2) btn2.disabled = false;
+            }
+        }
+
+        /** Confirma explicitamente una activacion que el servidor pidio validar. */
+        async function forzarActivacion(id) {
+            try {
+                const res = await fetch('/api/recetas/' + id + '/activar', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ forzar: true })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    alert('❌ ' + (data.mensaje || 'No se pudo activar.'));
+                    return;
+                }
+                alert('✅ ' + data.mensaje);
+                await cargarRecetas();
+            } catch (err) {
+                console.error(err);
+                alert('Error de conexión con el servidor.');
+            }
+        }
+
+        function guardarYActivar() {
+            guardarEdicionDetalle(true);
+        }
+
+        // ---------- IMPACTO Y DIFF ----------
+        async function calcularImpacto() {
+            const cont = document.getElementById('detImpacto');
+            if (detalleId === null) { cont.innerHTML = ''; return; }
+            const cajas = Number(document.getElementById('detCajas').value) || 1;
+            try {
+                const res = await fetch(`/api/recetas/${detalleId}/impacto?cajas=${cajas}`);
+                const data = await res.json();
+                if (!res.ok || !data.success) { cont.innerHTML = `<div class="aviso-warn">${escHTML(data.mensaje || 'Sin receta vigente para simular.')}</div>`; return; }
+                const im = data.impacto;
+                const filas = im.cobertura.map(c => `
+                    <tr>
+                        <td>${escHTML(c.nombre)}</td>
+                        <td class="text-center">${c.obligatorio ? 'Sí' : 'No'}</td>
+                        <td class="text-center">${num(c.solicitado)} ${escHTML(c.unidad || '')}</td>
+                        <td class="text-center">${num(c.por_caja)} ${escHTML(c.unidad || '')}</td>
+                        <td class="text-center">${num(c.disponible)}</td>
+                        <td class="text-center">${c.stock_minimo === null ? '—' : num(c.stock_minimo)}</td>
+                        <td class="text-center">${Number.isFinite(c.cajas_posibles) ? num(c.cajas_posibles) : '∞'}</td>
+                        <td class="text-center">${c.alcanza ? '<span class="badge badge-ok">Alcanza</span>' : '<span class="badge badge-falta">Falta</span>'}</td>
+                    </tr>`).join('');
+                const avisos = [];
+                if (im.faltantes && im.faltantes.length) avisos.push(`<div class="aviso-error"><b>Faltan insumos obligatorios para ${cajas} caja(s):</b><ul class="lista-faltantes">${im.faltantes.map(f => `<li>${escHTML(f)}</li>`).join('')}</ul></div>`);
+                (im.advertencias || []).forEach(a => avisos.push(`<div class="aviso-warn">${escHTML(a)}</div>`));
+                (im.despues || []).forEach(a => avisos.push(`<div class="aviso-info">${escHTML(a)}</div>`));
+                const compartidos = (im.productos_que_comparten_insumos || []).length
+                    ? `<h4>Productos que usan alguno de estos insumos</h4><div class="chips-productos">${im.productos_que_comparten_insumos.map(p => `<span title="${escHTML(p.insumos.map(i => i.insumo).join(', '))}">${escHTML(p.nombre || p.producto_key)}</span>`).join('')}</div>`
+                    : '';
+
+                cont.innerHTML = `
+                    <div class="chip-info" style="margin-top:10px;">
+                        Receta v${escHTML(im.version)} · ${escHTML(im.nombre)} · máximo teórico <b>${Number.isFinite(im.cajas_maximas) ? num(im.cajas_maximas) : '∞'}</b> caja(s) con el stock actual
+                    </div>
+                    ${avisos.join('')}
+                    <div class="tabla-wrap tabla-card-movil"><table>
+                        <thead><tr><th>Insumo</th><th class="text-center">Oblig.</th><th class="text-center">Necesario</th><th class="text-center">Por caja</th><th class="text-center">Disponible</th><th class="text-center">Mínimo</th><th class="text-center">Cajas</th><th class="text-center">Estado</th></tr></thead>
+                        <tbody>${filas || '<tr><td colspan="8" class="sin-registros">Sin insumos.</td></tr>'}</tbody>
+                    </table></div>
+                    ${compartidos}`;
+                etiquetarTablas();
+            } catch (err) {
+                console.error(err);
+                cont.innerHTML = '<div class="aviso-error">No se pudo calcular el impacto.</div>';
+            }
+        }
+
+        async function cargarDiff() {
+            const cont = document.getElementById('detDiff');
+            if (detalleId === null) { cont.innerHTML = ''; return; }
+            try {
+                const res = await fetch('/api/recetas/' + detalleId + '/diff');
+                const data = await res.json();
+                if (!res.ok || !data.success) { cont.innerHTML = ''; return; }
+                const d = data.diff;
+                if (!d.hay_cambios) {
+                    cont.innerHTML = `<div class="aviso-info">ℹ️ Esta versión es idéntica a la vigente${d.vigente ? ` (v${d.vigente.version})` : ''}.</div>`;
+                    return;
+                }
+                const fmt = l => `${escHTML(l.nombre || '')}${l.insumo_id ? ` <span class="chip-info">(insumo #${l.insumo_id})</span>` : ''} — ${num(l.cantidad_por_caja)} ${escHTML(l.unidad || '')}${Number(l.merma_pct) ? ` · merma ${num(l.merma_pct)}%` : ''}`;
+                cont.innerHTML = `
+                    <h4>🧾 Diferencias frente a la versión vigente${d.vigente ? ` (v${d.vigente.version})` : ''}</h4>
+                    ${d.cambios.agregados.length ? `<div class="diff-fila"><b class="badge badge-ok">+ ${d.cambios.agregados.length} agregado(s)</b><ul class="lista-faltantes">${d.cambios.agregados.map(fmt).map(x => `<li>${x}</li>`).join('')}</ul></div>` : ''}
+                    ${d.cambios.quitados.length ? `<div class="diff-fila"><b class="badge badge-falta">− ${d.cambios.quitados.length} quitado(s)</b><ul class="lista-faltantes">${d.cambios.quitados.map(fmt).map(x => `<li>${x}</li>`).join('')}</ul></div>` : ''}
+                    ${d.cambios.modificados.length ? `<div class="diff-fila"><b class="badge badge-aviso">✎ ${d.cambios.modificados.length} modificado(s)</b><ul class="lista-faltantes">${d.cambios.modificados.map(m => `<li>${fmt(m)} → ${m.campos.map(c => `${escHTML(c.campo)}: ${escHTML(num(c.antes))} → ${escHTML(num(c.despues))}`).join(', ')}</li>`).join('')}</ul></div>` : ''}`;
+            } catch (err) {
+                console.error(err);
             }
         }
 
@@ -530,6 +840,16 @@
             try {
                 const res = await fetch('/api/recetas/' + id + '/activar', { method: 'PUT' });
                 const data = await res.json();
+                if (res.status === 409 && data.requiere_confirmacion) {
+                    // El servidor reviso el stock y no activo: eso se confirma a mano.
+                    if (!confirm('⚠️ ' + data.advertencia + '\n\n¿Activar de todas formas?')) {
+                        await cargarRecetas();
+                        if (detalleId !== null) abrirDetalle(detalleId);
+                        return;
+                    }
+                    await forzarActivacion(id);
+                    return;
+                }
                 if (res.ok && data.success) {
                     alert('✅ ' + data.mensaje);
                     await cargarRecetas();
@@ -544,7 +864,7 @@
         }
 
         async function desactivarReceta(id) {
-    const receta = recetasGlobal.find(r => r.id === id);
+            const receta = recetasGlobal.find(r => r.id === id);
             const nombre = (receta && (receta.nombre_producto || receta.producto_key)) || 'esta receta';
             if (!confirm(`¿Desactivar la receta de "${nombre}"? El producto quedará sin receta vigente hasta que actives una versión.`)) return;
             try {

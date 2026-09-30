@@ -394,16 +394,67 @@
             { v: 'Aceite de Soya Belini Balde 18 Lt', l: 'Aceite de Soya Belini Balde 18 Lt' }
         ];
 
-        function poblarSelectsEnvasado() {
+        // Un producto nuevo creado en Recetas no puede quedar fuera de la
+        // produccion: se agrega al listado aunque no exista en esta tabla fija.
+        async function agregarPresentacionesDeRecetas() {
+            try {
+                const res = await fetch('/api/recetas');
+                const data = await res.json();
+                if (!res.ok || !data.success || !Array.isArray(data.recetas)) return;
+                const yaListados = new Set(PRESENTACIONES_ENVASADO.map(p => normNombre(p.v)));
+
+                // La API devuelve todas las versiones. Se agrupa por producto y se
+                // queda con la ACTIVA: si se tomara la primera, un borrador nuevo
+                // taparia a la version vigente y la produccion usaria el BOM viejo.
+                const porProducto = new Map();
+                data.recetas.forEach(r => {
+                    const nombre = (r.nombre_producto || r.nombre_catalogo || r.producto_key || '').trim();
+                    if (!nombre) return;
+                    const k = normNombre(nombre);
+                    if (yaListados.has(k)) return;
+                    const previo = porProducto.get(k);
+                    if (!previo || (!previo.activa && r.activa)) porProducto.set(k, { nombre, activa: !!r.activa });
+                });
+
+                porProducto.forEach(({ nombre, activa }) => {
+                    PRESENTACIONES_ENVASADO.push({ v: nombre, l: nombre + (activa ? ' (nuevo)' : ' (borrador)') });
+                });
+            } catch (err) {
+                console.warn('No se pudieron cargar los productos de Recetas:', err);
+            }
+        }
+
+        function normNombre(s) {
+            return String(s || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .replace(/°|º|\.|\(|\)|\/|,|-|\s+/g, '');
+        }
+
+        // Los nombres vienen de la base y los escribe el usuario: se escapan
+        // antes de inyectarlos como HTML o como valor de atributo.
+        function escEnvasado(s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        async function poblarSelectsEnvasado() {
+            await agregarPresentacionesDeRecetas();
             const selForm = document.getElementById('presentacion');
             const selSig = document.getElementById('siguienteSelect');
+            const opciones = PRESENTACIONES_ENVASADO
+                .map(p => `<option value="${escEnvasado(p.v)}">${escEnvasado(p.l)}</option>`)
+                .join('');
             if (selForm) {
-                selForm.innerHTML = '<option value="">-- Seleccionar Presentación --</option>' +
-                    PRESENTACIONES_ENVASADO.map(p => `<option value="${p.v}">${p.l}</option>`).join('');
+                selForm.innerHTML = '<option value="">-- Seleccionar Presentación --</option>' + opciones;
             }
             if (selSig) {
-                selSig.innerHTML = '<option value="">-- Sin señalar --</option>' +
-                    PRESENTACIONES_ENVASADO.map(p => `<option value="${p.v}">${p.l}</option>`).join('');
+                selSig.innerHTML = '<option value="">-- Sin señalar --</option>' + opciones;
             }
         }
 

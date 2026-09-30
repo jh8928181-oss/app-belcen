@@ -6,8 +6,8 @@
  * Estos scripts hacen DROP TABLE sobre lo que entonces era una base de pruebas.
  *
  * Se exige ademas:
- *   - --i-borrar-todo: confirmsacion explicita
- *   - ALLOW_DESTRUCTIVE_SQL=1: segunda confirmacion, mas difícil de escribir por error
+ *   - --i-borrar-todo: confirmación explícita
+ *   - ALLOW_DESTRUCTIVE_SQL=1: segunda confirmación, más difícil de escribir por error
  *   - la base debe pasar la lista de hosts permitidos
  */
 
@@ -56,11 +56,11 @@ function exigirBaseDeDesarrollo(nombreScript) {
   if (!veredicto.ok) {
     console.error(`❌ ABORTADO: ${veredicto.motivo}.`);
     console.error('   Este script destruiría datos reales.');
-    console.error('   Si de verdad quieres hacerlo, apunta la base a una de desarrollo');
-    console.error('   o exporta ALLOW_DESTRUCTIVE_SQL=1 asumiendo el riesgo.');
+    console.error('   Si de verdad necesitas vaciarla, apúntala a una base de desarrollo');
+    console.error('   (o exporta ALLOW_DESTRUCTIVE_SQL=1 asumiendo el riesgo).');
     process.exit(1);
   }
-  console.log(`   ✓ seems de desarrollo: ${veredicto.motivo}`);
+  console.log(`   ✓ Seems una base de desarrollo: ${veredicto.motivo}`);
 
   if (!process.argv.includes('--i-borrar-todo')) {
     console.error('\n❌ ABORTADO: falta la confirmación explícita --i-borrar-todo');

@@ -259,9 +259,49 @@
                 if (data && data.success && Array.isArray(data.productos_tapa_dinamica)) {
                     catalogoRecetas = data;
                 }
+                agregarProductosNuevosAlSimulador(data);
             } catch (err) {
                 console.error(err);
             }
+        }
+
+        /**
+         * Un producto creado en Recetas también se puede simular aquí. El select
+         * trae las presentaciones viejas con su texto de cajas; lo que falte se
+         * agrega desde el catálogo, sin sacar nada de lo que ya funcionaba.
+         */
+        function agregarProductosNuevosAlSimulador(data) {
+            const sel = document.getElementById('sim_producto');
+            if (!sel || !data || !Array.isArray(data.recetas)) return;
+
+            const porKey = new Set(Array.from(sel.options).map(o => o.value));
+
+            // La API devuelve todas las versiones (de mayor a menor), así que la
+            // primera de cada producto suele ser el borrador. Se agrupa y se queda
+            // con la ACTIVA; sin ella se usa la más reciente y se avisa en el texto.
+            const porProducto = new Map();
+            data.recetas.forEach(r => {
+                const key = String(r.producto_key || '').trim();
+                if (!key || porKey.has(key)) return;
+                const nombre = String(r.nombre_producto || r.nombre_catalogo || key).trim();
+                const previo = porProducto.get(key);
+                if (!previo || (!previo.activa && r.activa)) porProducto.set(key, { nombre, activa: !!r.activa });
+            });
+
+            const fragmentos = [];
+            porProducto.forEach(({ nombre, activa }, key) => {
+                porKey.add(key);
+                fragmentos.push(`<option value="${escaparAtributo(key)}"${activa ? ' selected' : ''}>${escaparTexto(nombre)}${activa ? '' : ' (sin receta activa)'}</option>`);
+            });
+            if (fragmentos.length) sel.insertAdjacentHTML('beforeend', fragmentos.join(''));
+        }
+
+        function escaparAtributo(s) {
+            return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function escaparTexto(s) {
+            return escaparAtributo(s);
         }
 
         function formatoCantidad(valor, unidad) {

@@ -6,6 +6,12 @@ describe('normalizar', () => {
     expect(normalizar('Etiqueta couche 90gr x 800 ml Don Lalo')).toBe('etiquetacouche90grx800mldonlalo');
   });
 
+  test('es insensible a acentos', () => {
+    expect(normalizar('Ácido Bórico')).toBe('acidoborico');
+    expect(normalizar('ácido bórico')).toBe(normalizar('ÁCIDO BÓRICO'));
+    expect(normalizar('Cinta adhesiva')).toBe(normalizar('CINTA ADHESIVA'));
+  });
+
   test('maneja strings vacíos y null', () => {
     expect(normalizar('')).toBe('');
     expect(normalizar(null)).toBe('');

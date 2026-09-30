@@ -16,6 +16,7 @@ const { analizarDocumentoConGemini } = require('./services/geminiService');
 const { initRedis } = require('./services/rateLimiter');
 const { authMiddleware, crearGuardRoles, ROLES_MODULO } = require('./middleware/auth');
 const { calcularInsumosProduccion } = require('./services/recipeService');
+const { normalizar } = require('./utils/helpers');
 
 process.on('unhandledRejection', (reason) => {
     console.error('Rechazo no manejado:', reason);
@@ -532,7 +533,10 @@ app.post('/api/inventario/nuevo', gAlmacen, async (req, res) => {
 });
 
 // --- ALMACÉN: AJUSTE MANUAL DE INVENTARIO INSUMOS ---
+// El ajuste y su registro de historial van en la MISMA transaccion: si no queda
+// anotado, el stock se revierte. Un ajuste sin rastro no se puede reconstruir.
 app.post('/api/almacen/ajustar-stock', gAlmacen, async (req, res) => {
+    const client = await pool.connect();
     try {
         const { articulo_id, nuevo_stock } = req.body;
         const cantidadNueva = Number(nuevo_stock);
@@ -540,23 +544,28 @@ app.post('/api/almacen/ajustar-stock', gAlmacen, async (req, res) => {
             return res.status(400).json({ success: false, mensaje: 'El nuevo stock debe ser un número válido.' });
         }
 
-        const actual = await pool.query('SELECT nombre, stock FROM inventario WHERE id = $1', [articulo_id]);
+        await client.query('BEGIN');
+        const actual = await client.query('SELECT nombre, stock FROM inventario WHERE id = $1', [articulo_id]);
         if (actual.rows.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ success: false, mensaje: 'El artículo no existe.' });
         }
         const nombreArticulo = actual.rows[0].nombre;
         const stockAnterior = Number(actual.rows[0].stock) || 0;
 
-        await pool.query(
-            `UPDATE inventario 
-             SET stock = $1::numeric, 
-                 estado = CASE WHEN $1::numeric <= 0 THEN 'REALIZAR PEDIDO' ELSE 'STOCK SUFICIENTE' END 
+        const upd = await client.query(
+            `UPDATE inventario
+             SET stock = $1::numeric,
+                 estado = CASE WHEN $1::numeric <= 0 THEN 'REALIZAR PEDIDO' ELSE 'STOCK SUFICIENTE' END
              WHERE id = $2`,
             [cantidadNueva, articulo_id]
         );
+        if (upd.rowCount !== 1) {
+            throw new Error(`No se pudo ajustar el stock de "${nombreArticulo}".`);
+        }
 
         const diferencia = cantidadNueva - stockAnterior;
-        await registrarHistorial(pool, {
+        await registrarHistorial(client, {
             tipo: 'AJUSTE',
             origen: 'almacen',
             producto: nombreArticulo,
@@ -569,10 +578,14 @@ app.post('/api/almacen/ajustar-stock', gAlmacen, async (req, res) => {
             referencia: 'Ajuste manual de stock'
         });
 
+        await client.query('COMMIT');
         res.json({ success: true, mensaje: 'Stock de insumo ajustado manualmente.' });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         console.error("Error al ajustar stock:", err);
         res.status(500).json({ success: false, mensaje: 'Error al actualizar el stock manualmente: ' + err.message });
+    } finally {
+        client.release();
     }
 });
 
@@ -596,21 +609,25 @@ app.get('/api/producto-terminado', async (req, res) => {
     }
 });
 
+// Ajuste y auditoría en la misma transacción: si no queda registrado, se revierte.
 app.post('/api/producto-terminado/ajustar', gEnvasado, async (req, res) => {
+    const client = await pool.connect();
     try {
         const { id, nuevo_stock } = req.body;
         const cantidadNueva = Number(nuevo_stock);
         if (isNaN(cantidadNueva)) {
             return res.status(400).json({ success: false, mensaje: 'El nuevo stock debe ser un número válido.' });
         }
-        const actual = await pool.query('SELECT producto_key, nombre_producto, stock_cajas FROM producto_terminado WHERE id = $1', [id]);
+        await client.query('BEGIN');
+        const actual = await client.query('SELECT producto_key, nombre_producto, stock_cajas FROM producto_terminado WHERE id = $1', [id]);
         if (actual.rows.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ success: false, mensaje: 'El producto terminado no existe.' });
         }
         const stockAnterior = Number(actual.rows[0].stock_cajas) || 0;
-        await pool.query('UPDATE producto_terminado SET stock_cajas = $1 WHERE id = $2', [cantidadNueva, id]);
+        await client.query('UPDATE producto_terminado SET stock_cajas = $1 WHERE id = $2', [cantidadNueva, id]);
         const diferencia = cantidadNueva - stockAnterior;
-        await registrarHistorial(pool, {
+        await registrarHistorial(client, {
             tipo: 'AJUSTE',
             origen: 'producto_terminado',
             producto: actual.rows[0].nombre_producto,
@@ -622,10 +639,14 @@ app.post('/api/producto-terminado/ajustar', gEnvasado, async (req, res) => {
             usuario: usuarioResponsable(req, req.body.usuario),
             referencia: 'Ajuste manual de producto terminado'
         });
+        await client.query('COMMIT');
         res.json({ success: true, mensaje: 'Stock de producto terminado actualizado correctamente.' });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         console.error("Error al ajustar producto terminado:", err);
         res.status(500).json({ success: false, mensaje: 'Error al ajustar stock de producto terminado' });
+    } finally {
+        client.release();
     }
 });
 
@@ -645,6 +666,7 @@ app.post('/api/producto-terminado/minimo', async (req, res) => {
 
 // Alta manual de producto terminado SIN descontar insumos (por ejemplo, lotes ya producidos que ingresan a almacén)
 app.post('/api/producto-terminado/agregar-manual', gEnvasado, async (req, res) => {
+    const client = await pool.connect();
     try {
         const { producto_tipo, cantidad } = req.body;
         const cajas = parseInt(cantidad);
@@ -652,15 +674,16 @@ app.post('/api/producto-terminado/agregar-manual', gEnvasado, async (req, res) =
             return res.status(400).json({ success: false, mensaje: 'Producto y cantidad válida son requeridos.' });
         }
         const nombreLegible = PRODUCTOS_TERMINADOS_MAP[producto_tipo] || producto_tipo;
-        const previo = await pool.query('SELECT stock_cajas FROM producto_terminado WHERE producto_key = $1', [producto_tipo]);
+        await client.query('BEGIN');
+        const previo = await client.query('SELECT stock_cajas FROM producto_terminado WHERE producto_key = $1', [producto_tipo]);
         const stockAnterior = previo.rows.length > 0 ? Number(previo.rows[0].stock_cajas) || 0 : 0;
-        await pool.query(`
+        await client.query(`
             INSERT INTO producto_terminado (producto_key, nombre_producto, stock_cajas)
             VALUES ($1, $2, $3)
-            ON CONFLICT (producto_key) 
+            ON CONFLICT (producto_key)
             DO UPDATE SET stock_cajas = producto_terminado.stock_cajas + EXCLUDED.stock_cajas;
         `, [producto_tipo, nombreLegible, cajas]);
-        await registrarHistorial(pool, {
+        await registrarHistorial(client, {
             tipo: 'ENTRADA',
             origen: 'producto_terminado',
             producto: nombreLegible,
@@ -672,10 +695,14 @@ app.post('/api/producto-terminado/agregar-manual', gEnvasado, async (req, res) =
             usuario: usuarioResponsable(req, req.body.usuario),
             referencia: 'Alta manual de producto terminado (sin descontar insumos)'
         });
+        await client.query('COMMIT');
         res.json({ success: true, mensaje: 'Producto terminado agregado manualmente sin descontar insumos.' });
     } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
         console.error("Error al agregar producto terminado manual:", err);
         res.status(500).json({ success: false, mensaje: 'Error al agregar producto terminado: ' + err.message });
+    } finally {
+        client.release();
     }
 });
 
@@ -902,14 +929,29 @@ app.post('/api/estado-linea', gEnvasado, async (req, res) => {
 });
 
 // --- FUNCIÓN AUXILIAR: RECALCULAR ESTADO DE ARTÍCULOS SEGÚN STOCK ---
-async function actualizarEstadoArticulo(q, nombre) {
+// Con id se actualiza por clave primaria (sin ambigüedad de nombres);
+// por nombre es el camino legacy para los módulos que no usan recetas.
+async function actualizarEstadoArticulo(q, nombre, id = null) {
+    if (id) {
+        await q.query(
+            `UPDATE inventario SET estado = CASE WHEN stock <= 0 THEN 'REALIZAR PEDIDO' ELSE 'STOCK SUFICIENTE' END WHERE id = $1`,
+            [id]
+        );
+        return;
+    }
     await q.query(
         `UPDATE inventario SET estado = CASE WHEN stock <= 0 THEN 'REALIZAR PEDIDO' ELSE 'STOCK SUFICIENTE' END WHERE LOWER(nombre) = LOWER($1)`,
         [nombre]
     );
 }
 
-// --- FUNCIÓN AUXILIAR: HISTORIAL DE MOVIMIENTOS DE INVENTARIO (best-effort, nunca rompe el flujo) ---
+// --- FUNCIÓN AUXILIAR: HISTORIAL DE MOVIMIENTOS DE INVENTARIO ---
+// La auditoría es obligatoria: si el movimiento de stock no queda registrado,
+// el error sube y la transacción que lo llamó se revierte. Un stock movido sin
+// rastro es indistinguible de un stock inventado.
+//
+// `tolerante: true` queda solo para los módulos fuera de este alcance (refinado),
+// donde el comportamiento anterior era best-effort y no se cambia a la fuerza.
 async function registrarHistorial(q, datos) {
     try {
         await q.query(
@@ -930,6 +972,7 @@ async function registrarHistorial(q, datos) {
             ]
         );
     } catch (err) {
+        if (!datos.tolerante) throw err;
         console.error("No se pudo registrar en el historial de inventario:", err.message);
     }
 }
@@ -2059,13 +2102,26 @@ function detectarProductoTipo(presentacion) {
     return '';
 }
 
-function extraerTapaDeObservaciones(observaciones) {
-    if (!observaciones || !observaciones.includes('Tapa:')) return null;
-    const partes = observaciones.split('|');
-    for (const parte of partes) {
-        if (parte.includes('Tapa:')) return parte.replace('Tapa:', '').trim();
-    }
-    return null;
+/**
+ * Traduce la presentación elegida en el formulario al producto_key de la receta.
+ * Primero usa el catálogo fijo (comportamiento histórico) y, si no está,
+ * pregunta a la BD: así un producto creado desde el módulo de Recetas también
+ * se puede reportar sin tocar código.
+ */
+async function resolverProductoKey(presentacion, q = pool) {
+    const directo = detectarProductoTipo(presentacion);
+    if (directo) return directo;
+
+    const texto = String(presentacion || '').trim();
+    if (!texto) return '';
+
+    const r = await q.query(
+        `SELECT DISTINCT producto_key FROM recetas
+          WHERE nombre_producto ILIKE $1 OR producto_key ILIKE $1
+          ORDER BY producto_key LIMIT 1`,
+        [texto]
+    );
+    return r.rows.length ? r.rows[0].producto_key : '';
 }
 
 function safeParseJson(str) {
@@ -2079,40 +2135,65 @@ function safeParseJson(str) {
 app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
     try {
         const { fecha_produccion, presentacion, cantidad_cajas, toneladas, observaciones, usuario } = req.body;
-        const producto_tipo = detectarProductoTipo(presentacion || '');
         const cajas = Number(cantidad_cajas);
 
         if (!presentacion || !String(presentacion).trim()) {
             return res.status(400).json({ success: false, mensaje: 'Debe seleccionar la presentación de la producción.' });
         }
+        const producto_tipo = await resolverProductoKey(presentacion);
         if (!producto_tipo) {
-            return res.status(400).json({ success: false, mensaje: `La presentación "${presentacion}" no está en el catálogo de productos terminados.` });
+            return res.status(400).json({ success: false, mensaje: `La presentación "${presentacion}" no tiene receta registrada.` });
         }
         if (!cajas || isNaN(cajas) || cajas <= 0 || cajas > 1000000) {
             return res.status(400).json({ success: false, mensaje: 'Cantidad de cajas inválida. Debe ser un número mayor a 0.' });
         }
-
-        const tapa_elegida = extraerTapaDeObservaciones(observaciones);
 
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
             await client.query(`SELECT set_config('app.current_user', $1, true)`, [usuarioResponsable(req, usuario) || 'produccion']);
 
-            const insumosADescontar = await calcularInsumosProduccion(producto_tipo, cajas, tapa_elegida, client);
+            // El motor devuelve hojas de inventario ya aplanadas (insumo_id) con
+            // merma y stock de seguridad aplicados: no hay segunda búsqueda por
+            // texto que pueda fallar o golpear otro artículo con nombre parecido.
+            const insumosADescontar = await calcularInsumosProduccion(producto_tipo, cajas, client);
             if (!insumosADescontar || insumosADescontar.length === 0) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ success: false, mensaje: `No existe receta vigente para "${presentacion}". Contacte a producción para registrar la receta desde el módulo de Recetas.` });
             }
 
+            // Un solo SELECT ... FOR UPDATE, ordenado por id: todas las
+            // transacciones toman los bloqueos en el mismo orden y no se
+            // traban entre sí. Sin esto, dos producciones simultáneas del mismo
+            // producto se bloquean mutuamente y una falla.
+            const obligatorios = insumosADescontar.filter(i => i.obligatorio !== false)
+                .sort((a, b) => a.insumo_id - b.insumo_id);
+            const stockPorId = new Map();
+            if (obligatorios.length) {
+                const st = await client.query(
+                    'SELECT id, nombre, stock, unidad_medida, categoria FROM inventario WHERE id = ANY($1::int[]) ORDER BY id FOR UPDATE',
+                    [obligatorios.map(i => i.insumo_id)]
+                );
+                st.rows.forEach(r => stockPorId.set(r.id, r));
+            }
+
             const faltantes = [];
-            for (const insumo of insumosADescontar) {
-                if (insumo.obligatorio === false) continue;
-                const stockRes = await client.query('SELECT stock FROM inventario WHERE LOWER(nombre) = LOWER($1) FOR UPDATE', [insumo.nombre]);
-                const stockActual = stockRes.rows.length > 0 ? Number(stockRes.rows[0].stock || 0) : 0;
+            const faltantesId = [];
+            for (const insumo of obligatorios) {
+                const fila = stockPorId.get(insumo.insumo_id);
+                const stockActual = fila ? Number(fila.stock || 0) : 0;
                 if (stockActual < insumo.cantidad) {
                     faltantes.push(`${insumo.nombre}: requiere ${insumo.cantidad} | stock: ${stockActual}`);
+                    if (!fila) faltantesId.push(insumo.insumo_id);
                 }
+            }
+            if (faltantesId.length) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({
+                    success: false,
+                    mensaje: 'La receta apunta a insumos que no existen en inventario. Revisa las líneas de la receta.',
+                    errores: faltantes
+                });
             }
             if (faltantes.length > 0) {
                 await client.query('ROLLBACK');
@@ -2122,39 +2203,50 @@ app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
                 });
             }
 
-            const desglose = [];
-            for (const insumo of insumosADescontar) {
-                const uRes = await client.query('SELECT unidad_medida, categoria FROM inventario WHERE LOWER(nombre) = LOWER($1)', [insumo.nombre]);
-                desglose.push({
+            // El desglose guardado incluye el id del insumo: al borrar el reporte
+            // se devuelve exactamente lo que se descontó, aunque la receta haya
+            // cambiado desde entonces.
+            const desglose = obligatorios.map(insumo => {
+                const fila = stockPorId.get(insumo.insumo_id);
+                return {
                     nombre: insumo.nombre,
+                    articulo_id: insumo.insumo_id,
                     cantidad: Number(insumo.cantidad),
-                    unidad_medida: uRes.rows.length > 0 ? uRes.rows[0].unidad_medida : 'UNIDADES',
-                    categoria: uRes.rows.length > 0 ? uRes.rows[0].categoria : ''
-                });
-            }
+                    unidad_medida: insumo.unidad || (fila ? fila.unidad_medida : 'UNIDADES'),
+                    categoria: insumo.categoria || (fila ? fila.categoria : '')
+                };
+            });
             const desgloseJson = JSON.stringify(desglose);
 
-            for (const insumo of insumosADescontar) {
-                if (insumo.obligatorio === false) continue;
-                const st = await client.query('SELECT stock FROM inventario WHERE LOWER(nombre) = LOWER($1) FOR UPDATE', [insumo.nombre]);
-                const stockAnterior = st.rows.length > 0 ? Number(st.rows[0].stock) || 0 : 0;
-                await client.query(
-                    `UPDATE inventario SET stock = stock - $1 WHERE LOWER(nombre) = LOWER($2)`,
-                    [insumo.cantidad, insumo.nombre]
+            for (const insumo of obligatorios) {
+                const fila = stockPorId.get(insumo.insumo_id);
+                const stockAnterior = Number(fila.stock) || 0;
+                const desc = await client.query(
+                    'UPDATE inventario SET stock = stock - $1 WHERE id = $2 RETURNING stock',
+                    [insumo.cantidad, insumo.insumo_id]
                 );
-                await actualizarEstadoArticulo(client, insumo.nombre);
+                if (desc.rowCount !== 1) {
+                    throw new Error(`No se pudo descontar el stock de "${insumo.nombre}".`);
+                }
+                const stockNuevo = Number(desc.rows[0].stock);
+                await actualizarEstadoArticulo(client, insumo.nombre, insumo.insumo_id);
                 await registrarHistorial(client, {
                     tipo: 'PRODUCCION', origen: 'envasado',
                     producto: insumo.nombre,
+                    articulo_id: insumo.insumo_id,
                     cantidad: Number(insumo.cantidad), tipo_cambio: 'RESTA',
-                    stock_anterior: stockAnterior, stock_nuevo: stockAnterior - Number(insumo.cantidad),
+                    stock_anterior: stockAnterior, stock_nuevo: stockNuevo,
                     usuario: usuarioResponsable(req, usuario),
                     referencia: 'Descuento por envasado: ' + cajas + ' cajas de ' + presentacion
                 });
             }
 
             if (producto_tipo) {
-                const nombreLegible = PRODUCTOS_TERMINADOS_MAP[producto_tipo] || presentacion;
+                // El nombre legible sale de la receta (que es donde vive para los
+                // productos nuevos); el mapa fijo queda como respaldo.
+                const nombreLegible = (insumosADescontar[0] && insumosADescontar[0].nombre_producto)
+                    || PRODUCTOS_TERMINADOS_MAP[producto_tipo]
+                    || presentacion;
                 const previo = await client.query('SELECT stock_cajas FROM producto_terminado WHERE producto_key = $1', [producto_tipo]);
                 const stockAnteriorPT = previo.rows.length > 0 ? Number(previo.rows[0].stock_cajas) || 0 : 0;
                 await client.query(`
@@ -2228,12 +2320,12 @@ app.get('/api/produccion/informes', async (req, res) => {
 
         for (const inf of informes) {
             if (!inf.desglose) {
-                const tipo = detectarProductoTipo(inf.presentacion);
+                const tipo = await resolverProductoKey(inf.presentacion);
                 if (tipo) {
-                    const tapaElegida = extraerTapaDeObservaciones(inf.observaciones);
-                    const insumos = await calcularInsumosProduccion(tipo, parseInt(inf.cantidad_cajas, 10) || 0, tapaElegida);
+                    const insumos = await calcularInsumosProduccion(tipo, parseInt(inf.cantidad_cajas, 10) || 0);
                     inf.desglose = insumos.filter(i => i.obligatorio !== false).map(i => ({
                         nombre: i.nombre,
+                        articulo_id: i.insumo_id,
                         cantidad: Number(i.cantidad),
                         unidad_medida: i.unidad || 'UNIDADES',
                         categoria: ''
@@ -2263,45 +2355,126 @@ app.post('/api/produccion/eliminar', gProduccion, async (req, res) => {
         }
         const reporte = repRes.rows[0];
 
-        const producto_tipo = detectarProductoTipo(reporte.presentacion);
-        const tapa_elegida = extraerTapaDeObservaciones(reporte.observaciones);
+        const producto_tipo = await resolverProductoKey(reporte.presentacion, client);
         const cantidad_cajas = parseInt(reporte.cantidad_cajas, 10);
 
-        if (producto_tipo) {
-            const insumosADevolver = (await calcularInsumosProduccion(producto_tipo, cantidad_cajas, tapa_elegida)).filter(i => i.obligatorio !== false);
-            for (const insumo of insumosADevolver) {
-                const st = await client.query('SELECT stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [insumo.nombre]);
-                const stockAnterior = st.rows.length > 0 ? Number(st.rows[0].stock) || 0 : 0;
-                await client.query(
-                    `UPDATE inventario SET stock = stock + $1 WHERE LOWER(nombre) = LOWER($2)`,
-                    [insumo.cantidad, insumo.nombre]
+        // Se devuelve con las MISMAS hojas que se descontaron, por id de
+        // inventario. Si la receta cambió desde el reporte, el desglose guardado
+        // es la fuente de verdad del descuento original, y sigue siendo válido
+        // aunque la receta ya no exista o el producto no se pueda resolver.
+        let insumosADevolver;
+        const guardado = safeParseJson(reporte.desglose_insumos);
+        if (Array.isArray(guardado) && guardado.length) {
+            const ids = guardado.map(g => g.articulo_id).filter(Boolean);
+            const nombres = guardado.map(g => (g.nombre || '').trim()).filter(Boolean);
+            const st = ids.length
+                ? await client.query('SELECT id, nombre FROM inventario WHERE id = ANY($1::int[])', [ids])
+                : { rows: [] };
+            const porId = new Map(st.rows.map(r => [r.id, r.nombre]));
+
+            // Reportes anteriores a la migracion guardaban solo el nombre. Se
+            // busca el id por nombre normalizado: son ~80 insumos, asi que
+            // emparejar en memoria vale mas que traducir la normalizacion a SQL.
+            if (nombres.length) {
+                const rN = await client.query('SELECT id, nombre FROM inventario');
+                rN.rows.forEach(r => porId.set(r.id, r.nombre));
+            }
+
+            insumosADevolver = guardado.map(g => ({
+                insumo_id: g.articulo_id || null,
+                nombre: g.nombre,
+                cantidad: Number(g.cantidad) || 0
+            })).filter(i => i.cantidad > 0);
+
+            for (const i of insumosADevolver) {
+                if (i.insumo_id && porId.has(i.insumo_id)) continue;
+                const objetivo = normalizar(i.nombre);
+                if (!objetivo) continue;
+                for (const [id, nom] of porId.entries()) {
+                    if (normalizar(nom) === objetivo) {
+                        i.insumo_id = id;
+                        break;
+                    }
+                }
+            }
+
+            // Se detectan las lineas sin resolver ANTES de filtrarlas: si se
+            // filtraran primero, quedaria una devolucion parcial en la que el
+            // reporte se borra y el stock de esas lineas nunca vuelve.
+            const sinId = insumosADevolver.filter(i => !i.insumo_id);
+            if (sinId.length) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({
+                    success: false,
+                    mensaje: 'No se puede devolver el reporte: el desglose guardado tiene insumos que ya no existen en inventario. Revisa el reporte manualmente.',
+                    detalle: sinId.map(i => i.nombre)
+                });
+            }
+        } else if (producto_tipo) {
+            insumosADevolver = (await calcularInsumosProduccion(producto_tipo, cantidad_cajas, client))
+                .filter(i => i.obligatorio !== false);
+        } else {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                mensaje: 'Este reporte es anterior a la migracion de recetas y no tiene desglose guardado. No se puede devolver el stock automaticamente: revisalo a mano.'
+            });
+        }
+
+        {
+            const ordenados = [...insumosADevolver].sort((a, b) => a.insumo_id - b.insumo_id);
+            const stBloqueo = await client.query(
+                'SELECT id, nombre, stock FROM inventario WHERE id = ANY($1::int[]) ORDER BY id FOR UPDATE',
+                [ordenados.map(i => i.insumo_id)]
+            );
+            const porIdBloqueado = new Map(stBloqueo.rows.map(r => [r.id, r]));
+
+            for (const insumo of ordenados) {
+                const fila = porIdBloqueado.get(insumo.insumo_id);
+                if (!fila) {
+                    throw new Error(`El insumo "${insumo.nombre}" del reporte ya no existe en inventario.`);
+                }
+                const stockAnterior = Number(fila.stock) || 0;
+                const suma = await client.query(
+                    'UPDATE inventario SET stock = stock + $1 WHERE id = $2 RETURNING stock',
+                    [insumo.cantidad, insumo.insumo_id]
                 );
-                await actualizarEstadoArticulo(client, insumo.nombre);
+                if (suma.rowCount !== 1) {
+                    throw new Error(`No se pudo devolver el stock de "${insumo.nombre}".`);
+                }
+                const stockNuevo = Number(suma.rows[0].stock);
+                await actualizarEstadoArticulo(client, insumo.nombre, insumo.insumo_id);
                 await registrarHistorial(client, {
                     tipo: 'DEVOLUCION', origen: 'envasado',
                     producto: insumo.nombre,
+                    articulo_id: insumo.insumo_id,
                     cantidad: Number(insumo.cantidad), tipo_cambio: 'SUMA',
-                    stock_anterior: stockAnterior, stock_nuevo: stockAnterior + Number(insumo.cantidad),
+                    stock_anterior: stockAnterior, stock_nuevo: stockNuevo,
                     usuario: usuarioResponsable(req, req.body.usuario),
                     referencia: 'Devolución al eliminar reporte: ' + cantidad_cajas + ' cajas de ' + reporte.presentacion
                 });
             }
 
-            const stPT = await client.query('SELECT nombre_producto, stock_cajas FROM producto_terminado WHERE producto_key = $1', [producto_tipo]);
-            const stockAnteriorPT = stPT.rows.length > 0 ? Number(stPT.rows[0].stock_cajas) || 0 : 0;
-            await client.query(
-                `UPDATE producto_terminado SET stock_cajas = stock_cajas - $1 WHERE producto_key = $2`,
-                [cantidad_cajas, producto_tipo]
-            );
-            await registrarHistorial(client, {
-                tipo: 'DEVOLUCION', origen: 'envasado',
-                producto: stPT.rows.length > 0 ? stPT.rows[0].nombre_producto : reporte.presentacion,
-                producto_key: producto_tipo,
-                cantidad: cantidad_cajas, tipo_cambio: 'RESTA',
-                stock_anterior: stockAnteriorPT, stock_nuevo: stockAnteriorPT - cantidad_cajas,
-                usuario: usuarioResponsable(req, req.body.usuario),
-                referencia: 'Devolución al eliminar reporte de ' + reporte.presentacion
-            });
+            // El producto terminado solo se devuelve si el reporte lo descontó.
+            if (producto_tipo) {
+                const stPT = await client.query('SELECT nombre_producto, stock_cajas FROM producto_terminado WHERE producto_key = $1', [producto_tipo]);
+                if (stPT.rows.length > 0) {
+                    const stockAnteriorPT = Number(stPT.rows[0].stock_cajas) || 0;
+                    await client.query(
+                        'UPDATE producto_terminado SET stock_cajas = stock_cajas - $1 WHERE producto_key = $2',
+                        [cantidad_cajas, producto_tipo]
+                    );
+                    await registrarHistorial(client, {
+                        tipo: 'DEVOLUCION', origen: 'envasado',
+                        producto: stPT.rows[0].nombre_producto,
+                        producto_key: producto_tipo,
+                        cantidad: cantidad_cajas, tipo_cambio: 'RESTA',
+                        stock_anterior: stockAnteriorPT, stock_nuevo: stockAnteriorPT - cantidad_cajas,
+                        usuario: usuarioResponsable(req, req.body.usuario),
+                        referencia: 'Devolución al eliminar reporte de ' + reporte.presentacion
+                    });
+                }
+            }
         }
 
         await client.query('DELETE FROM reportes_produccion WHERE id = $1', [reporte_id]);
@@ -2500,7 +2673,8 @@ async function aplicarMovimientoStockInsumoRefinado(nombre, cantidad, signo, usu
         stock_anterior: stockAnterior,
         stock_nuevo: stockNuevo,
         usuario: usuario,
-        referencia: referencia || 'Movimiento por lote de refinado'
+        referencia: referencia || 'Movimiento por lote de refinado',
+        tolerable: true
     });
 }
 
@@ -2676,7 +2850,8 @@ app.post('/api/almacen/stock-refinado/ajustar', requerirRolAlmacenInvRef, async 
             stock_anterior: stockAnterior,
             stock_nuevo: cantidadNueva,
             usuario: usuarioResponsable(req, req.body.usuario),
-            referencia: 'Ajuste manual de stock de refinado'
+            referencia: 'Ajuste manual de stock de refinado',
+            tolerable: true
         });
         res.json({ success: true, mensaje: 'Stock de insumo de refinado ajustado manualmente.' });
     } catch (err) {

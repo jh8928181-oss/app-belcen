@@ -3,4 +3,6 @@ module.exports = {
   migrationsDir: './migrations',
   driver: 'pg',
   verbose: true,
+  ssl: { rejectUnauthorized: false },
+  connectionTimeoutMillis: 30000
 };

@@ -359,6 +359,34 @@
                     <div id="horaSoplado" class="estado-hora">—</div>
                 </div>
             </div>
+</section>
+
+        <!-- PRODUCTO TERMINADO -->
+        <section class="glass inv" id="seccionProductoTerminado">
+            <div class="seccion-head">
+                <h2>Producto Terminado (Cajas)</h2>
+                <button class="btn-actualizar btn-anim" onclick="cargarProductoTerminado()">🔄 Actualizar</button>
+            </div>
+            <div class="tabla-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Producto</th>
+                            <th>Presentación</th>
+                            <th>Stock Cajas</th>
+                            <th>Stock Mínimo</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaProductoTerminado">
+                        <tr><td colspan="6" class="text-center">Cargando producto terminado…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="inv-footer">
+                <span id="totalProductoTerminado"></span>
+            </div>
         </section>
 
         <!-- MÓDULOS -->
@@ -647,8 +675,46 @@ document.getElementById('resumenEnvasado').textContent =
                     document.getElementById('resumenSoplado').textContent =
                         totalBotellas + ' botellas producidas hoy';
                 }
+} catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function cargarProductoTerminado() {
+            try {
+                const res = await fetch('/api/producto-terminado');
+                if (!res.ok) throw new Error('Error del servidor.');
+                const productos = await res.json();
+                const lista = Array.isArray(productos) ? productos : [];
+
+                const tbody = document.getElementById('tablaProductoTerminado');
+                tbody.innerHTML = lista.length === 0
+                    ? '<tr><td colspan="6" class="text-center sin-registros">No hay productos terminados.</td></tr>'
+                    : '';
+
+                let totalCajas = 0;
+                lista.forEach(pt => {
+                    const estadoTexto = pt.estado || 'STOCK SUFICIENTE';
+                    const esBajoStock = estadoTexto === 'REALIZAR PEDIDO';
+                    const estadoClass = esBajoStock ? 'badge-low' : 'badge-ok';
+                    totalCajas += parseInt(pt.stock_cajas || 0, 10);
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${pt.id}</td>
+                        <td><b>${pt.nombre_producto}</b></td>
+                        <td>${pt.producto_key}</td>
+                        <td><b>${formatearNumero(pt.stock_cajas)}</b></td>
+                        <td>${formatearNumero(pt.stock_minimo || 0)}</td>
+                        <td><span class="badge ${estadoClass}">${estadoTexto}</span></td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+
+                document.getElementById('totalProductoTerminado').textContent = lista.length + ' presentaciones · Total: ' + formatearNumero(totalCajas) + ' cajas';
             } catch (err) {
                 console.error(err);
+                document.getElementById('tablaProductoTerminado').innerHTML =
+                    '<tr><td colspan="6" class="text-center" style="color:#fecaca;">Error al cargar producto terminado.</td></tr>';
             }
         }
 
@@ -656,8 +722,10 @@ document.getElementById('resumenEnvasado').textContent =
         setInterval(actualizarReloj, 1000);
         cargarInventario();
         cargarEstadoProduccion();
+        cargarProductoTerminado();
         registrarAutoRefresco(cargarInventario, 15000);
         registrarAutoRefresco(cargarEstadoProduccion, 15000);
+        registrarAutoRefresco(cargarProductoTerminado, 30000);
     </script>
 </body>
 </html>

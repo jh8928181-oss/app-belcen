@@ -496,9 +496,47 @@
                     </div>
                     <div class="aviso aviso-ambar" style="margin-top:10px;">ℹ️ El subtotal es la base imponible. El IGV lo calcula el servidor al guardar; lo que se muestra aquí es solo para revisar.</div>
 
+        <div class="footer-acciones">
+
+                        <button class="btn btn-verde" onclick="guardarOrden()">💾 Guardar Orden</button>
+                        <button class="btn btn-gris" onclick="cancelarEdicionOrden()">✖ Cancelar edición</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tarjeta borde-ambar reveal">
+                <h3 class="ambar">📋 LISTA DE ÓRDENES</h3>
+                <div class="tabla-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Tipo</th>
+                                <th>Número</th>
+                                <th>Fecha</th>
+                                <th>Proveedor</th>
+                                <th class="text-center">Ítems</th>
+                                <th class="text-center">Cantidad</th>
+                                <th class="text-center">Recibido</th>
+                                <th class="text-center">Subtotal</th>
+                                <th class="text-center">Total c/IGV</th>
+                                <th>Estado</th>
+                                <th class="text-center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaOrdenes">
+                            <tr><td colspan="11" class="text-center sin-registros">Cargando órdenes...</td></tr>
+
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+
 
         <!-- ============ PESTAÑA 4: PRECIOS Y FACTURAS ============ -->
         <div id="pestanaPrecio" class="oculto">
+
 
             <div class="tarjeta borde-morado reveal">
                 <h3 class="morado">💲 PRECIOS POR PROVEEDOR</h3>
@@ -775,42 +813,6 @@
                         </thead>
                         <tbody id="tablaHistorialPrecios">
                             <tr><td colspan="7" class="text-center sin-registros">Cargando historial...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <div class="footer-acciones">
-
-                        <button class="btn btn-verde" onclick="guardarOrden()">💾 Guardar Orden</button>
-                        <button class="btn btn-gris" onclick="cancelarEdicionOrden()">✖ Cancelar edición</button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="tarjeta borde-ambar reveal">
-                <h3 class="ambar">📋 LISTA DE ÓRDENES</h3>
-                <div class="tabla-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Tipo</th>
-                                <th>Número</th>
-                                <th>Fecha</th>
-                                <th>Proveedor</th>
-                                <th class="text-center">Ítems</th>
-                                <th class="text-center">Cantidad</th>
-                                <th class="text-center">Recibido</th>
-                                <th class="text-center">Subtotal</th>
-                                <th class="text-center">Total c/IGV</th>
-                                <th>Estado</th>
-                                <th class="text-center">Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tablaOrdenes">
-                            <tr><td colspan="11" class="text-center sin-registros">Cargando órdenes...</td></tr>
-
                         </tbody>
                     </table>
                 </div>

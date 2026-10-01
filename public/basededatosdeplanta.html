@@ -228,7 +228,13 @@
                 const tbodyPt = document.getElementById('tablaProductoTerminado');
                 tbodyPt.innerHTML = '';
 
-                ptGlobal.forEach(pt => {
+                // Solo se lista lo que hay en almacén: un producto en 0 no es
+                // salida posible y solo ocupa sitio en una tabla de stock real.
+                const conStock = ptGlobal.filter(pt => Number(pt.stock_cajas) > 0);
+                if (!conStock.length) {
+                    tbodyPt.innerHTML = '<tr><td colspan="3" class="text-center sin-registros">Sin stock de producto terminado.</td></tr>';
+                }
+                conStock.forEach(pt => {
                     tbodyPt.innerHTML += `
                         <tr>
                             <td><code>${pt.producto_key}</code></td>

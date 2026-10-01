@@ -688,11 +688,14 @@ document.getElementById('resumenEnvasado').textContent =
                 const res = await fetch('/api/producto-terminado');
                 if (!res.ok) throw new Error('Error del servidor.');
                 const productos = await res.json();
-                const lista = Array.isArray(productos) ? productos : [];
+                // Solo se listan los productos con stock real: en 0 no hay nada
+                // que despachar y solo infla el conteo de presentaciones.
+                const lista = (Array.isArray(productos) ? productos : [])
+                    .filter(pt => Number(pt.stock_cajas) > 0);
 
                 const tbody = document.getElementById('tablaProductoTerminado');
                 tbody.innerHTML = lista.length === 0
-                    ? '<tr><td colspan="6" class="text-center sin-registros">No hay productos terminados.</td></tr>'
+                    ? '<tr><td colspan="6" class="text-center sin-registros">Sin stock de producto terminado.</td></tr>'
                     : '';
 
                 let totalCajas = 0;

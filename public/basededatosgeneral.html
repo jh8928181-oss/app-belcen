@@ -88,10 +88,15 @@
         }
         select { -webkit-appearance: none; appearance: none; background-image: linear-gradient(45deg, transparent 50%, #6c7280 50%), linear-gradient(135deg, #6c7280 50%, transparent 50%); background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
 
-        .filtro-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 15px 0; }
+        .filtro-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin: 15px 0; }
         .filtro-bar label { font-weight: 700; font-size: 13px; color: var(--texto2); }
-        .campo-flex { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 150px; }
-        .campo-flex label { font-size: 10.5px; color: var(--texto2); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
+        .campo-flex { display: flex; flex-direction: column; gap: 4px; flex: 1 1 150px; min-width: 150px; }
+        .campo-flex label { font-size: 10.5px; color: var(--texto2); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; min-height: 14px; line-height: 14px; }
+        .campo-flex > input, .campo-flex > select, .campo-flex > button { min-width: 0; }
+        .campo-flex .btn { width: 100%; }
+        .campo-flex > span[style*="flex:1"] { display: none; }
+        .campo-flex.accion { justify-content: flex-end; }
+        .campo-flex.accion label { visibility: hidden; }
 
         .btn {
             background: var(--azul); border: none; padding: 11px 18px; color: white;
@@ -198,9 +203,10 @@
             .tarjeta { padding: 15px; }
             h1 { font-size: 19px; }
             .filtro-bar { gap: 10px; }
-            .filtro-bar > span[style*="flex:1"] { display: none; }
+.filtro-bar > span[style*="flex:1"] { display: none; }
             .filtro-bar .btn, .footer-acciones .btn, .logout { width: 100%; }
-            .campo-flex { min-width: 100%; }
+            .campo-flex { min-width: 100%; flex: 1 1 100%; }
+            .campo-flex.accion { align-items: stretch; }
             .pestana { min-width: 100%; }
 
             .tabla-wrap { overflow: visible; }
@@ -307,11 +313,11 @@
                         <label>Contacto</label>
                         <input type="text" id="provContacto" placeholder="Nombre de contacto">
                     </div>
-                    <div class="campo-flex" style="min-width:120px; justify-content:flex-end;">
+                    <div class="campo-flex accion" style="min-width:120px;">
                         <label>&nbsp;</label>
                         <button class="btn btn-verde" onclick="guardarProveedor()">💾 Guardar</button>
                     </div>
-                    <div class="campo-flex" style="min-width:120px; justify-content:flex-end;">
+                    <div class="campo-flex accion" style="min-width:120px;">
                         <label>&nbsp;</label>
                         <button class="btn btn-gris" onclick="limpiarFormProveedor()">🧹 Limpiar</button>
                     </div>
@@ -381,11 +387,11 @@
                         <label>Proveedor</label>
                         <select id="filtroOrdenProveedor"><option value="">Todos</option></select>
                     </div>
-                    <div class="campo-flex" style="min-width:120px; justify-content:flex-end;">
+                    <div class="campo-flex accion" style="min-width:120px;">
                         <label>&nbsp;</label>
                         <button class="btn" onclick="cargarOrdenes()">🔍 Filtrar</button>
                     </div>
-                    <div class="campo-flex" style="min-width:140px; justify-content:flex-end;">
+                    <div class="campo-flex accion" style="min-width:140px;">
                         <label>&nbsp;</label>
                         <button class="btn btn-teal" onclick="nuevaOrden()">➕ Nueva Orden</button>
                     </div>
@@ -501,7 +507,7 @@
                         <label>Filtrar por proveedor</label>
                         <select id="filtroStockProveedor"><option value="">Todos</option></select>
                     </div>
-                    <div class="campo-flex" style="min-width:120px; justify-content:flex-end;">
+                    <div class="campo-flex accion" style="min-width:120px;">
                         <label>&nbsp;</label>
                         <button class="btn" onclick="cargarStock()">🔍 Filtrar</button>
                     </div>
@@ -628,6 +634,14 @@
         function fmtN(n) {
             const v = Number(n) || 0;
             return Number.isInteger(v) ? String(v) : v.toFixed(2);
+        }
+
+        function fmtFecha(f) {
+            if (!f) return '-';
+            const s = String(f).slice(0, 10);
+            const partes = s.split('-');
+            if (partes.length === 3) return `${partes[2]}/${partes[1]}/${partes[0]}`;
+            return s;
         }
 
         function etiquetarTablas() {
@@ -900,7 +914,7 @@
                         <tr>
                             <td><span class="pres ${o.tipo === 'OC' ? 'oc' : 'os'}">${o.tipo}</span></td>
                             <td><b>#${escapeHtml(o.numero)}</b></td>
-                            <td>${escapeHtml(o.fecha_orden) || '-'}</td>
+                            <td>${fmtFecha(o.fecha_orden)}</td>
                             <td>${escapeHtml(o.proveedor_nombre)}</td>
                             <td class="text-center">${o.n_items}</td>
                             <td class="text-center">${fmtN(o.total_cantidad)}</td>
@@ -1119,7 +1133,7 @@
                 } else {
                     tbody.innerHTML = data.movimientos.map(m => `
                         <tr>
-                            <td>${String(m.fecha_registro || '').slice(0, 16).replace('T', ' ')}</td>
+                            <td>${fmtFecha(m.fecha_registro)}</td>
                             <td>${m.tipo === 'RESTA' ? '<span class="badge badge-pedido">RESTA</span>' : '<span class="badge badge-suficiente">SUMA</span>'}</td>
                             <td>${escapeHtml(m.origen)}</td>
                             <td>${escapeHtml(m.proveedor)}</td>

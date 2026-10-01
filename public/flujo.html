@@ -1,0 +1,1301 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0f172a">
+    <title>Mapa de Flujo de Trabajo - Corporación Belcen</title>
+    <link rel="stylesheet" href="/motion.css">
+    <style>
+        :root {
+            --bg1: #0f172a;
+            --bg2: #1e1b4b;
+            --bg3: #0e7490;
+            --accent: #38bdf8;
+            --accent2: #a78bfa;
+            --glass: rgba(255, 255, 255, 0.10);
+            --glass-border: rgba(255, 255, 255, 0.18);
+            --txt: #f8fafc;
+            --txt-dim: rgba(248, 250, 252, 0.72);
+            --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+            --ok: #34c759;
+            --warn: #f87171;
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body { height: 100%; }
+
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', system-ui, -apple-system, Roboto, Arial, sans-serif;
+            color: var(--txt);
+            background: linear-gradient(135deg, var(--bg1), var(--bg2) 55%, var(--bg3));
+            background-attachment: fixed;
+            min-height: 100vh;
+            padding: 14px;
+            overflow: hidden;
+        }
+
+        .bg-anim { position: fixed; inset: 0; z-index: -1; overflow: hidden; }
+        .blob { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.5; mix-blend-mode: screen; }
+        .b1 { width: 480px; height: 480px; background: #0ea5e9; top: -120px; left: -80px; animation: flota 26s ease-in-out infinite alternate; }
+        .b2 { width: 420px; height: 420px; background: #7c3aed; bottom: -140px; right: -60px; animation: flota 32s ease-in-out infinite alternate-reverse; }
+
+        @keyframes flota {
+            from { transform: translate(0, 0) scale(1); }
+            to { transform: translate(60px, -42px) scale(1.15); }
+        }
+
+        .glass {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border-radius: 18px;
+        }
+        @supports not (backdrop-filter: blur(14px)) {
+            .glass { background: rgba(30, 41, 59, 0.92); }
+        }
+
+        /* ---------- BARRA SUPERIOR ---------- */
+        .barra {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            padding: 12px 16px;
+            margin-bottom: 10px;
+        }
+        .barra h1 { font-size: 16px; margin: 0; font-weight: 800; letter-spacing: .3px; }
+        .barra .sep { width: 1px; height: 26px; background: var(--glass-border); }
+
+        button, .btn {
+            font-family: inherit;
+            cursor: pointer;
+            border: 1px solid var(--glass-border);
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--txt);
+            padding: 8px 13px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 700;
+            transition: transform .25s var(--spring), background .2s, border-color .2s;
+            white-space: nowrap;
+        }
+        button:hover, .btn:hover { background: rgba(56, 189, 248, 0.20); border-color: rgba(56, 189, 248, 0.5); }
+        button:active { transform: scale(0.95); }
+        button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+        button.activo { background: rgba(56, 189, 248, 0.26); border-color: var(--accent); }
+        button.peligro:hover { background: rgba(248, 113, 113, 0.22); border-color: var(--warn); }
+
+        #estadoGuardado {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 5px 11px;
+            border-radius: 999px;
+            background: rgba(0, 0, 0, 0.28);
+            border: 1px solid var(--glass-border);
+            color: var(--txt-dim);
+            min-width: 128px;
+            text-align: center;
+        }
+        #estadoGuardado.guardando { color: #fcd34d; border-color: rgba(252, 211, 77, 0.5); }
+        #estadoGuardado.guardado { color: #86efac; border-color: rgba(134, 239, 172, 0.5); }
+        #estadoGuardado.error { color: #fecaca; border-color: var(--warn); }
+
+        input[type="text"], select, textarea {
+            font-family: inherit;
+            background: rgba(0, 0, 0, 0.28);
+            border: 1px solid var(--glass-border);
+            color: var(--txt);
+            padding: 8px 11px;
+            border-radius: 9px;
+            font-size: 13px;
+            width: 100%;
+            outline: none;
+        }
+        input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+        input[type="color"] {
+            width: 100%;
+            height: 34px;
+            padding: 2px;
+            border-radius: 9px;
+            border: 1px solid var(--glass-border);
+            background: rgba(0, 0, 0, 0.28);
+            cursor: pointer;
+        }
+
+        /* ---------- LIENZO ---------- */
+        #marco {
+            position: relative;
+            height: calc(100vh - 190px);
+            min-height: 420px;
+            overflow: hidden;
+            cursor: grab;
+        }
+        #marco.arrastrando { cursor: grabbing; }
+        #marco.conectando { cursor: crosshair; }
+        #lienzo { width: 100%; height: 100%; display: block; }
+
+        /* ---------- NODOS ---------- */
+        .nodo-caja { transition: opacity .25s; }
+        .nodo-caja rect.cuerpo {
+            fill: rgba(15, 23, 42, 0.88);
+            stroke-width: 2;
+            cursor: grab;
+        }
+        .nodo-caja.seleccionado rect.cuerpo { stroke-width: 3.5; filter: drop-shadow(0 0 10px currentColor); }
+        .nodo-caja.atenuado { opacity: 0.16; }
+        .nodo-caja.resaltado rect.cuerpo { stroke-width: 4; }
+        .nodo-titulo { fill: var(--txt); font-size: 13px; font-weight: 800; pointer-events: none; }
+        .nodo-area { font-size: 10px; font-weight: 700; pointer-events: none; letter-spacing: .5px; text-transform: uppercase; }
+        .nodo-desc { fill: rgba(248, 250, 252, 0.62); font-size: 10.5px; pointer-events: none; }
+        .nodo-metrica { font-size: 17px; font-weight: 800; pointer-events: none; }
+        .nodo-metrica-etq { fill: rgba(248, 250, 252, 0.6); font-size: 9.5px; pointer-events: none; }
+        .punto { fill: var(--accent); stroke: #0f172a; stroke-width: 2; cursor: crosshair; }
+        .punto:hover { fill: var(--accent2); r: 8; }
+
+        /* ---------- CONEXIONES ---------- */
+        .conexion { fill: none; stroke-width: 2.4; cursor: pointer; opacity: .75; }
+        .conexion:hover { stroke-width: 4; opacity: 1; }
+        .conexion.seleccionada { stroke-width: 4.5; opacity: 1; stroke-dasharray: 7 4; }
+        .conexion.atenuada { opacity: 0.10; }
+        .conexion.resaltada { stroke-width: 4; opacity: 1; }
+        .etiqueta-conexion { fill: rgba(248, 250, 252, 0.78); font-size: 10px; font-weight: 600; pointer-events: none; }
+        .etiqueta-fondo { fill: rgba(15, 23, 42, 0.9); stroke: var(--glass-border); rx: 4; }
+        .borde-area { fill: rgba(255, 255, 255, 0.035); stroke: rgba(255, 255, 255, 0.10); rx: 16; }
+        .titulo-area { fill: rgba(248, 250, 252, 0.55); font-size: 12px; font-weight: 800; letter-spacing: 1.4px; text-transform: uppercase; }
+
+        /* ---------- PANEL LATERAL ---------- */
+        #panel {
+            position: fixed;
+            top: 0; right: 0; bottom: 0;
+            width: 336px;
+            padding: 16px;
+            overflow-y: auto;
+            background: rgba(15, 23, 42, 0.96);
+            border-left: 1px solid var(--glass-border);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+            z-index: 40;
+            display: none;
+        }
+        #panel.abierto { display: block; }
+        #panel h3 { font-size: 13px; margin: 0 0 12px; font-weight: 800; letter-spacing: .4px; }
+        #panel h4 { font-size: 11px; margin: 20px 0 8px; font-weight: 800; color: var(--txt-dim); text-transform: uppercase; letter-spacing: .8px; }
+        .campo { margin-bottom: 11px; }
+        .campo label { display: block; font-size: 11px; font-weight: 700; margin-bottom: 4px; color: var(--txt-dim); }
+        .fila { display: flex; gap: 8px; }
+        .fila > * { flex: 1; }
+        #listaVersiones { max-height: 260px; overflow-y: auto; }
+        .item-version {
+            display: flex; align-items: center; gap: 7px;
+            padding: 8px 10px; margin-bottom: 6px;
+            border-radius: 9px; background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--glass-border); font-size: 11.5px;
+        }
+        .item-version .nombre { flex: 1; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .item-version .mini {
+            padding: 4px 8px; font-size: 10px; border-radius: 6px;
+            border: 1px solid var(--glass-border); background: rgba(255,255,255,.08);
+            color: var(--txt); cursor: pointer; font-weight: 700;
+        }
+        .item-version .mini:hover { background: rgba(56, 189, 248, 0.22); }
+
+        #aviso {
+            position: fixed;
+            left: 50%; bottom: 22px;
+            transform: translateX(-50%);
+            padding: 11px 20px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 700;
+            z-index: 60;
+            background: rgba(15, 23, 42, 0.95);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+            display: none;
+        }
+        #aviso.ok { border-color: var(--ok); color: #86efac; }
+        #aviso.error { border-color: var(--warn); color: #fecaca; }
+        #aviso.info { border-color: var(--accent); color: #bae6fd; }
+
+        .pista { font-size: 10.5px; color: var(--txt-dim); line-height: 1.65; margin-top: 6px; }
+        .pista kbd {
+            background: rgba(255, 255, 255, 0.14);
+            border: 1px solid var(--glass-border);
+            border-radius: 4px;
+            padding: 1px 5px;
+            font-size: 10px;
+            font-family: inherit;
+        }
+
+        @media (max-width: 780px) {
+            body { overflow: auto; padding: 10px; }
+            #marco { height: 62vh; }
+            #panel { width: 100%; border-left: none; border-top: 1px solid var(--glass-border); }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-anim"><div class="blob b1"></div><div class="blob b2"></div></div>
+
+    <!-- BARRA -->
+    <div class="barra glass">
+        <h1>🗺️ Mapa de Flujo de Trabajo</h1>
+        <div class="sep"></div>
+        <button onclick="nuevoNodo()" title="Crear un nodo nuevo">➕ Nodo</button>
+        <button id="btnConectar" onclick="alternarModoConexion()" title="Arrastra desde el punto azul de un nodo hasta otro">🔗 Conectar</button>
+        <button onclick="autoOrganizar()" title="Reacomodar los nodos por área">🧲 Organizar</button>
+        <div class="sep"></div>
+        <button onclick="deshacer()" id="btnDeshacer" title="Ctrl+Z">↶</button>
+        <button onclick="rehacer()" id="btnRehacer" title="Ctrl+Y">↷</button>
+        <div class="sep"></div>
+        <input type="text" id="buscar" placeholder="🔍 Buscar nodo y su flujo..." style="width: 210px;" oninput="aplicarBusqueda(this.value)">
+        <button onclick="centrar()" title="Ver todo el mapa">🎯 Centrar</button>
+        <div class="sep"></div>
+        <button onclick="guardarAhora()">💾 Guardar</button>
+        <span id="estadoGuardado">Sin cambios</span>
+        <div class="sep"></div>
+        <button onclick="abrirPanel('versiones')">🕘 Versiones</button>
+        <a href="admin.html" class="btn" style="text-decoration:none;">← Panel</a>
+        <button class="peligro" onclick="cerrarSesion()">🔒 Salir</button>
+    </div>
+
+    <div class="glass" id="marco">
+        <svg id="lienzo" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+
+    <!-- PANEL -->
+    <aside id="panel">
+        <div id="panelNodo" style="display:none;">
+            <h3>✏️ Nodo seleccionado</h3>
+            <div class="campo"><label>Nombre</label><input type="text" id="edNombre" maxlength="120"></div>
+            <div class="campo"><label>Clave</label><input type="text" id="edClave" maxlength="50"></div>
+            <div class="fila">
+                <div class="campo"><label>Área</label><input type="text" id="edArea" maxlength="50" list="listaAreas"><datalist id="listaAreas"></datalist></div>
+                <div class="campo"><label>Color</label><input type="color" id="edColor"></div>
+            </div>
+            <div class="campo"><label>Métrica en vivo</label><select id="edMetrica"></select></div>
+            <div class="campo"><label>Descripción</label><textarea id="edDesc" rows="3" maxlength="500"></textarea></div>
+            <div class="fila">
+                <button onclick="aplicarEdicionNodo()">💾 Aplicar</button>
+                <button class="peligro" onclick="eliminarNodoSeleccionado()">🗑 Eliminar</button>
+            </div>
+            <p class="pista">La <b>clave</b> identifica el nodo en el flujo. Si la cambias, las versiones antiguas dejan de encontrarlo.</p>
+        </div>
+
+        <div id="panelConexion" style="display:none;">
+            <h3>🔗 Conexión seleccionada</h3>
+            <div class="campo"><label>Etiqueta</label><input type="text" id="edEtiqueta" maxlength="80" placeholder="Ej. Ingreso con guía"></div>
+            <div class="campo"><label>Tipo</label>
+                <select id="edTipo">
+                    <option value="normal">Normal</option>
+                    <option value="decision">Decisión</option>
+                    <option value="rechazo">Rechazo / devolución</option>
+                </select>
+            </div>
+            <div class="fila">
+                <button onclick="aplicarEdicionConexion()">💾 Aplicar</button>
+                <button class="peligro" onclick="eliminarConexionSeleccionada()">🗑 Eliminar</button>
+            </div>
+            <p class="pista">Para conectar dos nodos, arrastra desde el punto azul del nodo de origen hasta el de destino.</p>
+        </div>
+
+        <div id="panelVersiones" style="display:none;">
+            <h3>🕘 Versiones del mapa</h3>
+            <div class="campo"><label>Nombre de la versión</label><input type="text" id="nombreVersion" maxlength="120" placeholder="Ej. Antes del cambio de julio"></div>
+            <button onclick="guardarVersion()" style="width:100%;">💾 Guardar versión</button>
+            <h4>Guardadas</h4>
+            <div id="listaVersiones"><p class="pista">Cargando…</p></div>
+        </div>
+
+        <div id="panelAyuda" style="display:none;">
+            <h3>❓ Cómo usar el mapa</h3>
+            <p class="pista">
+                <b>Crear nodo</b> con el botón ➕ y luego arrastrarlo a donde quieras.<br><br>
+                <b>Conectar:</b> activa 🔗 y arrastra desde el punto azul de un nodo hasta otro. Sin el modo, arrastrar mueve el nodo.<br><br>
+                <b>Editar:</b> doble clic sobre el nodo, o seleccionarlo y tocar ✏️.<br><br>
+                <b>Borrar:</b> selecciona y pulsa <kbd>Supr</kbd>.<br><br>
+                <b>Deshacer:</b> <kbd>Ctrl</kbd>+<kbd>Z</kbd> · <b>Rehacer:</b> <kbd>Ctrl</kbd>+<kbd>Y</kbd><br><br>
+                <b>Buscar:</b> escribe en el buscador para resaltar el nodo y toda su cadena de entradas y salidas.<br><br>
+                <b>Guardado:</b> automático 3 segundos después de cada cambio. Puedes forzarlo con 💾.<br><br>
+                <b>Versiones:</b> guarda un punto de retorno antes de un cambio grande.
+            </p>
+        </div>
+    </aside>
+
+    <div id="aviso"></div>
+
+    <script src="/motion.js" defer></script>
+    <script src="/auth-client.js"></script>
+    <script>
+        /* ================================================================
+           Mapa de flujo de trabajo.
+           Exclusivo de la cuenta admin1: el servidor responde 403 a cualquier
+           otro token, y esta comprobacion es solo para no dejar la pantalla
+           abierta a medias si alguien pega la URL.
+           ================================================================ */
+        const USUARIOS_FLUJO = ['admin1'];
+
+        const usuarioActual = localStorage.getItem('usuario_actual') || '';
+        if (!USUARIOS_FLUJO.includes(usuarioActual)) {
+            alert('❌ Acceso no autorizado. El mapa de flujo es exclusivo del usuario admin1.');
+            window.location.href = 'index.html';
+        }
+
+        const svg = document.getElementById('lienzo');
+        const marco = document.getElementById('marco');
+        const panel = document.getElementById('panel');
+
+        const ANCHO = 216;
+        const ALTO = 92;
+        const SEP_X = 300;
+        const SEP_Y = 150;
+        const MAX_PASOS = 50;
+        const ESPERA_GUARDADO = 3000;
+        const INTERVALO_METRICAS = 30000;
+
+        let nodos = [];
+        let conexiones = [];
+        let metricasDisponibles = [];
+        let valoresMetricas = {};
+        let areasConocidas = [];
+
+        let seleccion = null;           // { tipo:'nodo'|'conexion', id }
+        let modoConexion = false;
+        let lineaTemporal = null;       // { origen, x, y } mientras se arrastra una arista
+        let busqueda = '';
+
+        // Pila de instantáneas para deshacer/rehacer.
+        let pilaPasado = [];
+        let pilaFuturo = [];
+
+        // Transformación del lienzo (pan y zoom).
+        let vista = { x: 0, y: 0, z: 1 };
+
+        let temporizadorGuardado = null;
+        let guardandoAhora = false;
+        let autoRefrescoRegistrado = false;
+
+        /* ---------------- avisos ---------------- */
+
+        let avisoTemporizador = null;
+        function avisar(texto, tipo = 'ok') {
+            const el = document.getElementById('aviso');
+            el.textContent = texto;
+            el.className = tipo;
+            el.style.display = 'block';
+            clearTimeout(avisoTemporizador);
+            avisoTemporizador = setTimeout(() => { el.style.display = 'none'; }, 3200);
+        }
+
+        function marcarEstado(texto, clase = '') {
+            const el = document.getElementById('estadoGuardado');
+            el.textContent = texto;
+            el.className = clase;
+        }
+
+        /* ---------------- utilidades SVG ---------------- */
+
+        function crear(tag, atributos = {}) {
+            const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+            for (const [k, v] of Object.entries(atributos)) el.setAttribute(k, v);
+            return el;
+        }
+
+        // El texto va siempre como textContent, nunca interpolado en innerHTML:
+        // los nombres de nodo son texto libre del usuario.
+        function textoSVG(tag, atributos, contenido) {
+            const el = crear(tag, atributos);
+            el.textContent = contenido;
+            return el;
+        }
+
+        /* ---------------- carga ---------------- */
+
+        async function cargar() {
+            const r = await fetch('/api/flujo');
+            const d = await r.json();
+            if (!r.ok || !d.success) {
+                avisar(d.mensaje || 'No se pudo cargar el mapa.', 'error');
+                return;
+            }
+            nodos = d.nodos.map((n) => ({ ...n, x: Number(n.x), y: Number(n.y) }));
+            conexiones = d.conexiones;
+            metricasDisponibles = d.metricas;
+            areasConocidas = d.areas;
+
+            llenarSelectMetricas();
+            llenarDatalistAreas();
+            renderizar();
+            aplicarBusqueda(busqueda);
+            cargarMetricas();
+
+            // El autoguardado recarga el grafo con cargar(); registrar el
+            // intervalo aquí otra vez acumularía un setInterval y un listener
+            // de visibilitychange por cada guardado.
+            if (!autoRefrescoRegistrado) {
+                registrarAutoRefresco(cargarMetricas, INTERVALO_METRICAS);
+                autoRefrescoRegistrado = true;
+            }
+        }
+
+        function llenarSelectMetricas() {
+            const sel = document.getElementById('edMetrica');
+            if (!sel) return;
+            sel.innerHTML = '';
+            const ninguna = document.createElement('option');
+            ninguna.value = '';
+            ninguna.textContent = '— Sin métrica —';
+            sel.appendChild(ninguna);
+            metricasDisponibles.forEach((m) => {
+                const o = document.createElement('option');
+                o.value = m.clave;
+                o.textContent = m.etiqueta;
+                sel.appendChild(o);
+            });
+        }
+
+        function llenarDatalistAreas() {
+            const dl = document.getElementById('listaAreas');
+            if (!dl) return;
+            dl.innerHTML = '';
+            areasConocidas.forEach((a) => {
+                const o = document.createElement('option');
+                o.value = a;
+                dl.appendChild(o);
+            });
+        }
+
+        async function cargarMetricas() {
+            try {
+                const r = await fetch('/api/flujo/metricas');
+                const d = await r.json();
+                if (r.ok && d.success) {
+                    valoresMetricas = d.metricas;
+                    pintarMetricas();
+                }
+            } catch (e) {
+                // Un fallo de métricas no debe romper el mapa: los conteos son
+                // informativo, el diagrama es lo importante.
+                console.warn('No se pudieron cargar las métricas:', e.message);
+            }
+        }
+
+        function pintarMetricas() {
+            nodos.forEach((n) => {
+                const el = document.getElementById('metrica-' + n.id);
+                if (!el) return;
+                if (!n.metrica) {
+                    el.textContent = '';
+                    return;
+                }
+                const v = valoresMetricas[n.metrica];
+                el.textContent = typeof v === 'number' ? v : '—';
+            });
+        }
+
+        /* ---------------- render ---------------- */
+
+        function renderizar() {
+            svg.innerHTML = '';
+
+            const raiz = crear('g', { id: 'raiz' });
+            svg.appendChild(raiz);
+
+            const gBordes = crear('g');
+            const gConexiones = crear('g');
+            const gTemporal = crear('g');
+            const gNodos = crear('g');
+            raiz.appendChild(gBordes);
+            raiz.appendChild(gConexiones);
+            raiz.appendChild(gTemporal);
+            raiz.appendChild(gNodos);
+
+            dibujarBordes(gBordes);
+            conexiones.forEach((c) => dibujarConexion(gConexiones, c));
+            nodos.forEach((n) => dibujarNodo(gNodos, n));
+
+            aplicarTransformacion();
+            aplicarBusqueda(busqueda);
+            actualizarBotonesDeshacer();
+        }
+
+        function dibujarBordes(g) {
+            if (!nodos.length) return;
+
+            const columnas = new Map();
+            nodos.forEach((n) => {
+                const col = Math.round(Number(n.x) / SEP_X);
+                if (!columnas.has(col)) columnas.set(col, []);
+                columnas.get(col).push(n);
+            });
+
+            [...columnas.keys()].sort((a, b) => a - b).forEach((col) => {
+                const delArea = columnas.get(col);
+                const areas = [...new Set(delArea.map((n) => n.area))];
+                const x = col * SEP_X - 34;
+                const ys = delArea.map((n) => Number(n.y));
+                const y = Math.min(...ys) - 46;
+                const alto = (Math.max(...ys) - Math.min(...ys)) + ALTO + 74;
+
+                g.appendChild(crear('rect', {
+                    x, y, width: ANCHO + 68, height: alto, class: 'borde-area'
+                }));
+                g.appendChild(textoSVG('text', {
+                    x: x + 18, y: y + 28, class: 'titulo-area'
+                }, areas.join(' · ')));
+            });
+        }
+
+        function centroNodo(n) {
+            return { x: Number(n.x) + ANCHO, y: Number(n.y) + ALTO / 2 };
+        }
+
+        function trazoConexion(x1, y1, x2, y2, tipo) {
+            const dx = Math.max(46, Math.abs(x2 - x1) * 0.45);
+            const d = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+            if (tipo === 'decision') {
+                return `${d} M ${(x1 + x2) / 2 - 7} ${(y1 + y2) / 2 - 7} L ${(x1 + x2) / 2 + 7} ${(y1 + y2) / 2 - 7} L ${(x1 + x2) / 2} ${(y1 + y2) / 2 + 7} Z`;
+            }
+            return d;
+        }
+
+        function colorConexion(tipo) {
+            if (tipo === 'decision') return '#a78bfa';
+            if (tipo === 'rechazo') return '#f87171';
+            return 'rgba(148, 163, 184, 0.85)';
+        }
+
+        function dibujarConexion(g, c) {
+            const origen = nodos.find((n) => n.id === c.origen_id);
+            const destino = nodos.find((n) => n.id === c.destino_id);
+            if (!origen || !destino) return;
+
+            const a = centroNodo(origen);
+            const b = centroNodo(destino);
+
+            const el = crear('path', {
+                d: trazoConexion(a.x, a.y, b.x, b.y, c.tipo),
+                stroke: colorConexion(c.tipo),
+                class: 'conexion',
+                'data-id': c.id
+            });
+            el.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                seleccionar('conexion', c.id);
+            });
+            g.appendChild(el);
+
+            if (c.etiqueta) {
+                const mx = (a.x + b.x) / 2;
+                const my = (a.y + b.y) / 2;
+                const ancho = c.etiqueta.length * 5.6 + 14;
+                const gEtiqueta = crear('g', { 'pointer-events': 'none' });
+                gEtiqueta.appendChild(crear('rect', {
+                    x: mx - ancho / 2, y: my - 9, width: ancho, height: 18, class: 'etiqueta-fondo'
+                }));
+                gEtiqueta.appendChild(textoSVG('text', {
+                    x: mx, y: my + 4, 'text-anchor': 'middle', class: 'etiqueta-conexion'
+                }, c.etiqueta));
+                g.appendChild(gEtiqueta);
+            }
+        }
+
+        function dibujarNodo(g, n) {
+            const color = n.color || '#38bdf8';
+
+            const caja = crear('g', {
+                class: 'nodo-caja' + (seleccion && seleccion.tipo === 'nodo' && seleccion.id === n.id ? ' seleccionada' : ''),
+                'data-id': n.id
+            });
+            caja.style.color = color;
+
+            caja.appendChild(crear('rect', {
+                x: n.x, y: n.y, width: ANCHO, height: ALTO, rx: 13,
+                stroke: color, fill: 'rgba(15, 23, 42, 0.88)', class: 'cuerpo'
+            }));
+
+            caja.appendChild(textoSVG('text', { x: n.x + 15, y: n.y + 24, class: 'nodo-area', fill: color }, n.area || 'General'));
+            caja.appendChild(textoSVG('text', { x: n.x + 15, y: n.y + 44, class: 'nodo-titulo' }, n.nombre));
+
+            if (n.descripcion) {
+                caja.appendChild(textoSVG('text', { x: n.x + 15, y: n.y + 62, class: 'nodo-desc' }, n.descripcion.slice(0, 30) + (n.descripcion.length > 30 ? '…' : '')));
+            }
+
+            if (n.metrica) {
+                caja.appendChild(textoSVG('text', { x: n.x + ANCHO - 14, y: n.y + 46, 'text-anchor': 'end', class: 'nodo-metrica', fill: color, id: 'metrica-' + n.id }, '…'));
+                const etiqueta = (metricasDisponibles.find((m) => m.clave === n.metrica) || {}).etiqueta || n.metrica;
+                caja.appendChild(textoSVG('text', {
+                    x: n.x + ANCHO - 14, y: n.y + 60, 'text-anchor': 'end', class: 'nodo-metrica-etq'
+                }, etiqueta.slice(0, 22)));
+            }
+
+            const punto = crear('circle', {
+                cx: n.x + ANCHO, cy: n.y + ALTO / 2, r: 6, class: 'punto'
+            });
+            punto.addEventListener('mousedown', (ev) => iniciarConexion(ev, n));
+            caja.appendChild(punto);
+
+            caja.addEventListener('mousedown', (ev) => {
+                if (modoConexion) return;
+                ev.stopPropagation();
+                if (!seleccion || seleccion.tipo !== 'nodo' || seleccion.id !== n.id) seleccionar('nodo', n.id);
+                iniciarArrastreNodo(ev, n);
+            });
+
+            caja.addEventListener('dblclick', (ev) => {
+                ev.stopPropagation();
+                seleccionar('nodo', n.id);
+                abrirPanel('nodo');
+            });
+
+            g.appendChild(caja);
+        }
+
+        function aplicarTransformacion() {
+            const raiz = svg.querySelector('#raiz');
+            if (!raiz) return;
+            raiz.setAttribute('transform', `translate(${vista.x} ${vista.y}) scale(${vista.z})`);
+        }
+
+        /* ---------------- selección y panel ---------------- */
+
+        function seleccionar(tipo, id) {
+            seleccion = { tipo, id };
+            renderizar();
+            if (tipo === 'nodo') abrirPanel('nodo');
+            else if (tipo === 'conexion') abrirPanel('conexion');
+        }
+
+        function abrirPanel(que) {
+            panel.classList.add('abierto');
+            ['nodo', 'conexion', 'versiones', 'ayuda'].forEach((s) => {
+                document.getElementById('panel' + s[0].toUpperCase() + s.slice(1)).style.display = 'none';
+            });
+
+            if (que === 'nodo') {
+                document.getElementById('panelNodo').style.display = 'block';
+                cargarFormularioNodo();
+            } else if (que === 'conexion') {
+                document.getElementById('panelConexion').style.display = 'block';
+                cargarFormularioConexion();
+            } else if (que === 'versiones') {
+                document.getElementById('panelVersiones').style.display = 'block';
+                cargarVersiones();
+            } else {
+                document.getElementById('panelAyuda').style.display = 'block';
+            }
+        }
+
+        function cerrarPanel() {
+            panel.classList.remove('abierto');
+            seleccion = null;
+            renderizar();
+        }
+
+        function cargarFormularioNodo() {
+            const n = nodos.find((x) => x.id === seleccion.id);
+            if (!n) return;
+            document.getElementById('edNombre').value = n.nombre || '';
+            document.getElementById('edClave').value = n.clave || '';
+            document.getElementById('edArea').value = n.area || '';
+            document.getElementById('edColor').value = n.color || '#38bdf8';
+            document.getElementById('edMetrica').value = n.metrica || '';
+            document.getElementById('edDesc').value = n.descripcion || '';
+        }
+
+        function cargarFormularioConexion() {
+            const c = conexiones.find((x) => x.id === seleccion.id);
+            if (!c) return;
+            document.getElementById('edEtiqueta').value = c.etiqueta || '';
+            document.getElementById('edTipo').value = c.tipo || 'normal';
+        }
+
+        /* ---------------- edición ---------------- */
+
+        function instantanea() {
+            pilaPasado.push({
+                nodos: JSON.parse(JSON.stringify(nodos)),
+                conexiones: JSON.parse(JSON.stringify(conexiones))
+            });
+            if (pilaPasado.length > MAX_PASOS) pilaPasado.shift();
+            pilaFuturo = [];
+            marcarEstado('Cambios sin guardar');
+            programarGuardado();
+        }
+
+        function actualizarBotonesDeshacer() {
+            document.getElementById('btnDeshacer').disabled = pilaPasado.length === 0;
+            document.getElementById('btnRehacer').disabled = pilaFuturo.length === 0;
+        }
+
+        function restaurar(pila) {
+            if (!pila.length) return;
+            pilaFuturo.push({
+                nodos: JSON.parse(JSON.stringify(nodos)),
+                conexiones: JSON.parse(JSON.stringify(conexiones))
+            });
+            const estado = pila.pop();
+            nodos = estado.nodos;
+            conexiones = estado.conexiones;
+            if (seleccion && !existeSeleccion()) seleccion = null;
+            renderizar();
+            marcarEstado('Cambios sin guardar');
+            programarGuardado();
+        }
+
+        function existeSeleccion() {
+            if (!seleccion) return false;
+            const lista = seleccion.tipo === 'nodo' ? nodos : conexiones;
+            return lista.some((x) => x.id === seleccion.id);
+        }
+
+        function deshacer() { if (pilaPasado.length) restaurar(pilaPasado); }
+        function rehacer() { if (pilaFuturo.length) restaurar(pilaFuturo); }
+
+        function nuevoNodo() {
+            instantanea();
+            const clave = 'nodo_' + Date.now().toString(36);
+            nodos.push({
+                id: 'tmp_' + Date.now().toString(36),
+                clave,
+                nombre: 'Nuevo nodo',
+                area: areasConocidas[0] || 'General',
+                descripcion: '',
+                x: 60 + nodos.length * 12,
+                y: 620,
+                color: '#38bdf8',
+                metrica: null
+            });
+            renderizar();
+            avisar('Nodo creado. Edítalo y muévelo a su lugar.', 'info');
+        }
+
+        function aplicarEdicionNodo() {
+            const n = nodos.find((x) => x.id === seleccion.id);
+            if (!n) return;
+
+            const nombre = document.getElementById('edNombre').value.trim();
+            const clave = document.getElementById('edClave').value.trim();
+            if (!nombre) return avisar('El nombre no puede quedar vacío.', 'error');
+            if (!/^[A-Za-z0-9_-]{2,50}$/.test(clave)) return avisar('Clave inválida: 2 a 50 caracteres, sin espacios ni acentos.', 'error');
+            if (nodos.some((x) => x.id !== n.id && x.clave === clave)) return avisar('Ya existe otro nodo con esa clave.', 'error');
+
+            instantanea();
+            n.nombre = nombre;
+            n.clave = clave;
+            n.area = document.getElementById('edArea').value.trim() || 'General';
+            n.color = document.getElementById('edColor').value;
+            n.metrica = document.getElementById('edMetrica').value || null;
+            n.descripcion = document.getElementById('edDesc').value.trim();
+
+            renderizar();
+            avisar('Nodo actualizado.');
+        }
+
+        function eliminarNodoSeleccionado() {
+            const n = nodos.find((x) => x.id === seleccion.id);
+            if (!n) return;
+            if (!confirm(`¿Eliminar el nodo "${n.nombre}"? Sus conexiones se borran con él.`)) return;
+
+            instantanea();
+            // El guardado masivo reconstruye las conexiones por clave, así que
+            // aquí basta con quitar el nodo y las Conexiones que lo tocan.
+            nodos = nodos.filter((x) => x.id !== n.id);
+            conexiones = conexiones.filter((c) => c.origen_id !== n.id && c.destino_id !== n.id);
+            seleccion = null;
+            renderizar();
+            avisar('Nodo eliminado.');
+        }
+
+        function aplicarEdicionConexion() {
+            const c = conexiones.find((x) => x.id === seleccion.id);
+            if (!c) return;
+            instantanea();
+            c.etiqueta = document.getElementById('edEtiqueta').value.trim() || null;
+            c.tipo = document.getElementById('edTipo').value;
+            renderizar();
+            avisar('Conexión actualizada.');
+        }
+
+        function eliminarConexionSeleccionada() {
+            const c = conexiones.find((x) => x.id === seleccion.id);
+            if (!c) return;
+            instantanea();
+            conexiones = conexiones.filter((x) => x.id !== c.id);
+            seleccion = null;
+            renderizar();
+            avisar('Conexión eliminada.');
+        }
+
+        /* ---------------- arrastrar nodos ---------------- */
+
+        function coordenadaSVG(ev) {
+            const caja = svg.getBoundingClientRect();
+            return {
+                x: (ev.clientX - caja.left - vista.x) / vista.z,
+                y: (ev.clientY - caja.top - vista.y) / vista.z
+            };
+        }
+
+        function iniciarArrastreNodo(ev, n) {
+            if (ev.button !== 0) return;
+            ev.preventDefault();
+
+            const inicio = coordenadaSVG(ev);
+            const original = { x: n.x, y: n.y };
+            let movido = false;
+
+            function mover(e) {
+                const ahora = coordenadaSVG(e);
+                const dx = ahora.x - inicio.x;
+                const dy = ahora.y - inicio.y;
+                if (!movido && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
+                if (!movido) {
+                    movido = true;
+                    instantanea();
+                }
+                n.x = Math.round((original.x + dx) * 100) / 100;
+                n.y = Math.round((original.y + dy) * 100) / 100;
+                renderizar();
+            }
+
+            function soltar() {
+                document.removeEventListener('mousemove', mover);
+                document.removeEventListener('mouseup', soltar);
+                if (movido) programarGuardado();
+            }
+
+            document.addEventListener('mousemove', mover);
+            document.addEventListener('mouseup', soltar);
+        }
+
+        /* ---------------- conectar nodos ---------------- */
+
+        function alternarModoConexion() {
+            modoConexion = !modoConexion;
+            document.getElementById('btnConectar').classList.toggle('activo', modoConexion);
+            marco.classList.toggle('conectando', modoConexion);
+            avisar(modoConexion ? 'Modo conectar: arrastra desde el punto azul de un nodo.' : 'Modo mover.', 'info');
+        }
+
+        function iniciarConexion(ev, origen) {
+            ev.preventDefault();
+            ev.stopPropagation();
+
+            const gTemporal = svg.querySelector('#raiz').children[2];
+            const desde = centroNodo(origen);
+            const linea = crear('path', {
+                d: `M ${desde.x} ${desde.y} L ${desde.x} ${desde.y}`,
+                stroke: '#38bdf8', 'stroke-width': 2.5, 'stroke-dasharray': '6 4', fill: 'none'
+            });
+            gTemporal.appendChild(linea);
+
+            function mover(e) {
+                const p = coordenadaSVG(e);
+                linea.setAttribute('d', `M ${desde.x} ${desde.y} L ${p.x} ${p.y}`);
+            }
+
+            function soltar(e) {
+                document.removeEventListener('mousemove', mover);
+                document.removeEventListener('mouseup', soltar);
+                linea.remove();
+
+                const destino = nodoDesdeCoordenada(coordenadaSVG(e), origen.id);
+                if (!destino) return;
+
+                if (conexiones.some((c) => c.origen_id === origen.id && c.destino_id === destino.id)) {
+                    return avisar('Esos nodos ya están conectados.', 'error');
+                }
+
+                instantanea();
+                conexiones.push({
+                    id: 'tmp_c_' + Date.now().toString(36),
+                    origen_id: origen.id,
+                    destino_id: destino.id,
+                    etiqueta: null,
+                    tipo: 'normal'
+                });
+                renderizar();
+                avisar('Conexión creada.');
+                if (!modoConexion) alternarModoConexion();
+            }
+
+            document.addEventListener('mousemove', mover);
+            document.addEventListener('mouseup', soltar);
+        }
+
+        function nodoDesdeCoordenada(p, excluirId) {
+            let encontrado = null;
+            let mejorDistancia = Infinity;
+            nodos.forEach((n) => {
+                if (n.id === excluirId) return;
+                if (p.x < n.x || p.x > n.x + ANCHO || p.y < n.y || p.y > n.y + ALTO) return;
+                const cx = n.x + ANCHO / 2;
+                const cy = n.y + ALTO / 2;
+                const d = (cx - p.x) ** 2 + (cy - p.y) ** 2;
+                if (d < mejorDistancia) {
+                    mejorDistancia = d;
+                    encontrado = n;
+                }
+            });
+            return encontrado;
+        }
+
+        /* ---------------- organizar ---------------- */
+
+        function autoOrganizar() {
+            instantanea();
+
+            // Columnas por área, en el orden en que aparecen por primera vez.
+            const orden = [];
+            [...nodos].sort((a, b) => Number(a.x) - Number(b.x)).forEach((n) => {
+                if (!orden.includes(n.area)) orden.push(n.area);
+            });
+
+            const columnas = new Map(orden.map((a) => [a, []]));
+            nodos.forEach((n) => {
+                if (!columnas.has(n.area)) columnas.set(n.area, []);
+                columnas.get(n.area).push(n);
+            });
+
+            let col = 0;
+            orden.forEach((area) => {
+                const delArea = columnas.get(area) || [];
+                delArea
+                    .sort((a, b) => (a.y - b.y) || a.nombre.localeCompare(b.nombre))
+                    .forEach((n, i) => {
+                        n.x = col * SEP_X;
+                        n.y = 60 + i * SEP_Y;
+                    });
+                col += 1;
+            });
+
+            renderizar();
+            avisar('Mapa organizado por áreas.');
+        }
+
+        /* ---------------- buscar ---------------- */
+
+        function aplicarBusqueda(textoBusqueda) {
+            busqueda = String(textoBusqueda || '').trim();
+            const svgEl = svg;
+            if (!svgEl) return;
+
+            if (!busqueda) {
+                svgEl.querySelectorAll('.atenuado, .resaltado').forEach((el) => {
+                    el.classList.remove('atenuado', 'resaltado');
+                });
+                return;
+            }
+
+            const t = busqueda.toLowerCase();
+            const encontrados = new Set();
+            nodos.forEach((n) => {
+                const coincide = [n.nombre, n.area, n.clave, n.descripcion]
+                    .filter(Boolean)
+                    .some((v) => String(v).toLowerCase().includes(t));
+                if (coincide) encontrados.add(n.id);
+            });
+
+            // De cada coincidencia, toda su cadena hacia arriba y hacia abajo.
+            const aceptados = new Set(encontrados);
+            let cambio = true;
+            while (cambio) {
+                cambio = false;
+                conexiones.forEach((c) => {
+                    if (aceptados.has(c.origen_id) && !aceptados.has(c.destino_id)) {
+                        aceptados.add(c.destino_id);
+                        cambio = true;
+                    }
+                    if (aceptados.has(c.destino_id) && !aceptados.has(c.origen_id)) {
+                        aceptados.add(c.origen_id);
+                        cambio = true;
+                    }
+                });
+            }
+
+            nodos.forEach((n) => {
+                const caja = svgEl.querySelector('.nodo-caja[data-id="' + n.id + '"]');
+                if (!caja) return;
+                caja.classList.toggle('atenuado', !aceptados.has(n.id));
+                caja.classList.toggle('resaltado', encontrados.has(n.id));
+            });
+
+            conexiones.forEach((c) => {
+                const el = svgEl.querySelector('.conexion[data-id="' + c.id + '"]');
+                if (!el) return;
+                // Una arista pertenece al flujo resaltado solo si sus dos
+                // extremos quedaron dentro del conjunto aceptado.
+                const enFlujo = aceptados.has(c.origen_id) && aceptados.has(c.destino_id);
+                el.classList.toggle('atenuada', !enFlujo);
+                el.classList.toggle('resaltada', enFlujo);
+            });
+        }
+
+        /* ---------------- zoom y pan ---------------- */
+
+        function centrar() {
+            if (!nodos.length) return;
+            const minX = Math.min(...nodos.map((n) => Number(n.x)));
+            const maxX = Math.max(...nodos.map((n) => Number(n.x) + ANCHO));
+            const minY = Math.min(...nodos.map((n) => Number(n.y)));
+            const maxY = Math.max(...nodos.map((n) => Number(n.y) + ALTO));
+
+            const ancho = marco.clientWidth - 40;
+            const alto = marco.clientHeight - 40;
+            vista.z = Math.max(0.35, Math.min(1.2, Math.min(ancho / (maxX - minX + 80), alto / (maxY - minY + 100))));
+            vista.x = (ancho - (maxX - minX) * vista.z) / 2 - minX * vista.z;
+            vista.y = (alto - (maxY - minY) * vista.z) / 2 - minY * vista.z;
+            aplicarTransformacion();
+        }
+
+        svg.addEventListener('wheel', (ev) => {
+            ev.preventDefault();
+            const caja = svg.getBoundingClientRect();
+            const mx = ev.clientX - caja.left;
+            const my = ev.clientY - caja.top;
+            const antes = vista.z;
+            vista.z = Math.max(0.3, Math.min(2, antes * (ev.deltaY < 0 ? 1.12 : 0.89)));
+            // Mantener fijo el punto bajo el cursor al hacer zoom.
+            vista.x = mx - (mx - vista.x) * (vista.z / antes);
+            vista.y = my - (my - vista.y) * (vista.z / antes);
+            aplicarTransformacion();
+        }, { passive: false });
+
+        svg.addEventListener('mousedown', (ev) => {
+            if (ev.target !== svg) return;
+            if (ev.button !== 0 && ev.button !== 1) return;
+
+            cerrarPanel();
+            marco.classList.add('arrastrando');
+            const inicio = { x: ev.clientX - vista.x, y: ev.clientY - vista.y };
+
+            function mover(e) {
+                vista.x = e.clientX - inicio.x;
+                vista.y = e.clientY - inicio.y;
+                aplicarTransformacion();
+            }
+            function soltar() {
+                marco.classList.remove('arrastrando');
+                document.removeEventListener('mousemove', mover);
+                document.removeEventListener('mouseup', soltar);
+            }
+            document.addEventListener('mousemove', mover);
+            document.addEventListener('mouseup', soltar);
+        });
+
+        /* ---------------- teclado ---------------- */
+
+        document.addEventListener('keydown', (ev) => {
+            const escribiendo = ['INPUT', 'TEXTAREA', 'SELECT'].includes(ev.target.tagName);
+
+            if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') {
+                ev.preventDefault();
+                return ev.shiftKey ? rehacer() : deshacer();
+            }
+            if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'y') {
+                ev.preventDefault();
+                return rehacer();
+            }
+            if (ev.key === 'Escape') {
+                if (modoConexion) return alternarModoConexion();
+                return cerrarPanel();
+            }
+            if (escribiendo) return;
+
+            if (ev.key === 'Delete' || ev.key === 'Backspace') {
+                if (!seleccion) return;
+                ev.preventDefault();
+                if (seleccion.tipo === 'nodo') eliminarNodoSeleccionado();
+                else eliminarConexionSeleccionada();
+            }
+        });
+
+        /* ---------------- autoguardado ---------------- */
+
+        function programarGuardado() {
+            clearTimeout(temporizadorGuardado);
+            temporizadorGuardado = setTimeout(guardarAhora, ESPERA_GUARDADO);
+        }
+
+        async function guardarAhora() {
+            clearTimeout(temporizadorGuardado);
+            if (guardandoAhora) return;
+
+            guardandoAhora = true;
+            marcarEstado('Guardando…', 'guardando');
+
+            try {
+                // El servidor reconstruye el grafo por clave: por eso se envían
+                // claves y no ids, que cambian en cada guardado.
+                const cuerpo = {
+                    nodos: nodos.map((n) => ({
+                        clave: n.clave,
+                        nombre: n.nombre,
+                        area: n.area,
+                        descripcion: n.descripcion || '',
+                        x: Number(n.x),
+                        y: Number(n.y),
+                        color: n.color,
+                        metrica: n.metrica || ''
+                    })),
+                    conexiones: conexiones.map((c) => {
+                        const o = nodos.find((n) => n.id === c.origen_id);
+                        const d = nodos.find((n) => n.id === c.destino_id);
+                        return {
+                            origen: o ? o.clave : null,
+                            destino: d ? d.clave : null,
+                            etiqueta: c.etiqueta || '',
+                            tipo: c.tipo
+                        };
+                    }).filter((c) => c.origen && c.destino)
+                };
+
+                const r = await fetch('/api/flujo', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(cuerpo)
+                });
+                const d = await r.json();
+
+                if (!r.ok || !d.success) {
+                    marcarEstado('Error al guardar', 'error');
+                    avisar(d.mensaje || 'No se pudo guardar. Se reintentará al siguiente cambio.', 'error');
+                    return;
+                }
+
+                // Los ids los vuelve a asignar el servidor: hay que recargar
+                // para no seguir trabajando sobre ids viejos.
+                await cargar();
+                marcarEstado('Guardado ' + new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' }), 'guardado');
+            } catch (e) {
+                marcarEstado('Error al guardar', 'error');
+                avisar('Sin conexión con el servidor. Los cambios siguen en pantalla.', 'error');
+            } finally {
+                guardandoAhora = false;
+            }
+        }
+
+        /* ---------------- versiones ---------------- */
+
+        async function guardarVersion() {
+            const nombre = document.getElementById('nombreVersion').value.trim();
+            if (!nombre) return avisar('Ponle un nombre a la versión.', 'error');
+
+            const snapshot = {
+                nodos: nodos.map((n) => ({
+                    clave: n.clave, nombre: n.nombre, area: n.area,
+                    descripcion: n.descripcion, x: Number(n.x), y: Number(n.y),
+                    color: n.color, metrica: n.metrica
+                })),
+                conexiones: conexiones.map((c) => {
+                    const o = nodos.find((n) => n.id === c.origen_id);
+                    const d = nodos.find((n) => n.id === c.destino_id);
+                    return { origen: o ? o.clave : null, destino: d ? d.clave : null, etiqueta: c.etiqueta, tipo: c.tipo };
+                }).filter((c) => c.origen && c.destino)
+            };
+
+            try {
+                const r = await fetch('/api/flujo/versiones', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nombre, snapshot })
+                });
+                const d = await r.json();
+                if (!r.ok || !d.success) return avisar(d.mensaje || 'No se pudo guardar la versión.', 'error');
+
+                document.getElementById('nombreVersion').value = '';
+                avisar('Versión guardada.');
+                cargarVersiones();
+            } catch (e) {
+                avisar('Sin conexión con el servidor.', 'error');
+            }
+        }
+
+        async function cargarVersiones() {
+            const cont = document.getElementById('listaVersiones');
+            cont.innerHTML = '<p class="pista">Cargando…</p>';
+
+            try {
+                const r = await fetch('/api/flujo/versiones');
+                const d = await r.json();
+                if (!r.ok || !d.success) {
+                    cont.innerHTML = '<p class="pista">No se pudieron cargar las versiones.</p>';
+                    return;
+                }
+                if (!d.versiones.length) {
+                    cont.innerHTML = '<p class="pista">Todavía no hay versiones guardadas.</p>';
+                    return;
+                }
+
+                cont.innerHTML = '';
+                d.versiones.forEach((v) => {
+                    const fila = document.createElement('div');
+                    fila.className = 'item-version';
+
+                    const nombre = document.createElement('span');
+                    nombre.className = 'nombre';
+                    nombre.textContent = `${v.nombre} · ${v.nodos} nodos`;
+                    nombre.title = `${v.nombre} · ${v.usuario || 'sistema'} · ${new Date(v.fecha_creacion).toLocaleString('es-PE')}`;
+
+                    const btnRestaurar = document.createElement('button');
+                    btnRestaurar.className = 'mini';
+                    btnRestaurar.textContent = 'Restaurar';
+                    btnRestaurar.onclick = () => restaurarVersion(v.id, v.nombre);
+
+                    const btnBorrar = document.createElement('button');
+                    btnBorrar.className = 'mini';
+                    btnBorrar.textContent = '✖';
+                    btnBorrar.onclick = () => borrarVersion(v.id, v.nombre);
+
+                    fila.appendChild(nombre);
+                    fila.appendChild(btnRestaurar);
+                    fila.appendChild(btnBorrar);
+                    cont.appendChild(fila);
+                });
+            } catch (e) {
+                cont.innerHTML = '<p class="pista">Sin conexión con el servidor.</p>';
+            }
+        }
+
+        async function restaurarVersion(id, nombre) {
+            if (!confirm(`¿Restaurar la versión "${nombre}"? El mapa actual se reemplazará.`)) return;
+            try {
+                const r = await fetch(`/api/flujo/versiones/${id}/restaurar`, { method: 'POST' });
+                const d = await r.json();
+                if (!r.ok || !d.success) return avisar(d.mensaje || 'No se pudo restaurar.', 'error');
+                await cargar();
+                avisar(d.mensaje || 'Versión restaurada.');
+            } catch (e) {
+                avisar('Sin conexión con el servidor.', 'error');
+            }
+        }
+
+        async function borrarVersion(id, nombre) {
+            if (!confirm(`¿Eliminar la versión "${nombre}"?`)) return;
+            try {
+                const r = await fetch(`/api/flujo/versiones/${id}`, { method: 'DELETE' });
+                const d = await r.json();
+                if (!r.ok || !d.success) return avisar(d.mensaje || 'No se pudo eliminar.', 'error');
+                avisar('Versión eliminada.');
+                cargarVersiones();
+            } catch (e) {
+                avisar('Sin conexión con el servidor.', 'error');
+            }
+        }
+
+        function cerrarSesion() {
+            if (confirm('¿Seguro que quieres cerrar sesión?')) {
+                limpiarSesion();
+                window.location.href = 'index.html';
+            }
+        }
+
+        cargar().then(centrar);
+    </script>
+</body>
+</html>

@@ -210,6 +210,7 @@
         .a-ref { --ac: #117a8b; }
         .a-adm { --ac: #f472b6; }
         .a-rec { --ac: #f472b6; }
+        .a-flu { --ac: #38bdf8; }
 
         /* ---------- INVENTARIO ---------- */
         .inv { padding: 20px 24px; }
@@ -406,6 +407,9 @@
                 <a href="basededatosdeplanta.html" class="mod a-sim"><span class="mod-ico">🧮</span><span class="mod-nom">Simulador de Insumos</span><span class="mod-rol">Base de datos de planta</span></a>
 <a href="admin.html" id="btnModuloUsuarios" class="mod a-adm hidden"><span class="mod-ico">👮</span><span class="mod-nom">Usuarios</span><span class="mod-rol">Administración</span></a>
                 <a href="recetas.html" id="btnModuloRecetas" class="mod a-rec hidden"><span class="mod-ico">🧪</span><span class="mod-nom">Recetas</span><span class="mod-rol">Gestión de recetas</span></a>
+                <!-- Exclusivo de la cuenta admin1, no del rol admin. El 403 real
+                     lo pone el servidor en /api/flujo. -->
+                <a href="flujo.html" id="btnModuloFlujo" class="mod a-flu hidden"><span class="mod-ico">🗺️</span><span class="mod-nom">Mapa de Flujo</span><span class="mod-rol">Diagrama del proceso</span></a>
             </div>
         </section>
 
@@ -492,10 +496,17 @@
         document.getElementById('chipNombre').textContent = usuarioActual + ' · ' + (rolActual || '');
         document.getElementById('rolBadge').textContent = String(rolActual || 'ROL').toUpperCase();
 
-if (rolActual === 'admin') {
+        if (rolActual === 'admin') {
             document.getElementById('btnModuloUsuarios').classList.remove('hidden');
             document.getElementById('btnModuloRecetas').classList.remove('hidden');
         }
+
+        // El mapa de flujo se abre por usuario, no por rol: admin1 comparte rol
+        // 'admin' con otras cuentas que no deben verlo.
+        if (localStorage.getItem('usuario_actual') === 'admin1') {
+            document.getElementById('btnModuloFlujo').classList.remove('hidden');
+        }
+
 
         // Reloj en vivo
         function actualizarReloj() {

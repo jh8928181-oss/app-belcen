@@ -99,6 +99,37 @@ function crearGuardRoles(roles, opciones = {}) {
   };
 }
 
+/**
+ * Control de acceso por nombre de usuario.
+ *
+ * Distinto de crearGuardRoles a propósito: aquel decide por rol (puesto), este
+ * decide por la cuenta concreta. Existe porque el mapa de flujo de trabajo
+ * (public/flujo.html) se pidió exclusivo para admin1, y admin1 comparte rol
+ * 'admin' con otras cuentas: un guard por rol no lo distinguiría.
+ *
+ * @param {string[]|string[]} usuarios - Nombres de usuario permitidos
+ * @param {{enforce?: boolean, mensaje?: string}} [opciones]
+ * @returns {Function} Middleware Express
+ */
+function crearGuardUsuarios(usuarios, opciones = {}) {
+  const { enforce = false, mensaje = 'Acceso no autorizado.' } = opciones;
+  const permitidos = [].concat(usuarios);
+
+  return function(req, res, next) {
+    if (permitidos.includes(req.usuario)) return next();
+
+    if (enforce || ENFORCE_ROLES) {
+      return res.status(403).json({ success: false, mensaje });
+    }
+
+    console.warn(
+      `[observa-usuarios] ${req.method} ${req.originalUrl} | usuario=${req.usuario || '-'} rol=${req.rol || '-'} ` +
+      `| permitidos=${permitidos.join(',')}`
+    );
+    next();
+  };
+}
+
 /** Grupos de roles por módulo, derivados del mapa de acceso de dashboard.html:463-465 */
 const ROLES_MODULO = {
   admin: ['admin'],
@@ -141,6 +172,7 @@ module.exports = {
   requerirRolAdmin,
   validarUsuarioBody,
   crearGuardRoles,
+  crearGuardUsuarios,
   ROLES_MODULO,
   ENFORCE_ROLES,
   ROLES_PERMITIDOS,

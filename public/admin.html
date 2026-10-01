@@ -128,6 +128,10 @@
         <div style="text-align: center; margin-top: 10px; padding: 15px; border-top: 1px solid #ddd;">
             <a href="recetas.html" style="display: inline-block; margin: 5px 10px; padding: 12px 20px; background: #6f42c1; color: white; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 15px;">🧪 MÓDULO DE RECETAS</a>
             <a href="basededatosgeneral.html" style="display: inline-block; margin: 5px 10px; padding: 10px 18px; background: #17a2b8; color: white; border-radius: 8px; text-decoration: none; font-weight: bold;">🗄️ Base de Datos General</a>
+            <!-- El mapa de flujo es por usuario, no por rol: admin1 comparte rol
+                 'admin' con otras cuentas, asi que el enlace se muestra solo a
+                 esa cuenta. El 403 real lo pone el servidor. -->
+            <a href="flujo.html" id="linkFlujo" style="display: none; margin: 5px 10px; padding: 12px 20px; background: #0d6efd; color: white; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 15px;">🗺️ Mapa de Flujo de Trabajo</a>
             <a href="dashboard.html" style="display: inline-block; margin-bottom: 10px; color: #007bff; text-decoration: none; font-weight: bold;">Volver al Dashboard General</a>
             <br>
             <button class="logout" onclick="cerrarSesion()">🔒 Cerrar Sesión (Salir)</button>
@@ -144,6 +148,12 @@
         }
 
         const ROLES = ['admin', 'supervisor', 'produccion', 'auditoria', 'vigilancia', 'almacen', 'soplado', 'envasado', 'refinado', 'invitado', 'consulta_bd'];
+
+        // Solo admin1 ve el acceso al mapa de flujo (ver flujo.html).
+        if (localStorage.getItem('usuario_actual') === 'admin1') {
+            const link = document.getElementById('linkFlujo');
+            if (link) link.style.display = 'inline-block';
+        }
         const COLORES_ROL = {
             admin: '#dc3545',
             supervisor: '#6f42c1',

@@ -13,7 +13,7 @@
  * Uso (PowerShell):
  *   $env:ALLOW_CREATE_USER='1'
  *   $env:NUEVO_USUARIO='Angelica'
- *   $env:NUEVO_PASSWORD='usuariopass1'
+ *   $env:NUEVO_PASSWORD='<la contrasena, sin escribirla aqui>'
  *   $env:NUEVO_ROL='consulta_bd'
  *   $env:CONFIRMAR_ALTA='Angelica'
  *   node scripts/crear-usuario-bd.js

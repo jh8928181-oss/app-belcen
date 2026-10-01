@@ -7,6 +7,7 @@ const {
   requerirRolAdmin,
   validarUsuarioBody,
   crearGuardRoles,
+  crearGuardUsuarios,
   ROLES_MODULO,
   ENFORCE_ROLES,
   ROLES_PERMITIDOS
@@ -362,5 +363,117 @@ describe('guard de Base de Datos General', () => {
     // no tienen guard, asi que un rol acotado podria llamarlos si conoce la URL.
     ['/api/inventario', '/api/producto-terminado', '/api/estado-lineas']
       .forEach((ruta) => expect(capaRuta('get', ruta)).toHaveLength(1));
+  });
+});
+
+describe('crearGuardUsuarios — acceso por cuenta, no por rol', () => {
+  const guard = crearGuardUsuarios(['admin1'], { enforce: true, mensaje: 'Solo admin1.' });
+
+  test('deja pasar a la cuenta aunque su rol no diga nada', () => {
+    const next = jest.fn();
+    guard({ usuario: 'admin1', rol: 'cualquiera', method: 'GET', originalUrl: '/api/flujo' }, resFalso(), next);
+
+    expect(next).toHaveBeenCalled();
+  });
+
+  test('corta con 403 a otro administrador, que comparte rol con admin1', () => {
+    // El caso que motiva el guard: admin1 tiene rol 'admin', igual que 'admin2'.
+    // Un guard por rol habria dejado entrar a admin2.
+    const res = resFalso();
+    const next = jest.fn();
+
+    guard({ usuario: 'admin2', rol: 'admin', method: 'GET', originalUrl: '/api/flujo' }, res, next);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.cuerpo.mensaje).toBe('Solo admin1.');
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test('la cuenta es exacta: no acepta prefijos ni diferencias de mayusculas', () => {
+    ['admin11', 'Admin1', 'admin1 ', ' admin1'].forEach((usuario) => {
+      const res = resFalso();
+      guard({ usuario, rol: 'admin', method: 'GET', originalUrl: '/api/flujo' }, res, jest.fn());
+      expect(res.statusCode).toBe(403);
+    });
+  });
+
+  test('sin enforce solo avisa y deja pasar (mismo criterio que crearGuardRoles)', () => {
+    const silencioso = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const next = jest.fn();
+
+    crearGuardUsuarios(['admin1'])({ usuario: 'admin2', rol: 'admin', method: 'GET', originalUrl: '/api/flujo' }, resFalso(), next);
+
+    expect(next).toHaveBeenCalled();
+    silencioso.mockRestore();
+  });
+
+  test('acepta varias cuentas y un string suelto', () => {
+    const next = jest.fn();
+    const dos = crearGuardUsuarios(['admin1', 'sup1'], { enforce: true });
+
+    dos({ usuario: 'sup1' }, resFalso(), next);
+    crearGuardUsuarios('admin1', { enforce: true })({ usuario: 'admin1' }, resFalso(), next);
+
+    expect(next).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('mapa de flujo montado en la app', () => {
+  const rutas = require('../routes');
+  const { app } = require('../index');
+
+  /**
+   * El mapa vive en routes/flujo.js y se cuelga con router.use dentro de
+   * routes/index.js. Ese router.use no crea un l.route, asi que se localiza por
+   * el nombre del archivo montado, que es como queda registrado en la pila.
+   */
+  function capaFlujo() {
+    // El guard se crea con una función anónima, así que no tiene nombre útil en
+    // la pila: se identifica el router por identidad, no por nombre.
+    return rutas.stack.find((l) => !l.route && l.handle === require('../routes/flujo'));
+  }
+
+  function subCapasFlujo() {
+    const capa = capaFlujo();
+    return capa ? capa.handle.stack.filter((i) => !i.route) : [];
+  }
+
+  /** El guard es el segundo middleware: el primero autentica. */
+  function capaGuard() {
+    const capas = subCapasFlujo();
+    return capas[capas.length - 1];
+  }
+
+  test('routes/index.js monta el mapa de flujo', () => {
+    expect(capaFlujo()).toBeDefined();
+  });
+
+  test('el router de rutas está montado en la app', () => {
+    const stack = (app.router || app._router).stack;
+    expect(stack.some((l) => !l.route && l.handle === rutas)).toBe(true);
+  });
+
+  test('el mapa autentica antes de decidir por cuenta', () => {
+    const capas = subCapasFlujo();
+    expect(capas).toHaveLength(2);
+    expect(capas[0].name).toBe('authMiddleware');
+  });
+
+  test('admin2 recibe 403 antes de tocar la base', () => {
+    const res = resFalso();
+    const next = jest.fn();
+
+    capaGuard().handle({ usuario: 'admin2', rol: 'admin', method: 'GET', originalUrl: '/api/flujo' }, res, next);
+
+    expect(res.statusCode).toBe(403);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test('admin1 pasa el guard', () => {
+    const next = jest.fn();
+
+    capaGuard().handle({ usuario: 'admin1', rol: 'admin', method: 'GET', originalUrl: '/api/flujo' }, resFalso(), next);
+
+    expect(next).toHaveBeenCalled();
   });
 });

@@ -1,4 +1,4 @@
-// .env.local se carga al final y con override: si existe, sus valores ganan sobre
+﻿// .env.local se carga al final y con override: si existe, sus valores ganan sobre
 // .env. Permite apuntar a otra base en local (p. ej. Supabase) sin editar el .env
 // compartido, que sigue documentando la base vieja de Render.
 const path = require('path');
@@ -2870,9 +2870,45 @@ const requerirRolBDGeneral = crearGuardRoles(ROLES_BD_GENERAL, { enforce: true }
 
 const CATEGORIAS_PROVEEDOR = ['CAJAS', 'TAPAS Y ACCESORIOS', 'PREFORMAS Y SERVICIOS', 'BOTELLAS Y GALONERAS', 'ETIQUETAS', 'General', 'REFINADO'];
 const ESTADOS_ORDEN = ['PENDIENTE', 'EMITIDA', 'RECIBIDA', 'COMPLETADA', 'CANCELADA'];
+// IGV de Peru. Va como porcentaje porque cada orden y cada factura pueden traer
+// el suyo (un insumo exonerado va en 0).
+const IGV_POR_DEFECTO = 18;
+const MONEDAS = ['PEN', 'USD'];
+const ESTADOS_FACTURA = ['PENDIENTE', 'PAGADA', 'ANULADA'];
+const TIPOS_COMPROBANTE = ['FACTURA', 'BOLETA', 'NOTA_CREDITO'];
+
 // Estados en los que la cantidad emitida de la orden ya se sumó al stock de proveedores.
 const ESTADOS_EMITIDOS = new Set(['EMITIDA', 'RECIBIDA', 'COMPLETADA']);
 function esEmitida(o) { return !!(o && ESTADOS_EMITIDOS.has(String(o.estado || ''))); }
+
+// Deja pasar solo monedas de la lista; cualquier otra cae a PEN en vez de
+// terminar guardada como texto libre que despues no se puede filtrar.
+function normalizarMoneda(valor) {
+    const m = String(valor || '').trim().toUpperCase();
+    return MONEDAS.includes(m) ? m : 'PEN';
+}
+
+// Un filtro de query que no es un entero (un select vacio, un "undefined" que
+// el navegador stringifya) no puede llegar a Postgres como NaN: revienta con 500.
+// Se traduce a null, que en las consultas significa "sin filtro".
+function filtroEnteroQuery(valor) {
+    const n = parseInt(valor, 10);
+    return Number.isInteger(n) ? n : null;
+}
+
+// pg devuelve las columnas date como Date, no como texto. Aplicar String() a un
+// Date produce "Thu Oct 01 2026 ..." y al cortar 10 caracteres queda "Thu Oct 01",
+// que Postgres rechaza como fecha. Se usan las partes locales del Date, no
+// toISOString, que correria el dia en zonas detrras de UTC.
+function aFechaSql(valor) {
+    if (!valor) return '';
+    if (valor instanceof Date) {
+        const mes = String(valor.getMonth() + 1).padStart(2, '0');
+        const dia = String(valor.getDate()).padStart(2, '0');
+        return `${valor.getFullYear()}-${mes}-${dia}`;
+    }
+    return String(valor).trim().slice(0, 10);
+}
 
 async function registrarHistorialStockProveedor(q, datos) {
     try {
@@ -2984,9 +3020,27 @@ async function aplicarGuiaAStockProveedores(q, proveedor, items, numeroGuia, usu
     }
 }
 
-function normalizarItemsOrden(items) {
+// Redondea a 2 decimales. El IGV se calcula aqui y no llega del cliente: un
+// total montado en el navegador no es un dato contable.
+function redondear2(valor) {
+    return Math.round((Number(valor) + Number.EPSILON) * 100) / 100;
+}
+
+// El IGV se deriva del subtotal y del porcentaje, nunca se recibe del cliente.
+// Permitir igv_pct en el cuerpo (en vez de fijarlo a 18) es para que un insumo
+// exonerado pueda llevar 0. Se acota a 0..100 porque un porcentaje fuera de ahi
+// no es un porcentaje de impuesto: colado por un formulario daria un total sin
+// sentido, y la base de datos no lo va a rechazar.
+function acotarIgvPct(valor) {
+    const n = Number(valor);
+    if (!Number.isFinite(n)) return IGV_POR_DEFECTO;
+    return Math.min(100, Math.max(0, redondear2(n)));
+}
+
+function normalizarItemsOrden(items, igvPct) {
     const limpios = [];
     let total = 0;
+    const pct = acotarIgvPct(igvPct);
     for (const it of Array.isArray(items) ? items : []) {
         const descripcion = String(it && it.descripcion ? it.descripcion : '').trim();
         const cantidad = Number(it && it.cantidad);
@@ -3000,7 +3054,8 @@ function normalizarItemsOrden(items) {
             descripcion, unidad: uni, cantidad, precio, subtotal, recibido: 0
         });
     }
-    return { items: limpios, total };
+    const igv = redondear2(total * pct / 100);
+    return { items: limpios, total: redondear2(total), igv_pct: pct, igv, totalIgv: redondear2(total + igv) };
 }
 
 // ---- PROVEEDORES ----
@@ -3148,7 +3203,12 @@ app.get('/api/bd/ordenes', requerirRolBDGeneral, async (req, res) => {
 app.get('/api/bd/ordenes/:id', requerirRolBDGeneral, async (req, res) => {
     try {
         const id = parseInt(req.params.id, 10);
-        const ordenRes = await pool.query('SELECT * FROM ordenes_compras_servicios WHERE id = $1', [id]);
+        const ordenRes = await pool.query(
+            `SELECT o.*, p.nombre AS proveedor_nombre
+             FROM ordenes_compras_servicios o
+             LEFT JOIN proveedores p ON p.id = o.proveedor_id
+             WHERE o.id = $1`, [id]
+        );
         if (!ordenRes.rows.length) {
             return res.status(404).json({ success: false, mensaje: 'La orden no existe.' });
         }
@@ -3157,7 +3217,22 @@ app.get('/api/bd/ordenes/:id', requerirRolBDGeneral, async (req, res) => {
             `SELECT * FROM stock_proveedores_historial
              WHERE orden_ref = $1 AND origen IN ('EMISION','RECIBIR','CANCELACION')
              ORDER BY id DESC LIMIT 100`, [ordenRes.rows[0].numero]);
-        res.json({ success: true, orden: ordenRes.rows[0], items: itemsRes.rows, movimientos: movimientosRes.rows });
+        // Las facturas y el saldo viajan con el detalle para que la pantalla de
+        // orden vea que esta facturado sin una segunda peticion. Las anuladas no
+        // cuentan: una nota de credito anulada no debe descontar saldo.
+        const facturasRes = await pool.query(
+            `SELECT * FROM facturas WHERE orden_id = $1 ORDER BY fecha_factura DESC, id DESC`, [id]
+        );
+        const facturas = facturasRes.rows;
+        const saldo = redondear2(
+            Number(ordenRes.rows[0].total_igv || 0) - facturas
+                .filter(f => String(f.estado).toUpperCase() !== 'ANULADA')
+                .reduce((suma, f) => suma + Number(f.total || 0), 0)
+        );
+        res.json({
+            success: true, orden: ordenRes.rows[0], items: itemsRes.rows,
+            movimientos: movimientosRes.rows, facturas, saldo
+        });
     } catch (err) {
         console.error('Error GET orden detalle:', err);
         res.status(500).json({ success: false, mensaje: err.message });
@@ -3189,16 +3264,21 @@ app.post('/api/bd/ordenes', requerirRolBDGeneral, async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, mensaje: 'El proveedor no existe.' });
         }
-        const { items, total } = normalizarItemsOrden(cuerpo.items);
+        const { items, total, igv, totalIgv } = normalizarItemsOrden(cuerpo.items, cuerpo.igv_pct);
         if (!items.length) {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, mensaje: 'Agregue al menos un ítem válido con cantidad mayor a 0.' });
         }
 
         const ins = await client.query(
-            `INSERT INTO ordenes_compras_servicios (tipo, numero, fecha_orden, proveedor_id, proveedor_nombre, estado, observaciones, total, usuario_registro)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-            [tipo, numero, fechaOrden || null, proveedorId, prov.rows[0].nombre, estado, String(cuerpo.observaciones || '').trim(), total, req.usuario]
+            `INSERT INTO ordenes_compras_servicios (tipo, numero, fecha_orden, proveedor_id, proveedor_nombre, estado, observaciones, total, moneda, igv_pct, igv, total_igv, usuario_registro)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+            [
+                tipo, numero, fechaOrden || null, proveedorId, prov.rows[0].nombre, estado,
+                String(cuerpo.observaciones || '').trim(), total,
+                normalizarMoneda(cuerpo.moneda), Number.isFinite(Number(cuerpo.igv_pct)) ? Number(cuerpo.igv_pct) : IGV_POR_DEFECTO,
+                igv, totalIgv, req.usuario
+            ]
         );
         for (const it of items) {
             await client.query(
@@ -3254,7 +3334,7 @@ app.put('/api/bd/ordenes/:id', requerirRolBDGeneral, async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, mensaje: 'El proveedor no existe.' });
         }
-        const { items, total } = normalizarItemsOrden(cuerpo.items);
+        const { items, total, igv, totalIgv } = normalizarItemsOrden(cuerpo.items, cuerpo.igv_pct);
         if (!items.length) {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, mensaje: 'Agregue al menos un ítem válido con cantidad mayor a 0.' });
@@ -3269,13 +3349,15 @@ app.put('/api/bd/ordenes/:id', requerirRolBDGeneral, async (req, res) => {
 
         const numeroAnterior = vieja.numero;
         await client.query(
-            `UPDATE ordenes_compras_servicios SET tipo = $1, numero = $2, fecha_orden = $3, proveedor_id = $4, proveedor_nombre = $5, estado = $6, observaciones = $7, total = $8, usuario_registro = $9
-             WHERE id = $10`,
+            `UPDATE ordenes_compras_servicios SET tipo = $1, numero = $2, fecha_orden = $3, proveedor_id = $4, proveedor_nombre = $5, estado = $6, observaciones = $7, total = $8, moneda = $9, igv_pct = $10, igv = $11, total_igv = $12, usuario_registro = $13
+             WHERE id = $14`,
             [
                 String(cuerpo.tipo || '').trim().toUpperCase(), numero,
                 String(cuerpo.fecha_orden || '').trim() || null,
                 proveedorId, prov.rows[0].nombre, estadoNuevo,
-                String(cuerpo.observaciones || '').trim(), total, req.usuario, id
+                String(cuerpo.observaciones || '').trim(), total,
+                normalizarMoneda(cuerpo.moneda), Number.isFinite(Number(cuerpo.igv_pct)) ? Number(cuerpo.igv_pct) : IGV_POR_DEFECTO,
+                igv, totalIgv, req.usuario, id
             ]
         );
 
@@ -3339,12 +3421,33 @@ app.delete('/api/bd/ordenes/:id', requerirRolBDGeneral, async (req, res) => {
             return res.status(400).json({ success: false, mensaje: 'ID de orden no válido.' });
         }
         await client.query('BEGIN');
-        const ordenRes = await client.query('SELECT * FROM ordenes_compras_servicios WHERE id = $1', [id]);
+        // El nombre del proveedor viene por join: la orden guarda el id, y al
+        // restaurar el stock despues hay que escribir un texto en el historial.
+        const ordenRes = await client.query(
+            `SELECT o.*, p.nombre AS proveedor_nombre
+             FROM ordenes_compras_servicios o
+             LEFT JOIN proveedores p ON p.id = o.proveedor_id
+             WHERE o.id = $1`, [id]
+        );
         if (!ordenRes.rows.length) {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, mensaje: 'La orden no existe.' });
         }
         const orden = ordenRes.rows[0];
+        // Una factura tiene ON DELETE RESTRICT, asi que sin esta comprobacion el
+        // borrado fallaria con un error de constraint que no le dice nada al
+        // usuario. Se comprueba antes y se explica.
+        const facturas = await client.query(
+
+            'SELECT COUNT(*)::int AS n FROM facturas WHERE orden_id = $1', [id]
+        );
+        if (facturas.rows[0].n > 0) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                mensaje: `No se puede eliminar: la orden tiene ${facturas.rows[0].n} factura(s) registrada(s). Anule o elimine primero las facturas.`
+            });
+        }
         if (esEmitida(orden)) {
             const itemsViejos = (await client.query('SELECT * FROM ordenes_items WHERE orden_id = $1', [id])).rows;
             await aplicarItemsOrdenStock(client, itemsViejos, orden.proveedor_nombre || 'N/D', -1, req.usuario, orden.numero);
@@ -3475,6 +3578,479 @@ app.post('/api/bd/ordenes/:id/recibir', requerirRolBDGeneral, async (req, res) =
     }
 });
 
+// ---- PRECIOS POR PROVEEDOR ----
+app.get('/api/bd/precios', requerirRolBDGeneral, async (req, res) => {
+    try {
+        const proveedorId = req.query.proveedor_id ? parseInt(req.query.proveedor_id, 10) : null;
+        const moneda = String(req.query.moneda || '').trim().toUpperCase();
+        const busqueda = String(req.query.producto || '').trim();
+        const result = await pool.query(`
+            SELECT pp.*, p.nombre AS proveedor_nombre, p.categoria AS proveedor_categoria,
+                (SELECT MAX(h.fecha_cambio) FROM precios_proveedor_historial h WHERE h.precio_id = pp.id) AS ultimo_cambio
+            FROM precios_proveedor pp
+            JOIN proveedores p ON p.id = pp.proveedor_id
+            WHERE ($1::int IS NULL OR pp.proveedor_id = $1)
+              AND ($2 = '' OR pp.moneda = $2)
+              AND ($3 = '' OR LOWER(pp.producto) LIKE '%' || LOWER($3) || '%')
+            ORDER BY LOWER(p.nombre) ASC, LOWER(pp.producto) ASC`, [proveedorId, moneda, busqueda]);
+        res.json({ success: true, precios: result.rows });
+    } catch (err) {
+        console.error('Error GET precios:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+app.post('/api/bd/precios', requerirRolBDGeneral, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const cuerpo = req.body || {};
+        const proveedorId = parseInt(cuerpo.proveedor_id, 10);
+        const producto = String(cuerpo.producto || '').trim();
+        const unidad = String(cuerpo.unidad || 'UNIDADES').trim().toUpperCase() || 'UNIDADES';
+        const precio = Number(cuerpo.precio);
+        if (!Number.isInteger(proveedorId) || proveedorId <= 0) {
+            return res.status(400).json({ success: false, mensaje: 'Seleccione un proveedor.' });
+        }
+        if (!producto) {
+            return res.status(400).json({ success: false, mensaje: 'Ingrese el producto.' });
+        }
+        if (!Number.isFinite(precio) || precio < 0) {
+            return res.status(400).json({ success: false, mensaje: 'El precio debe ser un número mayor o igual a 0.' });
+        }
+
+        await client.query('BEGIN');
+        const prov = await client.query('SELECT id, nombre FROM proveedores WHERE id = $1', [proveedorId]);
+        if (!prov.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'El proveedor no existe.' });
+        }
+        const ins = await client.query(
+            `INSERT INTO precios_proveedor (proveedor_id, producto, unidad, precio, moneda, usuario_registro)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            [proveedorId, producto, unidad, precio, normalizarMoneda(cuerpo.moneda), req.usuario]
+        );
+        // Alta inicial: el historial arranca en 0 para que la primera variacion
+        // sea siempre contra un precio existente y no contra un hueco.
+        await client.query(
+            `INSERT INTO precios_proveedor_historial
+                (precio_id, proveedor_id, proveedor_nombre, producto, unidad, moneda, precio_anterior, precio_nuevo, usuario_cambio)
+             VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8)`,
+            [ins.rows[0].id, proveedorId, prov.rows[0].nombre, producto, unidad, ins.rows[0].moneda, precio, req.usuario]
+        );
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: 'Precio registrado correctamente.', precio: ins.rows[0] });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        if (err.code === '23505') {
+            return res.status(400).json({ success: false, mensaje: 'Ese proveedor ya tiene un precio para ese producto y unidad. Edítelo en lugar de agregarlo de nuevo.' });
+        }
+        console.error('Error crear precio:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al registrar el precio: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
+app.put('/api/bd/precios/:id', requerirRolBDGeneral, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ success: false, mensaje: 'ID de precio no válido.' });
+        }
+        const cuerpo = req.body || {};
+        const producto = String(cuerpo.producto || '').trim();
+        const unidad = String(cuerpo.unidad || 'UNIDADES').trim().toUpperCase() || 'UNIDADES';
+        const precio = Number(cuerpo.precio);
+        if (!producto) {
+            return res.status(400).json({ success: false, mensaje: 'Ingrese el producto.' });
+        }
+        if (!Number.isFinite(precio) || precio < 0) {
+            return res.status(400).json({ success: false, mensaje: 'El precio debe ser un número mayor o igual a 0.' });
+        }
+
+        await client.query('BEGIN');
+        // El nombre del proveedor se trae con join: precios_proveedor guarda el id,
+        // y el historial lo copia como texto para poder mostrarlo aunque el precio
+        // o el proveedor se den de baja despues.
+        const actual = await client.query(
+            `SELECT pp.*, pr.nombre AS proveedor_nombre
+             FROM precios_proveedor pp
+             LEFT JOIN proveedores pr ON pr.id = pp.proveedor_id
+             WHERE pp.id = $1`, [id]
+        );
+        if (!actual.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'El precio no existe.' });
+        }
+        const previo = actual.rows[0];
+        const upd = await client.query(
+            `UPDATE precios_proveedor SET producto = $1, unidad = $2, precio = $3, moneda = $4, usuario_registro = $5
+             WHERE id = $6 RETURNING *`,
+            [producto, unidad, precio, normalizarMoneda(cuerpo.moneda), req.usuario, id]
+        );
+        // El registro del historial va en la misma transaccion que el update: si
+        // el precio cambia y el historial falla, no cambia ninguno de los dos.
+        await client.query(
+            `INSERT INTO precios_proveedor_historial
+                (precio_id, proveedor_id, proveedor_nombre, producto, unidad, moneda, precio_anterior, precio_nuevo, usuario_cambio)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [
+                id, previo.proveedor_id, previo.proveedor_nombre, producto, unidad, upd.rows[0].moneda,
+                Number(previo.precio) || 0, precio, req.usuario
+            ]
+        );
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: 'Precio actualizado correctamente.', precio: upd.rows[0] });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        if (err.code === '23505') {
+            return res.status(400).json({ success: false, mensaje: 'Ese proveedor ya tiene un precio para ese producto y unidad.' });
+        }
+        console.error('Error editar precio:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al actualizar el precio: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// El historial se va con el precio: es el rastro de ese precio, no un log
+// suelto. Por eso el ON DELETE CASCADE de la FK.
+app.delete('/api/bd/precios/:id', requerirRolBDGeneral, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ success: false, mensaje: 'ID de precio no válido.' });
+        }
+        const del = await pool.query('DELETE FROM precios_proveedor WHERE id = $1 RETURNING producto', [id]);
+        if (!del.rows.length) {
+            return res.status(404).json({ success: false, mensaje: 'El precio no existe.' });
+        }
+        res.json({ success: true, mensaje: 'Precio eliminado.' });
+    } catch (err) {
+        console.error('Error eliminar precio:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+// Filtra por proveedor_id de la propia fila del historial, no por el del precio
+// vigente: si el precio se dio de baja el join vendria null y el historico de
+// ese proveedor desapareceria del filtro, justo lo que se vino a consultar.
+app.get('/api/bd/precios/historial', requerirRolBDGeneral, async (req, res) => {
+    try {
+        // Un filtro no numerico (por ejemplo un select vacio que el navegador
+        // manda como proveedor_id=undefined) no puede mandarse a Postgres como
+        // NaN: revienta el endpoint con 500. Se descarta y se lista todo.
+        const proveedorId = filtroEnteroQuery(req.query.proveedor_id);
+        const result = await pool.query(`
+            SELECT h.*
+            FROM precios_proveedor_historial h
+            WHERE ($1::int IS NULL OR h.proveedor_id = $1)
+            ORDER BY h.fecha_cambio DESC, h.id DESC
+            LIMIT 300`, [proveedorId]);
+        res.json({ success: true, historial: result.rows });
+    } catch (err) {
+        console.error('Error GET historial precios:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+// ---- FACTURAS DE OC / OS ----
+app.get('/api/bd/facturas', requerirRolBDGeneral, async (req, res) => {
+    try {
+        // Igual que en el historial: un filtro no numerico se descarta en vez de
+        // llegar a Postgres como NaN.
+        const ordenId = filtroEnteroQuery(req.query.orden_id);
+        const proveedorId = filtroEnteroQuery(req.query.proveedor_id);
+        const estado = String(req.query.estado || '').trim().toUpperCase();
+        const result = await pool.query(`
+
+            SELECT f.*, o.tipo AS orden_tipo, o.numero AS orden_numero,
+                o.total_igv AS orden_total_igv, o.moneda AS orden_moneda,
+                COALESCE((
+                    SELECT SUM(f2.total) FROM facturas f2
+                    WHERE f2.orden_id = f.orden_id AND f2.estado <> 'ANULADA'
+                ), 0) AS orden_facturado,
+                COALESCE(o.total_igv, 0) - COALESCE((
+                    SELECT SUM(f2.total) FROM facturas f2
+                    WHERE f2.orden_id = f.orden_id AND f2.estado <> 'ANULADA'
+                ), 0) AS orden_saldo
+            FROM facturas f
+            JOIN ordenes_compras_servicios o ON o.id = f.orden_id
+            WHERE ($1::int IS NULL OR f.orden_id = $1)
+              AND ($2::int IS NULL OR f.proveedor_id = $2)
+              AND ($3 = '' OR f.estado = $3)
+            ORDER BY f.fecha_factura DESC, f.id DESC
+            LIMIT 500`, [ordenId, proveedorId, estado]);
+        res.json({ success: true, facturas: result.rows });
+    } catch (err) {
+        console.error('Error GET facturas:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+// Totales por estado y moneda. Agrupar por moneda es obligatorio: sumar soles y
+// dolares en una misma cifra daria un numero sin sentido.
+app.get('/api/bd/facturas/resumen', requerirRolBDGeneral, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT moneda, estado,
+                COUNT(*)::int AS cantidad,
+                COALESCE(SUM(subtotal), 0) AS subtotal,
+                COALESCE(SUM(igv), 0) AS igv,
+                COALESCE(SUM(total), 0) AS total
+            FROM facturas
+            GROUP BY moneda, estado
+            ORDER BY moneda ASC, estado ASC`, []);
+        res.json({ success: true, resumen: result.rows });
+    } catch (err) {
+        console.error('Error GET resumen facturas:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+// Ordenes con su saldo, para el selector. El filtro 'pendiente' deja pasar solo
+// las que aun no estan facturadas; 'facturadas' solo las que ya lo estan.
+app.get('/api/bd/facturas/ordenes', requerirRolBDGeneral, async (req, res) => {
+    try {
+        const proveedorId = filtroEnteroQuery(req.query.proveedor_id);
+        const filtro = String(req.query.filtro || 'todas').trim().toLowerCase();
+        const result = await pool.query(`
+            SELECT o.id, o.tipo, o.numero, o.fecha_orden, o.estado, o.moneda, o.total, o.igv, o.total_igv,
+                o.proveedor_id,
+                p.nombre AS proveedor_nombre,
+                COALESCE((SELECT SUM(f.total) FROM facturas f WHERE f.orden_id = o.id AND f.estado <> 'ANULADA'), 0) AS facturado,
+                COALESCE(o.total_igv, 0) - COALESCE((SELECT SUM(f.total) FROM facturas f WHERE f.orden_id = o.id AND f.estado <> 'ANULADA'), 0) AS saldo
+            FROM ordenes_compras_servicios o
+            LEFT JOIN proveedores p ON p.id = o.proveedor_id
+            WHERE ($1::int IS NULL OR o.proveedor_id = $1)
+              AND o.estado <> 'CANCELADA'
+              AND (
+                ($2 = 'pendiente' AND COALESCE(o.total_igv, 0) - COALESCE((SELECT SUM(f.total) FROM facturas f WHERE f.orden_id = o.id AND f.estado <> 'ANULADA'), 0) > 0.01)
+                OR ($2 = 'facturadas' AND COALESCE((SELECT SUM(f.total) FROM facturas f WHERE f.orden_id = o.id AND f.estado <> 'ANULADA'), 0) > 0)
+                OR $2 = 'todas'
+              )
+            ORDER BY o.id DESC`, [proveedorId, filtro]);
+        res.json({ success: true, ordenes: result.rows });
+    } catch (err) {
+        console.error('Error GET ordenes facturables:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+app.get('/api/bd/facturas/:id', requerirRolBDGeneral, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ success: false, mensaje: 'ID de factura no válido.' });
+        }
+        const result = await pool.query(`
+            SELECT f.*, o.tipo AS orden_tipo, o.numero AS orden_numero
+            FROM facturas f
+            JOIN ordenes_compras_servicios o ON o.id = f.orden_id
+            WHERE f.id = $1`, [id]);
+        if (!result.rows.length) {
+            return res.status(404).json({ success: false, mensaje: 'La factura no existe.' });
+        }
+        res.json({ success: true, factura: result.rows[0] });
+    } catch (err) {
+        console.error('Error GET factura:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+app.post('/api/bd/facturas', requerirRolBDGeneral, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const cuerpo = req.body || {};
+        const tipoComprobante = TIPOS_COMPROBANTE.includes(String(cuerpo.tipo_comprobante || '').trim().toUpperCase())
+            ? String(cuerpo.tipo_comprobante).trim().toUpperCase() : 'FACTURA';
+        const serie = String(cuerpo.serie || '').trim().toUpperCase();
+        const numero = String(cuerpo.numero || '').trim();
+        const ordenId = parseInt(cuerpo.orden_id, 10);
+        const subtotal = Number(cuerpo.subtotal);
+        const estado = ESTADOS_FACTURA.includes(String(cuerpo.estado || '').trim().toUpperCase())
+            ? String(cuerpo.estado).trim().toUpperCase() : 'PENDIENTE';
+
+        if (!serie || !numero) {
+            return res.status(400).json({ success: false, mensaje: 'Ingrese la serie y el número del comprobante.' });
+        }
+        if (!Number.isInteger(ordenId) || ordenId <= 0) {
+            return res.status(400).json({ success: false, mensaje: 'Seleccione la orden a facturar.' });
+        }
+        if (!Number.isFinite(subtotal) || subtotal < 0) {
+            return res.status(400).json({ success: false, mensaje: 'El subtotal debe ser un número mayor o igual a 0.' });
+        }
+        const fechaFactura = String(cuerpo.fecha_factura || '').trim();
+
+        await client.query('BEGIN');
+        // El nombre del proveedor viene por join: la orden guarda el id, no el
+        // texto. La factura lo copia para poder mostrarlo aunque el proveedor se
+        // de de baja despues.
+        const orden = await client.query(
+            `SELECT o.*, p.nombre AS proveedor_nombre
+             FROM ordenes_compras_servicios o
+             LEFT JOIN proveedores p ON p.id = o.proveedor_id
+             WHERE o.id = $1`, [ordenId]
+        );
+        if (!orden.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'La orden no existe.' });
+        }
+        // El proveedor lo toma la orden, no el cuerpo: es la orden la que sabe a
+        // quien se compro. Aceptarlo del cliente permitiria colgar una factura de
+        // un proveedor que no es el de la orden.
+        // El IGV se calcula aqui desde el subtotal y el porcentaje. El cliente no
+        // puede fijar el total: si lo hiciera, el saldo de la orden dejaria de
+        // cuadrar contra lo facturado.
+        const igvPct = acotarIgvPct(cuerpo.igv_pct);
+        const igv = redondear2(subtotal * igvPct / 100);
+        const total = redondear2(subtotal + igv);
+        // fecha_factura es NOT NULL en la tabla: si no viene, se fecha hoy en vez
+        // de mandar null y dejar que la base rechace la factura entera.
+        const fechaDefecto = new Date().toISOString().slice(0, 10);
+
+        const ins = await client.query(
+            `INSERT INTO facturas
+                (tipo_comprobante, serie, numero, fecha_factura, orden_id, proveedor_id, proveedor_nombre,
+                 moneda, igv_pct, subtotal, igv, total, estado, fecha_pago, observaciones, usuario_registro)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+             RETURNING *`,
+            [
+                tipoComprobante, serie, numero, fechaFactura || fechaDefecto, ordenId,
+                orden.rows[0].proveedor_id, orden.rows[0].proveedor_nombre,
+                normalizarMoneda(cuerpo.moneda || orden.rows[0].moneda), igvPct,
+                redondear2(subtotal), igv, total, estado,
+                String(cuerpo.fecha_pago || '').trim() || null,
+                String(cuerpo.observaciones || '').trim(), req.usuario
+            ]
+        );
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: 'Factura registrada correctamente.', factura: ins.rows[0] });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        if (err.code === '23505') {
+            return res.status(400).json({ success: false, mensaje: 'Ya existe una factura con ese tipo, serie y número.' });
+        }
+        if (err.code === '23503') {
+            return res.status(400).json({ success: false, mensaje: 'La factura no pudo vincularse a la orden indicada.' });
+        }
+        console.error('Error crear factura:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al registrar la factura: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
+app.put('/api/bd/facturas/:id', requerirRolBDGeneral, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ success: false, mensaje: 'ID de factura no válido.' });
+        }
+        const cuerpo = req.body || {};
+        const numero = String(cuerpo.numero || '').trim();
+        const subtotal = Number(cuerpo.subtotal);
+        if (!numero) {
+            return res.status(400).json({ success: false, mensaje: 'Ingrese el número del comprobante.' });
+        }
+        if (!Number.isFinite(subtotal) || subtotal < 0) {
+            return res.status(400).json({ success: false, mensaje: 'El subtotal debe ser un número mayor o igual a 0.' });
+        }
+        const estado = ESTADOS_FACTURA.includes(String(cuerpo.estado || '').trim().toUpperCase())
+            ? String(cuerpo.estado).trim().toUpperCase() : 'PENDIENTE';
+
+        await client.query('BEGIN');
+        const actual = await client.query('SELECT * FROM facturas WHERE id = $1', [id]);
+        if (!actual.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'La factura no existe.' });
+        }
+        // El tipo forma parte de la llave unica del comprobante, asi que si la
+        // pantalla lo manda hay que guardarlo: si no, la fila quedaria con un tipo
+        // distinto del que se ve en pantalla y del que protege el indice unico.
+        const tipoPedido = String(cuerpo.tipo_comprobante || '').trim().toUpperCase();
+        const tipoComprobante = TIPOS_COMPROBANTE.includes(tipoPedido)
+            ? tipoPedido
+            : String(actual.rows[0].tipo_comprobante || 'FACTURA');
+        // Cambiar subtotal o porcentaje recalcula igv y total; mover el total a
+        // mano lo dejaria inconsistente con la base.
+        const igvPct = acotarIgvPct(cuerpo.igv_pct);
+        const igv = redondear2(subtotal * igvPct / 100);
+        const total = redondear2(subtotal + igv);
+        // No se cae a la fecha actual al editar: si el cuerpo no trae fecha se
+        // conserva la que ya tenia la factura. Mandar null a una columna NOT NULL
+        // haria fallar toda la edicion por un campo que el usuario ni toco.
+        const fechaActual = aFechaSql(actual.rows[0].fecha_factura);
+        const fechaNueva = aFechaSql(cuerpo.fecha_factura) || fechaActual;
+        const upd = await client.query(
+            `UPDATE facturas SET tipo_comprobante = $1, serie = $2, numero = $3, fecha_factura = $4, subtotal = $5, igv_pct = $6,
+                    igv = $7, total = $8, moneda = $9, estado = $10, fecha_pago = $11, observaciones = $12
+             WHERE id = $13 RETURNING *`,
+            [
+                tipoComprobante, String(cuerpo.serie || '').trim().toUpperCase(), numero,
+                fechaNueva,
+                redondear2(subtotal), igvPct, igv, total,
+                normalizarMoneda(cuerpo.moneda), estado,
+                String(cuerpo.fecha_pago || '').trim() || null,
+                String(cuerpo.observaciones || '').trim(), id
+            ]
+        );
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: 'Factura actualizada correctamente.', factura: upd.rows[0] });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        if (err.code === '23505') {
+            return res.status(400).json({ success: false, mensaje: 'Ya existe una factura con ese tipo, serie y número.' });
+        }
+        console.error('Error editar factura:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al actualizar la factura: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// Registrar el pago es un cambio de estado, no una edicion del documento: por
+// eso va aparte y solo mueve estado y fecha_pago.
+app.post('/api/bd/facturas/:id/pagar', requerirRolBDGeneral, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ success: false, mensaje: 'ID de factura no válido.' });
+        }
+        const fechaPago = String((req.body || {}).fecha_pago || '').trim();
+        const upd = await pool.query(
+            `UPDATE facturas SET estado = 'PAGADA', fecha_pago = $1 WHERE id = $2 RETURNING *`,
+            [fechaPago || new Date().toISOString().slice(0, 10), id]
+        );
+        if (!upd.rows.length) {
+            return res.status(404).json({ success: false, mensaje: 'La factura no existe.' });
+        }
+        res.json({ success: true, mensaje: 'Factura marcada como pagada.', factura: upd.rows[0] });
+    } catch (err) {
+        console.error('Error pagar factura:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+app.delete('/api/bd/facturas/:id', requerirRolBDGeneral, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ success: false, mensaje: 'ID de factura no válido.' });
+        }
+        const del = await pool.query('DELETE FROM facturas WHERE id = $1 RETURNING numero', [id]);
+        if (!del.rows.length) {
+            return res.status(404).json({ success: false, mensaje: 'La factura no existe.' });
+        }
+        res.json({ success: true, mensaje: 'Factura eliminada.' });
+    } catch (err) {
+        console.error('Error eliminar factura:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
 // ---- STOCK DE PROVEEDORES ----
 app.get('/api/bd/stock-proveedores', requerirRolBDGeneral, async (req, res) => {
     try {
@@ -3543,4 +4119,9 @@ if (require.main === module) {
     });
 }
 
-module.exports = { app, parsearCabeceraSUNAT, detectarItemsTabla, extraerDireccionSUNAT };
+// Los helpers de calculo se exportan para poder probarlos sin levantar el
+// servidor: son las reglas que definen los totales de orden y de factura.
+module.exports = {
+    app, parsearCabeceraSUNAT, detectarItemsTabla, extraerDireccionSUNAT,
+    IGV_POR_DEFECTO, normalizarMoneda, redondear2, normalizarItemsOrden
+};

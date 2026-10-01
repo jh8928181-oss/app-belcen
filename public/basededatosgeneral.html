@@ -62,6 +62,15 @@
         }
         h3.teal { border-bottom-color: rgba(23, 162, 184, 0.35); color: #0a6ea8; }
         h3.ambar { border-bottom-color: rgba(255, 149, 0, 0.4); color: #a05a00; }
+        .borde-morado { border-top: 6px solid #7c3aed; }
+        h3.morado { border-bottom-color: rgba(124, 58, 237, 0.35); color: #6d28d9; }
+        .estado-factura-pagada { background: #dcfce7; color: #166534; }
+        .estado-factura-pendiente { background: #fef3c7; color: #92400e; }
+        .estado-factura-anulada { background: #fee2e2; color: #991b1b; }
+        .var-precio { font-weight: 800; }
+        .var-precio.sube { color: #b91c1c; }
+        .var-precio.baja { color: #15803d; }
+
 
         .tabla-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 14px; margin-top: 15px; }
         .tabla-wrap::-webkit-scrollbar { height: 6px; }
@@ -159,6 +168,8 @@
         .pestana.activa { background: #fff; color: var(--azul); border-color: var(--azul); box-shadow: var(--sombra); }
         .pestana.activa.teal-act { color: var(--teal); border-color: var(--teal); }
         .pestana.activa.ambar-act { color: #a05a00; border-color: var(--ambar); }
+        .pestana.activa.morado-act { color: #7c3aed; border-color: #7c3aed; }
+
 
         .oculto { display: none !important; }
 
@@ -269,6 +280,8 @@
             <button class="pestana activa" id="pestanaBtnProv" onclick="mostrarPestana('prov')">🏢 Proveedores y Categorías</button>
             <button class="pestana teal-act" id="pestanaBtnOrden" onclick="mostrarPestana('orden')">📑 Órdenes OC / OS</button>
             <button class="pestana ambar-act" id="pestanaBtnStock" onclick="mostrarPestana('stock')">📦 Stock de Proveedores</button>
+            <button class="pestana morado-act" id="pestanaBtnPrecio" onclick="mostrarPestana('precio')">💰 Precios y Facturas</button>
+
         </div>
 
         <!-- ============ PESTAÑA 1: PROVEEDORES ============ -->
@@ -428,10 +441,22 @@
                                 <option value="CANCELADA">Cancelada</option>
                             </select>
                         </div>
+                        <div class="campo-flex" style="min-width:110px;">
+                            <label>Moneda</label>
+                            <select id="ordenMoneda">
+                                <option value="PEN">S/ — Soles</option>
+                                <option value="USD">$ — Dólares</option>
+                            </select>
+                        </div>
+                        <div class="campo-flex" style="min-width:100px;">
+                            <label>IGV %</label>
+                            <input type="number" id="ordenIgvPct" min="0" max="100" step="0.01" value="18" oninput="recalcularTotalOrden()">
+                        </div>
                         <div class="campo-flex" style="flex:2; min-width:160px;">
                             <label>Observaciones</label>
                             <input type="text" id="ordenObs" placeholder="Notas de la orden">
                         </div>
+
                     </div>
 
                     <h3 class="ambar" style="margin-top:18px;">🧾 ÍTEMS DE LA ORDEN</h3>
@@ -457,12 +482,307 @@
 
                     <div class="total-box">
                         <div class="total-item">
-                            <label>Total de la orden (S/)</label>
+                            <label>Subtotal (sin IGV)</label>
+                            <div class="valor" id="ordenSubtotal">0.00</div>
+                        </div>
+                        <div class="total-item">
+                            <label>IGV</label>
+                            <div class="valor" id="ordenIgv">0.00</div>
+                        </div>
+                        <div class="total-item">
+                            <label>Total de la orden</label>
                             <div class="valor" id="ordenTotal">0.00</div>
                         </div>
                     </div>
+                    <div class="aviso aviso-ambar" style="margin-top:10px;">ℹ️ El subtotal es la base imponible. El IGV lo calcula el servidor al guardar; lo que se muestra aquí es solo para revisar.</div>
 
-                    <div class="footer-acciones">
+
+        <!-- ============ PESTAÑA 4: PRECIOS Y FACTURAS ============ -->
+        <div id="pestanaPrecio" class="oculto">
+
+            <div class="tarjeta borde-morado reveal">
+                <h3 class="morado">💲 PRECIOS POR PROVEEDOR</h3>
+                <div class="aviso aviso-info">ℹ️ Precio de referencia de cada insumo por proveedor. Se puede editar y agregar. Cada cambio queda anotado en el <b>historial de precios</b> de abajo.</div>
+                <div class="filtro-bar">
+                    <div class="campo-flex" style="min-width:180px;">
+                        <label>Filtrar por proveedor</label>
+                        <select id="filtroPrecioProveedor"><option value="">Todos</option></select>
+                    </div>
+                    <div class="campo-flex" style="min-width:110px;">
+                        <label>Moneda</label>
+                        <select id="filtroPrecioMoneda">
+                            <option value="">Todas</option>
+                            <option value="PEN">S/ — Soles</option>
+                            <option value="USD">$ — Dólares</option>
+                        </select>
+                    </div>
+                    <div class="campo-flex" style="min-width:170px;">
+                        <label>Buscar producto</label>
+                        <input type="text" id="filtroPrecioProducto" placeholder="Nombre del insumo">
+                    </div>
+                    <div class="campo-flex accion" style="min-width:120px;">
+                        <label>&nbsp;</label>
+                        <button class="btn" onclick="cargarPrecios()">🔍 Filtrar</button>
+                    </div>
+                    <div class="campo-flex accion" style="min-width:150px;">
+                        <label>&nbsp;</label>
+                        <button class="btn btn-verde" onclick="nuevoPrecio()">➕ Agregar Precio</button>
+                    </div>
+                </div>
+
+                <div id="formPrecio" class="oculto" style="margin-top:18px; padding-top:16px; border-top:1px solid rgba(0,0,0,0.08);">
+                    <div class="filtro-bar">
+                        <div class="campo-flex" style="min-width:200px;">
+                            <label>Proveedor *</label>
+                            <select id="precioProveedor"><option value="">Seleccione...</option></select>
+                        </div>
+                        <div class="campo-flex" style="flex:2; min-width:210px;">
+                            <label>Producto / Servicio *</label>
+                            <input type="text" id="precioProducto" placeholder="Ej. TONSIL SUPREME 169 0025">
+                        </div>
+                        <div class="campo-flex" style="min-width:110px;">
+                            <label>Unidad</label>
+                            <input type="text" id="precioUnidad" placeholder="KG" value="UNIDADES">
+                        </div>
+                        <div class="campo-flex" style="min-width:120px;">
+                            <label>Precio *</label>
+                            <input type="number" id="precioValor" min="0" step="0.0001" value="0">
+                        </div>
+                        <div class="campo-flex" style="min-width:110px;">
+                            <label>Moneda</label>
+                            <select id="precioMoneda">
+                                <option value="PEN">S/ — Soles</option>
+                                <option value="USD">$ — Dólares</option>
+                            </select>
+                        </div>
+                        <div class="campo-flex accion" style="min-width:120px;">
+                            <label>&nbsp;</label>
+                            <button class="btn btn-verde" onclick="guardarPrecio()">💾 Guardar</button>
+                        </div>
+                        <div class="campo-flex accion" style="min-width:120px;">
+                            <label>&nbsp;</label>
+                            <button class="btn btn-gris" onclick="cancelarEdicionPrecio()">✖ Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tabla-wrap" style="margin-top:14px;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Proveedor</th>
+                                <th>Producto</th>
+                                <th>Unidad</th>
+                                <th class="text-center">Precio</th>
+                                <th>Moneda</th>
+                                <th>Último cambio</th>
+                                <th class="text-center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaPrecios">
+                            <tr><td colspan="7" class="text-center sin-registros">Cargando precios...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="tarjeta borde-morado reveal">
+                <h3 class="morado">🧾 FACTURAS DE OC / OS</h3>
+                <div class="aviso aviso-info">ℹ️ Cada factura se registra contra <b>una orden</b>, y una orden puede tener <b>varias facturas</b>. El IGV lo calcula el servidor; el total nunca se escribe a mano.</div>
+                <div class="filtro-bar">
+                    <div class="campo-flex" style="min-width:150px;">
+                        <label>Ordenes</label>
+                        <select id="filtroFacturaOrdenes">
+                            <option value="todas">Todas las órdenes</option>
+                            <option value="pendiente">Solo por facturar</option>
+                            <option value="facturadas">Solo facturadas</option>
+                        </select>
+                    </div>
+                    <div class="campo-flex" style="min-width:150px;">
+                        <label>Estado</label>
+                        <select id="filtroFacturaEstado">
+                            <option value="">Todos</option>
+                            <option value="PENDIENTE">Pendiente</option>
+                            <option value="PAGADA">Pagada</option>
+                            <option value="ANULADA">Anulada</option>
+                        </select>
+                    </div>
+                    <div class="campo-flex" style="min-width:180px;">
+                        <label>Proveedor</label>
+                        <select id="filtroFacturaProveedor"><option value="">Todos</option></select>
+                    </div>
+                    <div class="campo-flex accion" style="min-width:120px;">
+                        <label>&nbsp;</label>
+                        <button class="btn" onclick="cargarFacturas()">🔍 Filtrar</button>
+                    </div>
+                    <div class="campo-flex accion" style="min-width:150px;">
+                        <label>&nbsp;</label>
+                        <button class="btn btn-verde" onclick="nuevaFactura()">➕ Nueva Factura</button>
+                    </div>
+                </div>
+
+                <div id="formFactura" class="oculto" style="margin-top:18px; padding-top:16px; border-top:1px solid rgba(0,0,0,0.08);">
+                    <div class="filtro-bar">
+                        <div class="campo-flex" style="min-width:130px;">
+                            <label>Comprobante</label>
+                            <select id="facturaTipo">
+                                <option value="FACTURA">Factura</option>
+                                <option value="BOLETA">Boleta</option>
+                                <option value="NOTA_CREDITO">Nota de crédito</option>
+                            </select>
+                        </div>
+                        <div class="campo-flex" style="min-width:100px;">
+                            <label>Serie</label>
+                            <input type="text" id="facturaSerie" placeholder="F001" value="F001">
+                        </div>
+                        <div class="campo-flex" style="min-width:120px;">
+                            <label>Número *</label>
+                            <input type="text" id="facturaNumero" placeholder="00012345">
+                        </div>
+                        <div class="campo-flex" style="min-width:130px;">
+                            <label>Fecha</label>
+                            <input type="date" id="facturaFecha">
+                        </div>
+                        <div class="campo-flex" style="flex:2; min-width:230px;">
+                            <label>Orden a facturar *</label>
+                            <select id="facturaOrden"><option value="">Seleccione...</option></select>
+                        </div>
+                        <div class="campo-flex accion" style="min-width:130px;">
+                            <label>&nbsp;</label>
+                            <button class="btn" onclick="cargarFacturaOrdenes()">🔄 Actualizar</button>
+                        </div>
+                    </div>
+                    <div class="filtro-bar">
+                        <div class="campo-flex" style="min-width:130px;">
+                            <label>Subtotal (sin IGV) *</label>
+                            <input type="number" id="facturaSubtotal" min="0" step="0.01" value="0" oninput="recalcularFactura()">
+                        </div>
+                        <div class="campo-flex" style="min-width:100px;">
+                            <label>IGV %</label>
+                            <input type="number" id="facturaIgvPct" min="0" max="100" step="0.01" value="18" oninput="recalcularFactura()">
+                        </div>
+                        <div class="campo-flex" style="min-width:130px;">
+                            <label>IGV</label>
+                            <input type="text" id="facturaIgv" value="0.00" readonly>
+                        </div>
+                        <div class="campo-flex" style="min-width:140px;">
+                            <label>Total</label>
+                            <input type="text" id="facturaTotal" value="0.00" readonly>
+                        </div>
+                        <div class="campo-flex" style="min-width:110px;">
+                            <label>Moneda</label>
+                            <select id="facturaMoneda">
+                                <option value="PEN">S/ — Soles</option>
+                                <option value="USD">$ — Dólares</option>
+                            </select>
+                        </div>
+                        <div class="campo-flex" style="min-width:120px;">
+                            <label>Estado</label>
+                            <select id="facturaEstado">
+                                <option value="PENDIENTE">Pendiente</option>
+                                <option value="PAGADA">Pagada</option>
+                                <option value="ANULADA">Anulada</option>
+                            </select>
+                        </div>
+                        <div class="campo-flex" style="min-width:130px;">
+                            <label>Fecha de pago</label>
+                            <input type="date" id="facturaFechaPago">
+                        </div>
+                        <div class="campo-flex" style="min-width:130px;">
+                            <label>Observaciones</label>
+                            <input type="text" id="facturaObs" placeholder="Notas">
+                        </div>
+                        <div class="campo-flex accion" style="min-width:120px;">
+                            <label>&nbsp;</label>
+                            <button class="btn btn-verde" onclick="guardarFactura()">💾 Guardar</button>
+                        </div>
+                        <div class="campo-flex accion" style="min-width:120px;">
+                            <label>&nbsp;</label>
+                            <button class="btn btn-gris" onclick="cancelarEdicionFactura()">✖ Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tabla-wrap" style="margin-top:14px;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Comprobante</th>
+                                <th>Fecha</th>
+                                <th>Orden</th>
+                                <th>Proveedor</th>
+                                <th class="text-center">Subtotal</th>
+                                <th class="text-center">IGV</th>
+                                <th class="text-center">Total</th>
+                                <th>Estado</th>
+                                <th>Saldo orden</th>
+                                <th class="text-center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaFacturas">
+                            <tr><td colspan="10" class="text-center sin-registros">Cargando facturas...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="tarjeta borde-morado reveal">
+                <h3 class="morado">💳 ESTADO DE PAGOS</h3>
+                <div class="aviso aviso-ambar">ℹ️ Los totales van <b>separados por moneda</b>: sumar soles y dólares en una misma cifra daría un número sin sentido.</div>
+                <div class="tabla-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Moneda</th>
+                                <th>Estado</th>
+                                <th class="text-center">Facturas</th>
+                                <th class="text-center">Subtotal</th>
+                                <th class="text-center">IGV</th>
+                                <th class="text-center">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaResumenFacturas">
+                            <tr><td colspan="6" class="text-center sin-registros">Cargando resumen...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="tarjeta borde-morado reveal">
+                <h3 class="morado">📜 HISTORIAL DE PRECIOS</h3>
+                <div class="filtro-bar">
+                    <div class="campo-flex" style="min-width:180px;">
+                        <label>Filtrar por proveedor</label>
+                        <select id="filtroHistorialProveedor"><option value="">Todos</option></select>
+                    </div>
+                    <div class="campo-flex accion" style="min-width:120px;">
+                        <label>&nbsp;</label>
+                        <button class="btn" onclick="cargarHistorialPrecios()">🔍 Filtrar</button>
+                    </div>
+                </div>
+                <div class="tabla-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Proveedor</th>
+                                <th>Producto</th>
+                                <th class="text-center">Precio anterior</th>
+                                <th class="text-center">Precio nuevo</th>
+                                <th>Moneda</th>
+                                <th>Cambió</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaHistorialPrecios">
+                            <tr><td colspan="7" class="text-center sin-registros">Cargando historial...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer-acciones">
+
                         <button class="btn btn-verde" onclick="guardarOrden()">💾 Guardar Orden</button>
                         <button class="btn btn-gris" onclick="cancelarEdicionOrden()">✖ Cancelar edición</button>
                     </div>
@@ -482,13 +802,15 @@
                                 <th class="text-center">Ítems</th>
                                 <th class="text-center">Cantidad</th>
                                 <th class="text-center">Recibido</th>
-                                <th class="text-center">Total (S/)</th>
+                                <th class="text-center">Subtotal</th>
+                                <th class="text-center">Total c/IGV</th>
                                 <th>Estado</th>
                                 <th class="text-center">Acciones</th>
                             </tr>
                         </thead>
                         <tbody id="tablaOrdenes">
-                            <tr><td colspan="10" class="text-center sin-registros">Cargando órdenes...</td></tr>
+                            <tr><td colspan="11" class="text-center sin-registros">Cargando órdenes...</td></tr>
+
                         </tbody>
                     </table>
                 </div>
@@ -643,6 +965,21 @@
             return s;
         }
 
+        // Mismo redondeo que el del servidor, para que la vista previa no muestre
+        // un centimo mas o menos de lo que quedara guardado.
+        function redondear2(valor) {
+            return Math.round((Number(valor) + Number.EPSILON) * 100) / 100;
+        }
+
+        function simboloMoneda(cod) {
+            return String(cod || 'PEN').toUpperCase() === 'USD' ? '$' : 'S/';
+        }
+
+        function fmtMoneda(valor, cod) {
+            return simboloMoneda(cod) + ' ' + Number(valor || 0).toFixed(2);
+        }
+
+
         function etiquetarTablas() {
             document.querySelectorAll('.tabla-wrap table').forEach(tabla => {
                 const ths = Array.from(tabla.querySelectorAll('thead th'))
@@ -669,13 +1006,23 @@
             document.getElementById('pestanaProv').classList.toggle('oculto', nombre !== 'prov');
             document.getElementById('pestanaOrden').classList.toggle('oculto', nombre !== 'orden');
             document.getElementById('pestanaStock').classList.toggle('oculto', nombre !== 'stock');
+            document.getElementById('pestanaPrecio').classList.toggle('oculto', nombre !== 'precio');
             document.getElementById('pestanaBtnProv').classList.toggle('activa', nombre === 'prov');
             document.getElementById('pestanaBtnOrden').classList.toggle('activa', nombre === 'orden');
             document.getElementById('pestanaBtnStock').classList.toggle('activa', nombre === 'stock');
+            document.getElementById('pestanaBtnPrecio').classList.toggle('activa', nombre === 'precio');
             if (nombre === 'prov') cargarProveedores();
             if (nombre === 'orden') { poblarSelectProveedores(); cargarOrdenes(); }
             if (nombre === 'stock') { poblarSelectProveedores(); cargarStock(); cargarMovimientos(); }
+            if (nombre === 'precio') {
+                poblarSelectProveedores();
+                cargarPrecios();
+                cargarHistorialPrecios();
+                cargarResumenFacturas();
+                cargarFacturaOrdenes();
+            }
         }
+
 
         async function api(url, opciones) {
             const res = await fetch(url, opciones);
@@ -815,16 +1162,17 @@
         function poblarSelectProveedores() {
             api('/api/bd/proveedores').then(data => {
                 const opts = data.proveedores.map(p => `<option value="${p.id}">${escapeHtml(p.nombre)}</option>`).join('');
-                const selects = ['ordenProveedor', 'filtroOrdenProveedor', 'filtroStockProveedor'];
+                const selects = ['ordenProveedor', 'filtroOrdenProveedor', 'filtroStockProveedor', 'precioProveedor', 'filtroPrecioProveedor', 'filtroFacturaProveedor', 'filtroHistorialProveedor'];
                 selects.forEach(id => {
                     const el = document.getElementById(id);
                     if (!el) return;
                     const actual = el.value;
-                    el.innerHTML = `<option value="">${id === 'ordenProveedor' ? 'Seleccione...' : 'Todos'}</option>` + opts;
+                    el.innerHTML = `<option value="">${id === 'ordenProveedor' || id === 'precioProveedor' ? 'Seleccione...' : 'Todos'}</option>` + opts;
                     if (actual) el.value = actual;
                 });
             }).catch(() => {});
         }
+
 
         // ============ ÓRDENES OC/OS ============
         function nuevaOrden() {
@@ -832,10 +1180,385 @@
             document.getElementById('formOrden').classList.remove('oculto');
             document.getElementById('ordenTipo').value = 'OC';
             document.getElementById('ordenNumero').value = '';
-            document.getElementById('ordenFecha').value = new Date().toISOString().slice(0, 10);
+        // ============ PRECIOS Y FACTURAS ============
+        let precioEditando = null;
+        let facturaEditando = null;
+
+        function nuevoPrecio() {
+            precioEditando = null;
+            document.getElementById('formPrecio').classList.remove('oculto');
+            document.getElementById('precioProveedor').value = '';
+            document.getElementById('precioProducto').value = '';
+            document.getElementById('precioUnidad').value = 'UNIDADES';
+            document.getElementById('precioValor').value = '0';
+            document.getElementById('precioMoneda').value = 'PEN';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function cancelarEdicionPrecio() {
+            precioEditando = null;
+            document.getElementById('formPrecio').classList.add('oculto');
+            document.getElementById('precioProveedor').disabled = false;
+        }
+
+        function editarPrecio(id) {
+            const fila = document.querySelector('#tablaPrecios tr[data-precio="' + id + '"]');
+            if (!fila) return;
+            precioEditando = id;
+            document.getElementById('formPrecio').classList.remove('oculto');
+            document.getElementById('precioProveedor').value = fila.dataset.proveedorId || '';
+            // El proveedor no se puede cambiar al editar: el precio pertenece a
+            // ese proveedor y el backend no lo mueve de proveedor.
+            document.getElementById('precioProveedor').disabled = true;
+            document.getElementById('precioProducto').value = fila.dataset.producto || '';
+            document.getElementById('precioUnidad').value = fila.dataset.unidad || 'UNIDADES';
+            document.getElementById('precioValor').value = fila.dataset.precio || '0';
+            document.getElementById('precioMoneda').value = fila.dataset.moneda || 'PEN';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        async function cargarPrecios() {
+            try {
+                const provId = document.getElementById('filtroPrecioProveedor').value;
+                const moneda = document.getElementById('filtroPrecioMoneda').value;
+                const producto = document.getElementById('filtroPrecioProducto').value.trim();
+                const qs = new URLSearchParams({ proveedor_id: provId || '', moneda, producto });
+                const data = await api('/api/bd/precios?' + qs.toString());
+                const tbody = document.getElementById('tablaPrecios');
+                if (!data.precios.length) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center sin-registros">Sin precios para los filtros seleccionados.</td></tr>';
+                } else {
+                    tbody.innerHTML = data.precios.map(p => `
+                        <tr data-precio="${p.id}" data-proveedor-id="${p.proveedor_id}"
+                            data-producto="${escapeHtml(p.producto)}" data-unidad="${escapeHtml(p.unidad)}"
+                            data-precio="${Number(p.precio)}" data-moneda="${escapeHtml(p.moneda)}">
+                            <td>${escapeHtml(p.proveedor_nombre)}</td>
+                            <td>${escapeHtml(p.producto)}</td>
+                            <td>${escapeHtml(p.unidad)}</td>
+                            <td class="text-center"><b>${Number(p.precio).toFixed(4).replace(/\.?0+$/, '')}</b></td>
+                            <td>${simboloMoneda(p.moneda)}</td>
+                            <td>${fmtFecha(p.ultimo_cambio)}</td>
+                            <td class="text-center">
+                                <div class="acciones-celda" style="justify-content:center;">
+                                    <button class="btn btn-mini" onclick="editarPrecio(${p.id})">✏️</button>
+                                    <button class="btn btn-mini btn-rojo" onclick="eliminarPrecio(${p.id})">🗑️</button>
+                                </div>
+                            </td>
+                        </tr>`).join('');
+                }
+                etiquetarTablas();
+            } catch (err) {
+                document.getElementById('tablaPrecios').innerHTML = `<tr><td colspan="7" class="text-center sin-registros">${escapeHtml(err.message)}</td></tr>`;
+            }
+        }
+
+        async function guardarPrecio() {
+            const proveedorId = document.getElementById('precioProveedor').value;
+            const producto = document.getElementById('precioProducto').value.trim();
+            const precio = document.getElementById('precioValor').value;
+            if (!proveedorId) { alert('❌ Seleccione un proveedor.'); return; }
+            if (!producto) { alert('❌ Ingrese el producto.'); return; }
+            if (precio === '' || Number(precio) < 0) { alert('❌ Ingrese un precio válido.'); return; }
+            const cuerpo = {
+                producto,
+                unidad: document.getElementById('precioUnidad').value.trim().toUpperCase() || 'UNIDADES',
+                precio: Number(precio),
+                moneda: document.getElementById('precioMoneda').value
+            };
+            try {
+                if (precioEditando) {
+                    await api('/api/bd/precios/' + precioEditando, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
+                    mostrarMensaje('✅ Precio actualizado. Quedó anotado en el historial.', true);
+                } else {
+                    cuerpo.proveedor_id = parseInt(proveedorId, 10);
+                    await api('/api/bd/precios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
+                    mostrarMensaje('✅ Precio registrado.', true);
+                }
+                cancelarEdicionPrecio();
+                cargarPrecios();
+                cargarHistorialPrecios();
+            } catch (err) {
+                alert('❌ ' + err.message);
+            }
+        }
+
+        async function eliminarPrecio(id) {
+            if (!confirm('¿Eliminar este precio? El historial de cambios se conserva.')) return;
+            try {
+                await api('/api/bd/precios/' + id, { method: 'DELETE' });
+                mostrarMensaje('✅ Precio eliminado.', true);
+                cargarPrecios();
+                cargarHistorialPrecios();
+            } catch (err) {
+                alert('❌ ' + err.message);
+            }
+        }
+
+        async function cargarHistorialPrecios() {
+            try {
+                const provId = document.getElementById('filtroHistorialProveedor').value;
+                const qs = provId ? '?proveedor_id=' + provId : '';
+                const data = await api('/api/bd/precios/historial' + qs);
+                const tbody = document.getElementById('tablaHistorialPrecios');
+                if (!data.historial.length) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center sin-registros">Sin cambios de precio registrados.</td></tr>';
+                } else {
+                    tbody.innerHTML = data.historial.map(h => {
+                        const antes = Number(h.precio_anterior) || 0;
+                        const ahora = Number(h.precio_nuevo) || 0;
+                        const subio = ahora > antes;
+                        const clase = antes === 0 ? '' : (subio ? 'sube' : 'baja');
+                        return `
+                        <tr>
+                            <td>${fmtFecha(h.fecha_cambio)}</td>
+                            <td>${escapeHtml(h.proveedor_nombre) || '-'}</td>
+                            <td>${escapeHtml(h.producto)}</td>
+                            <td class="text-center">${antes === 0 ? '—' : fmtMoneda(antes, h.moneda)}</td>
+                            <td class="text-center"><b>${fmtMoneda(ahora, h.moneda)}</b></td>
+                            <td>${simboloMoneda(h.moneda)}</td>
+                            <td><span class="var-precio ${clase}">${antes === 0 ? 'alta' : (subio ? '▲ subió' : '▼ bajó')}</span></td>
+                        </tr>`;
+                    }).join('');
+                }
+                etiquetarTablas();
+            } catch (err) {
+                document.getElementById('tablaHistorialPrecios').innerHTML = `<tr><td colspan="7" class="text-center sin-registros">${escapeHtml(err.message)}</td></tr>`;
+            }
+        }
+
+        // El subtotal y el porcentaje son lo unico que se escribe. El IGV y el
+        // total se muestran para revisar, pero el servidor los vuelve a calcular
+        // y es el valor guardado.
+        function recalcularFactura() {
+            const subtotal = Number(document.getElementById('facturaSubtotal').value) || 0;
+            const pct = Number(document.getElementById('facturaIgvPct').value) || 0;
+            const igv = redondear2(subtotal * pct / 100);
+            document.getElementById('facturaIgv').value = igv.toFixed(2);
+            document.getElementById('facturaTotal').value = (subtotal + igv).toFixed(2);
+        }
+
+        function nuevaFactura() {
+            facturaEditando = null;
+            document.getElementById('formFactura').classList.remove('oculto');
+            document.getElementById('facturaTipo').value = 'FACTURA';
+            document.getElementById('facturaSerie').value = 'F001';
+            document.getElementById('facturaNumero').value = '';
+            document.getElementById('facturaFecha').value = new Date().toISOString().slice(0, 10);
+            document.getElementById('facturaSubtotal').value = '0';
+            document.getElementById('facturaIgvPct').value = 18;
+            document.getElementById('facturaMoneda').value = 'PEN';
+            document.getElementById('facturaEstado').value = 'PENDIENTE';
+            document.getElementById('facturaFechaPago').value = '';
+            document.getElementById('facturaObs').value = '';
+            // Las ordenes por facturar primero: es el caso de uso normal.
+            document.getElementById('filtroFacturaOrdenes').value = 'pendiente';
+            cargarFacturaOrdenes();
+            recalcularFactura();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function cancelarEdicionFactura() {
+            facturaEditando = null;
+            document.getElementById('formFactura').classList.add('oculto');
+            document.getElementById('facturaOrden').disabled = false;
+        }
+
+        async function cargarFacturaOrdenes() {
+            try {
+                const filtro = document.getElementById('filtroFacturaOrdenes').value;
+                const provId = document.getElementById('filtroFacturaProveedor').value;
+                const qs = new URLSearchParams({ filtro, proveedor_id: provId || '' });
+                const data = await api('/api/bd/facturas/ordenes?' + qs.toString());
+                const sel = document.getElementById('facturaOrden');
+                const actual = sel.value;
+                if (!data.ordenes.length) {
+                    sel.innerHTML = '<option value="">No hay órdenes para este filtro</option>';
+                    return;
+                }
+                sel.innerHTML = '<option value="">Seleccione...</option>' + data.ordenes.map(o =>
+                    `<option value="${o.id}">${o.tipo} #${escapeHtml(o.numero)} — ${escapeHtml(o.proveedor_nombre || '')} — ${fmtMoneda(o.total_igv, o.moneda)} facturado ${fmtMoneda(o.facturado, o.moneda)}${Number(o.saldo) > 0.01 ? ' — saldo ' + fmtMoneda(o.saldo, o.moneda) : ' — completa'}</option>`
+                ).join('');
+                if (actual) sel.value = actual;
+                // La moneda de la factura se propone con la de la orden elegida, para
+                // no dejar una factura en soles colgada de una orden en dolares.
+                sel.onchange = function() {
+                    const o = data.ordenes.find(x => String(x.id) === sel.value);
+                    if (o) document.getElementById('facturaMoneda').value = o.moneda || 'PEN';
+                };
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        function estadoFacturaBadge(estado) {
+            const e = String(estado || '').toUpperCase();
+            const clase = e === 'PAGADA' ? 'estado-factura-pagada' : (e === 'ANULADA' ? 'estado-factura-anulada' : 'estado-factura-pendiente');
+            return `<span class="badge ${clase}">${escapeHtml(e || 'PENDIENTE')}</span>`;
+        }
+
+        async function cargarFacturas() {
+            try {
+                const estado = document.getElementById('filtroFacturaEstado').value;
+                const provId = document.getElementById('filtroFacturaProveedor').value;
+                const qs = new URLSearchParams({ estado, proveedor_id: provId || '' });
+                const data = await api('/api/bd/facturas?' + qs.toString());
+                const tbody = document.getElementById('tablaFacturas');
+                if (!data.facturas.length) {
+                    tbody.innerHTML = '<tr><td colspan="10" class="text-center sin-registros">Sin facturas para los filtros seleccionados.</td></tr>';
+                } else {
+                    tbody.innerHTML = data.facturas.map(f => `
+                        <tr>
+                            <td><b>${escapeHtml(f.serie)}-${escapeHtml(f.numero)}</b><br><span class="badge">${escapeHtml(f.tipo_comprobante)}</span></td>
+                            <td>${fmtFecha(f.fecha_factura)}</td>
+                            <td><span class="pres ${f.orden_tipo === 'OC' ? 'oc' : 'os'}">${escapeHtml(f.orden_tipo)}</span> #${escapeHtml(f.orden_numero)}</td>
+                            <td>${escapeHtml(f.proveedor_nombre) || '-'}</td>
+                            <td class="text-center">${fmtMoneda(f.subtotal, f.moneda)}</td>
+                            <td class="text-center">${fmtMoneda(f.igv, f.moneda)}</td>
+                            <td class="text-center"><b>${fmtMoneda(f.total, f.moneda)}</b></td>
+                            <td>${estadoFacturaBadge(f.estado)}${f.fecha_pago ? '<br><small>' + fmtFecha(f.fecha_pago) + '</small>' : ''}</td>
+                            <td class="text-center">${Number(f.orden_saldo) > 0.01 ? fmtMoneda(f.orden_saldo, f.orden_moneda) : '<span style="color:#15803d;">completa</span>'}</td>
+                            <td class="text-center">
+                                <div class="acciones-celda" style="justify-content:center;">
+                                    <button class="btn btn-mini" onclick="editarFactura(${f.id})">✏️</button>
+                                    <button class="btn btn-mini btn-verde" onclick="pagarFactura(${f.id})" ${String(f.estado).toUpperCase() === 'PAGADA' ? 'disabled' : ''}>💳</button>
+                                    <button class="btn btn-mini btn-rojo" onclick="eliminarFactura(${f.id})">🗑️</button>
+                                </div>
+                            </td>
+                        </tr>`).join('');
+                }
+                etiquetarTablas();
+            } catch (err) {
+                document.getElementById('tablaFacturas').innerHTML = `<tr><td colspan="10" class="text-center sin-registros">${escapeHtml(err.message)}</td></tr>`;
+            }
+        }
+
+        async function guardarFactura() {
+            const numero = document.getElementById('facturaNumero').value.trim();
+            const ordenId = document.getElementById('facturaOrden').value;
+            const subtotal = document.getElementById('facturaSubtotal').value;
+            if (!numero) { alert('❌ Ingrese el número del comprobante.'); return; }
+            if (!ordenId) { alert('❌ Seleccione la orden a facturar.'); return; }
+            if (subtotal === '' || Number(subtotal) < 0) { alert('❌ Ingrese un subtotal válido.'); return; }
+            const cuerpo = {
+                tipo_comprobante: document.getElementById('facturaTipo').value,
+                serie: document.getElementById('facturaSerie').value.trim() || 'F001',
+                numero,
+                fecha_factura: document.getElementById('facturaFecha').value,
+                subtotal: Number(subtotal),
+                igv_pct: Number(document.getElementById('facturaIgvPct').value) || 0,
+                moneda: document.getElementById('facturaMoneda').value,
+                estado: document.getElementById('facturaEstado').value,
+                fecha_pago: document.getElementById('facturaFechaPago').value,
+                observaciones: document.getElementById('facturaObs').value.trim()
+            };
+            try {
+                if (facturaEditando) {
+                    await api('/api/bd/facturas/' + facturaEditando, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
+                    mostrarMensaje('✅ Factura actualizada.', true);
+                } else {
+                    cuerpo.orden_id = parseInt(ordenId, 10);
+                    await api('/api/bd/facturas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
+                    mostrarMensaje('✅ Factura registrada.', true);
+                }
+                cancelarEdicionFactura();
+                cargarFacturas();
+                cargarResumenFacturas();
+                cargarFacturaOrdenes();
+            } catch (err) {
+                alert('❌ ' + err.message);
+            }
+        }
+
+        async function editarFactura(id) {
+            try {
+                const data = await api('/api/bd/facturas/' + id);
+                const f = data.factura;
+                facturaEditando = id;
+                document.getElementById('formFactura').classList.remove('oculto');
+                document.getElementById('filtroFacturaOrdenes').value = 'todas';
+                await cargarFacturaOrdenes();
+                // La orden no se cambia al editar: la factura ya esta imputada a
+                // esa orden y el backend no la mueve. Se deja visible pero fija.
+                document.getElementById('facturaOrden').disabled = true;
+                document.getElementById('facturaTipo').value = f.tipo_comprobante;
+                document.getElementById('facturaSerie').value = f.serie;
+                document.getElementById('facturaNumero').value = f.numero;
+                document.getElementById('facturaFecha').value = String(f.fecha_factura || '').slice(0, 10);
+                document.getElementById('facturaOrden').value = f.orden_id;
+                document.getElementById('facturaSubtotal').value = Number(f.subtotal);
+                document.getElementById('facturaIgvPct').value = Number(f.igv_pct);
+                document.getElementById('facturaMoneda').value = f.moneda;
+                document.getElementById('facturaEstado').value = f.estado;
+                document.getElementById('facturaFechaPago').value = String(f.fecha_pago || '').slice(0, 10);
+                document.getElementById('facturaObs').value = f.observaciones || '';
+                recalcularFactura();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            } catch (err) {
+                alert('❌ ' + err.message);
+            }
+        }
+
+        async function pagarFactura(id) {
+            const fecha = prompt('Fecha de pago (AAAA-MM-DD). Deje vacío para hoy:', new Date().toISOString().slice(0, 10));
+            if (fecha === null) return;
+            try {
+                await api('/api/bd/facturas/' + id + '/pagar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fecha_pago: fecha.trim() })
+                });
+                mostrarMensaje('✅ Factura marcada como pagada.', true);
+                cargarFacturas();
+                cargarResumenFacturas();
+            } catch (err) {
+                alert('❌ ' + err.message);
+            }
+        }
+
+        async function eliminarFactura(id) {
+            if (!confirm('¿Eliminar esta factura? La orden quedará con el saldo pendiente otra vez.')) return;
+            try {
+                await api('/api/bd/facturas/' + id, { method: 'DELETE' });
+                mostrarMensaje('✅ Factura eliminada.', true);
+                cargarFacturas();
+                cargarResumenFacturas();
+                cargarFacturaOrdenes();
+            } catch (err) {
+                alert('❌ ' + err.message);
+            }
+        }
+
+        async function cargarResumenFacturas() {
+            try {
+                const data = await api('/api/bd/facturas/resumen');
+                const tbody = document.getElementById('tablaResumenFacturas');
+                if (!data.resumen.length) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center sin-registros">Todavía no hay facturas registradas.</td></tr>';
+                } else {
+                    tbody.innerHTML = data.resumen.map(r => `
+                        <tr>
+                            <td>${simboloMoneda(r.moneda)} <small>${escapeHtml(r.moneda)}</small></td>
+                            <td>${estadoFacturaBadge(r.estado)}</td>
+                            <td class="text-center">${r.cantidad}</td>
+                            <td class="text-center">${fmtMoneda(r.subtotal, r.moneda)}</td>
+                            <td class="text-center">${fmtMoneda(r.igv, r.moneda)}</td>
+                            <td class="text-center"><b>${fmtMoneda(r.total, r.moneda)}</b></td>
+                        </tr>`).join('');
+                }
+                etiquetarTablas();
+            } catch (err) {
+                document.getElementById('tablaResumenFacturas').innerHTML = `<tr><td colspan="6" class="text-center sin-registros">${escapeHtml(err.message)}</td></tr>`;
+            }
+        }
+
+        document.getElementById('ordenFecha').value = new Date().toISOString().slice(0, 10);
+
             document.getElementById('ordenProveedor').value = '';
             document.getElementById('ordenEstado').value = 'EMITIDA';
+            document.getElementById('ordenMoneda').value = 'PEN';
+            document.getElementById('ordenIgvPct').value = 18;
             document.getElementById('ordenObs').value = '';
+
             document.getElementById('tbodyItemsOrden').innerHTML = '';
             agregarFilaItem();
             recalcularTotalOrden();
@@ -878,8 +1601,17 @@
                 tr.querySelector('.item-sub').textContent = sub.toFixed(2);
                 total += sub;
             });
-            document.getElementById('ordenTotal').textContent = total.toFixed(2);
+            // Solo es una vista previa para revisar antes de guardar. El IGV que
+            // queda registrado lo recalcula el servidor desde el subtotal, asi
+            // que ningun total depende de lo que se escriba en el navegador.
+            const pct = Number(document.getElementById('ordenIgvPct').value) || 0;
+            const igv = redondear2(total * pct / 100);
+            const simbolo = document.getElementById('ordenMoneda').value === 'USD' ? '$' : 'S/';
+            document.getElementById('ordenSubtotal').textContent = simbolo + ' ' + total.toFixed(2);
+            document.getElementById('ordenIgv').textContent = simbolo + ' ' + igv.toFixed(2);
+            document.getElementById('ordenTotal').textContent = simbolo + ' ' + (total + igv).toFixed(2);
         }
+
 
         function leerItemsFormulario() {
             const items = [];
@@ -907,7 +1639,7 @@
                 const data = await api('/api/bd/ordenes?' + qs.toString());
                 const tbody = document.getElementById('tablaOrdenes');
                 if (!data.ordenes.length) {
-                    tbody.innerHTML = '<tr><td colspan="10" class="text-center sin-registros">Sin órdenes para los filtros seleccionados.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="11" class="text-center sin-registros">Sin órdenes para los filtros seleccionados.</td></tr>';
                 } else {
                     tbody.innerHTML = data.ordenes.map(o => `
                         <tr>
@@ -918,23 +1650,25 @@
                             <td class="text-center">${o.n_items}</td>
                             <td class="text-center">${fmtN(o.total_cantidad)}</td>
                             <td class="text-center">${fmtN(o.total_recibido)}</td>
-                            <td class="text-center"><b>S/ ${Number(o.total).toFixed(2)}</b></td>
+                            <td class="text-center">${fmtMoneda(o.total, o.moneda)}</td>
+                            <td class="text-center"><b>${fmtMoneda(o.total_igv, o.moneda)}</b></td>
                             <td>${estadoBadge(o.estado)}</td>
                             <td class="text-center">
                                 <div class="acciones-celda" style="justify-content:center;">
                                     <button class="btn btn-mini" onclick="editarOrden(${o.id})">✏️ Editar</button>
                                     <button class="btn btn-mini btn-verde" onclick="abrirRecibir(${o.id})" ${String(o.estado) === 'CANCELADA' ? 'disabled' : ''}>📥 Recibir</button>
                                     <button class="btn btn-mini btn-gris" onclick="cambiarEstadoOrden(${o.id})">C🔄</button>
-                                    <button class="btn btn-mini btn-rojo" onclick="eliminarOrden(${o.id})">🗑️</button>
+                                    <button class="btn btn-mini btn-rojo" onclick="eliminarOrden(${o.id})" title="Eliminar orden">🗑️</button>
                                 </div>
                             </td>
                         </tr>`).join('');
                 }
                 etiquetarTablas();
             } catch (err) {
-                document.getElementById('tablaOrdenes').innerHTML = `<tr><td colspan="10" class="text-center sin-registros">${escapeHtml(err.message)}</td></tr>`;
+                document.getElementById('tablaOrdenes').innerHTML = `<tr><td colspan="11" class="text-center sin-registros">${escapeHtml(err.message)}</td></tr>`;
             }
         }
+
 
         async function guardarOrden() {
             const tipo = document.getElementById('ordenTipo').value;
@@ -950,9 +1684,12 @@
                 fecha_orden: document.getElementById('ordenFecha').value,
                 proveedor_id: parseInt(proveedorId, 10),
                 estado: document.getElementById('ordenEstado').value,
+                moneda: document.getElementById('ordenMoneda').value,
+                igv_pct: Number(document.getElementById('ordenIgvPct').value) || 0,
                 observaciones: document.getElementById('ordenObs').value.trim(),
                 items
             };
+
             try {
                 if (ordenEditando) {
                     await api('/api/bd/ordenes/' + ordenEditando, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
@@ -979,7 +1716,10 @@
                 document.getElementById('ordenFecha').value = String(data.orden.fecha_orden || '').slice(0, 10);
                 document.getElementById('ordenProveedor').value = data.orden.proveedor_id || '';
                 document.getElementById('ordenEstado').value = data.orden.estado;
+                document.getElementById('ordenMoneda').value = data.orden.moneda || 'PEN';
+                document.getElementById('ordenIgvPct').value = Number(data.orden.igv_pct) || 0;
                 document.getElementById('ordenObs').value = data.orden.observaciones || '';
+
                 const tbody = document.getElementById('tbodyItemsOrden');
                 tbody.innerHTML = '';
                 data.items.forEach(it => {

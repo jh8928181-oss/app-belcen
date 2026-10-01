@@ -249,9 +249,9 @@ describe('ROLES_PERMITIDOS y ROLES_MODULO', () => {
     expect(ENFORCE_ROLES).toBe(false);
   });
 
-  test('ROLES_PERMITIDOS contiene los 10 roles conocidos', () => {
-    expect(ROLES_PERMITIDOS).toHaveLength(10);
-    ['admin', 'supervisor', 'produccion', 'auditoria', 'vigilancia', 'almacen', 'soplado', 'envasado', 'refinado', 'invitado']
+  test('ROLES_PERMITIDOS contiene los 11 roles conocidos', () => {
+    expect(ROLES_PERMITIDOS).toHaveLength(11);
+    ['admin', 'supervisor', 'produccion', 'auditoria', 'vigilancia', 'almacen', 'soplado', 'envasado', 'refinado', 'invitado', 'consulta_bd']
       .forEach((r) => expect(ROLES_PERMITIDOS).toContain(r));
   });
 
@@ -308,5 +308,59 @@ describe('guard de rol montado en la ruta', () => {
     expect(next).toHaveBeenCalled();
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+});
+
+// El guard de /api/bd/* lleva enforce:true, asi que ahi el bloqueo es real (403 de
+// verdad) y no un simple aviso. Es lo que impide que un rol acotado lea o escriba
+// proveedores y ordenes de compra.
+describe('guard de Base de Datos General', () => {
+  const { app } = require('../index');
+
+  function capaRuta(metodo, ruta) {
+    const stack = (app.router || app._router).stack;
+    const capa = stack.find((l) => l.route && l.route.path === ruta && l.route.methods[metodo]);
+    return capa ? capa.route.stack : null;
+  }
+
+  test('las rutas de lectura y de escritura llevan guard antes que el handler', () => {
+    [['get', '/api/bd/proveedores'], ['get', '/api/bd/ordenes'], ['get', '/api/bd/stock-proveedores']]
+      .forEach(([metodo, ruta]) => expect(capaRuta(metodo, ruta)).toHaveLength(2));
+  });
+
+  test('un rol no autorizado recibe 403, no solo un aviso en consola', () => {
+    const stack = capaRuta('get', '/api/bd/proveedores');
+    const res = resFalso();
+    const next = jest.fn();
+
+    stack[0].handle({ rol: 'almacen', method: 'GET', originalUrl: '/api/bd/proveedores', usuario: 'u3' }, res, next);
+
+    expect(res.statusCode).toBe(403);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test('consulta_bd entra a Base de Datos General', () => {
+    const stack = capaRuta('get', '/api/bd/proveedores');
+    const next = jest.fn();
+
+    stack[0].handle({ rol: 'consulta_bd', method: 'GET', originalUrl: '/api/bd/proveedores', usuario: 'u4' }, resFalso(), next);
+
+    expect(next).toHaveBeenCalled();
+  });
+
+  test('consulta_bd puede escribir ordenes, no solo leer', () => {
+    const stack = capaRuta('post', '/api/bd/ordenes');
+    const next = jest.fn();
+
+    stack[0].handle({ rol: 'consulta_bd', method: 'POST', originalUrl: '/api/bd/ordenes', usuario: 'u4' }, resFalso(), next);
+
+    expect(next).toHaveBeenCalled();
+  });
+
+  test('consulta_bd NO entra a los endpoints sin guard de rol de otros modulos', () => {
+    // Invariante del diseno actual, no una garantia: /api/recetas y /api/inventario
+    // no tienen guard, asi que un rol acotado podria llamarlos si conoce la URL.
+    ['/api/inventario', '/api/producto-terminado', '/api/estado-lineas']
+      .forEach((ruta) => expect(capaRuta('get', ruta)).toHaveLength(1));
   });
 });

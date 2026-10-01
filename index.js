@@ -2861,7 +2861,11 @@ app.post('/api/almacen/stock-refinado/ajustar', requerirRolAlmacenInvRef, async 
 });
 
 // ================== BASE DE DATOS GENERAL: PROVEEDORES, OC/OS Y STOCK DE PROVEEDORES ==================
-const ROLES_BD_GENERAL = ['admin', 'auditoria'];
+// Base de Datos General. El unico bloque REAL de permisos de todo el modulo:
+// enforce:true hace que un rol fuera de esta lista reciba 403 de verdad, no solo
+// un aviso en consola. Un rol sin aparecer aqui no puede ni leer proveedores ni
+// escribir ordenes, aunque se sepa la URL.
+const ROLES_BD_GENERAL = ['admin', 'auditoria', 'consulta_bd'];
 const requerirRolBDGeneral = crearGuardRoles(ROLES_BD_GENERAL, { enforce: true });
 
 const CATEGORIAS_PROVEEDOR = ['CAJAS', 'TAPAS Y ACCESORIOS', 'PREFORMAS Y SERVICIOS', 'BOTELLAS Y GALONERAS', 'ETIQUETAS', 'General', 'REFINADO'];

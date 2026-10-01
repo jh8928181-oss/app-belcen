@@ -57,7 +57,10 @@ function requerirRolAdmin(req, res, next) {
   next();
 }
 
-const ROLES_PERMITIDOS = ['admin', 'supervisor', 'produccion', 'auditoria', 'vigilancia', 'almacen', 'soplado', 'envasado', 'refinado', 'invitado'];
+// 'consulta_bd' existe para un puesto que solo maneja la Base de Datos General
+// (proveedores, órdenes y stock de proveedores). No pertenece a ningún grupo de
+// módulo porque su alcance son esos endpoints, no una pantalla operativa.
+const ROLES_PERMITIDOS = ['admin', 'supervisor', 'produccion', 'auditoria', 'vigilancia', 'almacen', 'soplado', 'envasado', 'refinado', 'invitado', 'consulta_bd'];
 
 /**
  * Control de acceso por rol.

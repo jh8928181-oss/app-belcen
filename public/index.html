@@ -809,6 +809,11 @@
                         case 'refinado':
                             window.location.href = 'refinado.html';
                             break;
+                        // Su unica pantalla es Base de Datos General. Sin este case
+                        // caeria en el default y entraria al dashboard general.
+                        case 'consulta_bd':
+                            window.location.href = 'basededatosgeneral.html';
+                            break;
                         case 'admin':
                             window.location.href = 'admin.html';
                             break;

@@ -461,6 +461,13 @@
                 return;
             }
 
+            // Consulta de BD General tiene su propia salida: el patron rol + '.html'
+            // de abajo construiria 'consulta_bd.html', que no existe.
+            if (rol === 'consulta_bd') {
+                window.location.href = 'basededatosgeneral.html';
+                return;
+            }
+
             // Operadores específicos son redirigidos directo a su módulo y bloqueados del dashboard general
             const rolesOperativos = ['vigilancia', 'almacen', 'soplado', 'envasado', 'refinado', 'auditoria'];
             if (rolesOperativos.includes(rol)) {

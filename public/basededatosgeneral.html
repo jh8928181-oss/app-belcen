@@ -594,7 +594,8 @@
     <script src="/auth-client.js"></script>
     <script>
         const rolUsuario = localStorage.getItem('rol_actual') || localStorage.getItem('rol_usuario');
-        if (!rolUsuario || (rolUsuario !== 'admin' && rolUsuario !== 'auditoria')) {
+        const ROLES_BD_GENERAL = ['admin', 'auditoria', 'consulta_bd'];
+        if (!ROLES_BD_GENERAL.includes(rolUsuario)) {
             alert('❌ Acceso no autorizado.');
             window.location.href = 'index.html';
         }

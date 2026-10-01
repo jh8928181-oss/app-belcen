@@ -475,7 +475,6 @@
                     <table>
                         <thead>
                             <tr>
-                                <th>Nº</th>
                                 <th>Tipo</th>
                                 <th>Número</th>
                                 <th>Fecha</th>
@@ -489,7 +488,7 @@
                             </tr>
                         </thead>
                         <tbody id="tablaOrdenes">
-                            <tr><td colspan="11" class="text-center sin-registros">Cargando órdenes...</td></tr>
+                            <tr><td colspan="10" class="text-center sin-registros">Cargando órdenes...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -908,7 +907,7 @@
                 const data = await api('/api/bd/ordenes?' + qs.toString());
                 const tbody = document.getElementById('tablaOrdenes');
                 if (!data.ordenes.length) {
-                    tbody.innerHTML = '<tr><td colspan="11" class="text-center sin-registros">Sin órdenes para los filtros seleccionados.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="10" class="text-center sin-registros">Sin órdenes para los filtros seleccionados.</td></tr>';
                 } else {
                     tbody.innerHTML = data.ordenes.map(o => `
                         <tr>
@@ -933,7 +932,7 @@
                 }
                 etiquetarTablas();
             } catch (err) {
-                document.getElementById('tablaOrdenes').innerHTML = `<tr><td colspan="11" class="text-center sin-registros">${escapeHtml(err.message)}</td></tr>`;
+                document.getElementById('tablaOrdenes').innerHTML = `<tr><td colspan="10" class="text-center sin-registros">${escapeHtml(err.message)}</td></tr>`;
             }
         }
 

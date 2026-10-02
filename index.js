@@ -2874,7 +2874,91 @@ const ESTADOS_ORDEN = ['PENDIENTE', 'EMITIDA', 'RECIBIDA', 'COMPLETADA', 'CANCEL
 // el suyo (un insumo exonerado va en 0).
 const IGV_POR_DEFECTO = 18;
 const MONEDAS = ['PEN', 'USD'];
-const ESTADOS_FACTURA = ['PENDIENTE', 'PAGADA', 'ANULADA'];
+
+// PENDIENTE: registrada, sin acuerdo de pago ni vencimiento.
+// CREDITO: el proveedor dio plazo, asi que hay fecha_vencimiento y se puede ver
+//   si vencio.
+// PAGADA: pagada, con su fecha_pago.
+// CANCELADA: la factura es real y la orden si se cubrio a ese precio, pero no se
+//   va a cobrar (rechazada, en disputa). Cuenta como facturada y nunca como
+//   pagada, asi que queda siempre abierta en el por cobrar de la orden: es el
+//   monto que la empresa perdio y tiene que seguir a la vista.
+// ANULADA: el documento no existio. No cuenta ni como facturada ni como pagada,
+//   y el importe vuelve al por facturar de la orden.
+// Que CANCELADA y ANULADA hagan cosas distintas es el punto: si las dos fueran
+// "no cuenta", una deuda real que nadie pago quedaria igual que una factura que
+// nunca se emitio.
+const ESTADOS_FACTURA = ['PENDIENTE', 'CREDITO', 'PAGADA', 'CANCELADA', 'ANULADA'];
+
+// Estados que no aportan nada a la aritmetica de la orden.
+const FACTURA_NO_IMPUTABLE = 'ANULADA';
+
+// Fecha de vencimiento: solo tiene sentido en CREDITO. Acepta el string tal
+// cual (yyyy-mm-dd) o null, y devuelve null ante cualquier otra cosa para que un
+// campo sucio en el formulario termine guardado como NULL en vez de romper la
+// columna date.
+function normalizarFechaOpcional(valor) {
+    const s = String(valor == null ? '' : valor).trim();
+    if (!s) return null;
+    return /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s)) ? s : null;
+}
+
+// Resuelve el par estado/vencimiento de una factura en alta y en edicion.
+//
+// El vencimiento solo aplica a CREDITO, y en cualquier otro estado se guarda
+// NULL en vez de conservar el que traia: los dias puestos en su momento quedan
+// obsoletos en cuanto la factura deja de estar a credito, y una fecha vieja
+// haria que al volver a CREDITO saltara vencida sin que nadie se acuerde.
+//
+// Y un credito sin fecha se rechaza en vez de aceptarse. "A credito" sin plazo
+// no es un credito, es un pendiente con otra etiqueta, que es justo la confusion
+// que estos estados vinieron a eliminar.
+function resolverEstadoYVencimiento(estadoCrudo, vencimientoCrudo) {
+    const bruto = String(estadoCrudo == null ? '' : estadoCrudo).trim().toUpperCase();
+    const estado = ESTADOS_FACTURA.includes(bruto) ? bruto : 'PENDIENTE';
+    const vencimiento = normalizarFechaOpcional(vencimientoCrudo);
+    if (estado === 'CREDITO' && !vencimiento) {
+        return { estado, fechaVencimiento: null, error: 'Una factura a crédito necesita fecha de vencimiento.' };
+    }
+    return { estado, fechaVencimiento: estado === 'CREDITO' ? vencimiento : null };
+}
+
+// Suma de facturas imputables de una orden. Todo lo que calcula el saldo de una
+// orden pasa por aca: la regla de que ANULADA no cuenta y PAGADA si esta escrita
+// a mano en varias consultas distintas, y con cinco estados en juego, dejarla
+// duplicada es la forma facil de que una de ellas se quede vieja y las ordenes
+// muestren saldos que se contradicen entre pantallas.
+//
+// Devuelve el par que necesitan todas las vistas: lo facturado (todo menos
+// anuladas) y lo pagado (solo las pagadas), para que por_facturar y por_cobrar
+// se deriven de los mismos numeros y no puedan discordar entre endpoints.
+function agregadosFacturasDeOrden({ alias = 'f2', ordenId = 'o.id' } = {}) {
+    const a = String(alias);
+    const id = String(ordenId);
+    return {
+        facturado: `COALESCE((SELECT SUM(${a}.total) FROM facturas ${a} WHERE ${a}.orden_id = ${id} AND ${a}.estado <> '${FACTURA_NO_IMPUTABLE}'), 0)`,
+        pagado: `COALESCE((SELECT SUM(${a}.total) FROM facturas ${a} WHERE ${a}.orden_id = ${id} AND ${a}.estado = 'PAGADA'), 0)`
+    };
+}
+
+// Los cuatro numeros de la orden en uno. Se usan en el detalle, en la lista y en
+// el selector de la pantalla de facturas, para que todos muestren lo mismo.
+//
+// por_facturar es lo que falta EMITIR (el saldo de antes, renombrado) y
+// por_cobrar es lo emitido que todavia no se ha cobrado. Son deudas distintas y
+// mezclarlas en un solo numero era justo lo que no permitia ver si lo que se
+// debia era plata aun no pedida o plata ya facturada y no pagada.
+function resumenPagosOrden(orden) {
+    const facturado = redondear2(Number(orden.facturado || 0));
+    const pagado = redondear2(Number(orden.pagado || 0));
+    return {
+        facturado,
+        pagado,
+        por_facturar: redondear2(Math.max(0, Number(orden.total_igv || 0) - facturado)),
+        por_cobrar: redondear2(Math.max(0, facturado - pagado))
+    };
+}
+
 const TIPOS_COMPROBANTE = ['FACTURA', 'BOLETA', 'NOTA_CREDITO'];
 
 // Estados en los que la cantidad emitida de la orden ya se sumó al stock de proveedores.
@@ -3183,17 +3267,32 @@ app.get('/api/bd/ordenes', requerirRolBDGeneral, async (req, res) => {
         const tipo = String(req.query.tipo || '').trim();
         const estado = String(req.query.estado || '').trim();
         const proveedorId = req.query.proveedor_id ? parseInt(req.query.proveedor_id, 10) : null;
+        // facturado/pagado llegan a la lista para poder filtrar por plata debida
+        // sin abrir cada orden. Los dos SUM van en subconsultas gemelas como las
+        // demas de la lista; con una tabla de miles de filas la alternativa
+        // natural seria un unico GROUP BY, pero a esta escala dos subconsultas
+        // correlacionadas sobre el indice de orden_id se comportan mejor y el
+        // planner las resuelve en una pasada.
+        const agg = agregadosFacturasDeOrden({ alias: 'f', ordenId: 'o.id' });
         const result = await pool.query(`
             SELECT o.*,
                 (SELECT COUNT(*)::int FROM ordenes_items it WHERE it.orden_id = o.id) AS n_items,
                 COALESCE((SELECT SUM(it.cantidad) FROM ordenes_items it WHERE it.orden_id = o.id), 0) AS total_cantidad,
-                COALESCE((SELECT SUM(it.recibido) FROM ordenes_items it WHERE it.orden_id = o.id), 0) AS total_recibido
+                COALESCE((SELECT SUM(it.recibido) FROM ordenes_items it WHERE it.orden_id = o.id), 0) AS total_recibido,
+                ${agg.facturado} AS facturado,
+                ${agg.pagado} AS pagado,
+                COALESCE(o.total_igv, 0) - ${agg.facturado} AS por_facturar,
+                ${agg.facturado} - ${agg.pagado} AS por_cobrar,
+                (SELECT COUNT(*)::int FROM facturas f3
+                 WHERE f3.orden_id = o.id AND f3.estado = 'CREDITO'
+                   AND f3.fecha_vencimiento IS NOT NULL AND f3.fecha_vencimiento < CURRENT_DATE) AS n_vencidas
             FROM ordenes_compras_servicios o
             WHERE ($1 = '' OR o.tipo = $1)
               AND ($2 = '' OR o.estado = $2)
               AND ($3::int IS NULL OR o.proveedor_id = $3)
             ORDER BY o.id DESC`, [tipo, estado, proveedorId]);
-        res.json({ success: true, ordenes: result.rows });
+        const ordenes = result.rows.map(o => ({ ...o, ...resumenPagosOrden(o) }));
+        res.json({ success: true, ordenes });
     } catch (err) {
         console.error('Error GET ordenes:', err);
         res.status(500).json({ success: false, mensaje: err.message });
@@ -3217,21 +3316,34 @@ app.get('/api/bd/ordenes/:id', requerirRolBDGeneral, async (req, res) => {
             `SELECT * FROM stock_proveedores_historial
              WHERE orden_ref = $1 AND origen IN ('EMISION','RECIBIR','CANCELACION')
              ORDER BY id DESC LIMIT 100`, [ordenRes.rows[0].numero]);
-        // Las facturas y el saldo viajan con el detalle para que la pantalla de
-        // orden vea que esta facturado sin una segunda peticion. Las anuladas no
-        // cuentan: una nota de credito anulada no debe descontar saldo.
+        // Las facturas y el resumen de pagos viajan con el detalle para que la
+        // pantalla de orden vea que esta facturado y cuanto se cobro, sin una
+        // segunda peticion. Las anuladas no cuentan para nada; las canceladas si
+        // cuentan como facturadas, porque la orden se cubrio a ese precio aunque
+        // ese dinero no se cobre nunca.
+        //
+        // vencida se resuelve con CURRENT_DATE y no con la fecha del servidor a
+        // proposito: el Node puede estar en UTC y en Peru todavia no es el dia
+        // siguiente, lo que marcaria como vencida una factura que aun tiene
+        // plazo.
         const facturasRes = await pool.query(
-            `SELECT * FROM facturas WHERE orden_id = $1 ORDER BY fecha_factura DESC, id DESC`, [id]
+            `SELECT *, (estado = 'CREDITO' AND fecha_vencimiento IS NOT NULL
+                        AND fecha_vencimiento < CURRENT_DATE) AS vencida
+             FROM facturas WHERE orden_id = $1 ORDER BY fecha_factura DESC, id DESC`, [id]
         );
         const facturas = facturasRes.rows;
-        const saldo = redondear2(
-            Number(ordenRes.rows[0].total_igv || 0) - facturas
-                .filter(f => String(f.estado).toUpperCase() !== 'ANULADA')
+        const pagos = resumenPagosOrden({
+            ...ordenRes.rows[0],
+            facturado: facturas
+                .filter(f => String(f.estado).toUpperCase() !== FACTURA_NO_IMPUTABLE)
+                .reduce((suma, f) => suma + Number(f.total || 0), 0),
+            pagado: facturas
+                .filter(f => String(f.estado).toUpperCase() === 'PAGADA')
                 .reduce((suma, f) => suma + Number(f.total || 0), 0)
-        );
+        });
         res.json({
             success: true, orden: ordenRes.rows[0], items: itemsRes.rows,
-            movimientos: movimientosRes.rows, facturas, saldo
+            movimientos: movimientosRes.rows, facturas, ...pagos
         });
     } catch (err) {
         console.error('Error GET orden detalle:', err);
@@ -3763,18 +3875,17 @@ app.get('/api/bd/facturas', requerirRolBDGeneral, async (req, res) => {
         const ordenId = filtroEnteroQuery(req.query.orden_id);
         const proveedorId = filtroEnteroQuery(req.query.proveedor_id);
         const estado = String(req.query.estado || '').trim().toUpperCase();
+        const agg = agregadosFacturasDeOrden({ alias: 'f2', ordenId: 'f.orden_id' });
         const result = await pool.query(`
 
             SELECT f.*, o.tipo AS orden_tipo, o.numero AS orden_numero,
                 o.total_igv AS orden_total_igv, o.moneda AS orden_moneda,
-                COALESCE((
-                    SELECT SUM(f2.total) FROM facturas f2
-                    WHERE f2.orden_id = f.orden_id AND f2.estado <> 'ANULADA'
-                ), 0) AS orden_facturado,
-                COALESCE(o.total_igv, 0) - COALESCE((
-                    SELECT SUM(f2.total) FROM facturas f2
-                    WHERE f2.orden_id = f.orden_id AND f2.estado <> 'ANULADA'
-                ), 0) AS orden_saldo
+                ${agg.facturado} AS orden_facturado,
+                ${agg.pagado} AS orden_pagado,
+                COALESCE(o.total_igv, 0) - ${agg.facturado} AS orden_por_facturar,
+                ${agg.facturado} - ${agg.pagado} AS orden_por_cobrar,
+                (f.estado = 'CREDITO' AND f.fecha_vencimiento IS NOT NULL
+                    AND f.fecha_vencimiento < CURRENT_DATE) AS vencida
             FROM facturas f
             JOIN ordenes_compras_servicios o ON o.id = f.orden_id
             WHERE ($1::int IS NULL OR f.orden_id = $1)
@@ -3791,6 +3902,9 @@ app.get('/api/bd/facturas', requerirRolBDGeneral, async (req, res) => {
 
 // Totales por estado y moneda. Agrupar por moneda es obligatorio: sumar soles y
 // dolares en una misma cifra daria un numero sin sentido.
+//
+// vencidas no es un estado sino una condicion de tiempo sobre las de credito, y
+// se reporta aparte para no mezclarlo con los totales por estado.
 app.get('/api/bd/facturas/resumen', requerirRolBDGeneral, async (req, res) => {
     try {
         const result = await pool.query(`
@@ -3802,32 +3916,42 @@ app.get('/api/bd/facturas/resumen', requerirRolBDGeneral, async (req, res) => {
             FROM facturas
             GROUP BY moneda, estado
             ORDER BY moneda ASC, estado ASC`, []);
-        res.json({ success: true, resumen: result.rows });
+        const vencidasRes = await pool.query(`
+            SELECT moneda, COUNT(*)::int AS cantidad, COALESCE(SUM(total), 0) AS total
+            FROM facturas
+            WHERE estado = 'CREDITO' AND fecha_vencimiento IS NOT NULL
+              AND fecha_vencimiento < CURRENT_DATE
+            GROUP BY moneda`, []);
+        res.json({ success: true, resumen: result.rows, vencidas: vencidasRes.rows });
     } catch (err) {
         console.error('Error GET resumen facturas:', err);
         res.status(500).json({ success: false, mensaje: err.message });
     }
 });
 
-// Ordenes con su saldo, para el selector. El filtro 'pendiente' deja pasar solo
-// las que aun no estan facturadas; 'facturadas' solo las que ya lo estan.
+// Ordenes con su resumen de pagos, para el selector. El filtro 'pendiente' deja
+// pasar solo las que aun no estan facturadas por completo; 'facturadas' solo las
+// que ya lo estan.
 app.get('/api/bd/facturas/ordenes', requerirRolBDGeneral, async (req, res) => {
     try {
         const proveedorId = filtroEnteroQuery(req.query.proveedor_id);
         const filtro = String(req.query.filtro || 'todas').trim().toLowerCase();
+        const agg = agregadosFacturasDeOrden({ alias: 'f', ordenId: 'o.id' });
         const result = await pool.query(`
             SELECT o.id, o.tipo, o.numero, o.fecha_orden, o.estado, o.moneda, o.total, o.igv, o.total_igv,
                 o.proveedor_id,
                 p.nombre AS proveedor_nombre,
-                COALESCE((SELECT SUM(f.total) FROM facturas f WHERE f.orden_id = o.id AND f.estado <> 'ANULADA'), 0) AS facturado,
-                COALESCE(o.total_igv, 0) - COALESCE((SELECT SUM(f.total) FROM facturas f WHERE f.orden_id = o.id AND f.estado <> 'ANULADA'), 0) AS saldo
+                ${agg.facturado} AS facturado,
+                ${agg.pagado} AS pagado,
+                COALESCE(o.total_igv, 0) - ${agg.facturado} AS por_facturar,
+                ${agg.facturado} - ${agg.pagado} AS por_cobrar
             FROM ordenes_compras_servicios o
             LEFT JOIN proveedores p ON p.id = o.proveedor_id
             WHERE ($1::int IS NULL OR o.proveedor_id = $1)
               AND o.estado <> 'CANCELADA'
               AND (
-                ($2 = 'pendiente' AND COALESCE(o.total_igv, 0) - COALESCE((SELECT SUM(f.total) FROM facturas f WHERE f.orden_id = o.id AND f.estado <> 'ANULADA'), 0) > 0.01)
-                OR ($2 = 'facturadas' AND COALESCE((SELECT SUM(f.total) FROM facturas f WHERE f.orden_id = o.id AND f.estado <> 'ANULADA'), 0) > 0)
+                ($2 = 'pendiente' AND COALESCE(o.total_igv, 0) - ${agg.facturado} > 0.01)
+                OR ($2 = 'facturadas' AND ${agg.facturado} > 0)
                 OR $2 = 'todas'
               )
             ORDER BY o.id DESC`, [proveedorId, filtro]);
@@ -3869,9 +3993,12 @@ app.post('/api/bd/facturas', requerirRolBDGeneral, async (req, res) => {
         const numero = String(cuerpo.numero || '').trim();
         const ordenId = parseInt(cuerpo.orden_id, 10);
         const subtotal = Number(cuerpo.subtotal);
-        const estado = ESTADOS_FACTURA.includes(String(cuerpo.estado || '').trim().toUpperCase())
-            ? String(cuerpo.estado).trim().toUpperCase() : 'PENDIENTE';
+        const estadoRes = resolverEstadoYVencimiento(cuerpo.estado, cuerpo.fecha_vencimiento);
+        const estado = estadoRes.estado;
 
+        if (estadoRes.error) {
+            return res.status(400).json({ success: false, mensaje: estadoRes.error });
+        }
         if (!serie || !numero) {
             return res.status(400).json({ success: false, mensaje: 'Ingrese la serie y el número del comprobante.' });
         }
@@ -3913,8 +4040,8 @@ app.post('/api/bd/facturas', requerirRolBDGeneral, async (req, res) => {
         const ins = await client.query(
             `INSERT INTO facturas
                 (tipo_comprobante, serie, numero, fecha_factura, orden_id, proveedor_id, proveedor_nombre,
-                 moneda, igv_pct, subtotal, igv, total, estado, fecha_pago, observaciones, usuario_registro)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                 moneda, igv_pct, subtotal, igv, total, estado, fecha_pago, fecha_vencimiento, observaciones, usuario_registro)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
              RETURNING *`,
             [
                 tipoComprobante, serie, numero, fechaFactura || fechaDefecto, ordenId,
@@ -3922,6 +4049,7 @@ app.post('/api/bd/facturas', requerirRolBDGeneral, async (req, res) => {
                 normalizarMoneda(cuerpo.moneda || orden.rows[0].moneda), igvPct,
                 redondear2(subtotal), igv, total, estado,
                 String(cuerpo.fecha_pago || '').trim() || null,
+                estadoRes.fechaVencimiento,
                 String(cuerpo.observaciones || '').trim(), req.usuario
             ]
         );
@@ -3958,14 +4086,41 @@ app.put('/api/bd/facturas/:id', requerirRolBDGeneral, async (req, res) => {
         if (!Number.isFinite(subtotal) || subtotal < 0) {
             return res.status(400).json({ success: false, mensaje: 'El subtotal debe ser un número mayor o igual a 0.' });
         }
-        const estado = ESTADOS_FACTURA.includes(String(cuerpo.estado || '').trim().toUpperCase())
-            ? String(cuerpo.estado).trim().toUpperCase() : 'PENDIENTE';
+        const estadoPedido = String(cuerpo.estado == null ? '' : cuerpo.estado).trim().toUpperCase();
+
+        // Editar es cambiar una cosa ya registrada, asi que un estado invalido se
+        // rechaza en vez de caerse a PENDIENTE por la puerta de atras: asi una
+        // factura que el usuario dio por pagada ayer no finishes guardada como
+        // pendiente por un typo.
+        if (estadoPedido && !ESTADOS_FACTURA.includes(estadoPedido)) {
+            return res.status(400).json({ success: false, mensaje: 'El estado de la factura no es válido.' });
+        }
 
         await client.query('BEGIN');
         const actual = await client.query('SELECT * FROM facturas WHERE id = $1', [id]);
         if (!actual.rows.length) {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, mensaje: 'La factura no existe.' });
+        }
+        // Si el cliente no manda estado, se conserva el que ya tenia. Solo si lo
+        // manda explicito se reemplaza.
+        const estadoFinal = estadoPedido || String(actual.rows[0].estado || 'PENDIENTE').toUpperCase();
+
+        // El vencimiento llega ya resuelto si el cliente lo mando. Si no lo mando
+        // (undefined), se conserva el que ya estaba, porque una edicion del numero
+        // o del subtotal no deberia obligar a volver a elegir la fecha de plazo.
+        // Y si lo mando en blanco, es una peticion explicita de dejarlo sin fecha.
+        const envioVencimiento = cuerpo.fecha_vencimiento !== undefined;
+        const vencimientoEnviado = envioVencimiento
+            ? normalizarFechaOpcional(cuerpo.fecha_vencimiento)
+            : normalizarFechaOpcional(actual.rows[0].fecha_vencimiento);
+        const fechaVenc = estadoFinal === 'CREDITO' ? vencimientoEnviado : null;
+        // A credito sin plazo no es un credito, es un pendiente con otra
+        // etiqueta. Se valida despues de leer la fila y no antes, para poder
+        // distinguir "no mande la fecha" de "no hay fecha que guardar".
+        if (estadoFinal === 'CREDITO' && !fechaVenc) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: 'Una factura a crédito necesita fecha de vencimiento.' });
         }
         // El tipo forma parte de la llave unica del comprobante, asi que si la
         // pantalla lo manda hay que guardarlo: si no, la fila quedaria con un tipo
@@ -3986,14 +4141,15 @@ app.put('/api/bd/facturas/:id', requerirRolBDGeneral, async (req, res) => {
         const fechaNueva = aFechaSql(cuerpo.fecha_factura) || fechaActual;
         const upd = await client.query(
             `UPDATE facturas SET tipo_comprobante = $1, serie = $2, numero = $3, fecha_factura = $4, subtotal = $5, igv_pct = $6,
-                    igv = $7, total = $8, moneda = $9, estado = $10, fecha_pago = $11, observaciones = $12
-             WHERE id = $13 RETURNING *`,
+                    igv = $7, total = $8, moneda = $9, estado = $10, fecha_pago = $11, fecha_vencimiento = $12, observaciones = $13
+             WHERE id = $14 RETURNING *`,
             [
                 tipoComprobante, String(cuerpo.serie || '').trim().toUpperCase(), numero,
                 fechaNueva,
                 redondear2(subtotal), igvPct, igv, total,
-                normalizarMoneda(cuerpo.moneda), estado,
+                normalizarMoneda(cuerpo.moneda), estadoFinal,
                 String(cuerpo.fecha_pago || '').trim() || null,
+                fechaVenc,
                 String(cuerpo.observaciones || '').trim(), id
             ]
         );
@@ -4014,23 +4170,45 @@ app.put('/api/bd/facturas/:id', requerirRolBDGeneral, async (req, res) => {
 // Registrar el pago es un cambio de estado, no una edicion del documento: por
 // eso va aparte y solo mueve estado y fecha_pago.
 app.post('/api/bd/facturas/:id/pagar', requerirRolBDGeneral, async (req, res) => {
+    const client = await pool.connect();
     try {
         const id = parseInt(req.params.id, 10);
         if (!Number.isInteger(id) || id <= 0) {
             return res.status(400).json({ success: false, mensaje: 'ID de factura no válido.' });
         }
         const fechaPago = String((req.body || {}).fecha_pago || '').trim();
-        const upd = await pool.query(
-            `UPDATE facturas SET estado = 'PAGADA', fecha_pago = $1 WHERE id = $2 RETURNING *`,
-            [fechaPago || new Date().toISOString().slice(0, 10), id]
-        );
-        if (!upd.rows.length) {
+
+        await client.query('BEGIN');
+        const actual = await client.query('SELECT id, estado FROM facturas WHERE id = $1', [id]);
+        if (!actual.rows.length) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ success: false, mensaje: 'La factura no existe.' });
         }
+        // Pagar una factura anulada la resucita como deuda real, y pagar una
+        // cancelada contradice de frente lo que se acaba de registrar: se declaro
+        // que ese dinero no entra. Se rechazan las dos con el estado actual a la
+        // vista, en vez de un UPDATE condicional que dejaria al usuario sin saber
+        // por que no se guardo.
+        const estadoActual = String(actual.rows[0].estado || '').toUpperCase();
+        if (estadoActual === FACTURA_NO_IMPUTABLE || estadoActual === 'CANCELADA') {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+                success: false,
+                mensaje: `No se puede marcar como pagada una factura ${estadoActual === 'CANCELADA' ? 'cancelada' : 'anulada'}.`
+            });
+        }
+        const upd = await client.query(
+            `UPDATE facturas SET estado = 'PAGADA', fecha_pago = $1, fecha_vencimiento = NULL WHERE id = $2 RETURNING *`,
+            [fechaPago || new Date().toISOString().slice(0, 10), id]
+        );
+        await client.query('COMMIT');
         res.json({ success: true, mensaje: 'Factura marcada como pagada.', factura: upd.rows[0] });
     } catch (err) {
+        await client.query('ROLLBACK');
         console.error('Error pagar factura:', err);
         res.status(500).json({ success: false, mensaje: err.message });
+    } finally {
+        client.release();
     }
 });
 

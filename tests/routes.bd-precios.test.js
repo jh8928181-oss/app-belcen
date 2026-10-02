@@ -152,8 +152,13 @@ const SQL = {
   borrarPrecio: /DELETE FROM precios_proveedor WHERE/,
   insertarHistorial: /INSERT INTO precios_proveedor_historial/,
   leerFactura: /SELECT \* FROM facturas WHERE/,
+  // El registro de estado que consulta /pagar antes de decidir. Es un SELECT
+  // mas estrecho que leerFactura y por eso necesita patron propio: si share el
+  // de lectura completa, un test no podria_simular una factura cancelada.
+  estadoFactura: /SELECT id, estado FROM facturas WHERE/,
   insertarFactura: /INSERT INTO facturas\s*\(/,
   actualizarFactura: /UPDATE facturas SET/,
+  pagarFactura: /UPDATE facturas SET estado = 'PAGADA'/,
   // Una sola forma de reconocer la lectura de una orden por id: con y sin join
   // se resuelve al mismo SELECT, asi que un unico patron evita que el orden de
   // las reglas decida cual responde.
@@ -558,16 +563,21 @@ describe('facturas de OC / OS', () => {
   });
 
   test('marcar como pagada mueve estado y fecha_pago', async () => {
-
-    responder([[SQL.actualizarFactura, filas({ id: 4, estado: 'PAGADA', fecha_pago: '2026-05-10' })]]);
+    responder([
+      [SQL.estadoFactura, filas({ id: 4, estado: 'CREDITO' })],
+      [SQL.pagarFactura, filas({ id: 4, estado: 'PAGADA', fecha_pago: '2026-05-10' })]
+    ]);
 
     const res = await invocar('post', '/api/bd/facturas/4/pagar', {
       params: { id: '4' },
       body: { fecha_pago: '2026-05-10' }
     });
 
+    expect(res.statusCode).toBe(200);
     expect(res.cuerpo.success).toBe(true);
-    const sql = sentencias()[0];
+    // La primera sentencia ya no es el UPDATE: ahora se lee el estado actual
+    // para decidir si se puede pagar.
+    const sql = sentencias().find(s => SQL.pagarFactura.test(s));
     expect(sql).toMatch(/estado/);
     expect(sql).toMatch(/fecha_pago/);
   });
@@ -597,7 +607,9 @@ describe('ordenes facturadas', () => {
     const res = await invocar('get', '/api/bd/ordenes/5', { params: { id: '5' } });
 
     // 1180 - 1000 = 180. La anulada no resta.
-    expect(res.cuerpo.saldo).toBe(180);
+    expect(res.cuerpo.por_facturar).toBe(180);
+    expect(res.cuerpo.pagado).toBe(1000);
+    expect(res.cuerpo.por_cobrar).toBe(0);
     expect(res.cuerpo.facturas).toHaveLength(2);
   });
 
@@ -635,8 +647,244 @@ describe('ordenes facturadas', () => {
 
     const sql = sentencias()[0];
     expect(sql).toMatch(/o\.estado <> 'CANCELADA'/);
-    expect(sql).toMatch(/AS saldo/);
+    expect(sql).toMatch(/AS por_facturar/);
+    expect(sql).toMatch(/AS por_cobrar/);
     expect(sql).toMatch(/pendiente/);
+  });
+});
+
+describe('los cinco estados de pago de una factura', () => {
+  // Total de la orden 1000.
+  const ORDEN = { id: 5, total_igv: '1000.00', moneda: 'PEN' };
+
+  /**
+   * Monta el detalle de una orden con las facturas indicadas y devuelve las
+   * cuatro cifras que la pantalla usa para decidir si falta emitir o falta
+   * cobrar. El caso interesante de estos tests es la diferencia entre ANULADA y
+   * CANCELADA, que se demarcan solo en estos numeros.
+   */
+  async function detalleCon(facturas) {
+    responder([
+      [SQL.ordenPorId, filas(ORDEN)],
+      [SQL.facturasDeOrden, filas(...facturas)]
+    ]);
+    const res = await invocar('get', '/api/bd/ordenes/5', { params: { id: '5' } });
+    expect(res.statusCode).toBe(200);
+    return res.cuerpo;
+  }
+
+  test('ANULADA no cuenta ni como facturada ni como pagada', async () => {
+    const d = await detalleCon([
+      { id: 1, estado: 'ANULADA', total: '1000.00' }
+    ]);
+    expect(d.facturado).toBe(0);
+    expect(d.pagado).toBe(0);
+    // El importe vuelve al por facturar: es como si nunca se hubiera emitido.
+    expect(d.por_facturar).toBe(1000);
+    expect(d.por_cobrar).toBe(0);
+  });
+
+  test('CANCELADA cuenta como facturada pero nunca como pagada', async () => {
+    const d = await detalleCon([
+      { id: 1, estado: 'CANCELADA', total: '1000.00' }
+    ]);
+    // La orden si se cubrio a ese precio, asi que no queda nada por emitir.
+    expect(d.facturado).toBe(1000);
+    expect(d.por_facturar).toBe(0);
+    // Pero el dinero no entro, asi que la deuda sigue abierta a proposito: es
+    // el monto que la empresa perdio y no debe desaparecer de la pantalla.
+    expect(d.pagado).toBe(0);
+    expect(d.por_cobrar).toBe(1000);
+  });
+
+  test('CREDITO cuenta como facturado y queda abierto hasta que se pague', async () => {
+    const d = await detalleCon([
+      { id: 1, estado: 'CREDITO', total: '600.00', fecha_vencimiento: '2099-01-01' }
+    ]);
+    expect(d.facturado).toBe(600);
+    expect(d.pagado).toBe(0);
+    expect(d.por_facturar).toBe(400);
+    expect(d.por_cobrar).toBe(600);
+  });
+
+  test('PENDIENTE y CREDITO se acumulan en el mismo por cobrar', async () => {
+    const d = await detalleCon([
+      { id: 1, estado: 'PENDIENTE', total: '400.00' },
+      { id: 2, estado: 'CREDITO', total: '300.00' },
+      { id: 3, estado: 'PAGADA', total: '300.00' }
+    ]);
+    expect(d.facturado).toBe(1000);
+    expect(d.pagado).toBe(300);
+    expect(d.por_cobrar).toBe(700);
+    expect(d.por_facturar).toBe(0);
+  });
+
+  test('la factura a credito se marca vencida cuando el plazo ya paso', async () => {
+    const hoy = new Date();
+    const futuro = new Date(hoy.getTime() + 86400000 * 30).toISOString().slice(0, 10);
+    const pasado = new Date(hoy.getTime() - 86400000 * 5).toISOString().slice(0, 10);
+
+    // El calculo lo hace CURRENT_DATE en la consulta, asi que el mock devuelve
+    // el booleano ya resuelto: lo que se verifica aca es que la condicion se
+    // trae y se expone, no la aritmetica del servidor de Postgres.
+    const vencida = await detalleCon([
+      { id: 1, estado: 'CREDITO', total: '100.00', vencida: true }
+    ]);
+    expect(vencida.facturas[0].vencida).toBe(true);
+
+    const noVencida = await detalleCon([
+      { id: 2, estado: 'CREDITO', total: '100.00', vencida: false }
+    ]);
+    expect(noVencida.facturas[0].vencida).toBe(false);
+
+    const consulta = sentencias().find(s => /FROM facturas WHERE orden_id/.test(s));
+    expect(consulta).toMatch(/fecha_vencimiento < CURRENT_DATE/);
+    expect(consulta).toMatch(/estado = 'CREDITO'/);
+    expect(futuro).not.toBe(pasado);
+  });
+
+  test('solo una factura a credito puede estar vencida', async () => {
+    // Una PENDIENTE con fecha de vencimiento suelta no está vencida: sin plazo
+    // no hay nada que vencer, y marcarla seria ruido.
+    const d = await detalleCon([
+      { id: 1, estado: 'PENDIENTE', total: '100.00', vencida: false }
+    ]);
+    expect(d.facturas[0].vencida).toBe(false);
+  });
+});
+
+describe('vencimiento de la factura a credito', () => {
+  test('se acepta una factura a credito con fecha de vencimiento', async () => {
+    responder([
+      [SQL.ordenPorId, filas({ id: 5, proveedor_id: 7, proveedor_nombre: 'CEMENTOS DEL SUR', moneda: 'PEN', total_igv: '1000.00' })],
+      [SQL.insertarFactura, filas({ id: 1, estado: 'CREDITO', fecha_vencimiento: '2026-11-30' })]
+    ]);
+
+    const res = await invocar('post', '/api/bd/facturas', {
+      body: {
+        serie: 'F001', numero: '1', orden_id: 5, subtotal: 100,
+        estado: 'CREDITO', fecha_vencimiento: '2026-11-30'
+      }
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(paramsDe(SQL.insertarFactura)).toContain('2026-11-30');
+  });
+
+  test('una factura a credito sin vencimiento se rechaza', async () => {
+    responder([
+      [SQL.ordenPorId, filas({ id: 5, proveedor_id: 7, proveedor_nombre: 'X', moneda: 'PEN' })]
+    ]);
+
+    const res = await invocar('post', '/api/bd/facturas', {
+      body: { serie: 'F001', numero: '1', orden_id: 5, subtotal: 100, estado: 'CREDITO' }
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.cuerpo.mensaje).toMatch(/vencimiento/);
+    // No se llega a insertar nada.
+    expect(mockQuery.mock.calls.some(c => SQL.insertarFactura.test(String(c[0])))).toBe(false);
+  });
+
+  test('el vencimiento se guarda como NULL si el estado no es credito', async () => {
+    responder([
+      [SQL.ordenPorId, filas({ id: 5, proveedor_id: 7, proveedor_nombre: 'X', moneda: 'PEN' })],
+      [SQL.insertarFactura, filas({ id: 1, estado: 'PAGADA' })]
+    ]);
+
+    const res = await invocar('post', '/api/bd/facturas', {
+      body: {
+        serie: 'F001', numero: '1', orden_id: 5, subtotal: 100,
+        estado: 'PAGADA', fecha_vencimiento: '2026-11-30'
+      }
+    });
+
+    expect(res.statusCode).toBe(200);
+    // Los dias que se pusieron quedan obsoletos en cuanto la factura deja de
+    // estar a credito, asi que no se conservan.
+    expect(paramsDe(SQL.insertarFactura)).toContain(null);
+  });
+
+  test('al editar a credito sin vencimiento se conserva el que ya tenia', async () => {
+    responder([
+      [SQL.leerFactura, filas({ id: 1, estado: 'CREDITO', fecha_vencimiento: '2026-12-31', tipo_comprobante: 'FACTURA' })],
+      [SQL.actualizarFactura, filas({ id: 1, estado: 'CREDITO', fecha_vencimiento: '2026-12-31' })]
+    ]);
+
+    const res = await invocar('put', '/api/bd/facturas/1', {
+      params: { id: '1' },
+      body: { numero: '1', subtotal: 100, igv_pct: 18, estado: 'CREDITO' }
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(paramsDe(SQL.actualizarFactura)).toContain('2026-12-31');
+  });
+
+  test('un estado desconocido en la edicion no cae a PENDIENTE en silencio', async () => {
+    responder([[SQL.leerFactura, filas({ id: 1, estado: 'PAGADA' })]]);
+
+    const res = await invocar('put', '/api/bd/facturas/1', {
+      params: { id: '1' },
+      body: { numero: '1', subtotal: 100, igv_pct: 18, estado: 'Cobrada' }
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.cuerpo.mensaje).toMatch(/estado/);
+  });
+
+  test('si la edicion no manda estado, se conserva el que ya tenia', async () => {
+    responder([
+      [SQL.leerFactura, filas({ id: 1, estado: 'CANCELADA', tipo_comprobante: 'FACTURA' })],
+      [SQL.actualizarFactura, filas({ id: 1, estado: 'CANCELADA' })]
+    ]);
+
+    const res = await invocar('put', '/api/bd/facturas/1', {
+      params: { id: '1' },
+      body: { numero: '1', subtotal: 100, igv_pct: 18 }
+    });
+
+    expect(res.statusCode).toBe(200);
+    // Editar el numero no puede dejar una factura cancelada como pendiente.
+    expect(paramsDe(SQL.actualizarFactura)).toContain('CANCELADA');
+  });
+});
+
+describe('pagar una factura', () => {
+  test('una factura anulada no se puede marcar como pagada', async () => {
+    responder([[SQL.estadoFactura, filas({ id: 1, estado: 'ANULADA' })]]);
+
+    const res = await invocar('post', '/api/bd/facturas/1/pagar', { params: { id: '1' } });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.cuerpo.mensaje).toMatch(/anulada/);
+    // Sin UPDATE: pagar una anulada la resucitaria como deuda real.
+    expect(mockQuery.mock.calls.some(c => SQL.pagarFactura.test(String(c[0])))).toBe(false);
+    expect(transacciones()).toEqual(['BEGIN', 'ROLLBACK']);
+  });
+
+  test('una factura cancelada no se puede marcar como pagada', async () => {
+    responder([[SQL.estadoFactura, filas({ id: 1, estado: 'CANCELADA' })]]);
+
+    const res = await invocar('post', '/api/bd/facturas/1/pagar', { params: { id: '1' } });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.cuerpo.mensaje).toMatch(/cancelada/);
+    expect(transacciones()).toEqual(['BEGIN', 'ROLLBACK']);
+  });
+
+  test('pagar limpia el vencimiento', async () => {
+    responder([
+      [SQL.estadoFactura, filas({ id: 1, estado: 'CREDITO' })],
+      [SQL.pagarFactura, filas({ id: 1, estado: 'PAGADA' })]
+    ]);
+
+    const res = await invocar('post', '/api/bd/facturas/1/pagar', { params: { id: '1' } });
+
+    expect(res.statusCode).toBe(200);
+    const sql = sentencias().find(s => SQL.pagarFactura.test(s));
+    // Una factura pagada con fecha de vencimiento vieja volveria a "vencida" si
+    // alguien la devuelve a credito.
+    expect(sql).toMatch(/fecha_vencimiento = NULL/);
   });
 });
 

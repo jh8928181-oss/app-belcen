@@ -64,9 +64,20 @@
         h3.ambar { border-bottom-color: rgba(255, 149, 0, 0.4); color: #a05a00; }
         .borde-morado { border-top: 6px solid #7c3aed; }
         h3.morado { border-bottom-color: rgba(124, 58, 237, 0.35); color: #6d28d9; }
+        /* Estados de pago de la factura.
+           ANULADA va en gris porque el documento no existio: es informacion
+           muerta y no debe competir por la atencion.
+           CANCELADA va en rojo porque si es plata que la orden cubrio y que
+           nunca entro: es lo unico de esta pantalla que representa una perdida,
+           y tiene que saltar a la vista aunque este al final de una lista larga.
+           VENCIDA no es un estado sino una condicion de tiempo sobre CREDITO, y
+           por eso se pinta encima del badge en vez de competir con el. */
         .estado-factura-pagada { background: #dcfce7; color: #166534; }
         .estado-factura-pendiente { background: #fef3c7; color: #92400e; }
-        .estado-factura-anulada { background: #fee2e2; color: #991b1b; }
+        .estado-factura-credito { background: #e0f2fe; color: #075985; }
+        .estado-factura-cancelada { background: #fee2e2; color: #991b1b; font-weight: 700; }
+        .estado-factura-anulada { background: #f1f5f9; color: #64748b; }
+        .estado-factura-vencida { background: #7f1d1d; color: #fff; font-weight: 700; }
         .var-precio { font-weight: 800; }
         .var-precio.sube { color: #b91c1c; }
         .var-precio.baja { color: #15803d; }
@@ -519,12 +530,14 @@
                                 <th class="text-center">Recibido</th>
                                 <th class="text-center">Subtotal</th>
                                 <th class="text-center">Total c/IGV</th>
+                                <th class="text-center">Por facturar</th>
+                                <th class="text-center">Por cobrar</th>
                                 <th>Estado</th>
                                 <th class="text-center">Acciones</th>
                             </tr>
                         </thead>
                         <tbody id="tablaOrdenes">
-                            <tr><td colspan="11" class="text-center sin-registros">Cargando órdenes...</td></tr>
+                            <tr><td colspan="13" class="text-center sin-registros">Cargando órdenes...</td></tr>
 
                         </tbody>
                     </table>
@@ -641,8 +654,15 @@
                         <select id="filtroFacturaEstado">
                             <option value="">Todos</option>
                             <option value="PENDIENTE">Pendiente</option>
+                            <option value="CREDITO">A crédito</option>
                             <option value="PAGADA">Pagada</option>
+                            <option value="CANCELADA">Cancelada</option>
                             <option value="ANULADA">Anulada</option>
+                            <!-- VENCIDAS no es un estado: cruza las facturas a
+                                 crédito cuyo plazo ya paso, asi que se resuelve
+                                 en el cliente en vez de mandarse como estado a
+                                 la API. -->
+                            <option value="VENCIDAS">⚠ Vencidas</option>
                         </select>
                     </div>
                     <div class="campo-flex" style="min-width:180px;">
@@ -714,13 +734,34 @@
                                 <option value="USD">$ — Dólares</option>
                             </select>
                         </div>
-                        <div class="campo-flex" style="min-width:120px;">
+                        <div class="campo-flex" style="min-width:140px;">
                             <label>Estado</label>
-                            <select id="facturaEstado">
+                            <select id="facturaEstado" onchange="sincronizarCamposCredito()">
                                 <option value="PENDIENTE">Pendiente</option>
+                                <option value="CREDITO">A crédito</option>
                                 <option value="PAGADA">Pagada</option>
+                                <option value="CANCELADA">Cancelada</option>
                                 <option value="ANULADA">Anulada</option>
                             </select>
+                        </div>
+                        <!-- Los dos campos de credito solo existen mientras el
+                             estado sea CREDITO. Vienen justo despues del estado
+                             porque se leen como una sola idea: "a credito, vence
+                             el ...". -->
+                        <div class="campo-flex" id="facturaCreditoDiasWrap" style="min-width:120px;display:none;">
+                            <label>Días de crédito</label>
+                            <select id="facturaCreditoDias" onchange="calcularVencimientoDesdeDias()">
+                                <option value="">Manual</option>
+                                <option value="15">15 días</option>
+                                <option value="30" selected>30 días</option>
+                                <option value="45">45 días</option>
+                                <option value="60">60 días</option>
+                                <option value="90">90 días</option>
+                            </select>
+                        </div>
+                        <div class="campo-flex" id="facturaVencimientoWrap" style="min-width:140px;display:none;">
+                            <label>Vence el</label>
+                            <input type="date" id="facturaVencimiento">
                         </div>
                         <div class="campo-flex" style="min-width:130px;">
                             <label>Fecha de pago</label>
@@ -753,12 +794,14 @@
                                 <th class="text-center">IGV</th>
                                 <th class="text-center">Total</th>
                                 <th>Estado</th>
-                                <th>Saldo orden</th>
+                                <th class="text-center">Vence</th>
+                                <th class="text-center">Por facturar</th>
+                                <th class="text-center">Por cobrar</th>
                                 <th class="text-center">Acciones</th>
                             </tr>
                         </thead>
                         <tbody id="tablaFacturas">
-                            <tr><td colspan="10" class="text-center sin-registros">Cargando facturas...</td></tr>
+                            <tr><td colspan="12" class="text-center sin-registros">Cargando facturas...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -887,6 +930,70 @@
         </div>
     </div>
 
+    <!-- MODAL PAGOS DE LA ORDEN
+         Va en su propio modal y no dentro del formulario de edicion a proposito:
+         revisar y corregir el estado de pago es una tarea distinta de editar la
+         orden, y el formulario de edicion ya es largo (tipo, proveedor, IGV,
+         items, guardar). Meterlo ahi obligaria a abrir la orden completa para
+         marcar una factura pagada, que es la accion mas frecuente del dia. -->
+    <div class="modal-fondo oculto" id="modalPagos">
+        <div class="modal" style="max-width:920px;">
+            <h3>💳 Pagos de la Orden</h3>
+            <p class="sub" style="text-align:left; margin-bottom:14px;" id="pagosInfoOrden">Orden #</p>
+
+            <!-- Las cuatro cifras que distinguish una deuda de otra. Se muestran
+                 siempre las cuatro, y no solo las que importen, para que el
+                 total de la orden se pueda contrastar contra lo facturado, lo
+                 pagado y lo que queda abierto sin tener que hacer la suma a
+                 mano. -->
+            <div class="filtro-bar" style="margin-bottom:14px;">
+                <div class="campo-flex" style="min-width:130px;">
+                    <label>Total orden</label>
+                    <input type="text" id="pagosTotalOrden" readonly>
+                </div>
+                <div class="campo-flex" style="min-width:130px;">
+                    <label>Facturado</label>
+                    <input type="text" id="pagosFacturado" readonly>
+                </div>
+                <div class="campo-flex" style="min-width:130px;">
+                    <label>Pagado</label>
+                    <input type="text" id="pagosPagado" readonly>
+                </div>
+                <div class="campo-flex" style="min-width:130px;">
+                    <label>Por facturar</label>
+                    <input type="text" id="pagosPorFacturar" readonly>
+                </div>
+                <div class="campo-flex" style="min-width:130px;">
+                    <label>Por cobrar</label>
+                    <input type="text" id="pagosPorCobrar" readonly>
+                </div>
+            </div>
+
+            <div class="aviso aviso-ambar" style="text-align:left;">
+                ℹ️ <b>Por facturar</b> es lo que falta emitir y <b>Por cobrar</b> es lo ya facturado que todavía no se ha cobrado. Una factura <b>cancelada</b> sigue contando como facturada y nunca como pagada, por eso queda abierta en el por cobrar; una <b>anulada</b> no cuenta para nada y su importe vuelve al por facturar.
+            </div>
+
+            <div class="tabla-wrap" style="margin-top:14px;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Comprobante</th>
+                            <th>Fecha</th>
+                            <th class="text-center">Total</th>
+                            <th>Vence</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbodyPagosOrden"></tbody>
+                </table>
+            </div>
+
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;">
+                <button class="btn btn-gris" onclick="cerrarModalPagos()">✖ Cerrar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL RECIBIR -->
     <div class="modal-fondo oculto" id="modalRecibir">
         <div class="modal">
@@ -935,6 +1042,7 @@
         let proveedorEditando = null;
         let ordenEditando = null;
         let ordenRecibir = null;
+        let ordenPagos = null;
 
         function cerrarSesion() {
             if (confirm('¿Estás seguro de que deseas cerrar sesión?')) {
@@ -1376,6 +1484,12 @@
             facturaEditando = null;
             document.getElementById('formFactura').classList.add('oculto');
             document.getElementById('facturaOrden').disabled = false;
+            // Los campos de credito se limpian junto con el formulario: si
+            // quedaron visibles con una fecha vieja y el usuario vuelve a abrir
+            // una factura nueva en CREDITO, arrastraria el vencimiento anterior.
+            document.getElementById('facturaVencimiento').value = '';
+            document.getElementById('facturaEstado').value = 'PENDIENTE';
+            sincronizarCamposCredito();
         }
 
         async function cargarFacturaOrdenes() {
@@ -1390,9 +1504,19 @@
                     sel.innerHTML = '<option value="">No hay órdenes para este filtro</option>';
                     return;
                 }
-                sel.innerHTML = '<option value="">Seleccione...</option>' + data.ordenes.map(o =>
-                    `<option value="${o.id}">${o.tipo} #${escapeHtml(o.numero)} — ${escapeHtml(o.proveedor_nombre || '')} — ${fmtMoneda(o.total_igv, o.moneda)} facturado ${fmtMoneda(o.facturado, o.moneda)}${Number(o.saldo) > 0.01 ? ' — saldo ' + fmtMoneda(o.saldo, o.moneda) : ' — completa'}</option>`
-                ).join('');
+                sel.innerHTML = '<option value="">Seleccione...</option>' + data.ordenes.map(o => {
+                    const porFacturar = Number(o.por_facturar);
+                    const porCobrar = Number(o.por_cobrar);
+                    const cola = porFacturar > 0.01
+                        ? 'por facturar ' + fmtMoneda(porFacturar, o.moneda)
+                        : 'completa';
+                    // Una orden con por cobrar abierto se ofrece aunque ya este
+                    // facturada al 100%: es justo el caso donde conviene
+                    // registrar otra factura contra la misma orden (un segundo
+                    // envio), asi que no se esconde tras el filtro.
+                    const deuda = porCobrar > 0.01 ? ' — debe ' + fmtMoneda(porCobrar, o.moneda) : '';
+                    return `<option value="${o.id}">${o.tipo} #${escapeHtml(o.numero)} — ${escapeHtml(o.proveedor_nombre || '')} — facturado ${fmtMoneda(o.facturado, o.moneda)}/${fmtMoneda(o.total_igv, o.moneda)} — ${cola}${deuda}</option>`;
+                }).join('');
                 if (actual) sel.value = actual;
                 // La moneda de la factura se propone con la de la orden elegida, para
                 // no dejar una factura en soles colgada de una orden en dolares.
@@ -1405,23 +1529,44 @@
             }
         }
 
-        function estadoFacturaBadge(estado) {
+        // Badge de estado. CREDITO con el plazo ya vencido muestra ademas
+        // "VENCIDA" encima, porque "A crédito" y "A crédito y no la pagaste hace
+        // tres semanas" son dos hechos distintos y solo uno sale del estado.
+        function estadoFacturaBadge(estado, vencida) {
             const e = String(estado || '').toUpperCase();
-            const clase = e === 'PAGADA' ? 'estado-factura-pagada' : (e === 'ANULADA' ? 'estado-factura-anulada' : 'estado-factura-pendiente');
-            return `<span class="badge ${clase}">${escapeHtml(e || 'PENDIENTE')}</span>`;
+            const clases = {
+                PAGADA: 'estado-factura-pagada',
+                CREDITO: 'estado-factura-credito',
+                CANCELADA: 'estado-factura-cancelada',
+                ANULADA: 'estado-factura-anulada',
+                PENDIENTE: 'estado-factura-pendiente'
+            };
+            const clase = clases[e] || 'estado-factura-pendiente';
+            const aviso = vencida ? '<br><span class="badge estado-factura-vencida">VENCIDA</span>' : '';
+            return `<span class="badge ${clase}">${escapeHtml(e || 'PENDIENTE')}</span>${aviso}`;
         }
 
         async function cargarFacturas() {
             try {
-                const estado = document.getElementById('filtroFacturaEstado').value;
+                const filtroEstado = document.getElementById('filtroFacturaEstado').value;
                 const provId = document.getElementById('filtroFacturaProveedor').value;
-                const qs = new URLSearchParams({ estado, proveedor_id: provId || '' });
+                // VENCIDAS no es un estado del servidor: la API compara
+                // estado = 'VENCIDAS' y no devuelve nada porque ninguna factura
+                // se llama asi. Se piden todas y se acota la lista aqui.
+                const qs = new URLSearchParams({
+                    estado: filtroEstado === 'VENCIDAS' ? '' : filtroEstado,
+                    proveedor_id: provId || ''
+                });
                 const data = await api('/api/bd/facturas?' + qs.toString());
                 const tbody = document.getElementById('tablaFacturas');
-                if (!data.facturas.length) {
-                    tbody.innerHTML = '<tr><td colspan="10" class="text-center sin-registros">Sin facturas para los filtros seleccionados.</td></tr>';
+                let filas = data.facturas;
+                if (filtroEstado === 'VENCIDAS') filas = filas.filter(f => f.vencida);
+                if (!filas.length) {
+                    tbody.innerHTML = '<tr><td colspan="12" class="text-center sin-registros">Sin facturas para los filtros seleccionados.</td></tr>';
                 } else {
-                    tbody.innerHTML = data.facturas.map(f => `
+                    tbody.innerHTML = filas.map(f => {
+                        const impagable = ['ANULADA', 'CANCELADA'].includes(String(f.estado).toUpperCase());
+                        return `
                         <tr>
                             <td><b>${escapeHtml(f.serie)}-${escapeHtml(f.numero)}</b><br><span class="badge">${escapeHtml(f.tipo_comprobante)}</span></td>
                             <td>${fmtFecha(f.fecha_factura)}</td>
@@ -1430,30 +1575,73 @@
                             <td class="text-center">${fmtMoneda(f.subtotal, f.moneda)}</td>
                             <td class="text-center">${fmtMoneda(f.igv, f.moneda)}</td>
                             <td class="text-center"><b>${fmtMoneda(f.total, f.moneda)}</b></td>
-                            <td>${estadoFacturaBadge(f.estado)}${f.fecha_pago ? '<br><small>' + fmtFecha(f.fecha_pago) + '</small>' : ''}</td>
-                            <td class="text-center">${Number(f.orden_saldo) > 0.01 ? fmtMoneda(f.orden_saldo, f.orden_moneda) : '<span style="color:#15803d;">completa</span>'}</td>
+                            <td>${estadoFacturaBadge(f.estado, f.vencida)}${f.fecha_pago ? '<br><small>' + fmtFecha(f.fecha_pago) + '</small>' : ''}</td>
+                            <td class="text-center">${f.fecha_vencimiento ? (f.vencida ? '<span style="color:#991b1b;font-weight:700;">' : '<span style="color:#075985;">') + fmtFecha(f.fecha_vencimiento) + '</span>' : '-'}</td>
+                            <td class="text-center">${Number(f.orden_por_facturar) > 0.01 ? fmtMoneda(f.orden_por_facturar, f.orden_moneda) : '<span style="color:#15803d;">completa</span>'}</td>
+                            <td class="text-center">${Number(f.orden_por_cobrar) > 0.01 ? '<b style="color:#b91c1c;">' + fmtMoneda(f.orden_por_cobrar, f.orden_moneda) + '</b>' : '<span style="color:#15803d;">0.00</span>'}</td>
                             <td class="text-center">
                                 <div class="acciones-celda" style="justify-content:center;">
                                     <button class="btn btn-mini" onclick="editarFactura(${f.id})">✏️</button>
-                                    <button class="btn btn-mini btn-verde" onclick="pagarFactura(${f.id})" ${String(f.estado).toUpperCase() === 'PAGADA' ? 'disabled' : ''}>💳</button>
+                                    <button class="btn btn-mini btn-verde" onclick="pagarFactura(${f.id})" ${impagable ? 'disabled title="Una factura cancelada o anulada no se puede marcar como pagada."' : ''}>💳</button>
                                     <button class="btn btn-mini btn-rojo" onclick="eliminarFactura(${f.id})">🗑️</button>
                                 </div>
                             </td>
-                        </tr>`).join('');
+                        </tr>`;
+                    }).join('');
                 }
                 etiquetarTablas();
             } catch (err) {
-                document.getElementById('tablaFacturas').innerHTML = `<tr><td colspan="10" class="text-center sin-registros">${escapeHtml(err.message)}</td></tr>`;
+                document.getElementById('tablaFacturas').innerHTML = `<tr><td colspan="12" class="text-center sin-registros">${escapeHtml(err.message)}</td></tr>`;
             }
+        }
+
+        // Muestra u oculta los campos de crédito según el estado, y al entrar en
+        // crédito propone el vencimiento a 30 días desde la fecha de la factura.
+        // La fecha se recalcula en el cliente y se manda ya resuelta: el servidor
+        // guarda la fecha, no un numero de días, para no tener que recomputar en
+        // cada consulta.
+        function sincronizarCamposCredito() {
+            const esCredito = document.getElementById('facturaEstado').value === 'CREDITO';
+            document.getElementById('facturaCreditoDiasWrap').style.display = esCredito ? '' : 'none';
+            document.getElementById('facturaVencimientoWrap').style.display = esCredito ? '' : 'none';
+            if (esCredito && !document.getElementById('facturaVencimiento').value) {
+                calcularVencimientoDesdeDias();
+            }
+        }
+
+        function calcularVencimientoDesdeDias() {
+            const dias = document.getElementById('facturaCreditoDias').value;
+            const fechaFactura = document.getElementById('facturaFecha').value;
+            if (!dias || !fechaFactura) return;
+            document.getElementById('facturaVencimiento').value = sumarDias(fechaFactura, parseInt(dias, 10));
+        }
+
+        // Suma dias a una fecha yyyy-mm-dd y devuelve otra yyyy-mm-dd.
+        // Se opera en UTC de punta a punta a proposito: si se usara el
+        // constructor local con una fecha-hora, cruzaria el cambio de dia en
+        // Peru (UTC-5) y la fecha devuelta seria la anterior.
+        function sumarDias(fechaIso, dias) {
+            const base = new Date(fechaIso + 'T00:00:00Z');
+            if (Number.isNaN(base.getTime())) return '';
+            base.setUTCDate(base.getUTCDate() + dias);
+            return base.toISOString().slice(0, 10);
         }
 
         async function guardarFactura() {
             const numero = document.getElementById('facturaNumero').value.trim();
             const ordenId = document.getElementById('facturaOrden').value;
             const subtotal = document.getElementById('facturaSubtotal').value;
+            const estado = document.getElementById('facturaEstado').value;
+            const vencimiento = document.getElementById('facturaVencimiento').value;
             if (!numero) { alert('❌ Ingrese el número del comprobante.'); return; }
             if (!ordenId) { alert('❌ Seleccione la orden a facturar.'); return; }
             if (subtotal === '' || Number(subtotal) < 0) { alert('❌ Ingrese un subtotal válido.'); return; }
+            // Se valida tambien aca para que el error salga pegado al campo y no
+            // como un alert con el formulario entero intacto arriba.
+            if (estado === 'CREDITO' && !vencimiento) {
+                alert('❌ Una factura a crédito necesita fecha de vencimiento.');
+                return;
+            }
             const cuerpo = {
                 tipo_comprobante: document.getElementById('facturaTipo').value,
                 serie: document.getElementById('facturaSerie').value.trim() || 'F001',
@@ -1462,8 +1650,9 @@
                 subtotal: Number(subtotal),
                 igv_pct: Number(document.getElementById('facturaIgvPct').value) || 0,
                 moneda: document.getElementById('facturaMoneda').value,
-                estado: document.getElementById('facturaEstado').value,
+                estado,
                 fecha_pago: document.getElementById('facturaFechaPago').value,
+                fecha_vencimiento: estado === 'CREDITO' ? vencimiento : '',
                 observaciones: document.getElementById('facturaObs').value.trim()
             };
             try {
@@ -1479,6 +1668,7 @@
                 cargarFacturas();
                 cargarResumenFacturas();
                 cargarFacturaOrdenes();
+                cargarOrdenes();
             } catch (err) {
                 alert('❌ ' + err.message);
             }
@@ -1505,6 +1695,10 @@
                 document.getElementById('facturaMoneda').value = f.moneda;
                 document.getElementById('facturaEstado').value = f.estado;
                 document.getElementById('facturaFechaPago').value = String(f.fecha_pago || '').slice(0, 10);
+                document.getElementById('facturaVencimiento').value = String(f.fecha_vencimiento || '').slice(0, 10);
+                // El vencimiento se carga antes que sincronizarCamposCredito para
+                // que la funcion no lo pise con los 30 dias por defecto.
+                sincronizarCamposCredito();
                 document.getElementById('facturaObs').value = f.observaciones || '';
                 recalcularFactura();
                 window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1547,18 +1741,33 @@
             try {
                 const data = await api('/api/bd/facturas/resumen');
                 const tbody = document.getElementById('tablaResumenFacturas');
-                if (!data.resumen.length) {
+                const vencidas = data.vencidas || [];
+                // Las vencidas van como filas propias y no mezcladas con los
+                // estados: solaparian con la fila CREDITO (una factura vencida
+                // sigue siendo de credito) y si se sumaran alli, el total de
+                // "a credito" diria dos veces la misma plata.
+                const filas = data.resumen.map(r => `
+                    <tr>
+                        <td>${simboloMoneda(r.moneda)} <small>${escapeHtml(r.moneda)}</small></td>
+                        <td>${estadoFacturaBadge(r.estado)}</td>
+                        <td class="text-center">${r.cantidad}</td>
+                        <td class="text-center">${fmtMoneda(r.subtotal, r.moneda)}</td>
+                        <td class="text-center">${fmtMoneda(r.igv, r.moneda)}</td>
+                        <td class="text-center"><b>${fmtMoneda(r.total, r.moneda)}</b></td>
+                    </tr>`)
+                    .concat(vencidas.map(v => `
+                    <tr style="background:#fef2f2;">
+                        <td>${simboloMoneda(v.moneda)} <small>${escapeHtml(v.moneda)}</small></td>
+                        <td><span class="badge estado-factura-vencida">VENCIDAS</span></td>
+                        <td class="text-center"><b>${v.cantidad}</b></td>
+                        <td class="text-center">—</td>
+                        <td class="text-center">—</td>
+                        <td class="text-center"><b style="color:#991b1b;">${fmtMoneda(v.total, v.moneda)}</b></td>
+                    </tr>`));
+                if (!filas.length) {
                     tbody.innerHTML = '<tr><td colspan="6" class="text-center sin-registros">Todavía no hay facturas registradas.</td></tr>';
                 } else {
-                    tbody.innerHTML = data.resumen.map(r => `
-                        <tr>
-                            <td>${simboloMoneda(r.moneda)} <small>${escapeHtml(r.moneda)}</small></td>
-                            <td>${estadoFacturaBadge(r.estado)}</td>
-                            <td class="text-center">${r.cantidad}</td>
-                            <td class="text-center">${fmtMoneda(r.subtotal, r.moneda)}</td>
-                            <td class="text-center">${fmtMoneda(r.igv, r.moneda)}</td>
-                            <td class="text-center"><b>${fmtMoneda(r.total, r.moneda)}</b></td>
-                        </tr>`).join('');
+                    tbody.innerHTML = filas.join('');
                 }
                 etiquetarTablas();
             } catch (err) {
@@ -1640,9 +1849,17 @@
                 const data = await api('/api/bd/ordenes?' + qs.toString());
                 const tbody = document.getElementById('tablaOrdenes');
                 if (!data.ordenes.length) {
-                    tbody.innerHTML = '<tr><td colspan="11" class="text-center sin-registros">Sin órdenes para los filtros seleccionados.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="13" class="text-center sin-registros">Sin órdenes para los filtros seleccionados.</td></tr>';
                 } else {
-                    tbody.innerHTML = data.ordenes.map(o => `
+                    tbody.innerHTML = data.ordenes.map(o => {
+                        const porCobrar = Number(o.por_cobrar);
+                        const vencidas = Number(o.n_vencidas) || 0;
+                        // El aviso de vencidas va como numero al lado del importe y
+                        // no dentro del texto de la celda, para que el usuario vea
+                        // primero de cuanto es la deuda y despues quantas facturas
+                        // la componen.
+                        const avisoVencidas = vencidas > 0 ? ` <span class="badge estado-factura-vencida">${vencidas} vencida${vencidas > 1 ? 's' : ''}</span>` : '';
+                        return `
                         <tr>
                             <td><span class="pres ${o.tipo === 'OC' ? 'oc' : 'os'}">${o.tipo}</span></td>
                             <td><b>#${escapeHtml(o.numero)}</b></td>
@@ -1653,22 +1870,27 @@
                             <td class="text-center">${fmtN(o.total_recibido)}</td>
                             <td class="text-center">${fmtMoneda(o.total, o.moneda)}</td>
                             <td class="text-center"><b>${fmtMoneda(o.total_igv, o.moneda)}</b></td>
+                            <td class="text-center">${Number(o.por_facturar) > 0.01 ? fmtMoneda(o.por_facturar, o.moneda) : '<span style="color:#15803d;">completa</span>'}</td>
+                            <td class="text-center">${porCobrar > 0.01 ? `<b style="color:#b91c1c;">${fmtMoneda(porCobrar, o.moneda)}</b>${avisoVencidas}` : '<span style="color:#15803d;">0.00</span>'}</td>
                             <td>${estadoBadge(o.estado)}</td>
                             <td class="text-center">
                                 <div class="acciones-celda" style="justify-content:center;">
+                                    <button class="btn btn-mini" onclick="abrirPagosOrden(${o.id})" title="Ver y cambiar el estado de sus facturas">💳 Pagos</button>
                                     <button class="btn btn-mini" onclick="editarOrden(${o.id})">✏️ Editar</button>
                                     <button class="btn btn-mini btn-verde" onclick="abrirRecibir(${o.id})" ${String(o.estado) === 'CANCELADA' ? 'disabled' : ''}>📥 Recibir</button>
-                                    <button class="btn btn-mini btn-gris" onclick="cambiarEstadoOrden(${o.id})">C🔄</button>
+                                    <button class="btn btn-mini btn-gris" onclick="cambiarEstadoOrden(${o.id})">🔄</button>
                                     <button class="btn btn-mini btn-rojo" onclick="eliminarOrden(${o.id})" title="Eliminar orden">🗑️</button>
                                 </div>
                             </td>
-                        </tr>`).join('');
+                        </tr>`;
+                    }).join('');
                 }
                 etiquetarTablas();
             } catch (err) {
-                document.getElementById('tablaOrdenes').innerHTML = `<tr><td colspan="11" class="text-center sin-registros">${escapeHtml(err.message)}</td></tr>`;
+                document.getElementById('tablaOrdenes').innerHTML = `<tr><td colspan="13" class="text-center sin-registros">${escapeHtml(err.message)}</td></tr>`;
             }
         }
+
 
 
         async function guardarOrden() {
@@ -1806,6 +2028,112 @@
         function cerrarModalRecibir() {
             ordenRecibir = null;
             document.getElementById('modalRecibir').classList.add('oculto');
+        }
+
+        // ---- Pagos de la orden ----
+        // El estado se cambia con un select en cada fila y se guarda solo: pedir
+        // que se confirme con un boton por fila haria que corregir tres facturas
+        // fueran tres viajes al servidor, y el guardado automatico deja el
+        // error justo en la fila que se equivoco en vez de en un dialogo suelto.
+        async function abrirPagosOrden(id) {
+            try {
+                const data = await api('/api/bd/ordenes/' + id);
+                ordenPagos = data;
+                document.getElementById('pagosInfoOrden').textContent =
+                    `Orden ${data.orden.tipo} #${data.orden.numero} — ${data.orden.proveedor_nombre || ''}`;
+                document.getElementById('pagosTotalOrden').value = fmtMoneda(data.orden.total_igv, data.orden.moneda);
+                document.getElementById('pagosFacturado').value = fmtMoneda(data.facturado, data.orden.moneda);
+                document.getElementById('pagosPagado').value = fmtMoneda(data.pagado, data.orden.moneda);
+                document.getElementById('pagosPorFacturar').value = fmtMoneda(data.por_facturar, data.orden.moneda);
+                document.getElementById('pagosPorCobrar').value = fmtMoneda(data.por_cobrar, data.orden.moneda);
+                document.getElementById('tbodyPagosOrden').innerHTML = data.facturas.length
+                    ? data.facturas.map(f => `
+                        <tr>
+                            <td><b>${escapeHtml(f.serie)}-${escapeHtml(f.numero)}</b><br><span class="badge">${escapeHtml(f.tipo_comprobante)}</span></td>
+                            <td>${fmtFecha(f.fecha_factura)}</td>
+                            <td class="text-center"><b>${fmtMoneda(f.total, f.moneda)}</b></td>
+                            <td>${f.fecha_vencimiento ? `<span style="${f.vencida ? 'color:#991b1b;font-weight:700' : 'color:#075985'}">${fmtFecha(f.fecha_vencimiento)}</span>` : '-'}</td>
+                            <td>
+                                <select class="pago-estado-select" data-factura-id="${f.id}" onchange="cambiarEstadoFacturaDesdeOrden(${f.id}, this.value, this)">
+                                    <option value="PENDIENTE" ${f.estado === 'PENDIENTE' ? 'selected' : ''}>Pendiente</option>
+                                    <option value="CREDITO" ${f.estado === 'CREDITO' ? 'selected' : ''}>A crédito</option>
+                                    <option value="PAGADA" ${f.estado === 'PAGADA' ? 'selected' : ''}>Pagada</option>
+                                    <option value="CANCELADA" ${f.estado === 'CANCELADA' ? 'selected' : ''}>Cancelada</option>
+                                    <option value="ANULADA" ${f.estado === 'ANULADA' ? 'selected' : ''}>Anulada</option>
+                                </select>
+                                ${f.vencida ? '<br><span class="badge estado-factura-vencida">VENCIDA</span>' : ''}
+                            </td>
+                        </tr>`).join('')
+                    : '<tr><td colspan="5" class="text-center sin-registros">Esta orden todavía no tiene facturas registradas.</td></tr>';
+                document.getElementById('modalPagos').classList.remove('oculto');
+                etiquetarTablas();
+            } catch (err) {
+                alert('❌ ' + err.message);
+            }
+        }
+
+        function cerrarModalPagos() {
+            ordenPagos = null;
+            document.getElementById('modalPagos').classList.add('oculto');
+        }
+
+        // Cambia solo el estado. El PUT reenvia el resto de campos tal como
+        // estaban, asi que el numero, el subtotal y el IGV de la factura no se
+        // tocan: si se mandaran vacios, el backend los validaria y la edicion
+        // fallaria entera por un cambio de estado.
+        async function cambiarEstadoFacturaDesdeOrden(id, estado, select) {
+            const f = ordenPagos.facturas.find(x => String(x.id) === String(id));
+            if (!f) return;
+            const original = String(f.estado || '');
+            let vencimiento = String(f.fecha_vencimiento || '').slice(0, 10);
+
+            // Pasar a CREDITO sin vencimiento no se puede guardar, y se pregunta
+            // en vez de inventar una fecha: la fecha es un dato del acuerdo con
+            // el proveedor, no algo que se deduzca. Se propone a 30 dias para no
+            // obligar a escribir la fecha, y cancelar deja el estado como estaba.
+            if (estado === 'CREDITO' && !vencimiento) {
+                const fechaFactura = String(f.fecha_factura || '').slice(0, 10);
+                const respuesta = prompt(
+                    '¿Qué día vence esta factura a crédito? (AAAA-MM-DD)',
+                    sumarDias(fechaFactura, 30)
+                );
+                if (respuesta === null) { select.value = original; return; }
+                vencimiento = respuesta.trim();
+            }
+
+            select.disabled = true;
+            try {
+                await api('/api/bd/facturas/' + id, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        tipo_comprobante: f.tipo_comprobante,
+                        serie: f.serie,
+                        numero: f.numero,
+                        fecha_factura: String(f.fecha_factura || '').slice(0, 10),
+                        subtotal: Number(f.subtotal),
+                        igv_pct: Number(f.igv_pct),
+                        moneda: f.moneda,
+                        estado,
+                        fecha_pago: String(f.fecha_pago || '').slice(0, 10),
+                        fecha_vencimiento: estado === 'CREDITO' ? vencimiento : '',
+                        observaciones: f.observaciones || ''
+                    })
+                });
+                mostrarMensaje('✅ Estado actualizado a ' + estado + '.', true);
+                // El modal se recarga entero en vez de parchear la fila, porque
+                // cambiar el estado mueve las cuatro cifras de arriba y solo el
+                // servidor sabe los nuevos totales.
+                await abrirPagosOrden(ordenPagos.orden.id);
+                cargarFacturas();
+                cargarResumenFacturas();
+                cargarOrdenes();
+                cargarFacturaOrdenes();
+            } catch (err) {
+                select.value = original;
+                select.disabled = false;
+                alert('❌ ' + err.message);
+            }
         }
 
         async function confirmarRecibir() {

@@ -247,3 +247,229 @@ describe('basededatosgeneral.html ambito global', () => {
     expect(fuente).toContain('recalcularTotalOrden()');
   });
 });
+
+describe('basededatosgeneral.html estados de pago de la factura', () => {
+  /** Opciones de un select del HTML, por id. */
+  function opcionesDe(id) {
+    const select = sinScripts.match(new RegExp(`<select id="${id}"[\\s\\S]*?</select>`));
+    expect(select).not.toBeNull();
+    return [...select[0].matchAll(/<option value="([^"]*)"/g)].map(m => m[1]);
+  }
+
+  /** La cabecera de la tabla que va justo antes de un tbody, por id. */
+  function cabeceraDe(tbodyId) {
+    const antes = sinScripts.slice(0, sinScripts.indexOf(`<tbody id="${tbodyId}"`));
+    const theads = [...antes.matchAll(/<thead>[\s\S]*?<\/thead>/g)];
+    expect(theads.length).toBeGreaterThan(0);
+    return theads[theads.length - 1][0];
+  }
+
+  test('el formulario ofrece los cinco estados', () => {
+    expect(opcionesDe('facturaEstado')).toEqual(['PENDIENTE', 'CREDITO', 'PAGADA', 'CANCELADA', 'ANULADA']);
+  });
+
+  test('el filtro ofrece los cinco estados mas el de vencidas', () => {
+    // La primera opcion vacia es "Todos", que no es un estado.
+    expect(opcionesDe('filtroFacturaEstado'))
+      .toEqual(['', 'PENDIENTE', 'CREDITO', 'PAGADA', 'CANCELADA', 'ANULADA', 'VENCIDAS']);
+  });
+
+  // VENCIDAS no es un estado, es un filtro que cruza las de credito por fecha.
+  // Si el select lo mandara al servidor como estado, la API responderia vacio
+  // porque ninguna factura se llama asi.
+  test('el filtro de vencidas no se confunde con un estado', () => {
+    expect(opcionesDe('facturaEstado')).not.toContain('VENCIDAS');
+  });
+
+  /** Corre cargarFacturas() de verdad contra un backend falso y devuelve la URL
+   *  que se pidio mas el HTML que quedo en la tabla. */
+  async function pedirFacturas(estadoSeleccionado, facturas) {
+    const contexto = ejecutarScript();
+    const peticiones = [];
+    const tbody = { innerHTML: 'sin tocar' };
+    const porId = {
+      filtroFacturaEstado: { value: estadoSeleccionado },
+      filtroFacturaProveedor: { value: '' },
+      tablaFacturas: tbody
+    };
+    contexto.document = {
+      getElementById: (id) => porId[id] || stubInfinito(),
+      querySelectorAll: () => [],
+      querySelector: () => null,
+      addEventListener: () => {}
+    };
+    contexto.api = (ruta) => {
+      peticiones.push(ruta);
+      return Promise.resolve({ facturas });
+    };
+    contexto.etiquetarTablas = () => {};
+    await vm.runInContext('cargarFacturas()', contexto, { timeout: 5000 });
+    return { url: peticiones[0] || '', tbody: tbody.innerHTML };
+  }
+
+  const FACTURA = (serie, extra) => Object.assign({
+    id: 1,
+    tipo_comprobante: 'FACTURA',
+    serie,
+    numero: '1',
+    fecha_factura: '2026-01-10',
+    orden_tipo: 'OC',
+    orden_numero: '001',
+    proveedor_nombre: 'Proveedor',
+    subtotal: 100,
+    igv: 18,
+    total: 118,
+    moneda: 'PEN',
+    orden_moneda: 'PEN',
+    estado: 'CREDITO',
+    fecha_pago: null,
+    fecha_vencimiento: '2026-02-10',
+    vencida: false,
+    orden_por_facturar: 0,
+    orden_por_cobrar: 118
+  }, extra);
+
+  test('al filtrar por vencidas no se manda VENCIDAS como estado al servidor', async () => {
+    // El bug: la API hace estado = 'VENCIDAS', no encuentra nada y la lista
+    // queda vacia para siempre aunque haya facturas vencidas.
+    const { url, tbody } = await pedirFacturas('VENCIDAS', [
+      FACTURA('A001', { id: 1, vencida: true }),
+      FACTURA('B002', { id: 2, vencida: false })
+    ]);
+    expect(url).not.toContain('estado=VENCIDAS');
+    // Y aun asi se pinta solo la vencida.
+    expect(tbody).toContain('A001');
+    expect(tbody).not.toContain('B002');
+  });
+
+  test('un estado de verdad si viaja al servidor', async () => {
+    // La inversa del anterior: no basta con borrar el filtro siempre.
+    const { url } = await pedirFacturas('PAGADA', []);
+    expect(url).toContain('estado=PAGADA');
+  });
+
+  test('la tabla de facturas no se desalinea: la cabecera, la fila y el colspan', async () => {
+    const columnas = cabeceraDe('tablaFacturas').match(/<th\b/g).length;
+    // La fila se cuenta sobre el HTML que pinto de verdad, no sobre una regex
+    // adivinada: una columna de mas se ve en el navegador, no en el codigo.
+    const { tbody } = await pedirFacturas('VENCIDAS', [FACTURA('A001', { vencida: true })]);
+    expect(columnas).toBe(12);
+    expect(tbody.match(/<td\b/g).length).toBe(12);
+    // Los "sin registros" tienen que cubrir la fila entera, tanto el que
+    // pinta el JS como el que viene escrito en el HTML.
+    const vacio = await pedirFacturas('VENCIDAS', []);
+    expect(vacio.tbody).toContain('colspan="12"');
+    const cuerpo = sinScripts.slice(sinScripts.indexOf('<tbody id="tablaFacturas"'));
+    expect(cuerpo.slice(0, cuerpo.indexOf('</tbody>'))).toContain('colspan="12"');
+  });
+
+  test('cada estado tiene su clase de color', () => {
+    for (const clase of ['pendiente', 'credito', 'pagada', 'cancelada', 'anulada', 'vencida']) {
+      expect(html).toContain(`.estado-factura-${clase} {`);
+    }
+  });
+
+  test('el badge conoce los cinco estados y el aviso de vencida', () => {
+    const fuente = vm.runInContext('estadoFacturaBadge.toString()', ejecutarScript());
+    for (const estado of ['PENDIENTE', 'CREDITO', 'PAGADA', 'CANCELADA', 'ANULADA']) {
+      expect(fuente).toContain(`${estado}:`);
+    }
+    expect(fuente).toContain('vencida');
+  });
+
+  test('la tabla de facturas separa por facturar de por cobrar', () => {
+    const cabecera = cabeceraDe('tablaFacturas');
+    expect(cabecera).toContain('Por facturar');
+    expect(cabecera).toContain('Por cobrar');
+    expect(cabecera).toContain('Vence');
+    // El saldo unico que mezclaba las dos deudas no debe quedar en ningun lado.
+    expect(html).not.toMatch(/orden_saldo/);
+  });
+
+  test('la lista de ordenes muestra por facturar y por cobrar', () => {
+    const cabecera = cabeceraDe('tablaOrdenes');
+    expect(cabecera).toContain('Por facturar');
+    expect(cabecera).toContain('Por cobrar');
+  });
+
+  test('sumarDias suma en UTC y devuelve yyyy-mm-dd', () => {
+    const contexto = ejecutarScript();
+    // Se cruza el cambio de dia de Peru: en hora local, sumar dias sobre una
+    // fecha-hora devolveria la fecha anterior.
+    const sumar = (fecha, dias) => vm.runInContext(`sumarDias('${fecha}', ${dias})`, contexto);
+    expect(sumar('2026-03-01', 30)).toBe('2026-03-31');
+    expect(sumar('2026-01-30', 5)).toBe('2026-02-04');
+    // 27 de febrero mas dos dias cae en marzo, no en el 29 nonexistent.
+    expect(sumar('2026-02-27', 2)).toBe('2026-03-01');
+    expect(sumar('basura', 5)).toBe('');
+  });
+
+  test('los dias de crédito se traducen a una fecha de vencimiento', () => {
+    const fuente = vm.runInContext('calcularVencimientoDesdeDias.toString()', ejecutarScript());
+    expect(fuente).toContain('facturaCreditoDias');
+    expect(fuente).toContain('facturaFecha');
+    expect(fuente).toContain('facturaVencimiento');
+    expect(fuente).toContain('sumarDias(');
+  });
+
+  test('los campos de crédito se muestran solo cuando el estado es CREDITO', () => {
+    const fuente = vm.runInContext('sincronizarCamposCredito.toString()', ejecutarScript());
+    expect(fuente).toContain("=== 'CREDITO'");
+    expect(fuente).toContain('facturaCreditoDiasWrap');
+    expect(fuente).toContain('facturaVencimientoWrap');
+  });
+
+  test('guardar la factura manda el vencimiento solo si esta a crédito', () => {
+    const fuente = vm.runInContext('guardarFactura.toString()', ejecutarScript());
+    expect(fuente).toContain('fecha_vencimiento');
+    expect(fuente).toMatch(/estado === 'CREDITO' \? vencimiento : ''/);
+    // Sin este chequeo el backend responde 400 y el usuario ve un error seco.
+    expect(fuente).toMatch(/estado === 'CREDITO' && !vencimiento/);
+  });
+
+  test('cancelar la edicion borra el vencimiento anterior', () => {
+    const fuente = vm.runInContext('cancelarEdicionFactura.toString()', ejecutarScript());
+    // Si el vencimiento sobrevive, una factura nueva en CREDITO arrastraria el
+    // plazo de la factura que se estaba editando antes.
+    expect(fuente).toContain('facturaVencimiento');
+    expect(fuente).toContain('sincronizarCamposCredito()');
+  });
+
+  test('el modal de pagos existe y es alcanzable desde la lista de ordenes', () => {
+    expect(html).toContain('id="modalPagos"');
+    expect(html).toContain('onclick="abrirPagosOrden(${o.id})"');
+    for (const id of ['pagosTotalOrden', 'pagosFacturado', 'pagosPagado', 'pagosPorFacturar', 'pagosPorCobrar', 'tbodyPagosOrden']) {
+      expect(html).toContain(`id="${id}"`);
+    }
+  });
+
+  test('el modal de pagos muestra las cuatro cifras de la orden', () => {
+    const fuente = vm.runInContext('abrirPagosOrden.toString()', ejecutarScript());
+    for (const campo of ['total_igv', 'facturado', 'pagado', 'por_facturar', 'por_cobrar']) {
+      expect(fuente).toContain(campo);
+    }
+  });
+
+  test('cambiar el estado desde la orden reenvia el resto del documento', () => {
+    const fuente = vm.runInContext('cambiarEstadoFacturaDesdeOrden.toString()', ejecutarScript());
+    // El PUT revalida numero, subtotal e IGV, asi que mandarlos vacios haria
+    // fallar la edicion entera por un simple cambio de estado.
+    for (const campo of ['numero', 'subtotal', 'igv_pct', 'tipo_comprobante', 'serie', 'moneda']) {
+      expect(fuente).toContain(campo);
+    }
+    expect(fuente).toContain("'PUT'");
+  });
+
+  test('ir a crédito desde el modal pide la fecha en vez de inventarla', () => {
+    const fuente = vm.runInContext('cambiarEstadoFacturaDesdeOrden.toString()', ejecutarScript());
+    expect(fuente).toContain('prompt(');
+    expect(fuente).toContain('sumarDias(');
+    // Cancelar el prompt devuelve el select a su estado anterior.
+    expect(fuente).toMatch(/if \(respuesta === null\) \{ select\.value = original; return; \}/);
+  });
+
+  test('el boton de pagar se apaga en las facturas que no se pueden pagar', () => {
+    const fuente = vm.runInContext('cargarFacturas.toString()', ejecutarScript());
+    expect(fuente).toContain("['ANULADA', 'CANCELADA']");
+  });
+});

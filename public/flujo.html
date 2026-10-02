@@ -148,24 +148,85 @@
         .nodo-caja.seleccionado rect.cuerpo { stroke-width: 3.5; filter: drop-shadow(0 0 10px currentColor); }
         .nodo-caja.atenuado { opacity: 0.16; }
         .nodo-caja.resaltado rect.cuerpo { stroke-width: 4; }
-        .nodo-titulo { fill: var(--txt); font-size: 13px; font-weight: 800; pointer-events: none; }
-        .nodo-area { font-size: 10px; font-weight: 700; pointer-events: none; letter-spacing: .5px; text-transform: uppercase; }
-        .nodo-desc { fill: rgba(248, 250, 252, 0.62); font-size: 10.5px; pointer-events: none; }
-        .nodo-metrica { font-size: 17px; font-weight: 800; pointer-events: none; }
-        .nodo-metrica-etq { fill: rgba(248, 250, 252, 0.6); font-size: 9.5px; pointer-events: none; }
+        .nodo-titulo { fill: var(--txt); font-size: 13.5px; font-weight: 800; pointer-events: none; }
+        .nodo-area { font-size: 9.5px; font-weight: 700; pointer-events: none; letter-spacing: .5px; text-transform: uppercase; }
+        .nodo-clave {
+            fill: rgba(248, 250, 252, 0.42);
+            font-size: 8.5px;
+            font-family: Consolas, 'Courier New', monospace;
+            pointer-events: none;
+        }
+        .nodo-desc { fill: rgba(248, 250, 252, 0.62); font-size: 10px; pointer-events: none; }
+        .nodo-separador { stroke: rgba(255, 255, 255, 0.10); stroke-width: 1; pointer-events: none; }
+        .nodo-grado { fill: rgba(248, 250, 252, 0.55); font-size: 9.5px; font-weight: 700; pointer-events: none; }
+        .chip-metrica-fondo { fill: rgba(255, 255, 255, 0.09); pointer-events: none; }
+        .chip-metrica-texto { font-size: 9.5px; font-weight: 800; pointer-events: none; }
         .punto { fill: var(--accent); stroke: #0f172a; stroke-width: 2; cursor: crosshair; }
         .punto:hover { fill: var(--accent2); r: 8; }
 
         /* ---------- CONEXIONES ---------- */
-        .conexion { fill: none; stroke-width: 2.4; cursor: pointer; opacity: .75; }
+        .conexion { fill: none; stroke-width: 2.4; cursor: pointer; opacity: .8; }
         .conexion:hover { stroke-width: 4; opacity: 1; }
-        .conexion.seleccionada { stroke-width: 4.5; opacity: 1; stroke-dasharray: 7 4; }
+        .conexion.seleccionada { stroke-width: 4.5; opacity: 1; filter: drop-shadow(0 0 5px currentColor); }
         .conexion.atenuada { opacity: 0.10; }
         .conexion.resaltada { stroke-width: 4; opacity: 1; }
-        .etiqueta-conexion { fill: rgba(248, 250, 252, 0.78); font-size: 10px; font-weight: 600; pointer-events: none; }
-        .etiqueta-fondo { fill: rgba(15, 23, 42, 0.9); stroke: var(--glass-border); rx: 4; }
+        /* El rechazo se dibuja discontinuo: antes 'normal' y 'rechazo' solo se
+           distinguian por un tono de gris y un rojo muy parecidos. */
+        .conexion.rechazo { stroke-dasharray: 9 6; }
+        .conexion.decision { stroke-width: 3; }
+        .etiqueta-conexion { fill: rgba(248, 250, 252, 0.86); font-size: 9.5px; font-weight: 700; pointer-events: none; }
+        .etiqueta-fondo { fill: rgba(9, 16, 34, 0.94); stroke: var(--glass-border); }
+        /* Al atenuar hay que bajar el grupo entero: si solo se atenua el rect, el
+           texto queda igual de legible que las etiquetas del flujo resaltado. */
+        .grupo-etiqueta.atenuada { opacity: 0.12; }
         .borde-area { fill: rgba(255, 255, 255, 0.035); stroke: rgba(255, 255, 255, 0.10); rx: 16; }
         .titulo-area { fill: rgba(248, 250, 252, 0.55); font-size: 12px; font-weight: 800; letter-spacing: 1.4px; text-transform: uppercase; }
+
+        /* ---------- FICHAS FLOTANTES (hover) ---------- */
+        .ficha {
+            position: fixed;
+            z-index: 70;
+            width: max-content;
+            max-width: 340px;
+            padding: 12px 14px;
+            border-radius: 13px;
+            background: rgba(6, 12, 27, 0.97);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 20px 52px rgba(0, 0, 0, 0.66);
+            font-size: 11.5px;
+            line-height: 1.5;
+            pointer-events: none;
+            display: none;
+        }
+        .ficha.visible { display: block; }
+        .ficha .sub { font-size: 9px; text-transform: uppercase; letter-spacing: .6px; font-weight: 800; margin-bottom: 2px; }
+        .ficha h5 { margin: 0 0 6px; font-size: 13px; font-weight: 800; }
+        .ficha .desc { color: var(--txt-dim); margin: 5px 0 8px; white-space: pre-line; }
+        .ficha .dato { display: flex; gap: 8px; margin: 2px 0; }
+        .ficha .dato b { flex: 0 0 86px; color: var(--txt-dim); font-weight: 700; font-size: 10.5px; }
+        .ficha .dato span { flex: 1; font-weight: 600; }
+        .ficha .trayecto { margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--glass-border); }
+        .ficha .trayecto .tit { font-size: 9px; text-transform: uppercase; letter-spacing: .6px; color: var(--txt-dim); font-weight: 800; margin: 6px 0 3px; }
+        .ficha .salto { display: flex; gap: 6px; align-items: baseline; margin: 2px 0; }
+        .ficha .salto .flecha { flex: 0 0 auto; color: var(--accent); font-weight: 800; font-size: 10px; }
+        .ficha .salto .que { flex: 1; font-weight: 600; }
+        .ficha .salto .extra { color: var(--txt-dim); font-size: 10px; display: block; }
+        .ficha .vacio { color: var(--txt-dim); font-style: italic; }
+
+        .chip-tipo {
+            display: inline-block;
+            padding: 1px 7px;
+            border-radius: 999px;
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: .5px;
+            text-transform: uppercase;
+            vertical-align: 1px;
+        }
+        .chip-tipo.normal { background: rgba(148, 163, 184, 0.24); color: #cbd5e1; }
+        .chip-tipo.decision { background: rgba(167, 139, 250, 0.24); color: #ddd6fe; }
+        .chip-tipo.rechazo { background: rgba(248, 113, 113, 0.24); color: #fecaca; }
+
 
         /* ---------- PANEL LATERAL ---------- */
         #panel {
@@ -189,6 +250,32 @@
         .fila { display: flex; gap: 8px; }
         .fila > * { flex: 1; }
         #listaVersiones { max-height: 260px; overflow-y: auto; }
+        #listaFlujoNodo .tit {
+            font-size: 10px; font-weight: 800; color: var(--txt-dim);
+            text-transform: uppercase; letter-spacing: .7px; margin: 10px 0 5px;
+        }
+        #listaFlujoNodo .tit:first-child { margin-top: 0; }
+        #listaFlujoNodo .vacio { font-size: 10.5px; color: var(--txt-dim); font-style: italic; }
+        .item-flujo {
+            display: flex; gap: 8px; align-items: flex-start;
+            padding: 8px 10px; margin-bottom: 5px;
+            border-radius: 9px; background: rgba(0, 0, 0, 0.24);
+            border: 1px solid var(--glass-border);
+            font-size: 11.5px; transition: background .2s, border-color .2s;
+        }
+        .item-flujo:hover { background: rgba(56, 189, 248, 0.16); border-color: rgba(56, 189, 248, 0.45); }
+        .item-flujo .flecha { color: var(--accent); font-weight: 800; flex: 0 0 auto; }
+        .item-flujo .cuerpo { flex: 1; min-width: 0; }
+        .item-flujo .quien { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .item-flujo .que { color: var(--txt-dim); margin: 1px 0 3px; }
+        #trayectoConexion {
+            background: rgba(0, 0, 0, 0.24);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            padding: 9px 11px;
+            font-size: 11.5px;
+            font-weight: 600;
+        }
         .item-version {
             display: flex; align-items: center; gap: 7px;
             padding: 8px 10px; margin-bottom: 6px;
@@ -248,6 +335,7 @@
         <button onclick="nuevoNodo()" title="Crear un nodo nuevo">➕ Nodo</button>
         <button id="btnConectar" onclick="alternarModoConexion()" title="Arrastra desde el punto azul de un nodo hasta otro">🔗 Conectar</button>
         <button onclick="autoOrganizar()" title="Reacomodar los nodos por área">🧲 Organizar</button>
+        <button id="btnEtiquetas" onclick="alternarEtiquetas()" title="Mostrar u ocultar el texto de cada conexión">🏷 Etiquetas</button>
         <div class="sep"></div>
         <button onclick="deshacer()" id="btnDeshacer" title="Ctrl+Z">↶</button>
         <button onclick="rehacer()" id="btnRehacer" title="Ctrl+Y">↷</button>
@@ -279,15 +367,28 @@
             </div>
             <div class="campo"><label>Métrica en vivo</label><select id="edMetrica"></select></div>
             <div class="campo"><label>Descripción</label><textarea id="edDesc" rows="3" maxlength="500"></textarea></div>
+
+            <h4>Quién y cuánto</h4>
+            <div class="campo"><label>Responsable</label><input type="text" id="edResponsable" maxlength="80" placeholder="Ej. Almacén / Ing. de Producción"></div>
+            <div class="fila">
+                <div class="campo"><label>Tiempo estimado</label><input type="text" id="edTiempo" maxlength="40" placeholder="Ej. 4 h"></div>
+                <div class="campo"><label>Sistema / módulo</label><input type="text" id="edSistema" maxlength="80" placeholder="Ej. almacen.html"></div>
+            </div>
+            <div class="campo"><label>Notas</label><textarea id="edNotas" rows="2" maxlength="1000"></textarea></div>
+
             <div class="fila">
                 <button onclick="aplicarEdicionNodo()">💾 Aplicar</button>
                 <button class="peligro" onclick="eliminarNodoSeleccionado()">🗑 Eliminar</button>
             </div>
             <p class="pista">La <b>clave</b> identifica el nodo en el flujo. Si la cambias, las versiones antiguas dejan de encontrarlo.</p>
+
+            <h4>Flujo de la etapa</h4>
+            <div id="listaFlujoNodo"></div>
         </div>
 
         <div id="panelConexion" style="display:none;">
             <h3>🔗 Conexión seleccionada</h3>
+            <div id="trayectoConexion" class="pista" style="margin-bottom:12px;"></div>
             <div class="campo"><label>Etiqueta</label><input type="text" id="edEtiqueta" maxlength="80" placeholder="Ej. Ingreso con guía"></div>
             <div class="campo"><label>Tipo</label>
                 <select id="edTipo">
@@ -296,6 +397,15 @@
                     <option value="rechazo">Rechazo / devolución</option>
                 </select>
             </div>
+
+            <h4>Qué pasa aquí</h4>
+            <div class="campo"><label>Evento que dispara el paso</label><input type="text" id="edEvento" maxlength="140" placeholder="Ej. Ingreso con guía escaneada"></div>
+            <div class="campo"><label>Condición</label><input type="text" id="edCondicion" maxlength="140" placeholder="Ej. Si el lote pasa inspección"></div>
+            <div class="fila">
+                <div class="campo"><label>SLA</label><input type="text" id="edSla" maxlength="40" placeholder="Ej. 4 h"></div>
+                <div class="campo"><label>Responsable</label><input type="text" id="edRespConexion" maxlength="80"></div>
+            </div>
+
             <div class="fila">
                 <button onclick="aplicarEdicionConexion()">💾 Aplicar</button>
                 <button class="peligro" onclick="eliminarConexionSeleccionada()">🗑 Eliminar</button>
@@ -327,6 +437,8 @@
     </aside>
 
     <div id="aviso"></div>
+    <div class="ficha" id="fichaNodo"></div>
+    <div class="ficha" id="fichaConexion"></div>
 
     <script src="/motion.js" defer></script>
     <script src="/auth-client.js"></script>
@@ -349,13 +461,27 @@
         const marco = document.getElementById('marco');
         const panel = document.getElementById('panel');
 
-        const ANCHO = 216;
-        const ALTO = 92;
-        const SEP_X = 300;
-        const SEP_Y = 150;
+        // Geometria de la tarjeta. 248x118 da espacio para dos lineas de
+        // descripcion, la clave y el chip de metrica. SEP_Y deja 44 px entre
+        // nodos de una misma columna y SEP_X deja 88 px entre columnas: sin ese
+        // hueco los recuadros de area se pisan y no cabe la flecha de direccion.
+        const ANCHO = 248;
+        const ALTO = 118;
+        const SEP_X = 336;
+        const SEP_Y = 162;
         const MAX_PASOS = 50;
         const ESPERA_GUARDADO = 3000;
         const INTERVALO_METRICAS = 30000;
+
+        // Anchos de fuente aproximados, para calcular el fondo de las etiquetas
+        // sin medir el texto en el DOM. Coinciden con los del CSS de .nodo-desc
+        // y .etiqueta-conexion.
+        const PX_POR_CARACTER = 5.6;
+        const PX_POR_CARACTER_CHIP = 5.7;
+        const CARACTERES_ETIQUETA = 34;
+        const CARACTERES_LINEA_DESC = 38;
+        const CARACTERES_NOMBRE = 26;
+        const CARACTERES_METRICA = 20;
 
         let nodos = [];
         let conexiones = [];
@@ -367,6 +493,25 @@
         let modoConexion = false;
         let lineaTemporal = null;       // { origen, x, y } mientras se arrastra una arista
         let busqueda = '';
+
+        // Etiquetas de las aristas: precalculadas en dos pasos (calcular y
+        // repartir) para poder separarlas antes de dibujarlas.
+        let mostrarEtiquetas = true;
+        const _posEtiquetas = new Map();
+
+        // Ficha flotante de hover.
+        const fichaNodo = document.getElementById('fichaNodo');
+        const fichaConexion = document.getElementById('fichaConexion');
+
+        const TIPOS = {
+            normal: { nombre: 'Normal', corto: 'Normal', color: 'rgba(148, 163, 184, 0.85)' },
+            decision: { nombre: 'Decisión', corto: 'Decisión', color: '#a78bfa' },
+            rechazo: { nombre: 'Rechazo / devolución', corto: 'Rechazo', color: '#f87171' }
+        };
+
+        function tipoDe(tipo) {
+            return TIPOS[tipo] || TIPOS.normal;
+        }
 
         // Pila de instantáneas para deshacer/rehacer.
         let pilaPasado = [];
@@ -409,8 +554,48 @@
         // los nombres de nodo son texto libre del usuario.
         function textoSVG(tag, atributos, contenido) {
             const el = crear(tag, atributos);
-            el.textContent = contenido;
+            el.textContent = contenido === null || contenido === undefined ? '' : String(contenido);
             return el;
+        }
+
+        /* ---------------- recortes y ajustes de texto ---------------- */
+
+        function recortar(valor, tope) {
+            const s = String(valor === null || valor === undefined ? '' : valor);
+            return s.length > tope ? s.slice(0, Math.max(0, tope - 1)).trimEnd() + '…' : s;
+        }
+
+        /**
+         * Parte un texto en hasta maxLineas lineas de tope caracteres, cortando
+         * por palabra. El SVG no da medidas de texto sin meterlo en el DOM, asi
+         * que el ancho se estima por caracteres (PX_POR_CARACTER).
+         */
+        function ajustarLineas(valor, tope, maxLineas) {
+            const palabras = String(valor || '').split(/\s+/).filter(Boolean);
+            if (!palabras.length) return [];
+
+            const lineas = [];
+            let actual = '';
+            palabras.forEach((p) => {
+                const tentativa = actual ? actual + ' ' + p : p;
+                if (tentativa.length <= tope) {
+                    actual = tentativa;
+                    return;
+                }
+                if (actual) lineas.push(actual);
+                actual = p.length > tope ? recortar(p, tope) : p;
+            });
+            if (actual) lineas.push(actual);
+
+            if (lineas.length > maxLineas) {
+                const primeras = lineas.slice(0, maxLineas);
+                primeras[maxLineas - 1] = recortar(
+                    primeras[maxLineas - 1] + ' ' + lineas.slice(maxLineas).join(' '),
+                    tope
+                );
+                return primeras;
+            }
+            return lineas;
         }
 
         /* ---------------- carga ---------------- */
@@ -484,23 +669,53 @@
             }
         }
 
+        /**
+         * Los conteos llegan sueltos cada 30 s, sin repintar el grafo entero. El
+         * chip lleva la caja y el texto con id, y hay que reajustar el ancho de
+         * la caja porque "9" y "128" no ocupan lo mismo.
+         */
         function pintarMetricas() {
             nodos.forEach((n) => {
                 const el = document.getElementById('metrica-' + n.id);
+                const caja = document.getElementById('caja-metrica-' + n.id);
                 if (!el) return;
                 if (!n.metrica) {
                     el.textContent = '';
+                    if (caja) caja.setAttribute('width', 0);
                     return;
                 }
                 const v = valoresMetricas[n.metrica];
                 el.textContent = typeof v === 'number' ? v : '—';
+                if (caja) caja.setAttribute('width', anchoChipMetrica(n));
             });
         }
 
         /* ---------------- render ---------------- */
 
         function renderizar() {
+            ocultarFichas();
             svg.innerHTML = '';
+
+            // Las definiciones de flecha viven fuera de #raiz a proposito: si
+            // estuvieran dentro, el zoom las escalaria y la punta de la flecha
+            // se deformaria.
+            const defs = crear('defs');
+            Object.keys(TIPOS).forEach((tipo) => {
+                const punta = crear('marker', {
+                    id: 'punta-' + tipo,
+                    viewBox: '0 0 10 10',
+                    refX: 9,
+                    refY: 5,
+                    markerWidth: 7,
+                    markerHeight: 7,
+                    orient: 'auto-start-reverse'
+                });
+                punta.appendChild(crear('path', {
+                    d: 'M 0 1 L 9 5 L 0 9 z', fill: TIPOS[tipo].color
+                }));
+                defs.appendChild(punta);
+            });
+            svg.appendChild(defs);
 
             const raiz = crear('g', { id: 'raiz' });
             svg.appendChild(raiz);
@@ -515,6 +730,7 @@
             raiz.appendChild(gNodos);
 
             dibujarBordes(gBordes);
+            calcularEtiquetasConexiones();
             conexiones.forEach((c) => dibujarConexion(gConexiones, c));
             nodos.forEach((n) => dibujarNodo(gNodos, n));
 
@@ -536,13 +752,19 @@
             [...columnas.keys()].sort((a, b) => a - b).forEach((col) => {
                 const delArea = columnas.get(col);
                 const areas = [...new Set(delArea.map((n) => n.area))];
-                const x = col * SEP_X - 34;
+                // El recuadro se mide sobre el x real de los nodos y no sobre
+                // col * SEP_X: las posiciones guardadas no arrancan en 0, y
+                // calcularlo al revés corría el borde de un area sobre el de la
+                // columna vecina.
+                const xs = delArea.map((n) => Number(n.x));
                 const ys = delArea.map((n) => Number(n.y));
+                const x = Math.min(...xs) - 34;
                 const y = Math.min(...ys) - 46;
+                const ancho = (Math.max(...xs) - Math.min(...xs)) + ANCHO + 68;
                 const alto = (Math.max(...ys) - Math.min(...ys)) + ALTO + 74;
 
                 g.appendChild(crear('rect', {
-                    x, y, width: ANCHO + 68, height: alto, class: 'borde-area'
+                    x, y, width: ancho, height: alto, class: 'borde-area'
                 }));
                 g.appendChild(textoSVG('text', {
                     x: x + 18, y: y + 28, class: 'titulo-area'
@@ -554,19 +776,105 @@
             return { x: Number(n.x) + ANCHO, y: Number(n.y) + ALTO / 2 };
         }
 
-        function trazoConexion(x1, y1, x2, y2, tipo) {
-            const dx = Math.max(46, Math.abs(x2 - x1) * 0.45);
-            const d = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
-            if (tipo === 'decision') {
-                return `${d} M ${(x1 + x2) / 2 - 7} ${(y1 + y2) / 2 - 7} L ${(x1 + x2) / 2 + 7} ${(y1 + y2) / 2 - 7} L ${(x1 + x2) / 2} ${(y1 + y2) / 2 + 7} Z`;
-            }
-            return d;
+        /**
+         * Puntos de enganche de una arista. Se engancha al borde derecho del
+         * origen y al borde izquierdo del destino, no al centro: antes las dos
+         * punta caian en el borde derecho, y la linea cruzaba la tarjeta
+         * completa del destino antes de terminar en ella.
+         */
+        function anclajes(origen, destino) {
+            const yO = Number(origen.y) + ALTO / 2;
+            const yD = Number(destino.y) + ALTO / 2;
+            const haciaAtras = Number(destino.x) <= Number(origen.x);
+            return haciaAtras
+                ? { x1: Number(origen.x), y1: yO, x2: Number(destino.x) + ANCHO, y2: yD }
+                : { x1: Number(origen.x) + ANCHO, y1: yO, x2: Number(destino.x), y2: yD };
         }
 
         function colorConexion(tipo) {
-            if (tipo === 'decision') return '#a78bfa';
-            if (tipo === 'rechazo') return '#f87171';
-            return 'rgba(148, 163, 184, 0.85)';
+            return tipoDe(tipo).color;
+        }
+
+        /* ---------------- etiquetas de las aristas ---------------- */
+
+        /**
+         * Texto de la etiqueta. El tipo va delante porque es lo que distingue una
+         * decision de un rechazo, y antes solo se notaba en el color. Si la
+         * conexion no tiene etiqueta se muestra el nombre del tipo, para que
+         * ninguna arista quede muda.
+         */
+        function textoEtiquetaConexion(c) {
+            const tipo = tipoDe(c.tipo);
+            const detalle = c.etiqueta ? recortar(c.etiqueta, CARACTERES_ETIQUETA) : tipo.nombre;
+            return c.tipo === 'normal' ? detalle : tipo.corto.toUpperCase() + ' · ' + detalle;
+        }
+
+        /**
+         * Reparte las etiquetas antes de dibujarlas. Varias aristas que salen
+         * del mismo nodo comparten el punto medio de la curva, asi que sus
+         * textos se montaban uno encima de otro. Cada etiqueta que choca se
+         * separa siguiendo la normal de su curva, alternando a ambos lados.
+         */
+        function calcularEtiquetasConexiones() {
+            _posEtiquetas.clear();
+            if (!mostrarEtiquetas) return;
+
+            const ALTO_ETIQUETA = 17;
+            const SEPARACION = 19;
+
+            const crudas = [];
+            conexiones.forEach((c) => {
+                const origen = nodos.find((n) => n.id === c.origen_id);
+                const destino = nodos.find((n) => n.id === c.destino_id);
+                if (!origen || !destino) return;
+
+                const { x1, y1, x2, y2 } = anclajes(origen, destino);
+                const largo = Math.hypot(x2 - x1, y2 - y1) || 1;
+                const texto = textoEtiquetaConexion(c);
+
+                crudas.push({
+                    id: c.id,
+                    texto,
+                    ancho: texto.length * PX_POR_CARACTER + 22,
+                    x: (x1 + x2) / 2,
+                    y: (y1 + y2) / 2,
+                    // Normal unitaria de la recta, para apartar la etiqueta.
+                    nx: -(y2 - y1) / largo,
+                    ny: (x2 - x1) / largo
+                });
+            });
+
+            // De arriba abajo y de izquierda a derecha: la de mas arriba se
+            // queda donde cae y las de abajo se apartan.
+            crudas.sort((p, q) => p.y - q.y || p.x - q.x);
+
+            const colocadas = [];
+            crudas.forEach((e) => {
+                let elegido = null;
+                for (let intento = 0; intento < 7 && !elegido; intento++) {
+                    const nivel = Math.ceil(intento / 2);
+                    const signo = intento % 2 === 0 ? 1 : -1;
+                    const cand = {
+                        ...e,
+                        x: e.x + e.nx * signo * nivel * SEPARACION,
+                        y: e.y + e.ny * signo * nivel * SEPARACION
+                    };
+                    const choca = colocadas.some((k) =>
+                        Math.abs(cand.y - k.y) < ALTO_ETIQUETA + 2 &&
+                        Math.abs(cand.x - k.x) < (cand.ancho + k.ancho) / 2 + 6
+                    );
+                    if (!choca) elegido = cand;
+                }
+                // Si no hubo hueco libre se acepta el ultimo intento: peor una
+                // etiqueta amontonada que una arista sin texto.
+                const final = elegido || {
+                    ...e,
+                    x: e.x + e.nx * 3 * SEPARACION,
+                    y: e.y + e.ny * 3 * SEPARACION
+                };
+                colocadas.push(final);
+                _posEtiquetas.set(e.id, final);
+            });
         }
 
         function dibujarConexion(g, c) {
@@ -574,74 +882,145 @@
             const destino = nodos.find((n) => n.id === c.destino_id);
             if (!origen || !destino) return;
 
-            const a = centroNodo(origen);
-            const b = centroNodo(destino);
+            const { x1, y1, x2, y2 } = anclajes(origen, destino);
+            const color = colorConexion(c.tipo);
 
             const el = crear('path', {
-                d: trazoConexion(a.x, a.y, b.x, b.y, c.tipo),
-                stroke: colorConexion(c.tipo),
-                class: 'conexion',
-                'data-id': c.id
+                d: `M ${x1} ${y1} C ${x1 + Math.max(40, Math.abs(x2 - x1) * 0.45)} ${y1}, ${x2 - Math.max(40, Math.abs(x2 - x1) * 0.45)} ${y2}, ${x2} ${y2}`,
+                stroke: color,
+                'marker-end': 'url(#punta-' + (c.tipo || 'normal') + ')',
+                class: 'conexion ' + (c.tipo || 'normal') +
+                    (seleccion && seleccion.tipo === 'conexion' && seleccion.id === c.id ? ' seleccionada' : '')
             });
+            el.style.color = color;
+            el.setAttribute('data-id', c.id);
+
             el.addEventListener('click', (ev) => {
                 ev.stopPropagation();
+                ocultarFichas();
                 seleccionar('conexion', c.id);
             });
+            el.addEventListener('mouseenter', (ev) => mostrarFichaConexion(c, ev));
+            el.addEventListener('mouseleave', ocultarFichas);
             g.appendChild(el);
 
-            if (c.etiqueta) {
-                const mx = (a.x + b.x) / 2;
-                const my = (a.y + b.y) / 2;
-                const ancho = c.etiqueta.length * 5.6 + 14;
-                const gEtiqueta = crear('g', { 'pointer-events': 'none' });
-                gEtiqueta.appendChild(crear('rect', {
-                    x: mx - ancho / 2, y: my - 9, width: ancho, height: 18, class: 'etiqueta-fondo'
-                }));
-                gEtiqueta.appendChild(textoSVG('text', {
-                    x: mx, y: my + 4, 'text-anchor': 'middle', class: 'etiqueta-conexion'
-                }, c.etiqueta));
-                g.appendChild(gEtiqueta);
-            }
+            const pos = _posEtiquetas.get(c.id);
+            if (!pos) return;
+
+            const gEtiqueta = crear('g', { class: 'grupo-etiqueta', 'pointer-events': 'none' });
+            gEtiqueta.setAttribute('data-id', c.id);
+            gEtiqueta.appendChild(crear('rect', {
+                x: pos.x - pos.ancho / 2, y: pos.y - 9, width: pos.ancho, height: 18, rx: 5,
+                class: 'etiqueta-fondo'
+            }));
+            // Barra de color del tipo: el texto ya lleva el tipo escrito, esto va
+            // de sobra para leerlo de reojo.
+            gEtiqueta.appendChild(crear('rect', {
+                x: pos.x - pos.ancho / 2 + 1, y: pos.y - 8, width: 3, height: 16, rx: 1.5,
+                fill: color
+            }));
+            gEtiqueta.appendChild(textoSVG('text', {
+                x: pos.x + 3, y: pos.y + 3.5, 'text-anchor': 'middle', class: 'etiqueta-conexion'
+            }, pos.texto));
+            g.appendChild(gEtiqueta);
+        }
+
+        /* ---------------- tarjeta del nodo ---------------- */
+
+        function anchoChipMetrica(n) {
+            const etiqueta = (metricasDisponibles.find((m) => m.clave === n.metrica) || {}).etiqueta || '';
+            const valor = valoresMetricas[n.metrica];
+            const numero = typeof valor === 'number' ? String(valor) : '—';
+            const texto = `${numero} ${recortar(etiqueta, CARACTERES_METRICA)}`;
+            return texto.length * PX_POR_CARACTER_CHIP + 16;
+        }
+
+        function textoChipMetrica(n) {
+            const etiqueta = (metricasDisponibles.find((m) => m.clave === n.metrica) || {}).etiqueta || '';
+            const valor = valoresMetricas[n.metrica];
+            const numero = typeof valor === 'number' ? String(valor) : '—';
+            return `${numero} ${recortar(etiqueta, CARACTERES_METRICA)}`;
+        }
+
+        function gradoNodo(id) {
+            let entradas = 0;
+            let salidas = 0;
+            conexiones.forEach((c) => {
+                if (c.destino_id === id) entradas += 1;
+                if (c.origen_id === id) salidas += 1;
+            });
+            return { entradas, salidas };
         }
 
         function dibujarNodo(g, n) {
             const color = n.color || '#38bdf8';
+            const x = Number(n.x);
+            const y = Number(n.y);
 
             const caja = crear('g', {
-                class: 'nodo-caja' + (seleccion && seleccion.tipo === 'nodo' && seleccion.id === n.id ? ' seleccionada' : ''),
+                class: 'nodo-caja' + (seleccion && seleccion.tipo === 'nodo' && seleccion.id === n.id ? ' seleccionado' : ''),
                 'data-id': n.id
             });
             caja.style.color = color;
 
             caja.appendChild(crear('rect', {
-                x: n.x, y: n.y, width: ANCHO, height: ALTO, rx: 13,
+                x, y, width: ANCHO, height: ALTO, rx: 13,
                 stroke: color, fill: 'rgba(15, 23, 42, 0.88)', class: 'cuerpo'
             }));
 
-            caja.appendChild(textoSVG('text', { x: n.x + 15, y: n.y + 24, class: 'nodo-area', fill: color }, n.area || 'General'));
-            caja.appendChild(textoSVG('text', { x: n.x + 15, y: n.y + 44, class: 'nodo-titulo' }, n.nombre));
+            // Area arriba a la izquierda, clave arriba a la derecha.
+            caja.appendChild(textoSVG('text', { x: x + 15, y: y + 21, class: 'nodo-area', fill: color }, n.area || 'General'));
+            caja.appendChild(textoSVG('text', {
+                x: x + ANCHO - 15, y: y + 21, 'text-anchor': 'end', class: 'nodo-clave'
+            }, n.clave || ''));
 
-            if (n.descripcion) {
-                caja.appendChild(textoSVG('text', { x: n.x + 15, y: n.y + 62, class: 'nodo-desc' }, n.descripcion.slice(0, 30) + (n.descripcion.length > 30 ? '…' : '')));
-            }
+            caja.appendChild(textoSVG('text', {
+                x: x + 15, y: y + 41, class: 'nodo-titulo'
+            }, recortar(n.nombre, CARACTERES_NOMBRE)));
+
+            // Dos lineas de descripcion: las del mapa llegan a 94 caracteres y
+            // con un solo recorte de 30 se perdia la mitad del texto.
+            ajustarLineas(n.descripcion, CARACTERES_LINEA_DESC, 2).forEach((linea, i) => {
+                caja.appendChild(textoSVG('text', {
+                    x: x + 15, y: y + 57 + i * 12, class: 'nodo-desc'
+                }, linea));
+            });
+
+            caja.appendChild(crear('line', {
+                x1: x + 15, y1: y + 82, x2: x + ANCHO - 15, y2: y + 82, class: 'nodo-separador'
+            }));
+
+            const grado = gradoNodo(n.id);
+            caja.appendChild(textoSVG('text', {
+                x: x + 15, y: y + 99, class: 'nodo-grado'
+            }, `${grado.entradas} entrada${grado.entradas === 1 ? '' : 's'} · ${grado.salidas} salida${grado.salidas === 1 ? '' : 's'}`));
 
             if (n.metrica) {
-                caja.appendChild(textoSVG('text', { x: n.x + ANCHO - 14, y: n.y + 46, 'text-anchor': 'end', class: 'nodo-metrica', fill: color, id: 'metrica-' + n.id }, '…'));
-                const etiqueta = (metricasDisponibles.find((m) => m.clave === n.metrica) || {}).etiqueta || n.metrica;
+                const anchoChip = anchoChipMetrica(n);
+                const chipX = x + ANCHO - 15 - anchoChip;
+                caja.appendChild(crear('rect', {
+                    x: chipX, y: y + 89, width: anchoChip, height: 15, rx: 7.5,
+                    fill: color, opacity: 0.16, class: 'chip-metrica-fondo', id: 'caja-metrica-' + n.id
+                }));
                 caja.appendChild(textoSVG('text', {
-                    x: n.x + ANCHO - 14, y: n.y + 60, 'text-anchor': 'end', class: 'nodo-metrica-etq'
-                }, etiqueta.slice(0, 22)));
+                    x: chipX + anchoChip / 2, y: y + 100, 'text-anchor': 'middle',
+                    class: 'chip-metrica-texto', fill: color, id: 'metrica-' + n.id
+                }, textoChipMetrica(n)));
             }
 
             const punto = crear('circle', {
-                cx: n.x + ANCHO, cy: n.y + ALTO / 2, r: 6, class: 'punto'
+                cx: x + ANCHO, cy: y + ALTO / 2, r: 6, class: 'punto'
             });
             punto.addEventListener('mousedown', (ev) => iniciarConexion(ev, n));
             caja.appendChild(punto);
 
+            caja.addEventListener('mouseenter', () => mostrarFichaNodo(n));
+            caja.addEventListener('mouseleave', ocultarFichas);
+
             caja.addEventListener('mousedown', (ev) => {
                 if (modoConexion) return;
                 ev.stopPropagation();
+                ocultarFichas();
                 if (!seleccion || seleccion.tipo !== 'nodo' || seleccion.id !== n.id) seleccionar('nodo', n.id);
                 iniciarArrastreNodo(ev, n);
             });
@@ -653,6 +1032,185 @@
             });
 
             g.appendChild(caja);
+        }
+
+        /* ---------------- fichas de hover ---------------- */
+
+        function ocultarFichas() {
+            if (fichaNodo) fichaNodo.classList.remove('visible');
+            if (fichaConexion) fichaConexion.classList.remove('visible');
+        }
+
+        /** Convierte coordenadas del lienzo (ya con zoom) a pixeles de pantalla. */
+        function aPantalla(x, y) {
+            const caja = svg.getBoundingClientRect();
+            return {
+                x: caja.left + (x * vista.z + vista.x),
+                y: caja.top + (y * vista.z + vista.y)
+            };
+        }
+
+        /** Coloca la ficha junto a la esquina indicada y la voltea si se sale. */
+        function ubicarFicha(el, x, y, margen = 14) {
+            el.classList.add('visible');
+            const ancho = el.offsetWidth;
+            const alto = el.offsetHeight;
+
+            let px = x + margen;
+            let py = y + margen;
+            if (px + ancho > window.innerWidth - 8) px = x - ancho - margen;
+            if (py + alto > window.innerHeight - 8) py = Math.max(8, y - alto - margen);
+
+            el.style.left = Math.max(8, px) + 'px';
+            el.style.top = Math.max(8, py) + 'px';
+        }
+
+        function filaDato(etiqueta, valor) {
+            const fila = document.createElement('div');
+            fila.className = 'dato';
+            const b = document.createElement('b');
+            b.textContent = etiqueta;
+            const span = document.createElement('span');
+            span.textContent = valor;
+            fila.appendChild(b);
+            fila.appendChild(span);
+            return fila;
+        }
+
+        function filaSalto(texto, extra, color) {
+            const fila = document.createElement('div');
+            fila.className = 'salto';
+
+            const flecha = document.createElement('span');
+            flecha.className = 'flecha';
+            flecha.textContent = color;
+
+            const cuerpo = document.createElement('div');
+            cuerpo.className = 'que';
+            cuerpo.textContent = texto;
+            if (extra) {
+                const detalle = document.createElement('span');
+                detalle.className = 'extra';
+                detalle.textContent = extra;
+                cuerpo.appendChild(detalle);
+            }
+
+            fila.appendChild(flecha);
+            fila.appendChild(cuerpo);
+            return fila;
+        }
+
+        function bloqueSalto(titulo, lista, vacio) {
+            const bloque = document.createElement('div');
+            bloque.className = 'trayecto';
+
+            const h = document.createElement('div');
+            h.className = 'tit';
+            h.textContent = titulo;
+            bloque.appendChild(h);
+
+            if (!lista.length) {
+                const p = document.createElement('div');
+                p.className = 'vacio';
+                p.textContent = vacio;
+                bloque.appendChild(p);
+                return bloque;
+            }
+
+            lista.forEach((fila) => bloque.appendChild(fila));
+            return bloque;
+        }
+
+        /** Descripción corta de una arista para la ficha: qué es y qué la dispara. */
+        function resumenConexion(c) {
+            const partes = [];
+            if (c.evento) partes.push(c.evento);
+            if (c.condicion) partes.push('si ' + c.condicion);
+            return partes.join(' · ');
+        }
+
+        function mostrarFichaNodo(n) {
+            if (!fichaNodo) return;
+            ocultarFichas();
+
+            fichaNodo.innerHTML = '';
+
+            const sub = document.createElement('div');
+            sub.className = 'sub';
+            sub.style.color = n.color || '#38bdf8';
+            sub.textContent = n.area || 'General';
+            fichaNodo.appendChild(sub);
+
+            const titulo = document.createElement('h5');
+            titulo.textContent = n.nombre || '';
+            fichaNodo.appendChild(titulo);
+
+            if (n.descripcion) {
+                const desc = document.createElement('div');
+                desc.className = 'desc';
+                desc.textContent = n.descripcion;
+                fichaNodo.appendChild(desc);
+            }
+
+            fichaNodo.appendChild(filaDato('Clave', n.clave || '—'));
+            if (n.responsable) fichaNodo.appendChild(filaDato('Responsable', n.responsable));
+            if (n.tiempo_estimado) fichaNodo.appendChild(filaDato('Tiempo', n.tiempo_estimado));
+            if (n.sistema) fichaNodo.appendChild(filaDato('Sistema', n.sistema));
+            if (n.notas) fichaNodo.appendChild(filaDato('Notas', n.notas));
+
+            // El punto de todo el diagrama: que arista entra, cual sale y que
+            // significa cada una.
+            const entrantes = conexiones.filter((c) => c.destino_id === n.id).map((c) => {
+                const otro = nodos.find((x) => x.id === c.origen_id);
+                return filaSalto(
+                    (otro ? otro.nombre : '?') + ' → ' + (c.etiqueta || tipoDe(c.tipo).nombre),
+                    resumenConexion(c),
+                    '←'
+                );
+            });
+            const salientes = conexiones.filter((c) => c.origen_id === n.id).map((c) => {
+                const otro = nodos.find((x) => x.id === c.destino_id);
+                return filaSalto(
+                    (c.etiqueta || tipoDe(c.tipo).nombre) + ' → ' + (otro ? otro.nombre : '?'),
+                    resumenConexion(c),
+                    '→'
+                );
+            });
+
+            fichaNodo.appendChild(bloqueSalto('Entradas', entrantes, 'Esta etapa no recibe nada.'));
+            fichaNodo.appendChild(bloqueSalto('Salidas', salientes, 'Aquí termina el flujo.'));
+
+            const esquina = aPantalla(Number(n.x), Number(n.y));
+            ubicarFicha(fichaNodo, esquina.x + ANCHO * vista.z, esquina.y);
+        }
+
+        function mostrarFichaConexion(c, ev) {
+            if (!fichaConexion) return;
+            ocultarFichas();
+
+            const origen = nodos.find((n) => n.id === c.origen_id);
+            const destino = nodos.find((n) => n.id === c.destino_id);
+            const tipo = tipoDe(c.tipo);
+
+            fichaConexion.innerHTML = '';
+
+            const sub = document.createElement('div');
+            sub.className = 'sub';
+            sub.style.color = tipo.color;
+            sub.textContent = tipo.nombre;
+            fichaConexion.appendChild(sub);
+
+            const titulo = document.createElement('h5');
+            titulo.textContent = (origen ? origen.nombre : '?') + '  →  ' + (destino ? destino.nombre : '?');
+            fichaConexion.appendChild(titulo);
+
+            if (c.etiqueta) fichaConexion.appendChild(filaDato('Transición', c.etiqueta));
+            if (c.evento) fichaConexion.appendChild(filaDato('Evento', c.evento));
+            if (c.condicion) fichaConexion.appendChild(filaDato('Condición', c.condicion));
+            if (c.sla) fichaConexion.appendChild(filaDato('SLA', c.sla));
+            if (c.responsable) fichaConexion.appendChild(filaDato('Responsable', c.responsable));
+
+            ubicarFicha(fichaConexion, ev.clientX + 12, ev.clientY + 12);
         }
 
         function aplicarTransformacion() {
@@ -692,6 +1250,7 @@
 
         function cerrarPanel() {
             panel.classList.remove('abierto');
+            ocultarFichas();
             seleccion = null;
             renderizar();
         }
@@ -705,6 +1264,98 @@
             document.getElementById('edColor').value = n.color || '#38bdf8';
             document.getElementById('edMetrica').value = n.metrica || '';
             document.getElementById('edDesc').value = n.descripcion || '';
+            document.getElementById('edResponsable').value = n.responsable || '';
+            document.getElementById('edTiempo').value = n.tiempo_estimado || '';
+            document.getElementById('edSistema').value = n.sistema || '';
+            document.getElementById('edNotas').value = n.notas || '';
+            pintarFlujoDelNodo(n);
+        }
+
+        /** Listado de entradas y salidas del nodo dentro del panel. */
+        function pintarFlujoDelNodo(n) {
+            const cont = document.getElementById('listaFlujoNodo');
+            if (!cont) return;
+            cont.innerHTML = '';
+
+            const secciones = [
+                {
+                    titulo: 'Entradas',
+                    vacio: 'Esta etapa no recibe nada.',
+                    flecha: '←',
+                    lista: conexiones.filter((c) => c.destino_id === n.id).map((c) => ({
+                        otro: nodos.find((x) => x.id === c.origen_id),
+                        texto: (c.etiqueta || tipoDe(c.tipo).nombre),
+                        c
+                    }))
+                },
+                {
+                    titulo: 'Salidas',
+                    vacio: 'Aquí termina el flujo.',
+                    flecha: '→',
+                    lista: conexiones.filter((c) => c.origen_id === n.id).map((c) => ({
+                        otro: nodos.find((x) => x.id === c.destino_id),
+                        texto: (c.etiqueta || tipoDe(c.tipo).nombre),
+                        c
+                    }))
+                }
+            ];
+
+            secciones.forEach((s) => {
+                const h = document.createElement('div');
+                h.className = 'tit';
+                h.textContent = s.titulo;
+                cont.appendChild(h);
+
+                if (!s.lista.length) {
+                    const p = document.createElement('div');
+                    p.className = 'vacio';
+                    p.textContent = s.vacio;
+                    cont.appendChild(p);
+                    return;
+                }
+
+                s.lista.forEach((item) => {
+                    const fila = document.createElement('div');
+                    fila.className = 'item-flujo';
+
+                    const flecha = document.createElement('span');
+                    flecha.className = 'flecha';
+                    flecha.textContent = s.flecha;
+                    fila.appendChild(flecha);
+
+                    const cuerpo = document.createElement('div');
+                    cuerpo.className = 'cuerpo';
+
+                    const quien = document.createElement('div');
+                    quien.className = 'quien';
+                    quien.textContent = item.otro ? item.otro.nombre : '?';
+                    cuerpo.appendChild(quien);
+
+                    const que = document.createElement('div');
+                    que.className = 'que';
+                    que.textContent = item.texto;
+                    cuerpo.appendChild(que);
+
+                    const extra = resumenConexion(item.c);
+                    if (extra) {
+                        const mas = document.createElement('div');
+                        mas.className = 'que';
+                        mas.style.fontSize = '10px';
+                        mas.textContent = extra;
+                        cuerpo.appendChild(mas);
+                    }
+
+                    const chip = document.createElement('span');
+                    chip.className = 'chip-tipo ' + (item.c.tipo || 'normal');
+                    chip.textContent = tipoDe(item.c.tipo).corto;
+                    cuerpo.appendChild(chip);
+
+                    fila.appendChild(cuerpo);
+                    fila.style.cursor = 'pointer';
+                    fila.addEventListener('click', () => seleccionar('conexion', item.c.id));
+                    cont.appendChild(fila);
+                });
+            });
         }
 
         function cargarFormularioConexion() {
@@ -712,6 +1363,29 @@
             if (!c) return;
             document.getElementById('edEtiqueta').value = c.etiqueta || '';
             document.getElementById('edTipo').value = c.tipo || 'normal';
+            document.getElementById('edEvento').value = c.evento || '';
+            document.getElementById('edCondicion').value = c.condicion || '';
+            document.getElementById('edSla').value = c.sla || '';
+            document.getElementById('edRespConexion').value = c.responsable || '';
+
+            const origen = nodos.find((x) => x.id === c.origen_id);
+            const destino = nodos.find((x) => x.id === c.destino_id);
+            const trayecto = document.getElementById('trayectoConexion');
+            if (trayecto) {
+                trayecto.innerHTML = '';
+                // textContent, nunca innerHTML con datos: los nombres son del usuario.
+                const a = document.createElement('div');
+                a.textContent = (origen ? origen.nombre : '?') + '  (' + (origen ? origen.area : '?') + ')';
+                const flecha = document.createElement('div');
+                flecha.style.color = '#38bdf8';
+                flecha.style.fontWeight = '800';
+                flecha.textContent = '↓  ' + tipoDe(c.tipo).nombre;
+                const b = document.createElement('div');
+                b.textContent = (destino ? destino.nombre : '?') + '  (' + (destino ? destino.area : '?') + ')';
+                trayecto.appendChild(a);
+                trayecto.appendChild(flecha);
+                trayecto.appendChild(b);
+            }
         }
 
         /* ---------------- edición ---------------- */
@@ -768,7 +1442,11 @@
                 x: 60 + nodos.length * 12,
                 y: 620,
                 color: '#38bdf8',
-                metrica: null
+                metrica: null,
+                responsable: '',
+                tiempo_estimado: '',
+                sistema: '',
+                notas: ''
             });
             renderizar();
             avisar('Nodo creado. Edítalo y muévelo a su lugar.', 'info');
@@ -791,6 +1469,10 @@
             n.color = document.getElementById('edColor').value;
             n.metrica = document.getElementById('edMetrica').value || null;
             n.descripcion = document.getElementById('edDesc').value.trim();
+            n.responsable = document.getElementById('edResponsable').value.trim();
+            n.tiempo_estimado = document.getElementById('edTiempo').value.trim();
+            n.sistema = document.getElementById('edSistema').value.trim();
+            n.notas = document.getElementById('edNotas').value.trim();
 
             renderizar();
             avisar('Nodo actualizado.');
@@ -817,8 +1499,19 @@
             instantanea();
             c.etiqueta = document.getElementById('edEtiqueta').value.trim() || null;
             c.tipo = document.getElementById('edTipo').value;
+            c.evento = document.getElementById('edEvento').value.trim();
+            c.condicion = document.getElementById('edCondicion').value.trim();
+            c.sla = document.getElementById('edSla').value.trim();
+            c.responsable = document.getElementById('edRespConexion').value.trim();
             renderizar();
             avisar('Conexión actualizada.');
+        }
+
+        /** Muestra u oculta el texto de cada arista, para limpiar el lienzo. */
+        function alternarEtiquetas() {
+            mostrarEtiquetas = !mostrarEtiquetas;
+            document.getElementById('btnEtiquetas').classList.toggle('activo', mostrarEtiquetas);
+            renderizar();
         }
 
         function eliminarConexionSeleccionada() {
@@ -917,7 +1610,11 @@
                     origen_id: origen.id,
                     destino_id: destino.id,
                     etiqueta: null,
-                    tipo: 'normal'
+                    tipo: 'normal',
+                    evento: '',
+                    condicion: '',
+                    sla: '',
+                    responsable: ''
                 });
                 renderizar();
                 avisar('Conexión creada.');
@@ -995,10 +1692,21 @@
             const t = busqueda.toLowerCase();
             const encontrados = new Set();
             nodos.forEach((n) => {
-                const coincide = [n.nombre, n.area, n.clave, n.descripcion]
+                const coincide = [n.nombre, n.area, n.clave, n.descripcion, n.responsable, n.sistema, n.tiempo_estimado, n.notas]
                     .filter(Boolean)
                     .some((v) => String(v).toLowerCase().includes(t));
                 if (coincide) encontrados.add(n.id);
+            });
+
+            // Una arista tambien puede ser lo que se busca ("merma", "rechazo",
+            // el nombre de un SLA). Si coincide, se resaltan sus dos extremos.
+            conexiones.forEach((c) => {
+                const coincide = [c.etiqueta, c.evento, c.condicion, c.sla, c.responsable]
+                    .filter(Boolean)
+                    .some((v) => String(v).toLowerCase().includes(t));
+                if (!coincide) return;
+                encontrados.add(c.origen_id);
+                encontrados.add(c.destino_id);
             });
 
             // De cada coincidencia, toda su cadena hacia arriba y hacia abajo.
@@ -1033,6 +1741,15 @@
                 const enFlujo = aceptados.has(c.origen_id) && aceptados.has(c.destino_id);
                 el.classList.toggle('atenuada', !enFlujo);
                 el.classList.toggle('resaltada', enFlujo);
+            });
+
+            // Las etiquetas viven en un <g> aparte del path para poder atenuar
+            // el texto sin volver a pintar la arista.
+            conexiones.forEach((c) => {
+                const el = svgEl.querySelector('.grupo-etiqueta[data-id="' + c.id + '"]');
+                if (!el) return;
+                const enFlujo = aceptados.has(c.origen_id) && aceptados.has(c.destino_id);
+                el.classList.toggle('atenuada', !enFlujo);
             });
         }
 
@@ -1141,7 +1858,11 @@
                         x: Number(n.x),
                         y: Number(n.y),
                         color: n.color,
-                        metrica: n.metrica || ''
+                        metrica: n.metrica || '',
+                        responsable: n.responsable || '',
+                        tiempo_estimado: n.tiempo_estimado || '',
+                        sistema: n.sistema || '',
+                        notas: n.notas || ''
                     })),
                     conexiones: conexiones.map((c) => {
                         const o = nodos.find((n) => n.id === c.origen_id);
@@ -1150,7 +1871,11 @@
                             origen: o ? o.clave : null,
                             destino: d ? d.clave : null,
                             etiqueta: c.etiqueta || '',
-                            tipo: c.tipo
+                            tipo: c.tipo,
+                            evento: c.evento || '',
+                            condicion: c.condicion || '',
+                            sla: c.sla || '',
+                            responsable: c.responsable || ''
                         };
                     }).filter((c) => c.origen && c.destino)
                 };
@@ -1190,12 +1915,19 @@
                 nodos: nodos.map((n) => ({
                     clave: n.clave, nombre: n.nombre, area: n.area,
                     descripcion: n.descripcion, x: Number(n.x), y: Number(n.y),
-                    color: n.color, metrica: n.metrica
+                    color: n.color, metrica: n.metrica,
+                    responsable: n.responsable, tiempo_estimado: n.tiempo_estimado,
+                    sistema: n.sistema, notas: n.notas
                 })),
                 conexiones: conexiones.map((c) => {
                     const o = nodos.find((n) => n.id === c.origen_id);
                     const d = nodos.find((n) => n.id === c.destino_id);
-                    return { origen: o ? o.clave : null, destino: d ? d.clave : null, etiqueta: c.etiqueta, tipo: c.tipo };
+                    return {
+                        origen: o ? o.clave : null, destino: d ? d.clave : null,
+                        etiqueta: c.etiqueta, tipo: c.tipo,
+                        evento: c.evento, condicion: c.condicion,
+                        sla: c.sla, responsable: c.responsable
+                    };
                 }).filter((c) => c.origen && c.destino)
             };
 
@@ -1294,6 +2026,9 @@
                 window.location.href = 'index.html';
             }
         }
+
+        // Las etiquetas arrancan visibles, asi que el botón queda marcado.
+        document.getElementById('btnEtiquetas').classList.add('activo');
 
         cargar().then(centrar);
     </script>

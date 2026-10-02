@@ -112,11 +112,23 @@ function validarNodo(bruto) {
       x: Math.round(x * 100) / 100,
       y: Math.round(y * 100) / 100,
       color,
-      metrica
+      metrica,
+      // Metadata de la etapa. Todos opcionales: un nodo nuevo puede quedarse
+      // solo con nombre y area. Los topes replican los de las columnas.
+      responsable: texto(b.responsable, 80) || null,
+      tiempo_estimado: texto(b.tiempo_estimado, 40) || null,
+      sistema: texto(b.sistema, 80) || null,
+      notas: texto(b.notas, 1000) || null
     }
   };
 }
 
+/**
+ * Normaliza y valida una conexion. Aparte de las dos aristas y el tipo, guarda
+ * la metadata del salto: que evento lo dispara, que condicion se cumple (que es
+ * lo que distingue una decision de un rechazo), quien lo ejecuta y con que SLA.
+ * El cliente pinta la etiqueta corta en la linea y el resto en el tooltip.
+ */
 function validarConexion(bruto) {
   const b = bruto || {};
   const origenId = parseInt(b.origen_id, 10);
@@ -130,7 +142,19 @@ function validarConexion(bruto) {
     return { ok: false, mensaje: `Tipo de conexión inválido: "${tipo}".` };
   }
 
-  return { ok: true, datos: { origen_id: origenId, destino_id: destinoId, etiqueta: texto(b.etiqueta, 80) || null, tipo } };
+  return {
+    ok: true,
+    datos: {
+      origen_id: origenId,
+      destino_id: destinoId,
+      etiqueta: texto(b.etiqueta, 80) || null,
+      tipo,
+      evento: texto(b.evento, 140) || null,
+      condicion: texto(b.condicion, 140) || null,
+      sla: texto(b.sla, 40) || null,
+      responsable: texto(b.responsable, 80) || null
+    }
+  };
 }
 
 /**
@@ -276,14 +300,17 @@ router.post('/versiones/:id/restaurar', asyncRuta(async (req, res) => {
     const idPorClave = new Map();
     for (const d of validados) {
       const r = await client.query(
-        `INSERT INTO flujo_nodos (clave, nombre, area, descripcion, x, y, color, metrica)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `INSERT INTO flujo_nodos (clave, nombre, area, descripcion, x, y, color, metrica, responsable, tiempo_estimado, sistema, notas)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          ON CONFLICT (clave) DO UPDATE SET
            nombre = EXCLUDED.nombre, area = EXCLUDED.area, descripcion = EXCLUDED.descripcion,
            x = EXCLUDED.x, y = EXCLUDED.y, color = EXCLUDED.color, metrica = EXCLUDED.metrica,
+           responsable = EXCLUDED.responsable, tiempo_estimado = EXCLUDED.tiempo_estimado,
+           sistema = EXCLUDED.sistema, notas = EXCLUDED.notas,
            fecha_actualizacion = NOW()
          RETURNING id, clave`,
-        [d.clave, d.nombre, d.area, d.descripcion, d.x, d.y, d.color, d.metrica]
+        [d.clave, d.nombre, d.area, d.descripcion, d.x, d.y, d.color, d.metrica,
+          d.responsable, d.tiempo_estimado, d.sistema, d.notas]
       );
       idPorClave.set(r.rows[0].clave, r.rows[0].id);
     }
@@ -299,13 +326,24 @@ router.post('/versiones/:id/restaurar', asyncRuta(async (req, res) => {
       const destino = idPorClave.get(texto(c.destino, 50));
       if (!origen || !destino) continue;
 
-      const v3 = validarConexion({ origen_id: origen, destino_id: destino, etiqueta: c.etiqueta, tipo: c.tipo });
+      const v3 = validarConexion({
+        origen_id: origen,
+        destino_id: destino,
+        etiqueta: c.etiqueta,
+        tipo: c.tipo,
+        evento: c.evento,
+        condicion: c.condicion,
+        sla: c.sla,
+        responsable: c.responsable
+      });
       if (!v3.ok) continue;
 
       await client.query(
-        `INSERT INTO flujo_conexiones (origen_id, destino_id, etiqueta, tipo) VALUES ($1, $2, $3, $4)
+        `INSERT INTO flujo_conexiones (origen_id, destino_id, etiqueta, tipo, evento, condicion, sla, responsable)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (origen_id, destino_id) DO NOTHING`,
-        [v3.datos.origen_id, v3.datos.destino_id, v3.datos.etiqueta, v3.datos.tipo]
+        [v3.datos.origen_id, v3.datos.destino_id, v3.datos.etiqueta, v3.datos.tipo,
+          v3.datos.evento, v3.datos.condicion, v3.datos.sla, v3.datos.responsable]
       );
       creadas += 1;
     }
@@ -341,9 +379,10 @@ router.post('/nodos', asyncRuta(async (req, res) => {
   }
 
   const r = await db.query(
-    `INSERT INTO flujo_nodos (clave, nombre, area, descripcion, x, y, color, metrica)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-    [v.datos.clave, v.datos.nombre, v.datos.area, v.datos.descripcion, v.datos.x, v.datos.y, v.datos.color, v.datos.metrica]
+    `INSERT INTO flujo_nodos (clave, nombre, area, descripcion, x, y, color, metrica, responsable, tiempo_estimado, sistema, notas)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+    [v.datos.clave, v.datos.nombre, v.datos.area, v.datos.descripcion, v.datos.x, v.datos.y, v.datos.color, v.datos.metrica,
+      v.datos.responsable, v.datos.tiempo_estimado, v.datos.sistema, v.datos.notas]
   );
   res.json({ success: true, nodo: r.rows[0] });
 }));
@@ -357,9 +396,11 @@ router.put('/nodos/:id', asyncRuta(async (req, res) => {
 
   const r = await db.query(
     `UPDATE flujo_nodos
-     SET clave = $2, nombre = $3, area = $4, descripcion = $5, x = $6, y = $7, color = $8, metrica = $9, fecha_actualizacion = NOW()
+     SET clave = $2, nombre = $3, area = $4, descripcion = $5, x = $6, y = $7, color = $8, metrica = $9,
+         responsable = $10, tiempo_estimado = $11, sistema = $12, notas = $13, fecha_actualizacion = NOW()
      WHERE id = $1 RETURNING *`,
-    [id, v.datos.clave, v.datos.nombre, v.datos.area, v.datos.descripcion, v.datos.x, v.datos.y, v.datos.color, v.datos.metrica]
+    [id, v.datos.clave, v.datos.nombre, v.datos.area, v.datos.descripcion, v.datos.x, v.datos.y, v.datos.color, v.datos.metrica,
+      v.datos.responsable, v.datos.tiempo_estimado, v.datos.sistema, v.datos.notas]
   );
   if (r.rows.length === 0) return res.status(404).json({ success: false, mensaje: 'El nodo no existe.' });
   res.json({ success: true, nodo: r.rows[0] });
@@ -386,10 +427,15 @@ router.post('/conexiones', asyncRuta(async (req, res) => {
   }
 
   const r = await db.query(
-    `INSERT INTO flujo_conexiones (origen_id, destino_id, etiqueta, tipo) VALUES ($1, $2, $3, $4)
-     ON CONFLICT (origen_id, destino_id) DO UPDATE SET etiqueta = EXCLUDED.etiqueta, tipo = EXCLUDED.tipo, fecha_actualizacion = NOW()
+    `INSERT INTO flujo_conexiones (origen_id, destino_id, etiqueta, tipo, evento, condicion, sla, responsable)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (origen_id, destino_id) DO UPDATE SET
+       etiqueta = EXCLUDED.etiqueta, tipo = EXCLUDED.tipo, evento = EXCLUDED.evento,
+       condicion = EXCLUDED.condicion, sla = EXCLUDED.sla, responsable = EXCLUDED.responsable,
+       fecha_actualizacion = NOW()
      RETURNING *`,
-    [v.datos.origen_id, v.datos.destino_id, v.datos.etiqueta, v.datos.tipo]
+    [v.datos.origen_id, v.datos.destino_id, v.datos.etiqueta, v.datos.tipo,
+      v.datos.evento, v.datos.condicion, v.datos.sla, v.datos.responsable]
   );
   res.json({ success: true, conexion: r.rows[0] });
 }));
@@ -444,14 +490,17 @@ router.put('/', asyncRuta(async (req, res) => {
     const idPorClave = new Map();
     for (const d of validados) {
       const r = await client.query(
-        `INSERT INTO flujo_nodos (clave, nombre, area, descripcion, x, y, color, metrica)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `INSERT INTO flujo_nodos (clave, nombre, area, descripcion, x, y, color, metrica, responsable, tiempo_estimado, sistema, notas)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          ON CONFLICT (clave) DO UPDATE SET
            nombre = EXCLUDED.nombre, area = EXCLUDED.area, descripcion = EXCLUDED.descripcion,
            x = EXCLUDED.x, y = EXCLUDED.y, color = EXCLUDED.color, metrica = EXCLUDED.metrica,
+           responsable = EXCLUDED.responsable, tiempo_estimado = EXCLUDED.tiempo_estimado,
+           sistema = EXCLUDED.sistema, notas = EXCLUDED.notas,
            fecha_actualizacion = NOW()
          RETURNING id, clave`,
-        [d.clave, d.nombre, d.area, d.descripcion, d.x, d.y, d.color, d.metrica]
+        [d.clave, d.nombre, d.area, d.descripcion, d.x, d.y, d.color, d.metrica,
+          d.responsable, d.tiempo_estimado, d.sistema, d.notas]
       );
       idPorClave.set(r.rows[0].clave, r.rows[0].id);
     }
@@ -469,13 +518,27 @@ router.put('/', asyncRuta(async (req, res) => {
       const destinoId = idPorClave.get(texto(c.destino, 50));
       if (!origenId || !destinoId) continue;
 
-      const v = validarConexion({ origen_id: origenId, destino_id: destinoId, etiqueta: c.etiqueta, tipo: c.tipo });
+      const v = validarConexion({
+        origen_id: origenId,
+        destino_id: destinoId,
+        etiqueta: c.etiqueta,
+        tipo: c.tipo,
+        evento: c.evento,
+        condicion: c.condicion,
+        sla: c.sla,
+        responsable: c.responsable
+      });
       if (!v.ok) continue;
 
       await client.query(
-        `INSERT INTO flujo_conexiones (origen_id, destino_id, etiqueta, tipo) VALUES ($1, $2, $3, $4)
-         ON CONFLICT (origen_id, destino_id) DO UPDATE SET etiqueta = EXCLUDED.etiqueta, tipo = EXCLUDED.tipo, fecha_actualizacion = NOW()`,
-        [v.datos.origen_id, v.datos.destino_id, v.datos.etiqueta, v.datos.tipo]
+        `INSERT INTO flujo_conexiones (origen_id, destino_id, etiqueta, tipo, evento, condicion, sla, responsable)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (origen_id, destino_id) DO UPDATE SET
+           etiqueta = EXCLUDED.etiqueta, tipo = EXCLUDED.tipo, evento = EXCLUDED.evento,
+           condicion = EXCLUDED.condicion, sla = EXCLUDED.sla, responsable = EXCLUDED.responsable,
+           fecha_actualizacion = NOW()`,
+        [v.datos.origen_id, v.datos.destino_id, v.datos.etiqueta, v.datos.tipo,
+          v.datos.evento, v.datos.condicion, v.datos.sla, v.datos.responsable]
       );
       creadas += 1;
     }

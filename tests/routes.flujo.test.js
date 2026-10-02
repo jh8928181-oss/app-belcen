@@ -191,6 +191,244 @@ describe('validación de nodos y conexiones', () => {
   });
 });
 
+describe('los campos nuevos de detalle', () => {
+  // Los topes salen de la migracion 1790800004000. Si se cambia alli y no aqui,
+  // el POST deja de cortar lo que la columna ya no acepta.
+  const TOPES_NODO = { responsable: 80, tiempo_estimado: 40, sistema: 80, notas: 1000 };
+  const TOPES_CONEXION = { evento: 140, condicion: 140, sla: 40, responsable: 80 };
+
+  const conNodo = over => nodo(Object.assign({
+    responsable: 'Compras',
+    tiempo_estimado: '1 día hábil',
+    sistema: 'basededatosgeneral.html · Órdenes OC/OS',
+    notas: 'Solo con guía de entrada firmada'
+  }, over));
+
+  test('el GET devuelve los cuatro campos de nodo y los cuatro de conexión', async () => {
+    mockQuery.mockImplementation(async sql => {
+      if (/FROM flujo_nodos/.test(sql)) {
+        return { rows: [{
+          id: 1, clave: 'oc_os', nombre: 'OC / OS', area: 'Compras', x: '60', y: '220',
+          responsable: 'Compras', tiempo_estimado: '1 día hábil',
+          sistema: 'basededatosgeneral.html', notas: 'Con guía firmada'
+        }] };
+      }
+      return { rows: [{
+        id: 9, origen_id: 1, destino_id: 2, etiqueta: 'Devolución al proveedor', tipo: 'rechazo',
+        evento: 'Ingreso no conforme', condicion: 'No coincide con la guía',
+        sla: '4 h', responsable: 'Almacén / Compras'
+      }] };
+    });
+
+    const res = await invocar('get', '/', {});
+
+    expect(res.cuerpo.nodos[0]).toMatchObject({
+      responsable: 'Compras', tiempo_estimado: '1 día hábil',
+      sistema: 'basededatosgeneral.html', notas: 'Con guía firmada'
+    });
+    expect(res.cuerpo.conexiones[0]).toMatchObject({
+      evento: 'Ingreso no conforme', condicion: 'No coincide con la guía',
+      sla: '4 h', responsable: 'Almacén / Compras'
+    });
+  });
+
+  test('un nodo sin metadata sigue siendo válido: los campos son opcionales', async () => {
+    mockQuery.mockResolvedValue({ rows: [{ id: 1, clave: 'oc_os' }], rowCount: 1 });
+
+    const res = await invocar('post', '/nodos', { body: nodo() });
+
+    expect(res.statusCode).toBeNull();
+    expect(res.cuerpo.success).toBe(true);
+  });
+
+  test('el POST guarda los cuatro campos de nodo', async () => {
+    mockQuery.mockResolvedValue({ rows: [{ id: 1, clave: 'oc_os' }], rowCount: 1 });
+
+    await invocar('post', '/nodos', { body: conNodo() });
+
+    const insercion = mockQuery.mock.calls.find(([sql]) => /INSERT INTO flujo_nodos/.test(sql));
+    expect(insercion).toBeDefined();
+    expect(insercion[1].slice(8)).toEqual(['Compras', '1 día hábil', 'basededatosgeneral.html · Órdenes OC/OS', 'Solo con guía de entrada firmada']);
+  });
+
+  test('el PUT actualiza los cuatro campos de nodo, no solo los viejos', async () => {
+    mockQuery.mockImplementation(async sql => {
+      if (/INSERT INTO flujo_nodos/.test(sql)) return { rows: [{ id: 11, clave: 'oc_os' }], rowCount: 1 };
+      return { rows: [], rowCount: 1 };
+    });
+
+    await invocar('put', '/', { body: { nodos: [conNodo()], conexiones: [] } });
+
+    const insercion = mockQuery.mock.calls.find(([sql]) => /INSERT INTO flujo_nodos/.test(sql));
+    // El ON CONFLICT tiene que reescribir la metadata: si no, guardar desde el
+    // panel no cambiaria nada aunque la columna exista.
+    expect(insercion[0]).toMatch(/responsable = EXCLUDED\.responsable/);
+    expect(insercion[0]).toMatch(/tiempo_estimado = EXCLUDED\.tiempo_estimado/);
+    expect(insercion[0]).toMatch(/sistema = EXCLUDED\.sistema/);
+    expect(insercion[0]).toMatch(/notas = EXCLUDED\.notas/);
+    expect(insercion[1].slice(8)).toEqual(['Compras', '1 día hábil', 'basededatosgeneral.html · Órdenes OC/OS', 'Solo con guía de entrada firmada']);
+  });
+
+  test('el PUT escribe los cuatro campos de conexión en la tabla y en el UPDATE', async () => {
+    mockQuery.mockImplementation(async (sql, params) => {
+      if (/INSERT INTO flujo_nodos/.test(sql)) return { rows: [{ id: params[0] === 'oc_os' ? 11 : 22, clave: params[0] }], rowCount: 1 };
+      return { rows: [], rowCount: 1 };
+    });
+
+    await invocar('put', '/', {
+      body: {
+        nodos: [nodo(), nodo({ clave: 'vigilancia', nombre: 'Vigilancia' })],
+        conexiones: [{
+          origen: 'oc_os', destino: 'vigilancia', etiqueta: 'Devolución al proveedor', tipo: 'rechazo',
+          evento: 'Ingreso no conforme', condicion: 'No coincide con la guía',
+          sla: '4 h', responsable: 'Almacén / Compras'
+        }]
+      }
+    });
+
+    const insercion = mockQuery.mock.calls.find(([sql]) => /INSERT INTO flujo_conexiones/.test(sql));
+    expect(insercion).toBeDefined();
+    expect(insercion[0]).toMatch(/evento, condicion, sla, responsable/);
+    expect(insercion[0]).toMatch(/evento = EXCLUDED\.evento/);
+    expect(insercion[0]).toMatch(/condicion = EXCLUDED\.condicion/);
+    expect(insercion[0]).toMatch(/sla = EXCLUDED\.sla/);
+    expect(insercion[0]).toMatch(/responsable = EXCLUDED\.responsable/);
+    expect(insercion[1]).toEqual([11, 22, 'Devolución al proveedor', 'rechazo',
+      'Ingreso no conforme', 'No coincide con la guía', '4 h', 'Almacén / Compras']);
+  });
+
+  test('una conexión sin metadata es válida: las 20 del mapa arrancan vacías', async () => {
+    mockQuery.mockImplementation(async sql => {
+      if (/SELECT id FROM flujo_nodos/.test(sql)) return { rows: [{ id: 1 }, { id: 2 }], rowCount: 2 };
+      return { rows: [{ id: 7 }], rowCount: 1 };
+    });
+
+    const res = await invocar('post', '/conexiones', { body: { origen_id: 1, destino_id: 2, tipo: 'normal' } });
+
+    expect(res.statusCode).toBeNull();
+    expect(res.cuerpo.success).toBe(true);
+  });
+
+  test('el POST guarda los cuatro campos de conexión', async () => {
+    mockQuery.mockImplementation(async sql => {
+      if (/SELECT id FROM flujo_nodos/.test(sql)) return { rows: [{ id: 1 }, { id: 2 }], rowCount: 2 };
+      return { rows: [{ id: 7 }], rowCount: 1 };
+    });
+
+    await invocar('post', '/conexiones', {
+      body: {
+        origen_id: 1, destino_id: 2, tipo: 'decision', etiqueta: 'Proyecta plan',
+        evento: 'Plan del turno', condicion: 'Se requiere proyección de insumos',
+        sla: '1 h', responsable: 'Ing. de Producción'
+      }
+    });
+
+    const insercion = mockQuery.mock.calls.find(([sql]) => /INSERT INTO flujo_conexiones/.test(sql));
+    expect(insercion).toBeDefined();
+    expect(insercion[1].slice(2)).toEqual(['Proyecta plan', 'decision', 'Plan del turno',
+      'Se requiere proyección de insumos', '1 h', 'Ing. de Producción']);
+  });
+
+  test('los tipos decision y rechazo se aceptan en el POST', async () => {
+    mockQuery.mockImplementation(async sql => {
+      if (/SELECT id FROM flujo_nodos/.test(sql)) return { rows: [{ id: 1 }, { id: 2 }], rowCount: 2 };
+      return { rows: [{ id: 7 }], rowCount: 1 };
+    });
+
+    for (const tipo of ['decision', 'rechazo']) {
+      mockQuery.mockClear();
+      mockQuery.mockImplementation(async sql => {
+        if (/SELECT id FROM flujo_nodos/.test(sql)) return { rows: [{ id: 1 }, { id: 2 }], rowCount: 2 };
+        return { rows: [{ id: 7 }], rowCount: 1 };
+      });
+      const res = await invocar('post', '/conexiones', { body: { origen_id: 1, destino_id: 2, tipo } });
+      expect(`${tipo}: ok`).toBe(`${tipo}: ok`);
+      expect(res.statusCode).toBeNull();
+    }
+
+    const res = await invocar('post', '/conexiones', { body: { origen_id: 1, destino_id: 2, tipo: 'inventado' } });
+    expect(res.statusCode).toBe(400);
+  });
+
+  test('la metadata que excede el tope de su columna se corta, no revienta', async () => {
+    // Un textarea largo no puede devolver 500: la columna es mas chica que lo que
+    // el usuario puede escribir, y lo que no cabe se recorta.
+    mockQuery.mockResolvedValue({ rows: [{ id: 1, clave: 'oc_os' }], rowCount: 1 });
+
+    await invocar('post', '/nodos', { body: conNodo({ notas: 'x'.repeat(4000) }) });
+
+    const insercion = mockQuery.mock.calls.find(([sql]) => /INSERT INTO flujo_nodos/.test(sql));
+    for (const [campo, tope] of Object.entries(TOPES_NODO)) {
+      const i = ['responsable', 'tiempo_estimado', 'sistema', 'notas'].indexOf(campo);
+      expect(`${campo} corta`).toBe(`${campo} corta`);
+      expect(String(insercion[1][8 + i]).length).toBeLessThanOrEqual(tope);
+    }
+  });
+
+  test('la metadata de una conexión también se recorta al tope de su columna', async () => {
+    mockQuery.mockImplementation(async sql => {
+      if (/SELECT id FROM flujo_nodos/.test(sql)) return { rows: [{ id: 1 }, { id: 2 }], rowCount: 2 };
+      return { rows: [{ id: 7 }], rowCount: 1 };
+    });
+
+    await invocar('post', '/conexiones', {
+      body: {
+        origen_id: 1, destino_id: 2, tipo: 'normal',
+        evento: 'x'.repeat(400), condicion: 'y'.repeat(400),
+        sla: 'z'.repeat(400), responsable: 'w'.repeat(400)
+      }
+    });
+
+    const insercion = mockQuery.mock.calls.find(([sql]) => /INSERT INTO flujo_conexiones/.test(sql));
+    const orden = ['evento', 'condicion', 'sla', 'responsable'];
+    for (const [campo, tope] of Object.entries(TOPES_CONEXION)) {
+      const i = orden.indexOf(campo);
+      expect(`${campo} de la conexión corta`).toBe(`${campo} de la conexión corta`);
+      expect(String(insercion[1][4 + i]).length).toBeLessThanOrEqual(tope);
+    }
+  });
+
+  test('restaurar una versión devuelve también los campos nuevos', async () => {
+    mockQuery.mockImplementation(async sql => {
+      if (/FROM flujo_versiones WHERE id/.test(sql)) {
+        return { rows: [{
+          id: 1, nombre: 'Con detalle',
+          snapshot: { nodos: [conNodo()], conexiones: [{ origen: 'oc_os', destino: 'vigilancia', evento: 'Plan del turno' }] }
+        }] };
+      }
+      if (/INSERT INTO flujo_nodos/.test(sql)) return { rows: [{ id: 5, clave: 'oc_os' }], rowCount: 1 };
+      return { rows: [], rowCount: 1 };
+    });
+
+    const res = await invocar('post', '/versiones/:id/restaurar', { params: { id: '1' } });
+
+    expect(res.statusCode).toBeNull();
+    const nodoRestaurado = mockQuery.mock.calls.find(([sql]) => /INSERT INTO flujo_nodos/.test(sql));
+    expect(nodoRestaurado[0]).toMatch(/responsable, tiempo_estimado, sistema, notas/);
+    expect(nodoRestaurado[1].slice(8)).toEqual(['Compras', '1 día hábil', 'basededatosgeneral.html · Órdenes OC/OS', 'Solo con guía de entrada firmada']);
+  });
+
+  test('guardar una versión acepta la metadata en el snapshot', async () => {
+    mockQuery.mockResolvedValue({ rows: [{ id: 1 }], rowCount: 1 });
+
+    const res = await invocar('post', '/versiones', {
+      body: {
+        nombre: 'Con detalle',
+        snapshot: {
+          nodos: [conNodo()],
+          conexiones: [{
+            origen: 'oc_os', destino: 'vigilancia', tipo: 'rechazo', evento: 'Ingreso no conforme',
+            condicion: 'No coincide con la guía', sla: '4 h', responsable: 'Almacén / Compras'
+          }]
+        }
+      }
+    });
+
+    expect(res.statusCode).toBeNull();
+    expect(res.cuerpo.success).toBe(true);
+  });
+});
+
 describe('PUT / — el guardado masivo reemplaza el grafo entero', () => {
   test('borra los nodos que el cliente ya no envía', async () => {
     mockQuery.mockImplementation(async (sql) => {

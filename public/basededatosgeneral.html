@@ -1182,6 +1182,19 @@
             document.getElementById('formOrden').classList.remove('oculto');
             document.getElementById('ordenTipo').value = 'OC';
             document.getElementById('ordenNumero').value = '';
+            document.getElementById('ordenFecha').value = new Date().toISOString().slice(0, 10);
+            document.getElementById('ordenProveedor').value = '';
+            document.getElementById('ordenEstado').value = 'EMITIDA';
+            document.getElementById('ordenMoneda').value = 'PEN';
+            document.getElementById('ordenIgvPct').value = 18;
+            document.getElementById('ordenObs').value = '';
+
+            document.getElementById('tbodyItemsOrden').innerHTML = '';
+            agregarFilaItem();
+            recalcularTotalOrden();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
         // ============ PRECIOS Y FACTURAS ============
         let precioEditando = null;
         let facturaEditando = null;
@@ -1551,20 +1564,6 @@
             } catch (err) {
                 document.getElementById('tablaResumenFacturas').innerHTML = `<tr><td colspan="6" class="text-center sin-registros">${escapeHtml(err.message)}</td></tr>`;
             }
-        }
-
-        document.getElementById('ordenFecha').value = new Date().toISOString().slice(0, 10);
-
-            document.getElementById('ordenProveedor').value = '';
-            document.getElementById('ordenEstado').value = 'EMITIDA';
-            document.getElementById('ordenMoneda').value = 'PEN';
-            document.getElementById('ordenIgvPct').value = 18;
-            document.getElementById('ordenObs').value = '';
-
-            document.getElementById('tbodyItemsOrden').innerHTML = '';
-            agregarFilaItem();
-            recalcularTotalOrden();
-            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         function cancelarEdicionOrden() {

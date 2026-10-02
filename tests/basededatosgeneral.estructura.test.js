@@ -12,11 +12,13 @@
 
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 
 const PAGINA = path.join(__dirname, '..', 'public', 'basededatosgeneral.html');
 const html = fs.readFileSync(PAGINA, 'utf8');
 const sinScripts = html.replace(/<script[\s\S]*?<\/script>/gi, '');
 const jsInline = (html.match(/<script>([\s\S]*?)<\/script>/) || [])[1] || '';
+const bloquesInline = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map(m => m[1]);
 
 // Etiquetas sin etiqueta de cierre propio.
 const SIN_CIERRE = new Set([
@@ -93,6 +95,52 @@ function rutaDe(idBuscado) {
   return null;
 }
 
+/** Stub que responde cualquier propiedad o llamada sin romperse, para que el JS
+ *  de la pagina corra sin DOM real ni backend. */
+function stubInfinito() {
+  const stub = new Proxy(function () {}, {
+    get: (destino, prop) => (prop === 'then' || prop === 'length' ? undefined : stub),
+    set: () => true,
+    apply: () => stub
+  });
+  return stub;
+}
+
+/** Ejecuta el script inline de la pagina en un contexto global y lo devuelve.
+ *  Sirve para distinguir "la funcion esta declarada" de "esta declarada en el
+ *  ambito global": un onclick solo la encuentra si es global. */
+function ejecutarScript() {
+  const stub = stubInfinito();
+  const contexto = {
+    document: stub,
+    window: stub,
+    localStorage: stub,
+    sessionStorage: stub,
+    history: stub,
+    location: stub,
+    alert: stub,
+    confirm: () => false,
+    prompt: () => '',
+    // Nunca resuelve: el script dispara peticiones al cargar y aqui no hay backend.
+    fetch: () => new Promise(() => {}),
+    URLSearchParams,
+    setTimeout: () => 0,
+    setInterval: () => 0,
+    clearTimeout: () => 0,
+    clearInterval: () => 0,
+    getComputedStyle: () => stub,
+    requestAnimationFrame: () => 0,
+    crypto: stub,
+    console,
+    // Los aporta auth-client.js en el navegador, no esta pagina.
+    registrarAutoRefresco: () => {},
+    limpiarSesion: () => {}
+  };
+  vm.createContext(contexto);
+  for (const bloque of bloquesInline) vm.runInContext(bloque, contexto, { timeout: 5000 });
+  return contexto;
+}
+
 const PESTANAS = ['pestanaProv', 'pestanaOrden', 'pestanaStock', 'pestanaPrecio'];
 
 describe('basededatosgeneral.html estructura', () => {
@@ -150,5 +198,52 @@ describe('basededatosgeneral.html estructura', () => {
     const todos = [...sinScripts.matchAll(/id="([^"]+)"/g)].map(m => m[1]);
     const repetidos = todos.filter((x, i) => todos.indexOf(x) !== i);
     expect([...new Set(repetidos)]).toEqual([]);
+  });
+});
+
+describe('basededatosgeneral.html ambito global', () => {
+  test('el script se ejecuta y expone sus funciones globalmente', () => {
+    const contexto = ejecutarScript();
+    const declaradas = [...new Set(
+      [...jsInline.matchAll(/(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/g)].map(m => m[1])
+    )];
+    const noGlobales = declaradas.filter(nombre => typeof contexto[nombre] !== 'function');
+    // Una llave de cierre faltante anida el resto del script dentro de otra
+    // funcion: las declarations existen pero el onclick no las encuentra.
+    expect(declaradas.length).toBeGreaterThan(0);
+    expect(noGlobales).toEqual([]);
+  });
+
+  test('todo manejador inline resuelve a una funcion global', () => {
+    const contexto = ejecutarScript();
+    const manejadores = [...new Set(
+      [...html.matchAll(/on(?:click|change|input|submit|keyup)="([A-Za-z_$][\w$]*)\s*\(/g)].map(m => m[1])
+    )];
+    const rotos = manejadores.filter(nombre => typeof contexto[nombre] !== 'function');
+
+    expect(manejadores.length).toBeGreaterThan(0);
+    expect(rotos).toEqual([]);
+  });
+
+  test('el estado de edicion de orden, precio y factura vive en el ambito global', () => {
+    const contexto = ejecutarScript();
+    for (const variable of ['ordenEditando', 'precioEditando', 'facturaEditando', 'proveedoresCache']) {
+      expect(`${variable}: ${vm.runInContext(`typeof ${variable}`, contexto)}`)
+        .not.toBe(`${variable}: undefined`);
+    }
+  });
+
+  test('nuevaOrden no quedo partida y limpia todo el formulario', () => {
+    const contexto = ejecutarScript();
+    const fuente = vm.runInContext('nuevaOrden.toString()', contexto);
+    const campos = [
+      'ordenTipo', 'ordenNumero', 'ordenFecha', 'ordenProveedor',
+      'ordenEstado', 'ordenMoneda', 'ordenIgvPct', 'ordenObs', 'tbodyItemsOrden'
+    ];
+    const faltan = campos.filter(campo => !fuente.includes(`'${campo}'`));
+
+    expect(faltan).toEqual([]);
+    expect(fuente).toContain('agregarFilaItem()');
+    expect(fuente).toContain('recalcularTotalOrden()');
   });
 });

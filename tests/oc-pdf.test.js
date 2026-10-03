@@ -720,6 +720,44 @@ function hojasDe(buffer) {
   return (buffer.toString('latin1').match(/MediaBox/g) || []).length;
 }
 
+/**
+ * Rectangulos del PDF, en el espacio de la hoja (Y hacia arriba).
+ *
+ * Hace falta para lo del recuadro de datos: decir que el texto no lo toca exige
+ * saber donde esta el borde, y los bordes son trazos, no texto. Sin esto, la
+ * unica forma de comprobarlo seria medir el texto y suponer que el recuadro esta
+ * donde se le pidio, que es justo lo que hay que revisar.
+ */
+function rectangulos(buffer) {
+  const salida = [];
+  extraerFlujos(buffer).forEach((flujo, hoja) => {
+    for (const m of flujo.matchAll(/([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+) re/g)) {
+      salida.push({
+        hoja,
+        x: Number(m[1]),
+        // Ojo: el texto sale de un bloque con la Y reflejada y hay que darla
+        // vuelta (PAGINA.height - tm.y), pero el rectangulo ya viene medido
+        // desde arriba. Darle la vuelta tambien al rectangulo lo deja a media
+        // hoja y la comprobacion de rozamiento no encuentra nada que medir.
+        y: Number(m[2]),
+        w: Number(m[3]),
+        h: Number(m[4])
+      });
+    }
+  });
+  return salida;
+}
+
+/** El recuadro de los datos de arriba: el primer rectangulo ancho de la hoja. */
+function recuadroDeDatos(buffer) {
+  // Es el primero porque se dibuja antes que las tablas. Agarrar "el unico con
+  // alto entre 20 y 160" no serviria: una fila de producto con la descripcion
+  // larga entra en esa misma ventana yeria un segundo candidato.
+  const anchos = rectangulos(buffer).filter(r => r.hoja === 0 && r.w > PAGINA.width * 0.8);
+  expect(anchos.length).toBeGreaterThan(0);
+  return anchos.reduce((a, r) => (r.y < a.y ? r : a));
+}
+
 describe('hoja A4 apaisada', () => {
   test('la hoja sale apaisada y de tamano A4', async () => {
     const buffer = await generarPDFOrdenCompra({
@@ -803,6 +841,112 @@ describe('hoja A4 apaisada', () => {
     }));
     expect(pos.some(p => p.texto.startsWith('HORARIO RECEPCIÓN:'))).toBe(true);
     expect(pos.some(p => p.texto.trim() === 'RECEPCIÓN:')).toBe(false);
+  });
+
+  test('el recuadro de datos no toca el texto', async () => {
+    // Este es el defecto que se ve al imprimir: el texto arrancaba en el mismo
+    // punto que el borde izquierdo y la altura de mayuscula de la primera fila
+    // caia justo sobre la linea de arriba. El recuadro no se leia como un marco
+    // sino como una linea de texto atravesada por el borde.
+    const buffer = await generarPDFOrdenCompra({
+      orden: ORDEN, items: ITEMS, bancos: CUENTAS,
+      emisor: { nombre: 'Angelica Ruiz', cargo: 'Jefe de almacen', celular: '987654321' }
+    });
+    const marco = recuadroDeDatos(buffer);
+    const ETIQUETAS = ['PROVEEDOR:', 'RUC:', 'ATENCIÓN:', 'E-MAIL:', 'CARGO:', 'ÁREA SOLICITANTE:', 'HORARIO RECEPCIÓN:'];
+    const filas = posiciones(buffer).filter(p => p.hoja === 0 && ETIQUETAS.some(e => p.texto.startsWith(e)));
+    expect(filas.length).toBe(ETIQUETAS.length);
+
+    // Lo que se mide no es la linea base sino la caja de la letra: la base
+    // queda 5,4 puntos mas abajo que la mayuscula, y con ella de referencia
+    // la comprobacion del borde de arriba daria un margen que no existe.
+    const ALTURA_MAYUSCULA = 0.718;
+    const DESCENDEDOR = 0.207;
+    const roces = filas.filter(p => {
+      const techo = p.y - p.tam * ALTURA_MAYUSCULA;
+      const suelo = p.y + p.tam * DESCENDEDOR;
+      return p.x < marco.x + 4 || p.x > marco.x + marco.w - 4 ||
+        techo < marco.y + 4 || suelo > marco.y + marco.h - 4;
+    });
+    expect(roces.map(p => `${p.texto} en ${p.x.toFixed(1)}/${p.y.toFixed(1)}`)).toEqual([]);
+  });
+
+  test('los renglones del bloque de datos se separan', async () => {
+    // Con la fila de 9,07 puntos para una linea de 8,67 sobraban 0,4: entre la
+    // cola de una letra y la mayuscula de la de abajo quedaban 0,75 mm y los
+    // renglones se leian pegados.
+    const pos = posiciones(await generarPDFOrdenCompra({
+      orden: ORDEN, items: ITEMS, bancos: CUENTAS,
+      emisor: { nombre: 'Angelica', cargo: 'Jefe de almacen', celular: '987654321' }
+    }));
+    const renglones = ['PROVEEDOR:', 'RUC:', 'ATENCIÓN:', 'CEL:']
+      .map(e => pos.find(p => p.texto === e && p.x < 100));
+    expect(renglones.every(Boolean)).toBe(true);
+
+    for (let i = 1; i < renglones.length; i++) {
+      const separacion = renglones[i].y - renglones[i - 1].y;
+      // La primera fila mide mas que las otras porque su valor envuelve, asi que
+      // solo se comparan las filas de una linea.
+      expect(separacion).toBeGreaterThan(12);
+    }
+  });
+});
+
+describe('condiciones del pie', () => {
+  const CONDICIONES = [
+    'CONDICIONES:',
+    'Documentación:',
+    'Calidad:',
+    'Despacho:',
+    'Precio:'
+  ];
+
+  test('son las condiciones del documento, no las de antes', async () => {
+    const pos = posiciones(await generarPDFOrdenCompra({
+      orden: ORDEN, items: ITEMS, bancos: CUENTAS,
+      emisor: { nombre: 'Angelica', cargo: 'Jefe de almacen', celular: '987654321' }
+    }));
+    const todo = pos.map(p => p.texto).join(' ');
+    for (const cond of CONDICIONES) expect(todo).toContain(cond);
+
+    // "Calidad y Despacho:" era una sola linea que mezclaba dos cosas distintas:
+    // una es motivo de rechazo por calidad de la mercaderia, la otra por fecha y
+    // lugar de envio. Separadas se puede negar una sin la otra.
+    expect(todo).not.toContain('Calidad y Despacho:');
+    expect(todo).not.toContain('CONDICIONES GENERALES:');
+  });
+
+  test('Calidad lleva sus tres parrafos, los dos ultimos sangrados', async () => {
+    const pos = posiciones(await generarPDFOrdenCompra({
+      orden: ORDEN, items: ITEMS, bancos: CUENTAS,
+      emisor: { nombre: 'Angelica', cargo: 'Jefe de almacen', celular: '987654321' }
+    }));
+    const etiqueta = pos.find(p => p.texto.trim() === 'Calidad:');
+    const continuaciones = pos.filter(p =>
+      p.texto.startsWith('La mercadería enviada de menos o más') ||
+      p.texto.startsWith('La mercadería enviada que se encuentre en mal estado'));
+    expect(etiqueta).toBeDefined();
+    expect(continuaciones).toHaveLength(2);
+
+    // Los tres parrafos de Calidad, con el del medio y el ultimo un poco mas
+    // adentro. Sin sangria se leen como condiciones nuevas que abren y cierran
+    // con su propio punto.
+    const documentacion = pos.find(p => p.texto.trim() === 'Documentación:');
+    for (const cont of continuaciones) expect(cont.x).toBeGreaterThan(documentacion.x);
+  });
+
+  test('las condiciones no terminan con los cuatro textos que se corrigieron', async () => {
+    // Erratas del documento: "Lotiz.", "al costato", "El envío" y "lugar y fecha
+    // no establecidas". Van en clauses de un papel que firma el proveedor, asi que
+    // la palabra mal escrita viaja con el pedido.
+    const pos = posiciones(await generarPDFOrdenCompra({
+      orden: ORDEN, items: ITEMS, bancos: CUENTAS,
+      emisor: { nombre: 'Angelica', cargo: 'Jefe de almacen', celular: '987654321' }
+    }));
+    const todo = pos.map(p => p.texto).join(' ');
+    expect(todo).toContain('lugar y fecha no establecidos');
+    expect(todo).not.toContain('no establecidas');
+    expect(todo).not.toContain('El envió');
   });
 });
 

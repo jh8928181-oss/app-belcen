@@ -51,7 +51,18 @@ const MARGEN = 1.0 * CM;
 const ANCHO = PAGINA.width - 2 * MARGEN; // ancho util: 785.2
 const ANCHO_ETIQUETA = 2.9 * CM;
 const TAMANO_DATOS = 7.5;
-const ALTO_FILA_DATOS = 0.32 * CM;
+// 0,32 cm eran 9,07 puntos para una linea de 8,67: sobraban 0,4. Entre la cola
+// de una letra y la mayuscula de la de abajo quedaban 0,75 mm, y los renglones se
+// leian pegados. Con 0,48 la fila respira sin costar una hoja.
+const ALTO_FILA_DATOS = 0.48 * CM;
+// Relleno interior del recuadro de datos. Sin esto el texto arranca en el mismo
+// punto que el borde izquierdo y la altura de mayuscula de la primera fila toca
+// la linea de arriba: el recuadro se lee como una linea de texto, no como un marco.
+const RELLENO_DATOS = 5;
+// Sangria de los parrafos que continuesan una condicion sin etiqueta nueva
+// (los dos ultimos de Calidad). Van uno adentro para que se lean como incisos y
+// no como condiciones nuevas.
+const SANGRIA_CONTINUACION = 0.4 * CM;
 // Holgura entre el valor de una columna y la etiqueta de la siguiente. Sin ella
 // las columnas se tocan justo y un correo largo del proveedor se junta con
 // "EMITIDO POR:" sin ningun espacio en blanco de por medio.
@@ -120,10 +131,35 @@ const CONDICIONES = [
   { etiqueta: 'Horario de recepción', campo: 'horario_recepcion' }
 ];
 
+// Condiciones fijas del pie. Van como objetos y no como cadenas con <b> porque
+// Calidad tiene dos parrafos mas que continuesan sin etiqueta nueva: con el
+// formato de "<b>algo:</b> texto" no hay forma de decir "esta linea no abre
+// condicion". Un parrafo sin `etiqueta` se dibuja solo, con sangria.
 const CONDICIONES_FIJAS = [
-  '<b>Documentación:</b> Todo pedido debe llegar con su respectiva Orden de Compra, Guía de Remisión, Factura, Certificado de Calidad y Hojas de Seguridad.',
-  '<b>Calidad y Despacho:</b> Mercadería fuera de especificaciones, en mal estado o fuera de fecha/lugar no será recibida en nuestros almacenes.',
-  '<b>Precio:</b> No estamos obligados a pagar un precio mayor al estipulado en esta orden.'
+  {
+    etiqueta: 'Documentación',
+    texto: 'Todo pedido debe llegar con su respectiva Orden de Compra, Guía de Remisión, Factura, Certificado de calidad y hojas de seguridad de ser el caso.'
+  },
+  {
+    etiqueta: 'Calidad',
+    texto: 'La mercadería enviada que se encuentre fuera de las especificaciones pactadas o no coincida con la Orden de Compra y sin previa coordinación no podrá ser recibida en nuestros almacenes y serán devueltos al vendedor por su cuenta y riesgo.'
+  },
+  {
+    texto: 'La mercadería enviada de menos o más, que no coincida con la Orden de Compra y sin previa coordinación, no será recibida en nuestros almacenes.',
+    sangria: true
+  },
+  {
+    texto: 'La mercadería enviada que se encuentre en mal estado, ya sea envoltura rota, sucia y/o mal embalado, no será recibido en nuestros almacenes.',
+    sangria: true
+  },
+  {
+    etiqueta: 'Despacho',
+    texto: 'El envío de los productos solicitados en esta orden debe efectuarse en la fecha y lugar indicado. Nos reservamos el derecho de rechazar los materiales que lleguen en lugar y fecha no establecidos.'
+  },
+  {
+    etiqueta: 'Precio',
+    texto: 'No estamos obligados a pagar un precio mayor a lo estipulado en esta orden.'
+  }
 ];
 
 const FIRMAS = ['VB ADMINISTRACIÓN', 'ÁREA PRODUCCIÓN', 'VB SOLICITANTE'];
@@ -253,11 +289,12 @@ async function generarPDFOrdenCompra(datos) {
   ];
 
   const yBloque = doc.y;
-  const yFin = dibujarDatos(doc, pares, MARGEN, yBloque, 4);
+  const yFin = dibujarDatos(doc, pares, MARGEN + RELLENO_DATOS, yBloque, ANCHO - 2 * RELLENO_DATOS, 4);
   // El recuadro se dibuja al final para que el texto quede encima del borde.
+  // El relleno va por dentro: el borde queda a RELLENO_DATOS del texto, no encima.
   doc.save().lineWidth(1).strokeColor(GRIS)
-    .rect(MARGEN, yBloque, ANCHO, yFin - yBloque + 0.15 * CM).stroke().restore();
-  doc.y = yFin + 0.5 * CM;
+    .rect(MARGEN, yBloque - RELLENO_DATOS, ANCHO, yFin - yBloque + 2 * RELLENO_DATOS).stroke().restore();
+  doc.y = yFin + RELLENO_DATOS + 0.5 * CM;
 
   // ---- Pie: medido antes, porque las tablas necesitan saber donde cortar ----
   const condiciones = paresCondiciones(orden);
@@ -380,11 +417,21 @@ async function generarPDFOrdenCompra(datos) {
 
 /** Escribe el bloque de condiciones al pie del documento. */
 function dibujarCondiciones(doc, pares) {
-  doc.font('Helvetica-Bold').fontSize(6).text('CONDICIONES GENERALES:', MARGEN, doc.y, { width: ANCHO });
+  doc.font('Helvetica-Bold').fontSize(6).text('CONDICIONES:', MARGEN, doc.y, { width: ANCHO });
   doc.font('Helvetica').fontSize(6);
-  for (const [negrita, normal] of pares) {
-    doc.font('Helvetica-Bold').text(negrita, MARGEN, doc.y, { width: ANCHO, continued: true });
-    doc.font('Helvetica').text(normal, { width: ANCHO });
+  for (const [negrita, normal, sangria = 0] of pares) {
+    const x = MARGEN + sangria;
+    const ancho = ANCHO - sangria;
+    if (negrita) {
+      doc.font('Helvetica-Bold').text(negrita, x, doc.y, { width: ancho, continued: true });
+      doc.font('Helvetica').text(normal, { width: ancho });
+    } else {
+      // Sin etiqueta, el texto va con x y y propias. Pasando solo el ancho
+      // seguiria donde quedara el cursor, y como no hay negrita que lo mueva de
+      // la linea anterior, la continuacion sale pegada al margen y no a la
+      // sangria que se le pidio.
+      doc.font('Helvetica').text(normal, x, doc.y, { width: ancho });
+    }
   }
 }
 
@@ -404,11 +451,16 @@ function dibujarCondiciones(doc, pares) {
  *
  * @param {object} doc
  * @param {Array<[string,string]>} pares - Etiqueta y valor.
+ * @param {number} x - Donde arranca el texto. Ya viene corrido por el relleno del
+ *   recuadro, para que la primera letra no caiga encima del borde.
+ * @param {number} ancho - Ancho disponible para las columnas, ya sin el relleno
+ *   de los dos lados. Va aparte del ancho porque si no, cuatro columnas repartidas
+ *   sobre el ancho completo se salen del recuadro por la derecha.
  * @param {number} columnas - Cuantas columnas.
  * @returns {number} La Y de debajo del bloque.
  */
-function dibujarDatos(doc, pares, x, y, columnas) {
-  const anchoColumna = ANCHO / columnas;
+function dibujarDatos(doc, pares, x, y, ancho, columnas) {
+  const anchoColumna = ancho / columnas;
   const filasPorColumna = Math.ceil(pares.length / columnas);
   const bloques = [];
   for (let c = 0; c < columnas; c++) {
@@ -422,19 +474,27 @@ function dibujarDatos(doc, pares, x, y, columnas) {
   );
   const anchoValor = anchoColumna - anchoEtiqueta - HOLGURA;
 
-  // Pasada de medicion: alto que necesita cada celda con los anchos definitivos.
+  // Pasada de medicion: alto del texto de cada celda con los anchos definitivos.
+  // Se guarda el alto del texto y no el de la fila, porque el desvío vertical sale
+  // de la diferencia entre las dos cosas.
   doc.font('Helvetica').fontSize(TAMANO_DATOS);
-  const alturas = bloques.map(bloque => bloque.map(([etiqueta, valor]) =>
+  const altoTexto = bloques.map(bloque => bloque.map(([etiqueta, valor]) =>
     Math.max(
       doc.heightOfString(etiqueta, { width: anchoEtiqueta }),
-      doc.heightOfString(valor, { width: anchoValor }),
-      ALTO_FILA_DATOS
+      doc.heightOfString(valor, { width: anchoValor })
     )));
 
-  // Un solo alto por renglon, compartido por las cuatro columnas.
+  // Un alto por renglon, compartido por las cuatro columnas, y un solo desvío para
+  // bajar el texto dentro de ese renglon. El desvío es uno por renglon y no por
+  // celda a proposito: centrando cada celda por separado, en cuanto un valor
+  // envuelve su etiqueta queda flotando en la mitad de la fila y deja de
+  // alinearse con la primera linea del valor de al lado.
   const altoFila = [];
+  const desvio = [];
   for (let f = 0; f < filasPorColumna; f++) {
-    altoFila[f] = Math.max(ALTO_FILA_DATOS, ...alturas.map(a => a[f] || 0));
+    const alto = Math.max(...altoTexto.map(a => a[f] || 0));
+    altoFila[f] = Math.max(ALTO_FILA_DATOS, alto);
+    desvio[f] = (altoFila[f] - alto) / 2;
   }
 
   let yFin = y;
@@ -442,9 +502,10 @@ function dibujarDatos(doc, pares, x, y, columnas) {
     const xc = x + c * anchoColumna;
     let yc = y;
     bloque.forEach(([etiqueta, valor], f) => {
+      const yTexto = yc + desvio[f];
       doc.font('Helvetica-Bold').fontSize(TAMANO_DATOS)
-        .text(etiqueta, xc, yc, { width: anchoEtiqueta, align: 'left', lineBreak: false });
-      doc.font('Helvetica').text(valor, xc + anchoEtiqueta, yc, { width: anchoValor, align: 'left' });
+        .text(etiqueta, xc, yTexto, { width: anchoEtiqueta, align: 'left', lineBreak: false });
+      doc.font('Helvetica').text(valor, xc + anchoEtiqueta, yTexto, { width: anchoValor, align: 'left' });
       yc += altoFila[f];
     });
     yFin = Math.max(yFin, yc);
@@ -453,25 +514,32 @@ function dibujarDatos(doc, pares, x, y, columnas) {
 }
 
 /**
- * Las condiciones del pie, como pares [negrita, normal].
+ * Las condiciones del pie, como triplets [negrita, normal, sangria].
  *
  * Se separa del dibujado para poder medirlas antes de dibujar la tabla: la
  * tabla de productos necesita saber cuanto pie le queda libre para decidir por
- * donde cortar las filas. Cada condicion se arma igual que antes, solo que
- * primero se junta todo en una lista.
+ * donde cortar las filas.
+ *
+ * El tercer dato es la sangria en puntos, y la llevan los dos lados a proposito:
+ * si medirPie midiera el parrafo de Calidad al ancho completo y se dibujara
+ * angosto, la reserva seria mas alta que lo que ocupa de verdad y el pie terminaria
+ * invadiendo el margen inferior. Medir y dibujar tienen que usar el mismo ancho.
+ *
+ * @param {object} orden
+ * @returns {Array<[string,string,number]>}
  */
 function paresCondiciones(orden) {
   const pares = [];
   for (const cond of CONDICIONES) {
     const crudo = String(orden[cond.campo] || '').trim();
     if (!crudo) continue;
-    pares.push([`${cond.etiqueta}: `, `${cond.fecha ? fmtFecha(crudo) : crudo}\n`]);
+    pares.push([`${cond.etiqueta}: `, `${cond.fecha ? fmtFecha(crudo) : crudo}\n`, 0]);
   }
-  for (const linea of CONDICIONES_FIJAS) {
-    const corte = linea.indexOf('</b>');
+  for (const fija of CONDICIONES_FIJAS) {
     pares.push([
-      linea.slice(0, corte + 4).replace(/<\/?b>/g, ''),
-      linea.slice(corte + 4) + '\n'
+      fija.etiqueta ? `${fija.etiqueta}: ` : '',
+      `${fija.texto}\n`,
+      fija.sangria ? SANGRIA_CONTINUACION : 0
     ]);
   }
   return pares;
@@ -489,9 +557,10 @@ function paresCondiciones(orden) {
 function medirPie(doc, pares) {
   doc.font('Helvetica').fontSize(6);
   let alto = ALTO_TITULO_CONDICIONES;
-  for (const [negrita, normal] of pares) {
-    const a = doc.heightOfString(negrita, { width: ANCHO });
-    const b = doc.heightOfString(normal, { width: ANCHO });
+  for (const [negrita, normal, sangria = 0] of pares) {
+    const ancho = ANCHO - sangria;
+    const a = doc.heightOfString(negrita, { width: ancho });
+    const b = doc.heightOfString(normal, { width: ancho });
     alto += Math.max(a, b, ALTO_LINEA);
   }
   return alto + HUECO_CONDICIONES_FIRMAS + ALTO_FIRMAS + HOLGURA_RESERVA;

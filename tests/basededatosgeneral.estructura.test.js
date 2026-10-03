@@ -248,6 +248,107 @@ describe('basededatosgeneral.html ambito global', () => {
   });
 });
 
+/**
+ * Datos que imprime la OC.
+ *
+ * El boton de descarga y los campos nuevos estan atados por id: si un campo se
+ * llama distinto en el HTML y en el JS, getElementById devuelve null y el
+ * guardado manda "undefined" en vez del dato, sin ningun error visible.
+ */
+describe('basededatosgeneral.html datos para la OC', () => {
+  const CAMPOS_ORDEN = [
+    'ordenLugarEntrega', 'ordenFechaEntrega', 'ordenAreaSolicitante',
+    'ordenFormaPago', 'ordenHorarioRecepcion', 'ordenAtencion'
+  ];
+
+  test('el formulario de orden tiene los seis campos de entrega', () => {
+    for (const id of CAMPOS_ORDEN) expect(html).toContain(`id="${id}"`);
+  });
+
+  test('guardarOrden manda los seis campos, con el nombre que espera el backend', () => {
+    const fuente = vm.runInContext('guardarOrden.toString()', ejecutarScript());
+    // El backend lee cuerpo.lugar_entrega, cuerpo.fecha_entrega, etc. Si el JS
+    // mandara otro nombre, el PDF saldría con los seis campos vacios.
+    const delBody = ['lugar_entrega', 'fecha_entrega', 'area_solicitante', 'forma_pago', 'horario_recepcion', 'atencion'];
+    for (const campo of delBody) expect(fuente).toContain(campo);
+    for (const id of CAMPOS_ORDEN) expect(fuente).toContain(`'${id}'`);
+  });
+
+  test('editarOrden devuelve los seis campos al formulario', () => {
+    const fuente = vm.runInContext('editarOrden.toString()', ejecutarScript());
+    for (const id of CAMPOS_ORDEN) expect(fuente).toContain(`'${id}'`);
+    // La fecha de entrega es una date y no un texto: si se vuelca tal cual, el
+    // input la rechaza y al guardar se pierde.
+    expect(fuente).toContain('slice(0, 10)');
+  });
+
+  test('el boton de generar OC esta en la lista de ordenes', () => {
+    expect(html).toContain('descargarOrdenPDF');
+    expect(html).toContain('Generar OC');
+    // El manejador va con "this" para poder deshabilitarlo mientras se arma el PDF.
+    expect(html).toMatch(/onclick="descargarOrdenPDF\(\$\{o\.id\}, this\)"/);
+  });
+
+  test('la descarga no usa api() sino fetch, porque la respuesta no es JSON', () => {
+    const fuente = vm.runInContext('descargarOrdenPDF.toString()', ejecutarScript());
+    // api() hace res.json() y el PDF es binario: fallaria con un error de parseo.
+    expect(fuente).not.toContain('api(');
+    expect(fuente).toContain('fetch(');
+    expect(fuente).toContain('.blob()');
+    // El token lo pone auth-client.js al sobreescribir fetch; si se abriera en
+    // una pestana, la peticion llegaria sin Authorization y darian 401.
+    expect(fuente).not.toContain('window.open');
+  });
+
+  test('el nombre del archivo sale del Content-Disposition del servidor', () => {
+    const fuente = vm.runInContext('descargarOrdenPDF.toString()', ejecutarScript());
+    expect(fuente).toContain('Content-Disposition');
+    expect(fuente).toContain('nombreArchivoDesdeContentDisposition');
+    expect(fuente).toContain('enlace.download');
+    // El objeto temporal hay que liberarlo o el navegador mantiene el PDF en memoria.
+    expect(fuente).toContain('URL.revokeObjectURL');
+  });
+
+  test('la tabla de cuentas bancarias del proveedor existe y arranca vacia', () => {
+    expect(html).toContain('id="tablaCuentasProv"');
+    expect(html).toContain('agregarFilaCuentaProv()');
+    // Sin cuentas el PDF omite el bloque; el placeholder no es un dato.
+    expect(html).toContain('Sin cuentas registradas.');
+  });
+
+  test('leerCuentasProv manda banco, tipo, numero, moneda y titular', () => {
+    const fuente = vm.runInContext('leerCuentasProv.toString()', ejecutarScript());
+    for (const campo of ['banco', 'tipo', 'numero', 'moneda', 'titular']) {
+      expect(fuente).toContain(`'${campo}'`);
+    }
+    // Una fila a medio llenar no debe llegar al backend como cuenta vacia.
+    expect(fuente).toContain('filter(');
+  });
+
+  test('guardarProveedor manda las cuentas y editarProveedor las vuelve a pintar', () => {
+    const guardar = vm.runInContext('guardarProveedor.toString()', ejecutarScript());
+    expect(guardar).toContain('cuentas_bancarias');
+    expect(guardar).toContain('leerCuentasProv()');
+
+    const editar = vm.runInContext('editarProveedor.toString()', ejecutarScript());
+    expect(editar).toContain('cuentas_bancarias');
+    expect(editar).toContain('renderCuentasProv');
+  });
+
+  test('limpiar el formulario de proveedor tambien vacia las cuentas', () => {
+    // Si no, al crear un proveedor nuevo se le guardarian las cuentas del
+    // anterior, que es como una cuenta bancaria se termina en la empresa que no
+    // es.
+    const fuente = vm.runInContext('limpiarFormProveedor.toString()', ejecutarScript());
+    expect(fuente).toContain('renderCuentasProv([])');
+  });
+
+  test('quitar la ultima fila deja el placeholder, no un tbody vacio', () => {
+    const fuente = vm.runInContext('quitarFilaCuentaProv.toString()', ejecutarScript());
+    expect(fuente).toContain('renderCuentasProv([])');
+  });
+});
+
 describe('basededatosgeneral.html estados de pago de la factura', () => {
   /** Opciones de un select del HTML, por id. */
   function opcionesDe(id) {

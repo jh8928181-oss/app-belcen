@@ -165,13 +165,49 @@ describe('crearUsuario', () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 7, usuario: 'nuevo', rol: 'almacen' }] });
 
     const res = await invocar(authController.crearUsuario, {
-      validated: { usu: 'nuevo', pwd: 'secreto123', rolOk: 'almacen' }
+      validated: { usu: 'nuevo', pwd: 'secreto123', rolOk: 'almacen' },
+      body: {}
     });
 
     expect(res.cuerpo.success).toBe(true);
-    const hashGuardado = mockQuery.mock.calls[1][1][1];
-    expect(hashGuardado).toMatch(/^[a-f0-9]{128}:[a-f0-9]{32}$/);
-    expect(hashGuardado).not.toContain('secreto123');
+    // El hash se busca por el placeholder que lo pide y no por posicion fija:
+    // el INSERT crecio cuando se agregaron nombre, cargo y celular, asi que el
+    // indice 1 ya no es el hash y el test fallaria sin querer.
+    const [sql, valores] = mockQuery.mock.calls[1];
+    expect(sql).toMatch(/INSERT INTO usuarios_sistema/);
+    const indiceHash = (sql.match(/\$(\d+)/g) || []).indexOf('$2') + 1;
+    expect(valores[indiceHash - 1]).toMatch(/^[a-f0-9]{128}:[a-f0-9]{32}$/);
+    expect(valores[indiceHash - 1]).not.toContain('secreto123');
+  });
+
+  test('guarda nombre, cargo y celular que salen impresos en la OC', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 8 }] });
+
+    await invocar(authController.crearUsuario, {
+      validated: { usu: 'nuevo', pwd: 'secreto123', rolOk: 'almacen' },
+      body: { nombre: '  Angelica Ruiz ', cargo: 'Jefe de almacen', celular: '987654321' }
+    });
+
+    const [sql, valores] = mockQuery.mock.calls[1];
+    expect(sql).toMatch(/nombre, cargo, celular/);
+    // Se recortan los espacios: en el PDF un " Angelica " se ve descuadrado.
+    expect(valores).toContain('Angelica Ruiz');
+    expect(valores).toContain('Jefe de almacen');
+    expect(valores).toContain('987654321');
+  });
+
+  test('un contacto en blanco se guarda como null, no como cadena vacia', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 9 }] });
+
+    await invocar(authController.crearUsuario, {
+      validated: { usu: 'nuevo', pwd: 'secreto123', rolOk: 'almacen' },
+      body: { nombre: '   ', cargo: '', celular: null }
+    });
+
+    const [, valores] = mockQuery.mock.calls[1];
+    expect(valores.slice(-3)).toEqual([null, null, null]);
   });
 
   test('responde 409 si el usuario ya existe', async () => {

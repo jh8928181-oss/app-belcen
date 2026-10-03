@@ -346,6 +346,30 @@
                         <button class="btn btn-gris" onclick="limpiarFormProveedor()">🧹 Limpiar</button>
                     </div>
                 </div>
+
+                <!-- Cuentas bancarias: el proveedor las.imprime la OC. Es un dato
+                     del proveedor y no de la orden, asi que se llena una vez y lo
+                     usan todas sus ordenes. -->
+                <h3 class="teal" style="margin-top:18px;">🏦 CUENTAS BANCARIAS</h3>
+                <div class="aviso aviso-ambar" style="margin-top:0;">ℹ️ Se imprimen en la OC como "Cuentas bancarias autorizadas para pago". Si el proveedor no tiene ninguna, la OC sale sin esa secci&oacute;n.</div>
+                <div class="tabla-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Banco</th>
+                                <th>Tipo de cuenta</th>
+                                <th>N&uacute;mero de cuenta</th>
+                                <th style="width:110px;">Moneda</th>
+                                <th>Titular</th>
+                                <th class="text-center" style="width:70px;">&nbsp;</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaCuentasProv">
+                            <tr><td colspan="6" class="text-center sin-registros">Sin cuentas registradas.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <button class="btn btn-mini" style="margin-top:8px;" onclick="agregarFilaCuentaProv()">➕ Agregar cuenta</button>
             </div>
 
             <div class="tarjeta borde-teal reveal">
@@ -468,6 +492,37 @@
                             <input type="text" id="ordenObs" placeholder="Notas de la orden">
                         </div>
 
+                    </div>
+
+                    <!-- Datos que imprime la OC en PDF. No afectan los totales ni el
+                         stock: son los que el proveedor necesita para saber a donde
+                         entregar, cuando y como se le paga. -->
+                    <h3 class="ambar" style="margin-top:18px;">📄 DATOS PARA LA OC IMPRESA</h3>
+                    <div class="filtro-bar">
+                        <div class="campo-flex" style="flex:2; min-width:180px;">
+                            <label>Lugar de entrega</label>
+                            <input type="text" id="ordenLugarEntrega" placeholder="Ej. Planta Principal - Corporaci&oacute;n Belcen">
+                        </div>
+                        <div class="campo-flex" style="min-width:140px;">
+                            <label>Fecha de entrega</label>
+                            <input type="date" id="ordenFechaEntrega">
+                        </div>
+                        <div class="campo-flex" style="min-width:150px;">
+                            <label>&Aacute;rea solicitante</label>
+                            <input type="text" id="ordenAreaSolicitante" placeholder="Ej. Producci&oacute;n">
+                        </div>
+                        <div class="campo-flex" style="min-width:150px;">
+                            <label>Forma de pago</label>
+                            <input type="text" id="ordenFormaPago" placeholder="Ej. Cr&eacute;dito 30 d&iacute;as">
+                        </div>
+                        <div class="campo-flex" style="min-width:150px;">
+                            <label>Horario de recepci&oacute;n</label>
+                            <input type="text" id="ordenHorarioRecepcion" placeholder="Ej. L-V 8:00-12:00">
+                        </div>
+                        <div class="campo-flex" style="min-width:160px;">
+                            <label>Atenci&oacute;n a</label>
+                            <input type="text" id="ordenAtencion" placeholder="Si no, el contacto del proveedor">
+                        </div>
                     </div>
 
                     <h3 class="ambar" style="margin-top:18px;">🧾 ÍTEMS DE LA ORDEN</h3>
@@ -1166,6 +1221,60 @@
             document.getElementById('provDireccion').value = '';
             document.getElementById('provEmail').value = '';
             document.getElementById('provContacto').value = '';
+            renderCuentasProv([]);
+        }
+
+        // ---- Cuentas bancarias del proveedor ----
+        // Viven en el DOM como filas editables y se leen al guardar. Se filtran
+        // las que queden a medio llenar (sin banco o sin numero) porque el
+        // backend las ignora igual y mandar filas vacias solo agrega ruido.
+        function renderCuentasProv(cuentas) {
+            const tbody = document.getElementById('tablaCuentasProv');
+            const lista = Array.isArray(cuentas) && cuentas.length ? cuentas : [{}];
+            tbody.innerHTML = lista.map((c, i) => `
+                <tr>
+                    <td><input type="text" data-cuenta="banco" value="${escapeHtml(c.banco || '')}" placeholder="Interbank"></td>
+                    <td><input type="text" data-cuenta="tipo" value="${escapeHtml(c.tipo || '')}" placeholder="C.C. Soles"></td>
+                    <td><input type="text" data-cuenta="numero" value="${escapeHtml(c.numero || '')}" placeholder="000-0000000000"></td>
+                    <td>
+                        <select data-cuenta="moneda">
+                            <option value="PEN"${(c.moneda || 'PEN') === 'USD' ? '' : ' selected'}>S/</option>
+                            <option value="USD"${c.moneda === 'USD' ? ' selected' : ''}>$</option>
+                        </select>
+                    </td>
+                    <td><input type="text" data-cuenta="titular" value="${escapeHtml(c.titular || '')}" placeholder="Razon social"></td>
+                    <td class="text-center">
+                        <button class="btn btn-mini btn-rojo" onclick="quitarFilaCuentaProv(this)">🗑️</button>
+                    </td>
+                </tr>`).join('');
+        }
+
+        function agregarFilaCuentaProv() {
+            const tbody = document.getElementById('tablaCuentasProv');
+            const vacia = tbody.querySelector('tr td.sin-registros');
+            if (vacia) { renderCuentasProv([{}]); return; }
+            renderCuentasProv(leerCuentasProv().concat([{}]));
+        }
+
+        function quitarFilaCuentaProv(boton) {
+            const fila = boton.closest('tr');
+            const cuerpo = document.getElementById('tablaCuentasProv');
+            cuerpo.removeChild(fila);
+            if (!cuerpo.querySelector('tr')) renderCuentasProv([]);
+        }
+
+        function leerCuentasProv() {
+            const cuerpo = document.getElementById('tablaCuentasProv');
+            return Array.from(cuerpo.querySelectorAll('tr')).map(fila => {
+                const dato = (nombre) => {
+                    const celda = fila.querySelector(`[data-cuenta="${nombre}"]`);
+                    return celda ? celda.value.trim() : '';
+                };
+                return {
+                    banco: dato('banco'), tipo: dato('tipo'), numero: dato('numero'),
+                    moneda: dato('moneda') || 'PEN', titular: dato('titular')
+                };
+            }).filter(c => c.banco || c.numero);
         }
 
         function renderProveedores() {
@@ -1225,7 +1334,8 @@
                 telefono: document.getElementById('provTelefono').value,
                 direccion: document.getElementById('provDireccion').value,
                 email: document.getElementById('provEmail').value,
-                contacto: document.getElementById('provContacto').value
+                contacto: document.getElementById('provContacto').value,
+                cuentas_bancarias: leerCuentasProv()
             };
             try {
                 if (proveedorEditando) {
@@ -1254,6 +1364,7 @@
                 document.getElementById('provDireccion').value = p.direccion || '';
                 document.getElementById('provEmail').value = p.email || '';
                 document.getElementById('provContacto').value = p.contacto || '';
+                renderCuentasProv(p.cuentas_bancarias || []);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             });
         }
@@ -1875,6 +1986,7 @@
                             <td>${estadoBadge(o.estado)}</td>
                             <td class="text-center">
                                 <div class="acciones-celda" style="justify-content:center;">
+                                    <button class="btn btn-mini" onclick="descargarOrdenPDF(${o.id}, this)" title="Descargar la OC en PDF">📄 Generar OC</button>
                                     <button class="btn btn-mini" onclick="abrirPagosOrden(${o.id})" title="Ver y cambiar el estado de sus facturas">💳 Pagos</button>
                                     <button class="btn btn-mini" onclick="editarOrden(${o.id})">✏️ Editar</button>
                                     <button class="btn btn-mini btn-verde" onclick="abrirRecibir(${o.id})" ${String(o.estado) === 'CANCELADA' ? 'disabled' : ''}>📥 Recibir</button>
@@ -1910,6 +2022,12 @@
                 moneda: document.getElementById('ordenMoneda').value,
                 igv_pct: Number(document.getElementById('ordenIgvPct').value) || 0,
                 observaciones: document.getElementById('ordenObs').value.trim(),
+                lugar_entrega: document.getElementById('ordenLugarEntrega').value.trim(),
+                fecha_entrega: document.getElementById('ordenFechaEntrega').value,
+                area_solicitante: document.getElementById('ordenAreaSolicitante').value.trim(),
+                forma_pago: document.getElementById('ordenFormaPago').value.trim(),
+                horario_recepcion: document.getElementById('ordenHorarioRecepcion').value.trim(),
+                atencion: document.getElementById('ordenAtencion').value.trim(),
                 items
             };
 
@@ -1942,6 +2060,12 @@
                 document.getElementById('ordenMoneda').value = data.orden.moneda || 'PEN';
                 document.getElementById('ordenIgvPct').value = Number(data.orden.igv_pct) || 0;
                 document.getElementById('ordenObs').value = data.orden.observaciones || '';
+                document.getElementById('ordenLugarEntrega').value = data.orden.lugar_entrega || '';
+                document.getElementById('ordenFechaEntrega').value = String(data.orden.fecha_entrega || '').slice(0, 10);
+                document.getElementById('ordenAreaSolicitante').value = data.orden.area_solicitante || '';
+                document.getElementById('ordenFormaPago').value = data.orden.forma_pago || '';
+                document.getElementById('ordenHorarioRecepcion').value = data.orden.horario_recepcion || '';
+                document.getElementById('ordenAtencion').value = data.orden.atencion || '';
 
                 const tbody = document.getElementById('tbodyItemsOrden');
                 tbody.innerHTML = '';
@@ -1965,6 +2089,45 @@
             } catch (err) {
                 alert('❌ ' + err.message);
             }
+        }
+
+        // Descarga la OC en PDF. No puede usar api() porque esa funcion siempre
+        // espera JSON y aqui la respuesta es un archivo binario. El token lo
+        // agrega auth-client.js al sobreescribir window.fetch.
+        async function descargarOrdenPDF(id, boton) {
+            const original = boton ? boton.innerHTML : null;
+            if (boton) { boton.disabled = true; boton.innerHTML = '⏳ Generando...'; }
+            try {
+                const res = await fetch('/api/bd/ordenes/' + id + '/pdf');
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.mensaje || 'No se pudo generar el PDF.');
+                }
+                const nombre = nombreArchivoDesdeContentDisposition(res.headers.get('Content-Disposition'))
+                    || ('orden-' + id + '.pdf');
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const enlace = document.createElement('a');
+                enlace.href = url;
+                enlace.download = nombre;
+                document.body.appendChild(enlace);
+                enlace.click();
+                document.body.removeChild(enlace);
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                alert('❌ ' + err.message);
+            } finally {
+                if (boton) { boton.disabled = false; boton.innerHTML = original; }
+            }
+        }
+
+        // El Content-Disposition lo arma el servidor como attachment; filename="OC-0462-2026.pdf".
+        // Se toma solo el nombre del final para no escribir en disco una ruta inventada.
+        function nombreArchivoDesdeContentDisposition(valor) {
+            if (!valor) return null;
+            const guardado = valor.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+            if (!guardado) return null;
+            return decodeURIComponent(guardado[1].trim());
         }
 
         async function eliminarOrden(id) {

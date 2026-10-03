@@ -16,6 +16,8 @@ const { analizarDocumentoConGemini } = require('./services/geminiService');
 const { initRedis } = require('./services/rateLimiter');
 const { authMiddleware, crearGuardRoles, ROLES_MODULO } = require('./middleware/auth');
 const { calcularInsumosProduccion } = require('./services/recipeService');
+const { datosParaOrdenPDF } = require('./services/ocPdfDatos');
+const { generarPDFOrdenCompra, nombreArchivoSeguro } = require('./services/pdfOrdenCompra');
 const { normalizar } = require('./utils/helpers');
 
 process.on('unhandledRejection', (reason) => {
@@ -3121,6 +3123,65 @@ function acotarIgvPct(valor) {
     return Math.min(100, Math.max(0, redondear2(n)));
 }
 
+/**
+ * Los seis campos de entrega que pide el formato de la OC, en el orden en que
+ * los consume el INSERT y el UPDATE de la orden.
+ *
+ * Van como un solo arreglo porque son siempre los mismos cinco en las dos rutas;
+ * separarlos en dos listas de strings desalineadas es como un dia de estos
+ * acaba escribiendo fecha_entrega en el slot de area_solicitante.
+ *
+ * @param {object} cuerpo - req.body.
+ * @returns {(string|null)[]} lugar, fecha, area, forma de pago, horario, atencion
+ */
+function camposEntregaDe(cuerpo) {
+    const c = cuerpo || {};
+    return [
+        String(c.lugar_entrega || '').trim() || null,
+        String(c.fecha_entrega || '').trim() || null,
+        String(c.area_solicitante || '').trim() || null,
+        String(c.forma_pago || '').trim() || null,
+        String(c.horario_recepcion || '').trim() || null,
+        String(c.atencion || '').trim() || null
+    ];
+}
+
+/**
+ * Normaliza las cuentas bancarias que llegan en el cuerpo del proveedor.
+ *
+ * Sin limite de cantidad: el limite real lo pone el PDF, que no cabe con
+ * veinte cuentas en una carta. Se filtra lo que venga incompleto en vez de
+ * fallar toda la operacion, porque un formulario con una fila a medio llenar no
+ * deberia impedir guardar el nombre y el RUC del proveedor.
+ *
+ * @param {Array} cuentas
+ * @returns {Array<{banco:string,tipo:string,numero:string,moneda:string,titular:string}>}
+ */
+function normalizarCuentasBancarias(cuentas) {
+    return (Array.isArray(cuentas) ? cuentas : [])
+        .map(c => ({
+            banco: String(c && c.banco ? c.banco : '').trim(),
+            tipo: String(c && c.tipo ? c.tipo : '').trim(),
+            numero: String(c && c.numero ? c.numero : '').trim(),
+            moneda: normalizarMoneda(c && c.moneda),
+            titular: String(c && c.titular ? c.titular : '').trim()
+        }))
+        .filter(c => c.banco && c.numero);
+}
+
+/** Reemplaza el conjunto de cuentas bancarias de un proveedor. */
+async function reemplazarCuentasBancarias(client, proveedorId, cuentas, usuario) {
+    await client.query('DELETE FROM proveedor_cuentas_bancarias WHERE proveedor_id = $1', [proveedorId]);
+    let i = 0;
+    for (const c of cuentas) {
+        await client.query(
+            `INSERT INTO proveedor_cuentas_bancarias (proveedor_id, banco, tipo, numero, moneda, titular, orden, usuario_registro)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [proveedorId, c.banco, c.tipo || null, c.numero, c.moneda, c.titular || null, i++, usuario]
+        );
+    }
+}
+
 function normalizarItemsOrden(items, igvPct) {
     const limpios = [];
     let total = 0;
@@ -3147,10 +3208,29 @@ app.get('/api/bd/proveedores', requerirRolBDGeneral, async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT p.*,
-                (SELECT COUNT(*)::int FROM ordenes_compras_servicios o WHERE o.proveedor_id = p.id AND o.estado <> 'CANCELADA') AS ordenes_activas
+                (SELECT COUNT(*)::int FROM ordenes_compras_servicios o WHERE o.proveedor_id = p.id AND o.estado <> 'CANCELADA') AS ordenes_activas,
+                (SELECT COUNT(*)::int FROM proveedor_cuentas_bancarias cb WHERE cb.proveedor_id = p.id) AS cuentas_bancarias_n
             FROM proveedores p
             ORDER BY LOWER(p.nombre) ASC`);
-        res.json({ success: true, proveedores: result.rows });
+        const bancos = await pool.query(`
+            SELECT proveedor_id, banco, tipo, numero, moneda, titular
+            FROM proveedor_cuentas_bancarias ORDER BY proveedor_id, orden, id`);
+        // Agrupadas aparte y pegadas por proveedor: el listado es la pantalla que
+        // mas veces se abre y no necesita una consulta por fila.
+        const porProveedor = new Map();
+        for (const c of bancos.rows) {
+            if (!porProveedor.has(c.proveedor_id)) porProveedor.set(c.proveedor_id, []);
+            porProveedor.get(c.proveedor_id).push({
+                banco: c.banco, tipo: c.tipo, numero: c.numero, moneda: c.moneda, titular: c.titular
+            });
+        }
+        res.json({
+            success: true,
+            proveedores: result.rows.map(p => ({
+                ...p,
+                cuentas_bancarias: porProveedor.get(p.id) || []
+            }))
+        });
     } catch (err) {
         console.error('Error GET proveedores:', err);
         res.status(500).json({ success: false, mensaje: err.message });
@@ -3158,13 +3238,17 @@ app.get('/api/bd/proveedores', requerirRolBDGeneral, async (req, res) => {
 });
 
 app.post('/api/bd/proveedores', requerirRolBDGeneral, async (req, res) => {
+    const client = await pool.connect();
     try {
         const cuerpo = req.body || {};
         const nombre = String(cuerpo.nombre || '').trim();
         if (!nombre) return res.status(400).json({ success: false, mensaje: 'Ingrese el nombre del proveedor.' });
         const categoria = String(cuerpo.categoria || 'General').trim();
         const catFinal = CATEGORIAS_PROVEEDOR.includes(categoria) ? categoria : 'General';
-        const result = await pool.query(
+        const cuentas = normalizarCuentasBancarias(cuerpo.cuentas_bancarias);
+
+        await client.query('BEGIN');
+        const result = await client.query(
             `INSERT INTO proveedores (nombre, categoria, ruc, telefono, direccion, email, contacto, usuario_registro)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
             [
@@ -3174,13 +3258,23 @@ app.post('/api/bd/proveedores', requerirRolBDGeneral, async (req, res) => {
                 String(cuerpo.contacto || '').trim(), req.usuario
             ]
         );
-        res.json({ success: true, mensaje: 'Proveedor registrado correctamente.', proveedor: result.rows[0] });
+        await reemplazarCuentasBancarias(client, result.rows[0].id, cuentas, req.usuario);
+        await client.query('COMMIT');
+        res.json({
+            success: true,
+            mensaje: 'Proveedor registrado correctamente.',
+            proveedor: result.rows[0],
+            cuentas_bancarias: cuentas
+        });
     } catch (err) {
+        await client.query('ROLLBACK');
         if (err.code === '23505') {
             return res.status(400).json({ success: false, mensaje: 'Ya existe un proveedor con ese nombre.' });
         }
         console.error('Error crear proveedor:', err);
         res.status(500).json({ success: false, mensaje: 'Error al crear proveedor: ' + err.message });
+    } finally {
+        client.release();
     }
 });
 
@@ -3196,6 +3290,12 @@ app.put('/api/bd/proveedores/:id', requerirRolBDGeneral, async (req, res) => {
         if (!nombre) return res.status(400).json({ success: false, mensaje: 'Ingrese el nombre del proveedor.' });
         const categoria = String(cuerpo.categoria || 'General').trim();
         const catFinal = CATEGORIAS_PROVEEDOR.includes(categoria) ? categoria : 'General';
+        // Si el cuerpo no trae el campo, no se tocan las cuentas. Borrarlas
+        // porque un cliente no mando un arreglo (una pestana con la pagina
+        // vieja, un script, un movil con la sesion a medias) deja al proveedor
+        // sin datos para cobrar, y eso no se ve hasta que llega el pago.
+        const vieneCuentas = Array.isArray(cuerpo.cuentas_bancarias);
+        const cuentas = normalizarCuentasBancarias(cuerpo.cuentas_bancarias);
         await client.query('BEGIN');
 
         const actual = await client.query('SELECT id, nombre FROM proveedores WHERE id = $1', [id]);
@@ -3225,8 +3325,14 @@ app.put('/api/bd/proveedores/:id', requerirRolBDGeneral, async (req, res) => {
                 [nombre, nombreAntiguo]
             );
         }
+        if (vieneCuentas) await reemplazarCuentasBancarias(client, id, cuentas, req.usuario);
         await client.query('COMMIT');
-        res.json({ success: true, mensaje: 'Proveedor actualizado correctamente.', proveedor: upd.rows[0] });
+        res.json({
+            success: true,
+            mensaje: 'Proveedor actualizado correctamente.',
+            proveedor: upd.rows[0],
+            cuentas_bancarias: cuentas
+        });
     } catch (err) {
         await client.query('ROLLBACK');
         if (err.code === '23505') {
@@ -3351,6 +3457,36 @@ app.get('/api/bd/ordenes/:id', requerirRolBDGeneral, async (req, res) => {
     }
 });
 
+/**
+ * PDF de la orden de compra.
+ *
+ * Se sirve como descarga (Content-Disposition: attachment) y no se abre en una
+ * pestana: el boton del cliente lo pide con fetch y lo baja por blob, porque la
+ * autenticacion va solo por header y un window.open() llegaria sin token y se
+ * llevaria un 401.
+ */
+app.get('/api/bd/ordenes/:id/pdf', requerirRolBDGeneral, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ success: false, mensaje: 'ID de orden no válido.' });
+        }
+        const datos = await datosParaOrdenPDF(pool, id);
+        if (!datos) {
+            return res.status(404).json({ success: false, mensaje: 'La orden no existe.' });
+        }
+        const buffer = await generarPDFOrdenCompra(datos);
+        const nombre = `${datos.orden.tipo === 'OS' ? 'OS' : 'OC'}-${nombreArchivoSeguro(datos.orden.numero, id)}.pdf`;
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Length', buffer.length);
+        res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+        res.end(buffer);
+    } catch (err) {
+        console.error('Error GET PDF orden:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
 app.post('/api/bd/ordenes', requerirRolBDGeneral, async (req, res) => {
     const client = await pool.connect();
     try {
@@ -3383,13 +3519,14 @@ app.post('/api/bd/ordenes', requerirRolBDGeneral, async (req, res) => {
         }
 
         const ins = await client.query(
-            `INSERT INTO ordenes_compras_servicios (tipo, numero, fecha_orden, proveedor_id, proveedor_nombre, estado, observaciones, total, moneda, igv_pct, igv, total_igv, usuario_registro)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+            `INSERT INTO ordenes_compras_servicios (tipo, numero, fecha_orden, proveedor_id, proveedor_nombre, estado, observaciones, total, moneda, igv_pct, igv, total_igv, usuario_registro, usuario_emision, lugar_entrega, fecha_entrega, area_solicitante, forma_pago, horario_recepcion, atencion)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) RETURNING id`,
             [
                 tipo, numero, fechaOrden || null, proveedorId, prov.rows[0].nombre, estado,
                 String(cuerpo.observaciones || '').trim(), total,
                 normalizarMoneda(cuerpo.moneda), Number.isFinite(Number(cuerpo.igv_pct)) ? Number(cuerpo.igv_pct) : IGV_POR_DEFECTO,
-                igv, totalIgv, req.usuario
+                igv, totalIgv, req.usuario, req.usuario,
+                ...camposEntregaDe(cuerpo)
             ]
         );
         for (const it of items) {
@@ -3461,15 +3598,17 @@ app.put('/api/bd/ordenes/:id', requerirRolBDGeneral, async (req, res) => {
 
         const numeroAnterior = vieja.numero;
         await client.query(
-            `UPDATE ordenes_compras_servicios SET tipo = $1, numero = $2, fecha_orden = $3, proveedor_id = $4, proveedor_nombre = $5, estado = $6, observaciones = $7, total = $8, moneda = $9, igv_pct = $10, igv = $11, total_igv = $12, usuario_registro = $13
-             WHERE id = $14`,
+            `UPDATE ordenes_compras_servicios SET tipo = $1, numero = $2, fecha_orden = $3, proveedor_id = $4, proveedor_nombre = $5, estado = $6, observaciones = $7, total = $8, moneda = $9, igv_pct = $10, igv = $11, total_igv = $12, usuario_registro = $13,
+             lugar_entrega = $14, fecha_entrega = $15, area_solicitante = $16, forma_pago = $17, horario_recepcion = $18, atencion = $19
+             WHERE id = $20`,
             [
                 String(cuerpo.tipo || '').trim().toUpperCase(), numero,
                 String(cuerpo.fecha_orden || '').trim() || null,
                 proveedorId, prov.rows[0].nombre, estadoNuevo,
                 String(cuerpo.observaciones || '').trim(), total,
                 normalizarMoneda(cuerpo.moneda), Number.isFinite(Number(cuerpo.igv_pct)) ? Number(cuerpo.igv_pct) : IGV_POR_DEFECTO,
-                igv, totalIgv, req.usuario, id
+                igv, totalIgv, req.usuario,
+                ...camposEntregaDe(cuerpo), id
             ]
         );
 
@@ -4301,5 +4440,6 @@ if (require.main === module) {
 // servidor: son las reglas que definen los totales de orden y de factura.
 module.exports = {
     app, parsearCabeceraSUNAT, detectarItemsTabla, extraerDireccionSUNAT,
-    IGV_POR_DEFECTO, normalizarMoneda, redondear2, normalizarItemsOrden
+    IGV_POR_DEFECTO, normalizarMoneda, redondear2, normalizarItemsOrden,
+    camposEntregaDe, normalizarCuentasBancarias
 };

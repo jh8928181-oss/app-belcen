@@ -79,12 +79,36 @@ async function login(req, res) {
 
 async function listarUsuarios(req, res) {
   try {
-    const result = await pool.query('SELECT id, usuario, rol FROM usuarios_sistema ORDER BY usuario ASC');
+    // nombre/cargo/celular son los datos que salen firmados en la OC, asi que
+    // la lista tambien los trae para que el admin los complete sin adivinar.
+    const result = await pool.query(
+      'SELECT id, usuario, rol, nombre, cargo, celular FROM usuarios_sistema ORDER BY usuario ASC'
+    );
     res.json(result.rows);
   } catch (err) {
     console.error('Error al listar usuarios:', err);
     res.status(500).json({ success: false, mensaje: 'Error al listar usuarios: ' + err.message });
   }
+}
+
+/**
+ * Normaliza los datos de contacto que se imprimen en la OC.
+ * Vienen del formulario del admin y no tienen formato fijo mas alla de "es
+ * texto", asi que solo se recorta y se fuerza a cadena. Un dato vacio se
+ * guarda como null para que el PDF muestre el guion de "sin dato" en vez de
+ * un espacio en blanco que parece un campo sin llenar.
+ */
+function datosContactoDe(entrada, actual) {
+  const base = actual || {};
+  const salida = {};
+  for (const campo of ['nombre', 'cargo', 'celular']) {
+    const bruto = entrada[campo];
+    const valor = bruto === undefined || bruto === null
+      ? (base[campo] === undefined ? null : base[campo])
+      : String(bruto).trim();
+    salida[campo] = valor ? valor : null;
+  }
+  return salida;
 }
 
 async function crearUsuario(req, res) {
@@ -103,9 +127,10 @@ async function crearUsuario(req, res) {
 
     const salt = crypto.randomBytes(16).toString('hex');
     const hash = await hashPassword(pwd, salt);
+    const contacto = datosContactoDe(req.body, null);
     const result = await client.query(
-      'INSERT INTO usuarios_sistema (usuario, password, rol) VALUES ($1, $2, $3) RETURNING id, usuario, rol',
-      [usu, `${hash}:${salt}`, rolOk]
+      'INSERT INTO usuarios_sistema (usuario, password, rol, nombre, cargo, celular) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, usuario, rol, nombre, cargo, celular',
+      [usu, `${hash}:${salt}`, rolOk, contacto.nombre, contacto.cargo, contacto.celular]
     );
     await client.query('COMMIT');
     res.json({ success: true, mensaje: 'Usuario creado correctamente.', usuario: result.rows[0] });
@@ -170,12 +195,20 @@ async function editarUsuario(req, res) {
       }
     }
 
+    const contacto = datosContactoDe(req.body, targetUser);
+
     if (nuevoPassword) {
       const salt = crypto.randomBytes(16).toString('hex');
       const hash = await hashPassword(nuevoPassword, salt);
-      await client.query('UPDATE usuarios_sistema SET usuario = $1, rol = $2, password = $3 WHERE id = $4', [nuevoUsuario, nuevoRol, `${hash}:${salt}`, id]);
+      await client.query(
+        'UPDATE usuarios_sistema SET usuario = $1, rol = $2, password = $3, nombre = $4, cargo = $5, celular = $6 WHERE id = $7',
+        [nuevoUsuario, nuevoRol, `${hash}:${salt}`, contacto.nombre, contacto.cargo, contacto.celular, id]
+      );
     } else {
-      await client.query('UPDATE usuarios_sistema SET usuario = $1, rol = $2 WHERE id = $3', [nuevoUsuario, nuevoRol, id]);
+      await client.query(
+        'UPDATE usuarios_sistema SET usuario = $1, rol = $2, nombre = $3, cargo = $4, celular = $5 WHERE id = $6',
+        [nuevoUsuario, nuevoRol, contacto.nombre, contacto.cargo, contacto.celular, id]
+      );
     }
 
     await client.query('COMMIT');

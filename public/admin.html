@@ -73,6 +73,21 @@
                     <select id="editRol" style="margin-top:5px;"></select>
                 </div>
             </div>
+            <div class="grid-3cols" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-top: 15px;">
+                <div>
+                    <label><b>Nombre para la OC:</b></label>
+                    <input type="text" id="editNombre" placeholder="Nombre y apellido" style="margin-top:5px;">
+                </div>
+                <div>
+                    <label><b>Cargo:</b></label>
+                    <input type="text" id="editCargo" placeholder="Ej. Jefe de almacén" style="margin-top:5px;">
+                </div>
+                <div>
+                    <label><b>Celular:</b></label>
+                    <input type="tel" id="editCelular" placeholder="Ej. 987 654 321" style="margin-top:5px;">
+                </div>
+            </div>
+            <div class="aviso-info" style="margin-top:12px;">ℹ️ Nombre, cargo y celular salen impresos en la OC que genera este usuario. Si los dejas vacíos, la OC mostrará un guion.</div>
             <div style="display: flex; gap: 10px; margin-top: 18px;">
                 <button onclick="guardarEditarUsuario()" id="btnGuardarEditar" class="btn-editar" style="padding:9px 16px; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">💾 GUARDAR CAMBIOS</button>
                 <button onclick="cerrarPanelEditar()" class="btn-eliminar" style="border:none; border-radius:4px; cursor:pointer; padding:9px 16px; font-weight:bold;">✖ Cancelar</button>
@@ -97,6 +112,21 @@
                         <option value="">-- Seleccionar rol --</option>
                     </select>
                 </div>
+                <div style="grid-column: span 3; margin-top: 2px;">
+                    <label><b>Datos que saldrán impresos en la OC <span style="font-weight:normal; color:#666;">(opcional)</span>:</b></label>
+                </div>
+                <div>
+                    <label><b>Nombre:</b></label>
+                    <input type="text" id="nuevoNombre" placeholder="Nombre y apellido" style="margin-top:5px;">
+                </div>
+                <div>
+                    <label><b>Cargo:</b></label>
+                    <input type="text" id="nuevoCargo" placeholder="Ej. Supervisor de producción" style="margin-top:5px;">
+                </div>
+                <div>
+                    <label><b>Celular:</b></label>
+                    <input type="tel" id="nuevoCelular" placeholder="Ej. 987 654 321" style="margin-top:5px;">
+                </div>
                 <div class="span-3" style="grid-column: span 3;">
                     <button type="submit" class="btn-accion">👤 CREAR USUARIO</button>
                 </div>
@@ -114,11 +144,14 @@
                             <th>ID</th>
                             <th>Usuario</th>
                             <th>Rol</th>
+                            <th>Nombre</th>
+                            <th>Cargo</th>
+                            <th>Celular</th>
                             <th class="text-center">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="tablaUsuarios">
-                        <tr><td colspan="4" class="text-center">Cargando usuarios...</td></tr>
+                        <tr><td colspan="7" class="text-center">Cargando usuarios...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -204,7 +237,7 @@
 
         function badgeRol(rol) {
             const color = COLORES_ROL[rol] || '#6c757d';
-            return `<span class="badge" style="background:${color};">${String(rol || '').toUpperCase()}</span>`;
+            return `<span class="badge" style="background:${color};">${esc(rol).toUpperCase()}</span>`;
         }
 
         async function cargarUsuarios() {
@@ -216,27 +249,40 @@
                 renderUsuarios();
             } catch (err) {
                 console.error(err);
-                document.getElementById('tablaUsuarios').innerHTML = '<tr><td colspan="4" class="text-center" style="color:red;">Error al cargar los usuarios.</td></tr>';
+                document.getElementById('tablaUsuarios').innerHTML = '<tr><td colspan="7" class="text-center" style="color:red;">Error al cargar los usuarios.</td></tr>';
             }
+        }
+
+        // Los tres campos de la OC se escapan como todo lo que viene del
+        // servidor: un nombre con "<" rompería la tabla si se inserta tal cual.
+        function esc(valor) {
+            return String(valor == null ? '' : valor)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
         function renderUsuarios() {
             const q = (document.getElementById('filtroUsuarios').value || '').toLowerCase();
             const filtrados = usuariosGlobal.filter(u =>
                 (u.usuario || '').toLowerCase().includes(q) ||
-                (u.rol || '').toLowerCase().includes(q)
+                (u.rol || '').toLowerCase().includes(q) ||
+                (u.nombre || '').toLowerCase().includes(q) ||
+                (u.cargo || '').toLowerCase().includes(q)
             );
             document.getElementById('totalUsuarios').textContent = usuariosGlobal.length;
             const tbody = document.getElementById('tablaUsuarios');
             tbody.innerHTML = filtrados.length === 0
-                ? '<tr><td colspan="4" class="text-center sin-registros">No hay usuarios que coincidan con la búsqueda.</td></tr>'
+                ? '<tr><td colspan="7" class="text-center sin-registros">No hay usuarios que coincidan con la búsqueda.</td></tr>'
                 : '';
             filtrados.forEach(u => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td>${u.id}</td>
-                    <td><b>${u.usuario}</b></td>
+                    <td><b>${esc(u.usuario)}</b></td>
                     <td>${badgeRol(u.rol)}</td>
+                    <td>${esc(u.nombre) || '<span style="color:#999;">-</span>'}</td>
+                    <td>${esc(u.cargo) || '<span style="color:#999;">-</span>'}</td>
+                    <td>${esc(u.celular) || '<span style="color:#999;">-</span>'}</td>
                     <td class="text-center">
                         <div class="botones-accion">
                             <button onclick="abrirEditarUsuario(${u.id})" style="background:#ffc107; color:#000;" title="Editar">✏️</button>
@@ -256,6 +302,9 @@
             document.getElementById('editUsuario').value = u.usuario;
             document.getElementById('editPassword').value = '';
             document.getElementById('editRol').value = u.rol || '';
+            document.getElementById('editNombre').value = u.nombre || '';
+            document.getElementById('editCargo').value = u.cargo || '';
+            document.getElementById('editCelular').value = u.celular || '';
             document.getElementById('panelEditar').style.display = 'block';
             document.getElementById('panelEditar').scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
@@ -272,6 +321,9 @@
             const usuario = document.getElementById('nuevoUsuario').value.trim();
             const password = document.getElementById('nuevaPassword').value;
             const rol = document.getElementById('nuevoRol').value;
+            const nombre = document.getElementById('nuevoNombre').value.trim();
+            const cargo = document.getElementById('nuevoCargo').value.trim();
+            const celular = document.getElementById('nuevoCelular').value.trim();
 
             if (!/^[A-Za-z0-9_]{3,50}$/.test(usuario)) {
                 alert('❌ El usuario debe tener entre 3 y 50 caracteres (letras, números y guión bajo).');
@@ -292,7 +344,7 @@
                 const res = await fetch('/api/usuarios', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ usuario, password, rol })
+                    body: JSON.stringify({ usuario, password, rol, nombre, cargo, celular })
                 });
                 const data = await res.json();
                 if (res.ok && data.success) {
@@ -320,6 +372,9 @@
             const usuario = document.getElementById('editUsuario').value.trim();
             const rol = document.getElementById('editRol').value;
             const password = document.getElementById('editPassword').value;
+            const nombre = document.getElementById('editNombre').value.trim();
+            const cargo = document.getElementById('editCargo').value.trim();
+            const celular = document.getElementById('editCelular').value.trim();
 
             if (!/^[A-Za-z0-9_]{3,50}$/.test(usuario)) {
                 alert('❌ El usuario debe tener entre 3 y 50 caracteres (letras, números y guión bajo).');
@@ -341,7 +396,7 @@
                 const res = await fetch('/api/usuarios/' + editarId + '/editar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ usuario, rol, password })
+                    body: JSON.stringify({ usuario, rol, password, nombre, cargo, celular })
                 });
                 const data = await res.json();
                 if (res.ok && data.success) {

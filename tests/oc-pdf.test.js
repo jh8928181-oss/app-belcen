@@ -96,7 +96,7 @@ jest.mock('../middleware/auth', () => {
 
 const { app, camposEntregaDe, normalizarCuentasBancarias } = require('../index');
 const { repartirIgv, datosMoneda, datosParaOrdenPDF } = require('../services/ocPdfDatos');
-const { generarPDFOrdenCompra, nombreArchivoSeguro } = require('../services/pdfOrdenCompra');
+const { generarPDFOrdenCompra, nombreArchivoSeguro, PAGINA, BORDE_IMPRIMIBLE } = require('../services/pdfOrdenCompra');
 
 function resFalso() {
   const r = {
@@ -183,6 +183,11 @@ const SQL = {
 };
 
 const filas = (...rows) => ({ rows, rowCount: rows.length });
+
+// A nivel de modulo y no dentro de un describe: lo usan tanto las pruebas de
+// las cuentas como las del formulario previo, que comprueban que imprimir no
+// escriba nada en la base.
+const consultasHechas = () => mockQuery.mock.calls.map(c => String(c[0] || '').trim());
 
 const ORDEN = {
   id: 7,
@@ -474,9 +479,13 @@ describe('contenido del PDF', () => {
       return { x, y };
     };
 
-    const admin = posicionDe('ADMINISTRACIÓN');
-    const produccion = posicionDe('PRODUCCIÓN');
-    const solicitante = posicionDe('SOLICITANTE');
+    // Se busca el nombre completo de cada firma y no un trozo suelto: el
+    // encabezado ahora trae una etiqueta "ÁREA SOLICITANTE:" que contiene la
+    // palabra "SOLICITANTE", y buscar solo esa palabra tomaba la coordenada de la
+    // etiqueta del encabezado en vez de la firma.
+    const admin = posicionDe('VB ADMINISTRACIÓN');
+    const produccion = posicionDe('ÁREA PRODUCCIÓN');
+    const solicitante = posicionDe('VB SOLICITANTE');
 
     // Alineadas horizontalmente en la misma linea base...
     expect(produccion.y).toBe(admin.y);
@@ -485,7 +494,7 @@ describe('contenido del PDF', () => {
     expect(produccion.x).toBeGreaterThan(admin.x);
     expect(solicitante.x).toBeGreaterThan(produccion.x);
     // La ultima tiene que quedar dentro de la hoja, no empujada fuera.
-    expect(solicitante.x).toBeLessThan(612);
+    expect(solicitante.x).toBeLessThan(PAGINA.width);
   });
 
   test('sin cuentas bancarias el PDF igual sale', async () => {
@@ -506,7 +515,7 @@ describe('contenido del PDF', () => {
   });
 });
 
-describe('ruta GET /api/bd/ordenes/:id/pdf', () => {
+describe('ruta POST /api/bd/ordenes/:id/pdf', () => {
   beforeEach(() => {
     responder([
       [SQL.ordenParaPDF, filas(ORDEN)],
@@ -517,7 +526,7 @@ describe('ruta GET /api/bd/ordenes/:id/pdf', () => {
   });
 
   test('responde el PDF como descarga, no como pagina web', async () => {
-    const res = await invocar('GET', '/api/bd/ordenes/7/pdf', { params: { id: '7' } });
+    const res = await invocar('POST', '/api/bd/ordenes/7/pdf', { params: { id: '7' } });
 
     expect(res.statusCode).toBe(null);   // ni json ni status: 200 implicito
     expect(res.headers['content-type']).toBe('application/pdf');
@@ -526,27 +535,31 @@ describe('ruta GET /api/bd/ordenes/:id/pdf', () => {
     expect(res.buffer.subarray(0, 5).toString()).toBe('%PDF-');
   });
 
+  test('ya no existe por GET: los datos del formulario no caben en una URL', async () => {
+    expect(() => pilaDe('GET', '/api/bd/ordenes/:id/pdf')).toThrow();
+  });
+
   test('rechaza un id que no es un numero', async () => {
-    const res = await invocar('GET', '/api/bd/ordenes/abc/pdf', { params: { id: 'abc' } });
+    const res = await invocar('POST', '/api/bd/ordenes/abc/pdf', { params: { id: 'abc' } });
     expect(res.statusCode).toBe(400);
     expect(res.cuerpo.success).toBe(false);
   });
 
   test('avisa cuando la orden no existe en vez de bajar un PDF vacio', async () => {
     responder([[SQL.ordenParaPDF, { rows: [], rowCount: 0 }]]);
-    const res = await invocar('GET', '/api/bd/ordenes/999/pdf', { params: { id: '999' } });
+    const res = await invocar('POST', '/api/bd/ordenes/999/pdf', { params: { id: '999' } });
     expect(res.statusCode).toBe(404);
   });
 
   test('un fallo al leer la base responde 500 con mensaje', async () => {
     mockQuery.mockRejectedValue(new Error('caida de conexion'));
-    const res = await invocar('GET', '/api/bd/ordenes/7/pdf', { params: { id: '7' } });
+    const res = await invocar('POST', '/api/bd/ordenes/7/pdf', { params: { id: '7' } });
     expect(res.statusCode).toBe(500);
     expect(res.cuerpo.mensaje).toContain('caida');
   });
 
   test('la ruta esta protegida por rol', async () => {
-    const res = await invocar('GET', '/api/bd/ordenes/7/pdf', { params: { id: '7' }, rol: 'invitado' });
+    const res = await invocar('POST', '/api/bd/ordenes/7/pdf', { params: { id: '7' }, rol: 'invitado' });
     expect(res.statusCode).toBe(403);
   });
 });
@@ -619,7 +632,6 @@ describe('editar un proveedor y sus cuentas', () => {
     [/INSERT INTO proveedores/, filas({ id: 9, nombre: 'NUEVO SAC' })]
   ];
 
-  const consultasHechas = () => mockQuery.mock.calls.map(c => String(c[0] || '').trim());
   const borroCuentas = () => consultasHechas().some(s => /DELETE FROM proveedor_cuentas_bancarias/i.test(s));
 
   beforeEach(() => {
@@ -664,5 +676,302 @@ describe('editar un proveedor y sus cuentas', () => {
     expect(borroCuentas()).toBe(true);
     const inserciones = consultasHechas().filter(s => /INSERT INTO proveedor_cuentas_bancarias/i.test(s));
     expect(inserciones).toHaveLength(0);
+  });
+});
+
+// ============================================================================
+// Hoja apaisada
+//
+// El PDF paso de carta vertical a A4 horizontal porque la tabla de productos es
+// ancha y en vertical la descripcion se partia en tres renglones. Todo lo de
+// abajo viene de esa mudanza: la hoja cambio de alto y los limites se
+// recalcularon, asi que lo que antes cabia ahora puede salirse, y una fila que
+// se sale no avisa: se pierde.
+// ============================================================================
+
+/** Posiciones de texto del PDF, en el espacio de la hoja (Y hacia arriba). */
+function posiciones(buffer) {
+  const salida = [];
+  extraerFlujos(buffer).forEach((flujo, hoja) => {
+    const tms = [...flujo.matchAll(/1 0 0 1 ([\d.]+) ([\d.]+) Tm/g)];
+    for (const tm of tms) {
+      const despues = flujo.slice(tm.index + tm[0].length, tm.index + tm[0].length + 900);
+      const fuente = despues.match(/\/(F\d+)\s+([\d.]+)\s+Tf/);
+      const arreglo = despues.match(/\[([^\]]*)\]\s*TJ/);
+      if (!fuente || !arreglo) continue;
+      const trozos = [...arreglo[1].matchAll(/<([0-9a-fA-F]*)>/g)]
+        .map(p => Buffer.from(p[1], 'hex').toString('latin1'));
+      if (!trozos.length) continue;
+      salida.push({
+        hoja,
+        x: Number(tm[1]),
+        // pdfkit abre cada bloque con "1 0 0 -1 0 <alto> cm": su Y va de arriba
+        // hacia abajo. La hoja lo mide al reves.
+        y: PAGINA.height - Number(tm[2]),
+        texto: trozos.join(''),
+        tam: Number(fuente[2])
+      });
+    }
+  });
+  return salida;
+}
+
+function hojasDe(buffer) {
+  return (buffer.toString('latin1').match(/MediaBox/g) || []).length;
+}
+
+describe('hoja A4 apaisada', () => {
+  test('la hoja sale apaisada y de tamano A4', async () => {
+    const buffer = await generarPDFOrdenCompra({
+      orden: ORDEN, items: ITEMS, bancos: CUENTAS,
+      emisor: { nombre: 'Angelica Ruiz', cargo: 'Jefe', celular: '987654321' }
+    });
+
+    // A4 horizontal son 841.89 x 595.28 puntos. La caja medial tiene que decir
+    // eso, no "letter": un MediaBox distinto significa que la maqueta esta
+    // calculada para una hoja y el papel es otra.
+    const cajas = [...buffer.toString('latin1').matchAll(/MediaBox \[([\d. ]+)\]/g)].map(m => m[1].trim());
+    expect(cajas.length).toBeGreaterThan(0);
+    for (const caja of cajas) {
+      const [x0, y0, x1, y1] = caja.split(/\s+/).map(Number);
+      expect(x1 - x0).toBeCloseTo(841.89, 1);
+      expect(y1 - y0).toBeCloseTo(595.28, 1);
+    }
+  });
+
+  test('la orden de ejemplo entra en una sola hoja', async () => {
+    const buffer = await generarPDFOrdenCompra({
+      orden: ORDEN, items: ITEMS, bancos: CUENTAS,
+      emisor: { nombre: 'Angelica Ruiz', cargo: 'Jefe de almacen', celular: '987654321' }
+    });
+    expect(hojasDe(buffer)).toBe(1);
+  });
+
+  test('nada se sale del area que una impresora respeta', async () => {
+    // Esta es la regresion que si no se detecta no se ve: una fila dibujada mas
+    // abajo del borde no lanza error, simplemente no aparece en el papel. La
+    // pagina apaisada tiene 57 puntos menos de alto, asi que el margen que
+    // antes alcanzaba deja de alcanzar.
+    const itemsLargos = Array.from({ length: 6 }, (_, i) => ({
+      descripcion: `BOTELLA PET 1L TRANSPARENTE PARA AGUA MINERAL SIN TAPA, ENVASADO EN CAJA DE 24 UNIDADES (producto ${i + 1})`,
+      unidad: 'UND', cantidad: (i + 1) * 24, precio: 1.35 + i, subtotal: (i + 1) * 24 * (1.35 + i)
+    }));
+    const buffer = await generarPDFOrdenCompra({
+      orden: {
+        ...ORDEN,
+        lugar_entrega: 'Planta Principal - Corporacion Belcen, Av. Los Frutales 1450',
+        atencion: 'Sr. Juan Perez Perez, jefe de almacen de la planta principal'
+      },
+      items: itemsLargos,
+      bancos: CUENTAS,
+      emisor: { nombre: 'Angelica Ruiz Ramirez', cargo: 'Jefe de Compras', celular: '987654321' }
+    });
+
+    const fuera = posiciones(buffer).filter(p =>
+      p.x < BORDE_IMPRIMIBLE || p.x > PAGINA.width - BORDE_IMPRIMIBLE ||
+      p.y < BORDE_IMPRIMIBLE || p.y + p.tam * 1.2 > PAGINA.height - BORDE_IMPRIMIBLE
+    );
+    expect(fuera.map(f => `${f.hoja + 1}: ${f.texto}`)).toEqual([]);
+  });
+
+  test('las etiquetas del encabezado caen alineadas entre columnas', async () => {
+    // Con cuatro columnas, si cada una avanzara su Y por su cuenta, en cuanto un
+    // valor envuelve (un correo largo, un nombre de proveedor) esa columna se
+    // correria y sus etiquetas dejarían de alinearse con las de al lado. En un
+    // papel que van a firmar tres personas, esas filas torcidas se notan.
+    const buffer = await generarPDFOrdenCompra({
+      orden: { ...ORDEN, email: 'compras.de.ventas.encorporacion@cementosdelsur.com.pe' },
+      items: ITEMS, bancos: CUENTAS,
+      emisor: { nombre: 'Angelica Ruiz', cargo: 'Jefe de almacen', celular: '987654321' }
+    });
+    const pos = posiciones(buffer);
+
+    // Las cuatro etiquetas de la primera fila comparten linea base.
+    const etiquetas = ['PROVEEDOR:', 'E-MAIL:', 'CARGO:', 'ÁREA SOLICITANTE:'];
+    const fila = etiquetas.map(t => pos.find(p => p.texto.startsWith(t)));
+    for (const e of fila) expect(e).toBeDefined();
+    const ys = new Set(fila.map(e => Math.round(e.y * 10) / 10));
+    expect(ys.size).toBe(1);
+  });
+
+  test('una etiqueta larga no se parte en dos lineas', async () => {
+    // "HORARIO RECEPCIÓN:" no entraba en la caja de etiqueta fija y se partia,
+    // dejando la etiqueta desalineada de su valor.
+    const pos = posiciones(await generarPDFOrdenCompra({
+      orden: ORDEN, items: ITEMS, bancos: CUENTAS,
+      emisor: { nombre: 'Angelica', cargo: '', celular: '' }
+    }));
+    expect(pos.some(p => p.texto.startsWith('HORARIO RECEPCIÓN:'))).toBe(true);
+    expect(pos.some(p => p.texto.trim() === 'RECEPCIÓN:')).toBe(false);
+  });
+});
+
+describe('partidas de pagina', () => {
+  const muchosItems = (n) => Array.from({ length: n }, (_, i) => ({
+    descripcion: `TAPA ROSCA 38mm PARA FRASCO DE VIDRIO COLOR BLANCO (producto ${i + 1})`,
+    unidad: 'UND', cantidad: (i + 1) * 12, precio: 1.5 + i * 0.1,
+    subtotal: +((i + 1) * 12 * (1.5 + i * 0.1)).toFixed(2)
+  }));
+
+  test('una orden larga se parte y no se pierde ninguna linea', async () => {
+    const items = muchosItems(30);
+    const buffer = await generarPDFOrdenCompra({
+      orden: ORDEN, items, bancos: CUENTAS,
+      emisor: { nombre: 'Angelica', cargo: '', celular: '' }
+    });
+
+    expect(hojasDe(buffer)).toBeGreaterThan(1);
+    // El fallo original: dibujar de mas alla del borde y perder el rabo. Se
+    // comprueba que estan TODAS las lineas, no que el PDF exista.
+    const texto = textoDelPdf(buffer);
+    for (const item of items) {
+      expect(texto).toContain(`producto ${item.descripcion.match(/producto (\d+)/)[1]}`);
+    }
+    // Y que los totales siguen al final, que es donde el usuario los mira.
+    expect(texto).toContain('TOTALES');
+  });
+
+  test('cada hoja repite la cabecera de la tabla', async () => {
+    const buffer = await generarPDFOrdenCompra({
+      orden: ORDEN, items: muchosItems(30), bancos: CUENTAS,
+      emisor: { nombre: 'Angelica', cargo: '', celular: '' }
+    });
+
+    const porHoja = new Map();
+    for (const p of posiciones(buffer)) {
+      if (!porHoja.has(p.hoja)) porHoja.set(p.hoja, []);
+      porHoja.get(p.hoja).push(p.texto);
+    }
+    const hojas = [...porHoja.keys()].sort((a, b) => a - b);
+    expect(hojas.length).toBeGreaterThan(1);
+    for (const h of hojas) {
+      expect(porHoja.get(h).join(' ')).toContain('DESCRIPCIÓN');
+    }
+  });
+
+  test('las firmas quedan en la ultima hoja y dentro del papel', async () => {
+    const buffer = await generarPDFOrdenCompra({
+      orden: ORDEN, items: muchosItems(30), bancos: CUENTAS,
+      emisor: { nombre: 'Angelica', cargo: '', celular: '' }
+    });
+    const pos = posiciones(buffer);
+    const ultimaHoja = Math.max(...pos.map(p => p.hoja));
+    const firmas = pos.filter(p => p.hoja === ultimaHoja && p.texto.includes('ADMINISTRACIÓN'));
+    expect(firmas.length).toBeGreaterThan(0);
+    expect(firmas[0].y).toBeGreaterThan(BORDE_IMPRIMIBLE);
+  });
+
+  test('el pie numera las hojas y no las rompe', async () => {
+    const buffer = await generarPDFOrdenCompra({
+      orden: ORDEN, items: muchosItems(30), bancos: CUENTAS,
+      emisor: { nombre: 'Angelica', cargo: '', celular: '' }
+    });
+    const texto = textoDelPdf(buffer);
+    expect(texto).toMatch(/P.gina 1 de \d+/);
+    // Cada pie agregaba una hoja en blanco porque caia dentro del margen
+    // inferior, que es donde pdfkit decide partir la hoja.
+    const total = hojasDe(buffer);
+    const esperadas = texto.match(/P.gina \d+ de (\d+)/g) || [];
+    const ultimaHoja = Math.max(...posiciones(buffer).map(p => p.hoja)) + 1;
+    expect(total).toBe(ultimaHoja);
+    expect(esperadas).toHaveLength(total);
+  });
+});
+
+// ============================================================================
+// Datos que se escriben en el PDF sin guardarse
+// ============================================================================
+
+describe('formulario previo a imprimir', () => {
+  beforeEach(() => {
+    responder([
+      [SQL.ordenParaPDF, filas(ORDEN)],
+      [SQL.itemsParaPDF, filas(...ITEMS)],
+      [SQL.cuentasParaPDF, filas(...CUENTAS)],
+      [SQL.emisorParaPDF, filas({ nombre: 'Angelica Ruiz', cargo: 'Jefe', celular: '987654321' })]
+    ]);
+  });
+
+  test('lo que escribe el formulario llega al PDF', async () => {
+    const res = await invocar('POST', '/api/bd/ordenes/7/pdf', {
+      params: { id: '7' },
+      body: {
+        entrega: { lugar_entrega: 'Almacen de Productos Terminados', forma_pago: 'Credito 45 dias' },
+        emisor: { nombre: 'Angelica Ruiz', cargo: 'Jefe de Compras', celular: '999888777' },
+        cuentas: [{ banco: 'BBVA', tipo: 'C.C. Soles', numero: '000-999', moneda: 'PEN', titular: 'ACME S.A.C.' }]
+      }
+    });
+
+    const texto = textoDelPdf(res.buffer);
+    expect(texto).toContain('Almacen de Productos Terminados');
+    expect(texto).toContain('Credito 45 dias');
+    expect(texto).toContain('Jefe de Compras');
+    expect(texto).toContain('999888777');
+    expect(texto).toContain('BBVA');
+    expect(texto).toContain('000-999');
+  });
+
+  test('un campo vacio no borra lo que la orden ya tenia guardado', async () => {
+    // El formulario es para rellenar huecos. Si el usuario abre el PDF, no
+    // cambia un campo y lo deja en blanco, ese dato no debe desaparecer: se
+    // perderia informacion real de la orden por haber tocado el formulario.
+    const res = await invocar('POST', '/api/bd/ordenes/7/pdf', {
+      params: { id: '7' },
+      body: {
+        entrega: { lugar_entrega: 'Almacen Nuevo', forma_pago: '   ' },
+        emisor: { nombre: 'Angelica Ruiz', cargo: '' }
+      }
+    });
+
+    const texto = textoDelPdf(res.buffer);
+    expect(texto).toContain('Almacen Nuevo');
+    expect(texto).toContain('Credito 30 dias');   // el de la orden, no el vacio
+    expect(texto).toContain('Jefe');             // cargo guardado del usuario
+  });
+
+  test('generar el PDF no escribe nada en la base', async () => {
+    await invocar('POST', '/api/bd/ordenes/7/pdf', {
+      params: { id: '7' },
+      body: { entrega: { lugar_entrega: 'X' }, emisor: { cargo: 'Y' }, cuentas: [{ banco: 'B', numero: '1' }] }
+    });
+
+    // Lo unico que debe tocar la base son lecturas. Un UPDATE aqui seria una
+    // orden que cambia sola cada vez que alguien la imprime.
+    const escrituras = consultasHechas()
+      .filter(s => /^(INSERT|UPDATE|DELETE)/i.test(s));
+    expect(escrituras).toEqual([]);
+  });
+
+  test('sin datos en el cuerpo sale el PDF igual, con lo que hay guardado', async () => {
+    const res = await invocar('POST', '/api/bd/ordenes/7/pdf', { params: { id: '7' } });
+    expect(res.buffer.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(textoDelPdf(res.buffer)).toContain('Planta Principal');
+  });
+
+  test('GET /datos-oc avisa de lo que falta', async () => {
+    responder([
+      [SQL.ordenParaPDF, filas({ ...ORDEN, lugar_entrega: null, forma_pago: null, atencion: null })],
+      [SQL.itemsParaPDF, filas(...ITEMS)],
+      [SQL.cuentasParaPDF, filas()],
+      [SQL.emisorParaPDF, filas({ nombre: '', cargo: null, celular: null })]
+    ]);
+    const res = await invocar('GET', '/api/bd/ordenes/7/datos-oc', { params: { id: '7' } });
+
+    expect(res.statusCode).toBe(200);
+    const { faltantes } = res.cuerpo.datos;
+    const etiquetas = faltantes.map(f => f.etiqueta);
+    expect(etiquetas).toContain('Lugar de entrega');
+    expect(etiquetas).toContain('Forma de pago');
+    expect(etiquetas).toContain('Cuentas bancarias del proveedor');
+    expect(etiquetas).toContain('Cargo');
+  });
+
+  test('no avisa de la atencion si el proveedor tiene contacto', async () => {
+    // La atencion cae al contacto del proveedor, asi que avisar "falta atencion"
+    // en una orden que si va a imprimir el contacto es hacer perder la
+    // confianza en el aviso: a la segunda vez el usuario deja de leerlo.
+    const res = await invocar('GET', '/api/bd/ordenes/7/datos-oc', { params: { id: '7' } });
+    const etiquetas = res.cuerpo.datos.faltantes.map(f => f.etiqueta);
+    expect(etiquetas).not.toContain('Atención a');
   });
 });

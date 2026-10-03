@@ -369,7 +369,7 @@
                         </tbody>
                     </table>
                 </div>
-                <button class="btn btn-mini" style="margin-top:8px;" onclick="agregarFilaCuentaProv()">➕ Agregar cuenta</button>
+                <button class="btn btn-mini" style="margin-top:8px;" onclick="agregarFilaCuentaProv('tablaCuentasProv')">➕ Agregar cuenta</button>
             </div>
 
             <div class="tarjeta borde-teal reveal">
@@ -1081,6 +1081,88 @@
         </div>
     </div>
 
+    <!-- Se abre antes de generar la OC. Los datos que se escriben aqui solo
+         existen en ese PDF: no se guardan en la orden, ni en el proveedor, ni en
+         el usuario. Es a proposito, porque el aviso de "falta esto" es para esta
+         impresion; lo permanente se llena en la ficha del proveedor y en admin. -->
+    <div class="modal-fondo oculto" id="modalOC">
+        <div class="modal" style="max-width:980px;">
+            <h3>📄 Generar OC <span id="ocNumeroTitulo"></span></h3>
+            <p class="sub" style="text-align:left; margin-bottom:12px;" id="ocInfoProveedor"></p>
+            <div class="aviso aviso-ambar" style="text-align:left;" id="ocAvisoFaltantes"></div>
+
+            <h3 class="ambar" style="margin-top:16px;">🚚 Datos de entrega</h3>
+            <div class="filtro-bar">
+                <div class="campo-flex" style="flex:2; min-width:180px;">
+                    <label>Lugar de entrega</label>
+                    <input type="text" id="ocLugarEntrega" placeholder="Ej. Planta Principal - Corporaci&oacute;n Belcen">
+                </div>
+                <div class="campo-flex" style="min-width:140px;">
+                    <label>Fecha de entrega</label>
+                    <input type="date" id="ocFechaEntrega">
+                </div>
+                <div class="campo-flex" style="min-width:150px;">
+                    <label>&Aacute;rea solicitante</label>
+                    <input type="text" id="ocAreaSolicitante" placeholder="Ej. Producci&oacute;n">
+                </div>
+            </div>
+            <div class="filtro-bar">
+                <div class="campo-flex" style="min-width:150px;">
+                    <label>Forma de pago</label>
+                    <input type="text" id="ocFormaPago" placeholder="Ej. Cr&eacute;dito 30 d&iacute;as">
+                </div>
+                <div class="campo-flex" style="min-width:150px;">
+                    <label>Horario de recepci&oacute;n</label>
+                    <input type="text" id="ocHorarioRecepcion" placeholder="Ej. L-V 8:00-12:00">
+                </div>
+                <div class="campo-flex" style="min-width:160px;">
+                    <label>Atenci&oacute;n a</label>
+                    <input type="text" id="ocAtencion" placeholder="Si no, el contacto del proveedor">
+                </div>
+            </div>
+
+            <h3 class="ambar" style="margin-top:16px;">👤 Qui&eacute;n emite</h3>
+            <div class="filtro-bar">
+                <div class="campo-flex" style="min-width:180px;">
+                    <label>Nombre</label>
+                    <input type="text" id="ocEmisorNombre" placeholder="Nombre y apellido">
+                </div>
+                <div class="campo-flex" style="min-width:150px;">
+                    <label>Cargo</label>
+                    <input type="text" id="ocEmisorCargo" placeholder="Ej. Jefe de Compras">
+                </div>
+                <div class="campo-flex" style="min-width:140px;">
+                    <label>Celular</label>
+                    <input type="text" id="ocEmisorCelular" placeholder="9XX XXX XXX">
+                </div>
+            </div>
+
+            <h3 class="ambar" style="margin-top:16px;">🏦 Cuentas del proveedor</h3>
+            <div class="tabla-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Banco</th>
+                            <th>Tipo de cuenta</th>
+                            <th>N&uacute;mero</th>
+                            <th>Moneda</th>
+                            <th>Titular</th>
+                            <th class="text-center">Quitar</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaCuentasOC"></tbody>
+                </table>
+            </div>
+            <button class="btn btn-mini" style="margin-top:8px;" onclick="agregarFilaCuentaProv('tablaCuentasOC')">➕ Agregar cuenta</button>
+
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:18px; align-items:center;">
+                <button class="btn btn-verde" id="ocBotonGenerar" onclick="generarOCDesdeModal()">📄 Generar OC</button>
+                <button class="btn btn-gris" onclick="cerrarModalOC()">✖ Cerrar</button>
+                <span class="sub" style="margin-left:auto;">Los datos de esta pantalla valen solo para este PDF.</span>
+            </div>
+        </div>
+    </div>
+
     <script src="/motion.js" defer></script>
     <script src="/auth-client.js"></script>
     <script>
@@ -1228,8 +1310,14 @@
         // Viven en el DOM como filas editables y se leen al guardar. Se filtran
         // las que queden a medio llenar (sin banco o sin numero) porque el
         // backend las ignora igual y mandar filas vacias solo agrega ruido.
-        function renderCuentasProv(cuentas) {
-            const tbody = document.getElementById('tablaCuentasProv');
+        //
+        // Estas tres funciones reciben el id del tbody porque hay dos formularios
+        // con la misma tabla: el alta del proveedor y el que se abre antes de
+        // imprimir la OC. Con el id fijo de antes, el modal imprimia las cuentas
+        // que se editaran en la ficha del proveedor.
+        function renderCuentasProv(cuentas, idTbody) {
+            const tbody = document.getElementById(idTbody || 'tablaCuentasProv');
+            if (!tbody) return;
             const lista = Array.isArray(cuentas) && cuentas.length ? cuentas : [{}];
             tbody.innerHTML = lista.map((c, i) => `
                 <tr>
@@ -1244,27 +1332,28 @@
                     </td>
                     <td><input type="text" data-cuenta="titular" value="${escapeHtml(c.titular || '')}" placeholder="Razon social"></td>
                     <td class="text-center">
-                        <button class="btn btn-mini btn-rojo" onclick="quitarFilaCuentaProv(this)">🗑️</button>
+                        <button type="button" class="btn btn-mini btn-rojo" onclick="quitarFilaCuentaProv(this)">🗑️</button>
                     </td>
                 </tr>`).join('');
         }
 
-        function agregarFilaCuentaProv() {
-            const tbody = document.getElementById('tablaCuentasProv');
-            const vacia = tbody.querySelector('tr td.sin-registros');
-            if (vacia) { renderCuentasProv([{}]); return; }
-            renderCuentasProv(leerCuentasProv().concat([{}]));
+        function agregarFilaCuentaProv(idTbody) {
+            const cuerpo = document.getElementById(idTbody || 'tablaCuentasProv');
+            const vacia = cuerpo.querySelector('tr td.sin-registros');
+            if (vacia) { renderCuentasProv([{}], cuerpo.id); return; }
+            renderCuentasProv(leerCuentasProv(cuerpo.id).concat([{}]), cuerpo.id);
         }
 
         function quitarFilaCuentaProv(boton) {
             const fila = boton.closest('tr');
-            const cuerpo = document.getElementById('tablaCuentasProv');
+            const cuerpo = boton.closest('tbody');
             cuerpo.removeChild(fila);
-            if (!cuerpo.querySelector('tr')) renderCuentasProv([]);
+            if (!cuerpo.querySelector('tr')) renderCuentasProv([], cuerpo.id);
         }
 
-        function leerCuentasProv() {
-            const cuerpo = document.getElementById('tablaCuentasProv');
+        function leerCuentasProv(idTbody) {
+            const cuerpo = document.getElementById(idTbody || 'tablaCuentasProv');
+            if (!cuerpo) return [];
             return Array.from(cuerpo.querySelectorAll('tr')).map(fila => {
                 const dato = (nombre) => {
                     const celda = fila.querySelector(`[data-cuenta="${nombre}"]`);
@@ -1986,7 +2075,7 @@
                             <td>${estadoBadge(o.estado)}</td>
                             <td class="text-center">
                                 <div class="acciones-celda" style="justify-content:center;">
-                                    <button class="btn btn-mini" onclick="descargarOrdenPDF(${o.id}, this)" title="Descargar la OC en PDF">📄 Generar OC</button>
+                                    <button class="btn btn-mini" onclick="abrirModalOC(${o.id})" title="Completar los datos que faltan y generar la OC en PDF">📄 Generar OC</button>
                                     <button class="btn btn-mini" onclick="abrirPagosOrden(${o.id})" title="Ver y cambiar el estado de sus facturas">💳 Pagos</button>
                                     <button class="btn btn-mini" onclick="editarOrden(${o.id})">✏️ Editar</button>
                                     <button class="btn btn-mini btn-verde" onclick="abrirRecibir(${o.id})" ${String(o.estado) === 'CANCELADA' ? 'disabled' : ''}>📥 Recibir</button>
@@ -2091,14 +2180,116 @@
             }
         }
 
+        // ============ GENERAR OC ============
+        // El boton "Generar OC" no imprime de una: abre este formulario para que
+        // los huecos que hoy salen con guion en el papel se llenen en el momento.
+        // Los datos viajan al backend solo en esa llamada y no se guardan.
+        let ocOrdenId = null;
+
+        async function abrirModalOC(id) {
+            ocOrdenId = id;
+            const aviso = document.getElementById('ocAvisoFaltantes');
+            aviso.textContent = '⏳ Cargando los datos de la orden...';
+            aviso.className = 'aviso aviso-ambar';
+            document.getElementById('ocNumeroTitulo').textContent = '';
+            document.getElementById('ocInfoProveedor').textContent = '';
+            document.getElementById('modalOC').classList.remove('oculto');
+            try {
+                const data = await api('/api/bd/ordenes/' + id + '/datos-oc');
+                const d = data.datos || {};
+                document.getElementById('ocNumeroTitulo').textContent = d.numero ? 'N° ' + d.numero : '';
+                document.getElementById('ocInfoProveedor').textContent = d.proveedor ? 'Proveedor: ' + d.proveedor : '';
+
+                const e = d.entrega || {};
+                document.getElementById('ocLugarEntrega').value = e.lugar_entrega || '';
+                document.getElementById('ocFechaEntrega').value = (e.fecha_entrega || '').slice(0, 10);
+                document.getElementById('ocAreaSolicitante').value = e.area_solicitante || '';
+                document.getElementById('ocFormaPago').value = e.forma_pago || '';
+                document.getElementById('ocHorarioRecepcion').value = e.horario_recepcion || '';
+                document.getElementById('ocAtencion').value = e.atencion || '';
+
+                const em = d.emisor || {};
+                document.getElementById('ocEmisorNombre').value = em.nombre || '';
+                document.getElementById('ocEmisorCargo').value = em.cargo || '';
+                document.getElementById('ocEmisorCelular').value = em.celular || '';
+
+                renderCuentasProv(d.cuentas || [], 'tablaCuentasOC');
+                pintarAvisoFaltantes(d.faltantes || []);
+            } catch (err) {
+                aviso.textContent = '❌ ' + err.message;
+                document.getElementById('ocBotonGenerar').disabled = true;
+            }
+        }
+
+        // Avisa, no bloquea. Una OC se puede emitir con los datos a medias, y
+        // negarse a imprimir dejaria al usuario sin poder volver a sacar una
+        // orden vieja que ya se habia impreso antes. Se dice que va a salir con
+        // guion y se deja decidir.
+        function pintarAvisoFaltantes(faltantes) {
+            const aviso = document.getElementById('ocAvisoFaltantes');
+            const boton = document.getElementById('ocBotonGenerar');
+            boton.disabled = false;
+            if (!faltantes.length) {
+                aviso.className = 'aviso aviso-verde';
+                aviso.textContent = '✅ Está todo completo. La OC saldrá con todos sus datos.';
+                return;
+            }
+            aviso.className = 'aviso aviso-ambar';
+            aviso.textContent = '⚠️ Va a salir con guion si no completa: ' + faltantes.map(f => f.etiqueta).join(', ') + '.';
+        }
+
+        function cerrarModalOC() {
+            document.getElementById('modalOC').classList.add('oculto');
+            ocOrdenId = null;
+        }
+
+        async function generarOCDesdeModal() {
+            if (!ocOrdenId) return;
+            const boton = document.getElementById('ocBotonGenerar');
+            const original = boton.innerHTML;
+            boton.disabled = true;
+            boton.innerHTML = '⏳ Generando...';
+            try {
+                await descargarOrdenPDF(ocOrdenId, {
+                    entrega: {
+                        lugar_entrega: document.getElementById('ocLugarEntrega').value,
+                        fecha_entrega: document.getElementById('ocFechaEntrega').value,
+                        area_solicitante: document.getElementById('ocAreaSolicitante').value,
+                        forma_pago: document.getElementById('ocFormaPago').value,
+                        horario_recepcion: document.getElementById('ocHorarioRecepcion').value,
+                        atencion: document.getElementById('ocAtencion').value
+                    },
+                    emisor: {
+                        nombre: document.getElementById('ocEmisorNombre').value,
+                        cargo: document.getElementById('ocEmisorCargo').value,
+                        celular: document.getElementById('ocEmisorCelular').value
+                    },
+                    cuentas: leerCuentasProv('tablaCuentasOC')
+                });
+                cerrarModalOC();
+            } catch (err) {
+                alert('❌ ' + err.message);
+            } finally {
+                boton.disabled = false;
+                boton.innerHTML = original;
+            }
+        }
+
         // Descarga la OC en PDF. No puede usar api() porque esa funcion siempre
         // espera JSON y aqui la respuesta es un archivo binario. El token lo
         // agrega auth-client.js al sobreescribir window.fetch.
-        async function descargarOrdenPDF(id, boton) {
+        //
+        // Va por POST: los datos del formulario no se guardan en ningun lado y
+        // un GET no tiene donde mandarlos.
+        async function descargarOrdenPDF(id, datos, boton) {
             const original = boton ? boton.innerHTML : null;
             if (boton) { boton.disabled = true; boton.innerHTML = '⏳ Generando...'; }
             try {
-                const res = await fetch('/api/bd/ordenes/' + id + '/pdf');
+                const res = await fetch('/api/bd/ordenes/' + id + '/pdf', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(datos || {})
+                });
                 if (!res.ok) {
                     const data = await res.json().catch(() => ({}));
                     throw new Error(data.mensaje || 'No se pudo generar el PDF.');

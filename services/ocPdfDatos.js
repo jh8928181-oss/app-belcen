@@ -78,6 +78,56 @@ function repartirIgv(items, igvPct, igvOrden) {
 }
 
 /**
+ * Campos de entrega que la OC imprime y que el formulario previo puede rellenar.
+ *
+ * Esta lista es la unica fuente de verdad de los tres lugares donde aparecen:
+ * la validacion del backend, el SELECT de la orden y el formulario. Si se
+ * agrega uno aca, aparece en los tres.
+ */
+const CAMPOS_ENTREGA = ['lugar_entrega', 'fecha_entrega', 'area_solicitante', 'forma_pago', 'horario_recepcion', 'atencion'];
+const CAMPOS_EMISOR = ['nombre', 'cargo', 'celular'];
+
+/**
+ * Se queda con los campos indicados que vengan con texto.
+ *
+ * La regla es "gana lo que trae texto, se conserva lo demas": un override vacio
+ * no borra el dato que la orden ya tiene guardado, que es justo lo que
+ * necesita un formulario que existe para rellenar huecos.
+ */
+function textoDe(objeto, campos) {
+  const salida = {};
+  for (const campo of campos) {
+    if (!objeto || objeto[campo] === undefined || objeto[campo] === null) continue;
+    const valor = String(objeto[campo]).trim();
+    if (valor) salida[campo] = valor;
+  }
+  return salida;
+}
+
+/** Campos de entrega con texto de un objeto (orden o override). */
+function camposEntregaDe(objeto) {
+  return textoDe(objeto, CAMPOS_ENTREGA);
+}
+
+/**
+ * Cuentas bancarias que llegan en un override, ya normalizadas.
+ *
+ * Distinto de la normalizacion del alta de proveedor: alla una cuenta a medio
+ * llenar se guarda y se ignora al recibir. Aqui se filtra igual, porque el
+ * formulario imprime lo que se ve y una fila vacia en el PDF es un renglon con
+ * guiones que el proveedor tendria que adivinar.
+ */
+function normalizarCuentasBancarias(lista) {
+  return (Array.isArray(lista) ? lista : []).map(c => ({
+    banco: String(c.banco || '').trim(),
+    tipo: String(c.tipo || '').trim(),
+    numero: String(c.numero || '').trim(),
+    moneda: String(c.moneda || 'PEN').trim().toUpperCase() === 'USD' ? 'USD' : 'PEN',
+    titular: String(c.titular || '').trim()
+  })).filter(c => c.banco && c.numero);
+}
+
+/**
  * Trae todo lo que el PDF necesita de una orden.
  *
  * Son varias consultas y no una porque cada una lee una tabla distinta (orden,
@@ -86,11 +136,17 @@ function repartirIgv(items, igvPct, igvOrden) {
  * bloque de cuentas no pueden discrepar por un cambio de proveedor a mitad de
  * la impresion.
  *
+ * Los overrides son los datos que escribio el formulario que se abre antes de
+ * imprimir. Manda lo que viene ahi solo si trae texto: el formulario es para
+ * rellenar huecos, no para borrar lo que la orden ya tiene guardado. Y no se
+ * escribe nada en la base; lo que se escribio, se escribio en ese PDF.
+ *
  * @param {import('pg').Pool} pool
  * @param {number} id - Id de la orden.
+ * @param {{entrega?:object, emisor?:object, cuentas?:Array}} [overrides]
  * @returns {Promise<null|object>} null si la orden no existe.
  */
-async function datosParaOrdenPDF(pool, id) {
+async function datosParaOrdenPDF(pool, id, overrides = {}) {
   const orden = await pool.query(
     `SELECT o.*,
                 p.nombre AS proveedor_nombre_actual, p.ruc, p.telefono, p.email,
@@ -129,7 +185,85 @@ async function datosParaOrdenPDF(pool, id) {
     if (!emisor.nombre) emisor = { ...emisor, nombre: login };
   }
 
-  return { orden: orden.rows[0], items: items.rows, bancos: bancos.rows, emisor };
+  const entrega = camposEntregaDe(overrides.entrega);
+  return {
+    orden: { ...orden.rows[0], ...entrega },
+    items: items.rows,
+    bancos: overrides.cuentas && overrides.cuentas.length
+      ? normalizarCuentasBancarias(overrides.cuentas)
+      : bancos.rows,
+    emisor: { ...emisor, ...textoDe(overrides.emisor, CAMPOS_EMISOR) }
+  };
 }
 
-module.exports = { datosMoneda, repartirIgv, datosParaOrdenPDF };
+/**
+ * Que datos le faltan a la OC, con la etiqueta que usa el formulario.
+ *
+ * Vive en el servicio y no en la pagina porque el aviso tiene que ser el mismo
+ * que la maqueta: si cada uno cuenta los huecos por su cuenta, el formulario
+ * dice "falta el cargo" y el PDF lo imprime con guion.
+ *
+ * Se herein dos casos: la atencion cae al contacto del proveedor y el nombre del
+ * emisor cae al login, asi que sin esos dos la OC no sale con guion aunque los
+ * campos de la orden esten vacios. Avisar "falta atencion" en una orden que si
+ * va a imprimir el contacto del proveedor es hacer perder la confianza en el
+ * aviso, y a la segunda vez el usuario deja de leerlo.
+ */
+const ETIQUETAS_ENTREGA = {
+  lugar_entrega: 'Lugar de entrega',
+  fecha_entrega: 'Fecha de entrega',
+  area_solicitante: 'Área solicitante',
+  forma_pago: 'Forma de pago',
+  horario_recepcion: 'Horario de recepción',
+  atencion: 'Atención a'
+};
+const ETIQUETAS_EMISOR = {
+  nombre: 'Nombre de quien emite',
+  cargo: 'Cargo',
+  celular: 'Celular del emisor'
+};
+
+/** Lo que el formulario previo a imprimir necesita, mas la lista de huecos. */
+function datosFormularioOC({ orden, bancos, emisor }) {
+  const hayTexto = (v) => v !== null && v !== undefined && String(v).trim() !== '';
+
+  const entrega = {};
+  for (const campo of CAMPOS_ENTREGA) {
+    if (hayTexto(orden[campo])) entrega[campo] = String(orden[campo]).trim();
+  }
+  const emisorDatos = {};
+  for (const campo of CAMPOS_EMISOR) {
+    if (hayTexto(emisor && emisor[campo])) emisorDatos[campo] = String(emisor[campo]).trim();
+  }
+
+  const faltantes = [];
+  for (const campo of CAMPOS_ENTREGA) {
+    if (hayTexto(entrega[campo])) continue;
+    // La atencion se resuelve con el contacto del proveedor, asi que solo
+    // falta de verdad si tampoco hay contacto.
+    if (campo === 'atencion' && hayTexto(orden.contacto)) continue;
+    faltantes.push({ seccion: 'entrega', campo, etiqueta: ETIQUETAS_ENTREGA[campo] });
+  }
+  for (const campo of CAMPOS_EMISOR) {
+    if (hayTexto(emisorDatos[campo])) continue;
+    faltantes.push({ seccion: 'emisor', campo, etiqueta: ETIQUETAS_EMISOR[campo] });
+  }
+  if (!bancos.length) {
+    faltantes.push({ seccion: 'cuentas', campo: 'cuentas', etiqueta: 'Cuentas bancarias del proveedor' });
+  }
+
+  return {
+    numero: orden.numero,
+    proveedor: orden.proveedor_nombre_actual || orden.proveedor_nombre || '',
+    entrega,
+    emisor: emisorDatos,
+    cuentas: bancos,
+    faltantes
+  };
+}
+
+module.exports = {
+  datosMoneda, repartirIgv, datosParaOrdenPDF, datosFormularioOC,
+  camposEntregaDe, normalizarCuentasBancarias,
+  CAMPOS_ENTREGA, CAMPOS_EMISOR
+};

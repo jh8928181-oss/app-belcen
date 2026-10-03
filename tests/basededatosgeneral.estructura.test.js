@@ -282,11 +282,12 @@ describe('basededatosgeneral.html datos para la OC', () => {
     expect(fuente).toContain('slice(0, 10)');
   });
 
-  test('el boton de generar OC esta en la lista de ordenes', () => {
-    expect(html).toContain('descargarOrdenPDF');
+  test('el boton de generar OC abre el formulario de datos faltantes', () => {
+    // El boton ya no baja el PDF de una: abre el modal para que los huecos que
+    // salen con guion en el papel se llenen en el momento.
+    expect(html).toContain('abrirModalOC');
     expect(html).toContain('Generar OC');
-    // El manejador va con "this" para poder deshabilitarlo mientras se arma el PDF.
-    expect(html).toMatch(/onclick="descargarOrdenPDF\(\$\{o\.id\}, this\)"/);
+    expect(html).toMatch(/onclick="abrirModalOC\(\$\{o\.id\}\)"/);
   });
 
   test('la descarga no usa api() sino fetch, porque la respuesta no es JSON', () => {
@@ -300,6 +301,14 @@ describe('basededatosgeneral.html datos para la OC', () => {
     expect(fuente).not.toContain('window.open');
   });
 
+  test('la descarga va por POST, porque lleva datos que no se guardan', () => {
+    const fuente = vm.runInContext('descargarOrdenPDF.toString()', ejecutarScript());
+    expect(fuente).toContain("method: 'POST'");
+    // Si volviera a GET, los datos del formulario no tendrian donde ir y
+    // desaparecerian en silencio.
+    expect(fuente).toContain('JSON.stringify');
+  });
+
   test('el nombre del archivo sale del Content-Disposition del servidor', () => {
     const fuente = vm.runInContext('descargarOrdenPDF.toString()', ejecutarScript());
     expect(fuente).toContain('Content-Disposition');
@@ -311,7 +320,9 @@ describe('basededatosgeneral.html datos para la OC', () => {
 
   test('la tabla de cuentas bancarias del proveedor existe y arranca vacia', () => {
     expect(html).toContain('id="tablaCuentasProv"');
-    expect(html).toContain('agregarFilaCuentaProv()');
+    // El boton dice a que tabla agregar la fila: hay dos formularios con la
+    // misma tabla y sin ese argumento la cuenta nueva iria a la otra.
+    expect(html).toContain("agregarFilaCuentaProv('tablaCuentasProv')");
     // Sin cuentas el PDF omite el bloque; el placeholder no es un dato.
     expect(html).toContain('Sin cuentas registradas.');
   });
@@ -323,6 +334,46 @@ describe('basededatosgeneral.html datos para la OC', () => {
     }
     // Una fila a medio llenar no debe llegar al backend como cuenta vacia.
     expect(fuente).toContain('filter(');
+  });
+
+  test('el formulario previo a imprimir pide los seis datos de entrega', () => {
+    for (const id of ['ocLugarEntrega', 'ocFechaEntrega', 'ocAreaSolicitante', 'ocFormaPago', 'ocHorarioRecepcion', 'ocAtencion']) {
+      expect(html).toContain(`id="${id}"`);
+    }
+  });
+
+  test('el formulario previo pide tambien emisor y cuentas del proveedor', () => {
+    for (const id of ['ocEmisorNombre', 'ocEmisorCargo', 'ocEmisorCelular', 'tablaCuentasOC']) {
+      expect(html).toContain(`id="${id}"`);
+    }
+    // Las cuentas del PDF salen de una tabla distinta a la de la orden, asi que
+    // el modal necesita su propia copia editable.
+    expect(html).toContain("agregarFilaCuentaProv('tablaCuentasOC')");
+  });
+
+  test('el formulario avisa de lo que falta pero no impide imprimir', () => {
+    // Bloquear seria cambiar una regla del sistema: hoy una OC con los datos a
+    // medias se puede emitir, y negarse dejaria sin poder imprimir una orden
+    // vieja que ya se habia impreso antes.
+    const fuente = vm.runInContext('pintarAvisoFaltantes.toString()', ejecutarScript());
+    expect(fuente).toContain('boton.disabled = false');
+    expect(fuente).toContain('faltantes');
+    const generar = vm.runInContext('generarOCDesdeModal.toString()', ejecutarScript());
+    // La generacion no consulta la lista de faltantes: se imprime con o sin
+    // ellos. El aviso es informacion, no una condicion.
+    expect(generar).not.toContain('faltantes');
+  });
+
+  test('los huecos los cuenta el backend, no la pagina', () => {
+    // El aviso tiene que decir lo mismo que la maqueta. Si cada lado contara
+    // los huecos por su cuenta, el formulario dira "falta el cargo" mientras el
+    // PDF lo imprime con guion.
+    expect(html).toContain('/datos-oc');
+    expect(html).toContain('faltantes');
+  });
+
+  test('el modal deja claro que los datos no se guardan', () => {
+    expect(html).toContain('solo para este PDF');
   });
 
   test('guardarProveedor manda las cuentas y editarProveedor las vuelve a pintar', () => {
@@ -345,7 +396,9 @@ describe('basededatosgeneral.html datos para la OC', () => {
 
   test('quitar la ultima fila deja el placeholder, no un tbody vacio', () => {
     const fuente = vm.runInContext('quitarFilaCuentaProv.toString()', ejecutarScript());
-    expect(fuente).toContain('renderCuentasProv([])');
+    // El id del tbody traveling con el boton: la fila quitada puede estar en la
+    // tabla del modal y hay que repintar esa, no la del proveedor.
+    expect(fuente).toContain('renderCuentasProv([], cuerpo.id)');
   });
 });
 

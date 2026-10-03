@@ -30,18 +30,51 @@ const PDFDocument = require('pdfkit');
 const { datosMoneda, repartirIgv } = require('./ocPdfDatos');
 
 const CM = 28.3465; // 1 cm en puntos, que es la unidad en la que trabaja pdfkit
-const LETTER_ANCHO = 612; // 8.5 pulgadas, el ancho de carta segun pdfkit
+
+/**
+ * A4 horizontal: 841.89 x 595.28 puntos (29.7 x 21 cm).
+ *
+ * Se pone la hoja apaisada porque el formato de la OC es una tabla ancha: en
+ * vertical la descripcion de un producto tinha que partirse en tres renglones y
+ * la tabla de cuentas parecia un recibo de supermercado. Horizontal entra con
+ * holgura y la letra se puede agrandar.
+ *
+ * El alto es el precio. A4 vertical dejaba 735 puntos utiles y apaisado deja
+ * 538, asi que todo lo que se ahorre en lo alto es lo que decide si la orden
+ * cabe en una hoja o se parte en dos. Por eso el bloque de datos va en cuatro
+ * columnas y las tablas se reparten el ancho sobrante en vez de usar medidas
+ * sueltas.
+ */
+const PAGINA = { width: 841.89, height: 595.28 };
 
 const MARGEN = 1.0 * CM;
-const ANCHO = LETTER_ANCHO - 2 * MARGEN; // ancho util
-const MITAD = ANCHO / 2;
-const X_IZQUIERDA = MARGEN;
-const X_DERECHA = MARGEN + MITAD;
-const ANCHO_ETIQUETA = 3.1 * CM;
+const ANCHO = PAGINA.width - 2 * MARGEN; // ancho util: 785.2
+const ANCHO_ETIQUETA = 2.9 * CM;
+const TAMANO_DATOS = 7.5;
+const ALTO_FILA_DATOS = 0.32 * CM;
 // Holgura entre el valor de una columna y la etiqueta de la siguiente. Sin ella
-// las dos mitadas se tocan justo y un correo largo del proveedor se junta con
+// las columnas se tocan justo y un correo largo del proveedor se junta con
 // "EMITIDO POR:" sin ningun espacio en blanco de por medio.
 const HOLGURA = 0.35 * CM;
+
+// Pie del documento: condiciones, hueco y firmas. Se miden contra los datos de
+// esta orden (ver medirPie), no se hardcodean, porque cuantas lineas ocupa cada
+// condicion depende de si el horario o el lugar de entrega envuelven.
+const ALTO_TITULO_CONDICIONES = 10;
+const ALTO_LINEA = 7.2; // una linea de Helvetica a 6 pt
+const HUECO_CONDICIONES_FIRMAS = 0.8 * CM;
+const ALTO_FIRMAS = 0.5 * CM + 9;
+// Margen de seguridad de la reserva. heightOfString() mide cada trozo por
+// separado y no sabe de negritas, asi que cuando una condicion parte en dos
+// lineas puede quedarse corta. Este margen absorbe esa diferencia; la garantia
+// de que nada se salga de la hoja no depende de aqui, sino de la comprobacion
+// final que mueve el pie a otra pagina si aun asi no cabe.
+const HOLGURA_RESERVA = 12;
+// Y del pie de pagina, un poco dentro del margen inferior. Vive en el margen a
+// proposito, pero no pegado al borde: una impresora de oficina no imprime a
+// menos de 4 mm del canto y el pie se perderia al mandar a papel.
+const Y_PIE_PAGINA = PAGINA.height - MARGEN + 3.5;
+const BORDE_IMPRIMIBLE = 12; // 4.2 mm: lo que una impresora respeta de verdad
 
 const AZUL_OSCURO = '#1A365D';
 const AZUL = '#2B6CB0';
@@ -53,10 +86,28 @@ const ROJO = '#C53030';
 // hay que cambiarla, se cambia aqui.
 const RAZON_SOCIAL = 'CORPORACION DON LALO SAC';
 
-// Anchos de la tabla de productos, en cm. Suman 18.2 de los 19.6 utiles.
-const ANCHOS_PRODUCTOS = [4.7, 1.1, 1.1, 1.2, 1.8, 1.5, 1.8].map(c => c * CM);
-// Anchos de la tabla de cuentas, en cm. Suman 18.0 de los 19.6 utiles.
-const ANCHOS_BANCOS = [2.6, 4.8, 4.2, 2.0, 4.4].map(c => c * CM);
+/**
+ * Reparte los anchos de una tabla para que llenen el ancho util exacto.
+ *
+ * Las medidas van en cm como proporciones, no como centimetros finales. Sumarlas
+ * a mano contra el ancho de la hoja es como la tabla se desalinea: el dia que
+ * la hoja cambia de tamano, la suma queda corta y la ultima columna se sale del
+ * papel, o larga y pisa la tabla de al lado. Con esto la suma cuadra sola.
+ *
+ * @param {number[]} proporciones - Anchos relativos en cm.
+ * @returns {number[]} Anchos en puntos, sumando ANCHO.
+ */
+function repartirAnchos(proporciones) {
+  const total = proporciones.reduce((a, b) => a + b, 0);
+  return proporciones.map(p => (p / total) * ANCHO);
+}
+
+// Tabla de productos. La descripcion se lleva la parte grande porque es lo que
+// envuelve; las columnas de numeros se reparten lo justo para que los miles no
+// se corten con puntos suspensivos.
+const ANCHOS_PRODUCTOS = repartirAnchos([10.2, 1.9, 1.7, 2.9, 3.5, 3.1, 4.4]);
+// Tabla de cuentas. El numero y el titular necesitan ancho para no partirse.
+const ANCHOS_BANCOS = repartirAnchos([4.2, 4.8, 5.6, 2.4, 10.7]);
 
 // Condiciones que dependen de datos de la orden. Cada una dice de donde sale el
 // valor y si es fecha, porque no todas lo son y aplicarles a todas un
@@ -140,7 +191,19 @@ function nombreArchivoSeguro(texto, respaldo) {
  */
 async function generarPDFOrdenCompra(datos) {
   const { orden, items, bancos, emisor } = datos;
-  const doc = new PDFDocument({ size: 'letter', margin: MARGEN });
+  // Se pasa el tamano en puntos y no 'A4' con layout: 'landscape' para que las
+  // medidas del codigo y las que ve pdfkit sean las mismas y no haya dos-truths.
+  //
+  // bufferPages guarda las hojas en memoria hasta el end(). Sin eso, pdfkit
+  // escribe cada hoja apenas se llena y bufferedPageRange() no devuelve ninguna:
+  // el pie con "pagina X de Y" necesita saber el total, y el total solo se
+  // conoce cuando todas las hojas ya estan escritas. Son un par de paginas de
+  // texto, la memoria no es un problema.
+  const doc = new PDFDocument({
+    size: [PAGINA.width, PAGINA.height],
+    margin: MARGEN,
+    bufferPages: true
+  });
   const trozos = [];
   doc.on('data', c => trozos.push(c));
   const terminado = new Promise((resolve, reject) => {
@@ -167,34 +230,38 @@ async function generarPDFOrdenCompra(datos) {
     .fillColor('#000000');
   doc.y += 0.6 * CM;
 
-  // ---- Bloque de dos columnas ----
-  const izquierda = [
+  // ---- Datos de la orden ----
+  // Cuatro columnas y no dos. Es el cambio que hace que la orden quepa en una
+  // hoja: los mismos datos, en vez de trece renglones en dos columnas, ocupan
+  // cuatro. La hoja apaisada da el ancho justo para eso sin que el valor del
+  // proveedor quede pisado por la etiqueta de al lado.
+  const pares = [
     ['PROVEEDOR:', valorO(orden.proveedor_nombre_actual || orden.proveedor_nombre)],
     ['RUC:', valorO(orden.ruc)],
     ['ATENCIÓN:', valorO(orden.atencion || orden.contacto)],
     ['CEL:', valorO(orden.telefono)],
     ['E-MAIL:', valorO(orden.email)],
     ['FORMA DE PAGO:', valorO(orden.forma_pago)],
-    ['MONEDA:', `${simbolo} ${valorO(orden.moneda)}`]
-  ];
-  const derecha = [
+    ['MONEDA:', `${simbolo} ${valorO(orden.moneda)}`],
     ['EMITIDO POR:', valorO(emisor && emisor.nombre)],
     ['CARGO:', valorO(emisor && emisor.cargo)],
     ['CEL:', valorO(emisor && emisor.celular)],
     ['FECHA:', fmtFecha(orden.fecha_orden || orden.fecha_registro)],
     ['HORA:', valorO(fmtHora(orden.fecha_registro))],
+    ['ÁREA SOLICITANTE:', valorO(orden.area_solicitante)],
     ['HORARIO RECEPCIÓN:', valorO(orden.horario_recepcion)]
   ];
 
   const yBloque = doc.y;
-  const yFin = Math.max(
-    escribirColumna(doc, izquierda, X_IZQUIERDA, yBloque),
-    escribirColumna(doc, derecha, X_DERECHA, yBloque)
-  );
-    // El recuadro se dibuja al final para que el texto quede encima del borde.
+  const yFin = dibujarDatos(doc, pares, MARGEN, yBloque, 4);
+  // El recuadro se dibuja al final para que el texto quede encima del borde.
   doc.save().lineWidth(1).strokeColor(GRIS)
     .rect(MARGEN, yBloque, ANCHO, yFin - yBloque + 0.15 * CM).stroke().restore();
-  doc.y = yFin + 0.55 * CM;
+  doc.y = yFin + 0.5 * CM;
+
+  // ---- Pie: medido antes, porque las tablas necesitan saber donde cortar ----
+  const condiciones = paresCondiciones(orden);
+  const limiteInferior = PAGINA.height - MARGEN - medirPie(doc, condiciones);
 
   // ---- Tabla de productos ----
   const igvPorLinea = repartirIgv(items, orden.igv_pct, igvOrden);
@@ -231,12 +298,13 @@ async function generarPDFOrdenCompra(datos) {
     cabeceras: ['DESCRIPCIÓN', 'CANT.', 'UM', 'PU', 'SUB TOTAL', 'IGV', 'PT'],
     filas,
     anchos: ANCHOS_PRODUCTOS,
-    encabezado: AZUL_OSCURO
+    encabezado: AZUL_OSCURO,
+    limiteInferior
   });
 
   doc.font('Helvetica').fontSize(6)
-    .text(`IGV aplicado: ${Number(orden.igv_pct) || 0}%`, MARGEN, doc.y + 0.15 * CM, { width: ANCHO, align: 'right' });
-  doc.y += 0.55 * CM;
+    .text(`IGV aplicado: ${Number(orden.igv_pct) || 0}%`, MARGEN, doc.y + 0.12 * CM, { width: ANCHO, align: 'right' });
+  doc.y += 0.5 * CM;
 
   // ---- Cuentas bancarias ----
   doc.font('Helvetica-Bold').fontSize(7.5).text('CUENTAS BANCARIAS AUTORIZADAS PARA PAGO:', MARGEN, doc.y, { width: ANCHO });
@@ -246,44 +314,38 @@ async function generarPDFOrdenCompra(datos) {
       cabeceras: ['BANCO', 'TIPO DE CUENTA', 'NÚMERO DE CUENTA', 'MONEDA', 'TITULAR'],
       filas: bancos.map(c => ({
         celdas: [
-          { texto: valorO(c.banco), al: 'left' },
-          { texto: valorO(c.tipo) },
+          { texto: valorO(c.banco), al: 'left', envolver: true },
+          { texto: valorO(c.tipo), al: 'left' },
           { texto: valorO(c.numero) },
           { texto: `${datosMoneda(c.moneda).simbolo} ${valorO(c.moneda)}` },
           { texto: valorO(c.titular), al: 'left' }
         ]
       })),
       anchos: ANCHOS_BANCOS,
-      encabezado: GRIS_OSCURO
+      encabezado: GRIS_OSCURO,
+      limiteInferior
     });
   } else {
     doc.font('Helvetica-Oblique').fontSize(7).fillColor('#555555')
       .text('El proveedor no tiene cuentas bancarias registradas.', MARGEN, doc.y, { width: ANCHO });
     doc.fillColor('#000000');
   }
-  doc.y += 0.55 * CM;
+  doc.y += 0.5 * CM;
 
-  // ---- Condiciones generales ----
-  doc.font('Helvetica-Bold').fontSize(6).text('CONDICIONES GENERALES:', MARGEN, doc.y, { width: ANCHO });
-  doc.font('Helvetica').fontSize(6);
-  for (const cond of CONDICIONES) {
-    const crudo = String(orden[cond.campo] || '').trim();
-    if (!crudo) continue;
-    doc.font('Helvetica-Bold').text(`${cond.etiqueta}: `, MARGEN, doc.y, { width: ANCHO, continued: true });
-    doc.font('Helvetica').text(`${cond.fecha ? fmtFecha(crudo) : crudo}\n`, { width: ANCHO });
+  // ---- Condiciones generales y firmas ----
+  // Si al terminar las condiciones ya se invadio el margen inferior, el pie
+  // entero se dibuja en una hoja nueva. Es la unica garantia real de que las
+  // firmas no salgan del papel: la reserva de arriba es una estimacion.
+  const yPie = doc.y;
+  dibujarCondiciones(doc, condiciones);
+  if (doc.y > PAGINA.height - MARGEN - HUECO_CONDICIONES_FIRMAS - ALTO_FIRMAS) {
+    doc.addPage({ size: [PAGINA.width, PAGINA.height], margin: MARGEN });
   }
-  for (const linea of CONDICIONES_FIJAS) {
-    const corte = linea.indexOf('</b>');
-    doc.font('Helvetica-Bold').text(linea.slice(0, corte + 4).replace(/<\/?b>/g, ''), MARGEN, doc.y, { width: ANCHO, continued: true });
-    doc.font('Helvetica').text(linea.slice(corte + 4) + '\n', { width: ANCHO });
-  }
-  doc.y += 0.8 * CM;
+  const yFirmas = Math.max(doc.y, yPie) + HUECO_CONDICIONES_FIRMAS;
 
-  // ---- Firmas ----
   // La linea base se calcula una sola vez. text() mueve doc.y aunque se le
   // pase una Y explicita, asi que leer doc.y dentro del bucle apilaba las tres
   // firmas en cascada en vez de alinearlas.
-  const yFirmas = doc.y;
   const anchoTercio = ANCHO / FIRMAS.length;
   FIRMAS.forEach((firma, i) => {
     const x = MARGEN + i * anchoTercio;
@@ -294,50 +356,181 @@ async function generarPDFOrdenCompra(datos) {
     doc.font('Helvetica-Bold').fontSize(7).text(firma, x, yFirmas + 0.5 * CM, { width: ancho, align: 'center' });
   });
 
+  // Pie de pagina con la numeracion. Se dibuja al final porque el total de
+  // paginas solo se conoce cuando todo el contenido ya esta colocado: se
+  // recorre el rango guardado y se estampa hoja por hoja.
+  const rango = doc.bufferedPageRange();
+  if (rango.count > 1) {
+    for (let i = rango.start; i < rango.start + rango.count; i++) {
+      doc.switchToPage(i);
+      // El pie va dentro del margen inferior, que es justo donde pdfkit decide
+      // que un texto no cabe y parte la hoja. Sin bajar el margen a cero, cada
+      // pie abria una hoja en blanco: el PDF de dos paginas salia de cuatro.
+      doc.page.margins.bottom = 0;
+      doc.font('Helvetica').fontSize(6.5).fillColor(GRIS_OSCURO)
+        .text(`Orden de compra N° ${String(orden.numero || '')}   |   Página ${i - rango.start + 1} de ${rango.count}`,
+          MARGEN, Y_PIE_PAGINA, { width: ANCHO, align: 'center', lineBreak: false });
+      doc.fillColor('#000000');
+    }
+  }
+
   doc.end();
   return terminado;
 }
 
-/**
- * Escribe una etiqueta en negrita y su valor al lado, en una sola columna del
- * bloque de encabezado.
- * @returns {number} La Y de debajo del ultimo par.
- */
-function escribirColumna(doc, pares, x, yInicio) {
-  const anchoValor = MITAD - ANCHO_ETIQUETA - HOLGURA;
-  const altoMinimo = 0.32 * CM;
-  let y = yInicio;
-  for (const [etiqueta, valor] of pares) {
-    doc.font('Helvetica-Bold').fontSize(7.5).text(etiqueta, x, y, {
-      width: ANCHO_ETIQUETA, align: 'left', lineBreak: false
-    });
-    const altoEtiqueta = doc.heightOfString(etiqueta, { width: ANCHO_ETIQUETA });
-    doc.font('Helvetica').text(valor, x + ANCHO_ETIQUETA, y, { width: anchoValor, align: 'left' });
-    const altoValor = doc.heightOfString(valor, { width: anchoValor });
-    y += Math.max(altoEtiqueta, altoValor, altoMinimo);
+/** Escribe el bloque de condiciones al pie del documento. */
+function dibujarCondiciones(doc, pares) {
+  doc.font('Helvetica-Bold').fontSize(6).text('CONDICIONES GENERALES:', MARGEN, doc.y, { width: ANCHO });
+  doc.font('Helvetica').fontSize(6);
+  for (const [negrita, normal] of pares) {
+    doc.font('Helvetica-Bold').text(negrita, MARGEN, doc.y, { width: ANCHO, continued: true });
+    doc.font('Helvetica').text(normal, { width: ANCHO });
   }
-  return y;
+}
+
+/**
+ * Escribe el bloque de datos del encabezado en varias columnas alineadas.
+ *
+ * Se mide antes de dibujar, en dos pasadas, y eso no es opcional:
+ *
+ *  - El ancho de la etiqueta sale de la etiqueta mas larga. Con una caja fija,
+ *    "HORARIO RECEPCIÓN:" no entra y se parte en dos lineas, dejando la
+ *    etiqueta y su valor desalineados.
+ *  - El alto de cada renglon es el maximo entre columnas. Si cada columna
+ *    avanzara su Y por su cuenta, en cuanto un valor envuelve (un correo o un
+ *    nombre de proveedor largo) esa columna se correria hacia abajo y sus
+ *    etiquetas dejarian de caer en linea con las de al lado. En un documento que
+ *    van a firmar tres personas, esas filas torcidas se notan.
+ *
+ * @param {object} doc
+ * @param {Array<[string,string]>} pares - Etiqueta y valor.
+ * @param {number} columnas - Cuantas columnas.
+ * @returns {number} La Y de debajo del bloque.
+ */
+function dibujarDatos(doc, pares, x, y, columnas) {
+  const anchoColumna = ANCHO / columnas;
+  const filasPorColumna = Math.ceil(pares.length / columnas);
+  const bloques = [];
+  for (let c = 0; c < columnas; c++) {
+    bloques.push(pares.slice(c * filasPorColumna, (c + 1) * filasPorColumna));
+  }
+
+  doc.font('Helvetica-Bold').fontSize(TAMANO_DATOS);
+  const anchoEtiqueta = Math.max(
+    ANCHO_ETIQUETA,
+    ...pares.map(([etiqueta]) => doc.widthOfString(etiqueta) + 3)
+  );
+  const anchoValor = anchoColumna - anchoEtiqueta - HOLGURA;
+
+  // Pasada de medicion: alto que necesita cada celda con los anchos definitivos.
+  doc.font('Helvetica').fontSize(TAMANO_DATOS);
+  const alturas = bloques.map(bloque => bloque.map(([etiqueta, valor]) =>
+    Math.max(
+      doc.heightOfString(etiqueta, { width: anchoEtiqueta }),
+      doc.heightOfString(valor, { width: anchoValor }),
+      ALTO_FILA_DATOS
+    )));
+
+  // Un solo alto por renglon, compartido por las cuatro columnas.
+  const altoFila = [];
+  for (let f = 0; f < filasPorColumna; f++) {
+    altoFila[f] = Math.max(ALTO_FILA_DATOS, ...alturas.map(a => a[f] || 0));
+  }
+
+  let yFin = y;
+  bloques.forEach((bloque, c) => {
+    const xc = x + c * anchoColumna;
+    let yc = y;
+    bloque.forEach(([etiqueta, valor], f) => {
+      doc.font('Helvetica-Bold').fontSize(TAMANO_DATOS)
+        .text(etiqueta, xc, yc, { width: anchoEtiqueta, align: 'left', lineBreak: false });
+      doc.font('Helvetica').text(valor, xc + anchoEtiqueta, yc, { width: anchoValor, align: 'left' });
+      yc += altoFila[f];
+    });
+    yFin = Math.max(yFin, yc);
+  });
+  return yFin;
+}
+
+/**
+ * Las condiciones del pie, como pares [negrita, normal].
+ *
+ * Se separa del dibujado para poder medirlas antes de dibujar la tabla: la
+ * tabla de productos necesita saber cuanto pie le queda libre para decidir por
+ * donde cortar las filas. Cada condicion se arma igual que antes, solo que
+ * primero se junta todo en una lista.
+ */
+function paresCondiciones(orden) {
+  const pares = [];
+  for (const cond of CONDICIONES) {
+    const crudo = String(orden[cond.campo] || '').trim();
+    if (!crudo) continue;
+    pares.push([`${cond.etiqueta}: `, `${cond.fecha ? fmtFecha(crudo) : crudo}\n`]);
+  }
+  for (const linea of CONDICIONES_FIJAS) {
+    const corte = linea.indexOf('</b>');
+    pares.push([
+      linea.slice(0, corte + 4).replace(/<\/?b>/g, ''),
+      linea.slice(corte + 4) + '\n'
+    ]);
+  }
+  return pares;
+}
+
+/**
+ * Alto que necesita el pie de esta orden: condiciones, hueco y firmas.
+ *
+ * Es una reserva, no una garantia. heightOfString() mide cada fragmento por
+ * separado y no tiene en cuenta el texto encadenado en negrita y normal, asi
+ * que si una condicion envuelve en dos lineas esta cuenta puede quedarse corta;
+ * por eso HOLGURA_RESERVA. Lo que si garantiza que nada salga de la hoja es el
+ * salto de pagina final, que corre el pie a otra hoja si no cabe.
+ */
+function medirPie(doc, pares) {
+  doc.font('Helvetica').fontSize(6);
+  let alto = ALTO_TITULO_CONDICIONES;
+  for (const [negrita, normal] of pares) {
+    const a = doc.heightOfString(negrita, { width: ANCHO });
+    const b = doc.heightOfString(normal, { width: ANCHO });
+    alto += Math.max(a, b, ALTO_LINEA);
+  }
+  return alto + HUECO_CONDICIONES_FIRMAS + ALTO_FIRMAS + HOLGURA_RESERVA;
 }
 
 /**
  * Dibuja una tabla con celdas de alto variable (por texto que envuelve) y deja
  * doc.y en la fila siguiente.
+ *
+ * Parte de pagina: antes de dibujar una fila se comprueba si cabe entera por
+ * encima de limiteInferior y, si no, salta a una hoja nueva y vuelve a pintar
+ * la cabecera. Sin esto una orden con veinte lineas no se parte: se dibuja de
+ * mas alla del borde inferior y las ultimas filas se pierden, y el proveedor
+ * recibe una compra con menos productos de los que dice tener.
+ *
+ * @param {object} doc
+ * @param {{cabeceras:string[], filas:Array, anchos:number[], encabezado:string, pieDeTabla?:number}} opciones
  */
-function dibujarTabla(doc, { cabeceras, filas, anchos, encabezado }) {
+function dibujarTabla(doc, { cabeceras, filas, anchos, encabezado, limiteInferior }) {
   const x = MARGEN;
   const anchoTotal = anchos.reduce((a, b) => a + b, 0);
   const altoCabecera = 0.6 * CM;
   let y = doc.y;
+  let continua = false;
 
-  doc.save().rect(x, y, anchoTotal, altoCabecera).fillColor(encabezado).fill().restore();
-  doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#FFFFFF');
-  let cx = x;
-  cabeceras.forEach((h, i) => {
-    doc.text(h, cx, y + 0.16 * CM, { width: anchos[i], align: 'center' });
-    cx += anchos[i];
-  });
-  doc.fillColor('#000000');
-  y += altoCabecera;
+  // La cabecera se vuelve a pintar en cada salto de pagina: sin ella, la segunda
+  // hoja es una lista de numeros sin saber que columna es cual.
+  const pintarCabecera = () => {
+    doc.save().rect(x, y, anchoTotal, altoCabecera).fillColor(encabezado).fill().restore();
+    doc.font('Helvetica-Bold').fontSize(6.5).fillColor('#FFFFFF');
+    let cx = x;
+    cabeceras.forEach((h, i) => {
+      doc.text(h, cx, y + 0.16 * CM, { width: anchos[i], align: 'center', lineBreak: false, ellipsis: true });
+      cx += anchos[i];
+    });
+    doc.fillColor('#000000');
+    y += altoCabecera;
+  };
+  pintarCabecera();
 
   for (const fila of filas) {
     const esTotal = !!fila.total;
@@ -352,12 +545,19 @@ function dibujarTabla(doc, { cabeceras, filas, anchos, encabezado }) {
       }
     }
 
+    if (y + alto > limiteInferior) {
+      doc.addPage({ size: [PAGINA.width, PAGINA.height], margin: MARGEN });
+      y = MARGEN;
+      pintarCabecera();
+      continua = true;
+    }
+
     if (esTotal) {
       doc.save().rect(x, y, anchoTotal, alto).fillColor(AZUL).fill().restore();
       doc.fillColor('#FFFFFF');
     }
     doc.font(esTotal ? 'Helvetica-Bold' : 'Helvetica').fontSize(6.5);
-    cx = x;
+    let cx = x;
     for (let i = 0; i < fila.celdas.length; i++) {
       const celda = fila.celdas[i];
       doc.text(celda.texto, cx + 0.1 * CM, y + 0.15 * CM, {
@@ -381,10 +581,13 @@ function dibujarTabla(doc, { cabeceras, filas, anchos, encabezado }) {
   }
 
   doc.y = y;
-  return y;
+  return { fin: y, continua };
 }
 
 module.exports = {
   generarPDFOrdenCompra, fmtMoneda, fmtFecha, fmtHora, fmtCantidad,
-  nombreArchivoSeguro, RAZON_SOCIAL
+  nombreArchivoSeguro, RAZON_SOCIAL,
+  // Geometria de la hoja, expuesta para que las pruebas puedan comprobar que
+  // nada se sale del papel sin tener que reimprimir las medidas aqui.
+  PAGINA, MARGEN, ANCHO, Y_PIE_PAGINA, BORDE_IMPRIMIBLE, repartirAnchos
 };

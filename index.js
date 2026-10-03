@@ -16,7 +16,7 @@ const { analizarDocumentoConGemini } = require('./services/geminiService');
 const { initRedis } = require('./services/rateLimiter');
 const { authMiddleware, crearGuardRoles, ROLES_MODULO } = require('./middleware/auth');
 const { calcularInsumosProduccion } = require('./services/recipeService');
-const { datosParaOrdenPDF } = require('./services/ocPdfDatos');
+const { datosParaOrdenPDF, datosFormularioOC } = require('./services/ocPdfDatos');
 const { generarPDFOrdenCompra, nombreArchivoSeguro } = require('./services/pdfOrdenCompra');
 const { normalizar } = require('./utils/helpers');
 
@@ -3465,13 +3465,42 @@ app.get('/api/bd/ordenes/:id', requerirRolBDGeneral, async (req, res) => {
  * autenticacion va solo por header y un window.open() llegaria sin token y se
  * llevaria un 401.
  */
-app.get('/api/bd/ordenes/:id/pdf', requerirRolBDGeneral, async (req, res) => {
+app.get('/api/bd/ordenes/:id/datos-oc', requerirRolBDGeneral, async (req, res) => {
     try {
         const id = parseInt(req.params.id, 10);
         if (!Number.isInteger(id) || id <= 0) {
             return res.status(400).json({ success: false, mensaje: 'ID de orden no válido.' });
         }
+        // Reusa el mismo lector que arma el PDF. Es lo que hace que el aviso de
+        // "falta esto" sea el mismo que la maqueta: si el formulario contara los
+        // huecos por su cuenta, todavia se podrian desalinear.
         const datos = await datosParaOrdenPDF(pool, id);
+        if (!datos) {
+            return res.status(404).json({ success: false, mensaje: 'La orden no existe.' });
+        }
+        res.json({ success: true, datos: datosFormularioOC(datos) });
+    } catch (err) {
+        console.error('Error datos OC:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+app.post('/api/bd/ordenes/:id/pdf', requerirRolBDGeneral, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ success: false, mensaje: 'ID de orden no válido.' });
+        }
+        // POST y no GET porque el formulario que se abre antes de imprimir manda
+        // datos que no se guardan en ningun lado: solo existen en este PDF. Por
+        // GET no hay donde ponerlos, y meterlos en la query seria meter un
+        // arreglo de cuentas bancarias en la URL.
+        const cuerpo = req.body || {};
+        const datos = await datosParaOrdenPDF(pool, id, {
+            entrega: cuerpo.entrega,
+            emisor: cuerpo.emisor,
+            cuentas: cuerpo.cuentas
+        });
         if (!datos) {
             return res.status(404).json({ success: false, mensaje: 'La orden no existe.' });
         }
@@ -3482,7 +3511,7 @@ app.get('/api/bd/ordenes/:id/pdf', requerirRolBDGeneral, async (req, res) => {
         res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
         res.end(buffer);
     } catch (err) {
-        console.error('Error GET PDF orden:', err);
+        console.error('Error POST PDF orden:', err);
         res.status(500).json({ success: false, mensaje: err.message });
     }
 });

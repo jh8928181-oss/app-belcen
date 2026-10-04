@@ -2555,7 +2555,10 @@ app.get('/api/produccion/historial-cierres', async (req, res) => {
 });
 
 // --- REFINERÍA: REPORTE DIARIO DE CONTROL E INVENTARIO ---
-const ROLES_REFINADO = ['auditoria', 'supervisor', 'produccion', 'refinado'];
+// 'admin' entra como en el resto de módulos: ROLES_MODULO y los guards de
+// auditoría, BD General e inventario de refinado ya lo admiten. Faltaba aquí y
+// era el único 403 real que recibía el administrador (enforce:true).
+const ROLES_REFINADO = ['admin', 'auditoria', 'supervisor', 'produccion', 'refinado'];
 
 // enforce: true porque estas rutas ya bloqueaban antes de existir el modo observación.
 const requerirRolRefinado = crearGuardRoles(ROLES_REFINADO, { enforce: true });

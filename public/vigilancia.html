@@ -488,11 +488,11 @@
     <script>
         // Control estricto de roles
         const rolUsuario = localStorage.getItem('rol_actual');
-        if (!rolUsuario || (rolUsuario !== 'vigilancia' && rolUsuario !== 'supervisor' && rolUsuario !== 'produccion')) {
+        if (!rolUsuario || (rolUsuario !== 'admin' && rolUsuario !== 'vigilancia' && rolUsuario !== 'supervisor' && rolUsuario !== 'produccion')) {
             alert('❌ Acceso no autorizado.');
             window.location.href = 'index.html';
         }
-        if (rolUsuario !== 'supervisor' && rolUsuario !== 'produccion') {
+        if (rolUsuario !== 'admin' && rolUsuario !== 'supervisor' && rolUsuario !== 'produccion') {
             document.getElementById('linkDashboard').style.display = 'none';
         }
 

@@ -581,11 +581,11 @@
     <script src="/auth-client.js"></script>
     <script>
         const rolUsuario = localStorage.getItem('rol_actual') || localStorage.getItem('rol_usuario');
-        if (!rolUsuario || (rolUsuario !== 'auditoria' && rolUsuario !== 'supervisor' && rolUsuario !== 'produccion')) {
+        if (!rolUsuario || (rolUsuario !== 'admin' && rolUsuario !== 'auditoria' && rolUsuario !== 'supervisor' && rolUsuario !== 'produccion')) {
             alert('❌ Acceso no autorizado.');
             window.location.href = 'index.html';
         }
-        if (rolUsuario !== 'supervisor' && rolUsuario !== 'produccion') {
+        if (rolUsuario !== 'admin' && rolUsuario !== 'supervisor' && rolUsuario !== 'produccion') {
             document.getElementById('linkDashboard').style.display = 'none';
             document.querySelectorAll('.atajo-dash').forEach(el => { el.style.display = 'none'; });
         }

@@ -477,3 +477,63 @@ describe('mapa de flujo montado en la app', () => {
     expect(next).toHaveBeenCalled();
   });
 });
+
+// Refinado es el unico guard con enforce:true que se habia quedado fuera de
+// 'admin': el resto (ROLES_MODULO, auditoria, BD General, inventario de
+// refinado) lo admitian, asi que admin1 entraba a todas las pantallas menos a
+// esta y recibia un 403 de verdad, no un simple aviso.
+describe('guard de Refinado', () => {
+  const { app } = require('../index');
+
+  function capaRuta(metodo, ruta) {
+    const stack = (app.router || app._router).stack;
+    const capa = stack.find((l) => l.route && l.route.path === ruta && l.route.methods[metodo]);
+    return capa ? capa.route.stack : null;
+  }
+
+  test('las cuatro rutas de refinado llevan guard antes que el handler', () => {
+    [['get', '/api/refinado/reporte'], ['post', '/api/refinado/guardar'],
+      ['post', '/api/refinado/lotes/eliminar'], ['get', '/api/refinado/historial']]
+      .forEach(([metodo, ruta]) => expect(capaRuta(metodo, ruta)).toHaveLength(2));
+  });
+
+  test('admin entra a refinado, igual que en los demas modulos', () => {
+    const stack = capaRuta('get', '/api/refinado/reporte');
+    const next = jest.fn();
+
+    stack[0].handle({ rol: 'admin', method: 'GET', originalUrl: '/api/refinado/reporte', usuario: 'admin1' }, resFalso(), next);
+
+    expect(next).toHaveBeenCalled();
+  });
+
+  test('admin entra tambien a las rutas de escritura de refinado', () => {
+    const stack = capaRuta('post', '/api/refinado/guardar');
+    const next = jest.fn();
+
+    stack[0].handle({ rol: 'admin', method: 'POST', originalUrl: '/api/refinado/guardar', usuario: 'admin1' }, resFalso(), next);
+
+    expect(next).toHaveBeenCalled();
+  });
+
+  test('un rol acotado sigue recibiendo 403 de verdad', () => {
+    // Abrirle la puerta a admin no debe convertir el guard en modo observacion
+    // ni dejar pasar a un rol de modulo.
+    const stack = capaRuta('get', '/api/refinado/reporte');
+    const res = resFalso();
+    const next = jest.fn();
+
+    stack[0].handle({ rol: 'almacen', method: 'GET', originalUrl: '/api/refinado/reporte', usuario: 'almacen1' }, res, next);
+
+    expect(res.statusCode).toBe(403);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test('los roles que ya tenian refinado siguen entrando', () => {
+    ['refinado', 'auditoria', 'supervisor', 'produccion'].forEach((rol) => {
+      const next = jest.fn();
+      capaRuta('get', '/api/refinado/reporte')[0]
+        .handle({ rol, method: 'GET', originalUrl: '/api/refinado/reporte', usuario: 'u' }, resFalso(), next);
+      expect(next).toHaveBeenCalled();
+    });
+  });
+});

@@ -223,6 +223,17 @@
         }
 
         @media (max-width: 640px) {
+            /* El .container lleva la clase reveal, y motion.css le aplica
+               translate junto con will-change: translate. Cualquier valor de
+               transform, y tambien will-change: translate, convierte al
+               elemento en bloque contenedor de sus descendientes fixed: el
+               bottom: 0 de la barra se resolvia contra el .container y no
+               contra la pantalla, por eso aparecia al final del documento en
+               lugar de quedar clavada abajo. Se anula solo en movil, que es
+               donde la barra es fixed; en escritorio es sticky y no le afecta.
+               Se conserva el fundido de opacity, solo se pierde el desliz de
+               18px del contenedor completo. */
+            html.js-motion .container.reveal { translate: none; will-change: auto; }
             body { padding: 12px 10px 92px; }
             .page-titulo { font-size: 28px; }
             .sub-bloque { padding: 14px 14px 4px; }

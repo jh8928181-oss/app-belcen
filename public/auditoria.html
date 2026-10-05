@@ -266,20 +266,42 @@
             }
             tr.fila-detalle td::before { content: none; }
 
+            /* Barra fija abajo. Los cuatro paneles se reparten el ancho con
+               flex: 1 1 0 en vez de dimensionarse por su contenido: asi los
+               cinco elementos caben en cualquier pantalla sin barra de
+               desplazamiento. Antes vaia justify-content: space-between con
+               overflow-x, y cuando el contenido no cabia el sobrante se
+               repartia hacia los dos extremos, el primer atajo se cortaba por
+               la izquierda y ya no se podia alcanzar desplazando. */
             .atajos {
                 position: fixed; top: auto; bottom: 0; left: 0; right: 0;
-                flex-wrap: nowrap; overflow-x: auto; border-radius: 0;
+                flex-wrap: nowrap; gap: 4px; border-radius: 0;
                 border-left: none; border-right: none; border-bottom: none;
                 border-top: 1px solid rgba(0, 0, 0, 0.07);
                 padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
-                justify-content: space-between; margin-bottom: 0;
+                justify-content: flex-start; margin-bottom: 0;
                 box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.08);
             }
-            .atajo { flex-direction: column; gap: 2px; padding: 6px 12px; font-size: 10px; flex: 0 0 auto; }
-            .atajo-contador { display: none; }
+            .atajo {
+                flex-direction: column; align-items: center; justify-content: center;
+                gap: 3px; padding: 7px 6px; font-size: 10px;
+            }
+            /* Los paneles ceden espacio parejo; min-width: 0 es lo que permite
+               que el texto se recorte con puntos suspensivos en vez de
+               desbordar la barra. */
+            .atajo[data-panel] {
+                flex: 1 1 0; min-width: 0; padding: 7px 4px;
+            }
+            .atajo[data-panel] > span:nth-child(2) {
+                max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+            }
+            .atajo-contador {
+                display: inline-block; padding: 0 5px; font-size: 9px; line-height: 15px;
+            }
             .atajos-mas {
                 display: inline-flex; align-items: center; justify-content: center;
-                color: var(--azul); font-weight: 800; padding: 6px 12px;
+                flex: 0 0 auto; min-width: 38px;
+                color: var(--azul); font-weight: 800; padding: 7px 10px;
             }
             .atajos-acciones {
                 position: absolute; bottom: calc(100% + 10px); right: 10px;
@@ -289,6 +311,13 @@
                 box-shadow: 0 18px 40px rgba(0, 0, 0, 0.2);
                 opacity: 0; pointer-events: none; transform: translateY(8px);
                 transition: opacity 0.25s, transform 0.25s;
+            }
+            /* Las acciones del menu se leen en fila. Sin esto heredan el
+               flex-direction: column de .atajo y cada boton se parte en dos
+               lineas con el icono arriba y el texto de 10px abajo. */
+            .atajos-acciones .atajo {
+                flex-direction: row; justify-content: flex-start; gap: 8px;
+                font-size: 13px; padding: 9px 12px; white-space: nowrap;
             }
             .atajos-acciones.abierto { opacity: 1; pointer-events: auto; transform: none; }
         }

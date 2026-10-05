@@ -2025,6 +2025,27 @@ app.get('/api/auditoria/entradas', gAuditoria, async (req, res) => {
     }
 });
 
+// Ingresos del dia en curso. El corte lo hace la base con CURRENT_DATE, no el
+// navegador: asi el servidor manda sobre que dia es y la consulta puede
+// aprovechar un indice sobre fecha_ingreso. El rango es [hoy, manana) para
+// entrar el dia completo sin depender de la hora.
+app.get('/api/vigilancia/ingresos', gVigilancia, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT id, fecha_ingreso, tipo_documento, numero_guia, proveedor, chofer,
+                   dni_chofer, placa, lugar_partida, observaciones, usuario_vigilancia,
+                   estado, items_json
+            FROM ingresos_vigilancia
+            WHERE fecha_ingreso >= CURRENT_DATE
+              AND fecha_ingreso <  CURRENT_DATE + INTERVAL '1 day'
+            ORDER BY fecha_ingreso DESC
+        `);
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
 app.get('/api/auditoria/vigilancia', gAuditoria, async (req, res) => {
     try {
         const result = await pool.query(`SELECT * FROM ingresos_vigilancia ORDER BY id DESC`);

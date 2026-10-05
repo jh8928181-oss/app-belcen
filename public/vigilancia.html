@@ -287,6 +287,44 @@
             border-radius: 999px; cursor: pointer; font-weight: 800; font-size: 14px; font-family: inherit;
             box-shadow: 0 6px 16px rgba(10, 132, 255, 0.30);
         }
+
+        /* ---------- MENÚ PRINCIPAL ----------
+           Copiado de envasado.html:162-179, con dos variantes mas. Las clases
+           viven en el <style> de cada pagina y no en motion.css, asi que se
+           copian. Las variables que usa (.menu-opciones usa ninguna, btn-volver
+           usa --texto y --texto2) ya existen mas arriba en esta pagina. */
+        .menu-opciones { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin-top: 22px; }
+        .opcion-menu {
+            flex: 1 1 260px; max-width: 300px; padding: 26px 20px; color: white; border: none;
+            border-radius: 20px; cursor: pointer; font-size: 17px; font-weight: 800; font-family: inherit;
+            box-shadow: 0 8px 22px rgba(0, 0, 0, 0.16); transition: transform 0.18s ease, box-shadow 0.18s ease;
+        }
+        .opcion-menu:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22); }
+        .opcion-menu:active { transform: scale(0.98); }
+        .opcion-menu small { font-weight: 500; font-size: 13px; display: block; margin-top: 8px; opacity: 0.92; }
+        .opc-verde { background: linear-gradient(145deg, #34c759, #28a745); }
+        .opc-azul { background: linear-gradient(145deg, #0a84ff, #007bff); }
+        .opc-naranja { background: linear-gradient(145deg, #ff9500, #e07b00); }
+        .opc-gris { background: linear-gradient(145deg, #8e8e93, #636366); }
+        /* Personal todavia no tiene modelo de datos: se muestra, pero sin poder
+           pulsarse, para que se vea que es lo siguiente y no un olvido. */
+        .opcion-menu:disabled { cursor: not-allowed; opacity: 0.62; filter: grayscale(0.35); transform: none; box-shadow: none; }
+        .sec-verde { border-top: 5px solid var(--verde); }
+        .sec-azul { border-top: 5px solid var(--azul); }
+        .sec-naranja { border-top: 5px solid #ff9500; }
+        .sec-gris { border-top: 5px solid #8e8e93; }
+        .btn-volver {
+            background: rgba(120, 120, 128, 0.14); color: var(--texto); border: none;
+            padding: 10px 16px; border-radius: 999px; cursor: pointer; font-weight: 700;
+            font-size: 13px; font-family: inherit; margin-bottom: 15px;
+        }
+        .btn-volver:hover { background: rgba(120, 120, 128, 0.22); }
+        /* Aviso de la vista que todavia no se puede usar. */
+        .aviso-proximamente {
+            background: rgba(255, 149, 0, 0.10); border: 1px solid rgba(255, 149, 0, 0.40);
+            border-radius: 14px; padding: 18px; color: #8a5200; font-size: 14px; text-align: left;
+        }
+        .aviso-proximamente b { color: #7a4800; }
         .btn-exito-sec:hover { filter: brightness(0.95); }
         .btn-exito-sec.sec { background: rgba(0, 0, 0, 0.08); color: var(--texto); box-shadow: none; }
 
@@ -314,11 +352,27 @@
     </style>
 </head>
 <body>
-    <div class="card reveal">
-        <h3>REGISTRO DE INGRESO - VIGILANCIA</h3>
+    <!-- MENÚ PRINCIPAL -->
+    <div id="menuVigilancia" class="card reveal" style="text-align: center;">
+        <h3>VIGILANCIA - MENÚ PRINCIPAL</h3>
+        <p style="color: var(--texto2); margin-top: 10px;">Selecciona una opción para continuar:</p>
+        <div class="menu-opciones">
+            <button onclick="mostrarVista('insumos')" class="opcion-menu opc-verde">📦 Ingreso de insumos<small>Con guía de remisión y carga de mercancía</small></button>
+            <button onclick="mostrarVista('vehiculo')" class="opcion-menu opc-azul">🚛 Vehículos sin mercancía<small>Placa, conductor y motivo de la visita</small></button>
+            <button onclick="mostrarVista('personal')" class="opcion-menu opc-naranja" disabled>👤 INGRESO DE PERSONAL<small>Personal —próximamente</small></button>
+            <button onclick="mostrarVista('consulta')" class="opcion-menu opc-gris">📋 Consultar ingresos del día<small>Ver los registros hechos en vigilancia</small></button>
+        </div>
+    </div>
+
+    <!-- VISTA 1: Ingreso de insumos (asistente de 3 pasos) -->
+    <div id="vistaInsumos" class="card reveal" style="display: none;">
+        <div style="text-align: left;">
+            <button onclick="mostrarMenu()" class="btn-volver">← Volver al menú</button>
+        </div>
+        <h3>REGISTRO DE Ingreso de insumos - VIGILANCIA</h3>
 
         <!-- Progreso de pasos -->
-        <div class="progreso-steps" role="tablist" aria-label="Pasos del registro">
+        <div class="progreso-steps" id="chipsInsumos" role="tablist" aria-label="Pasos del registro de insumos">
             <button type="button" class="chip-paso activo" data-paso="0" onclick="irAPaso(0)" aria-current="step">
                 <span class="chip-num">1</span><span>Documento</span>
             </button>
@@ -330,7 +384,7 @@
             </button>
         </div>
 
-        <form id="formVigilancia" enctype="multipart/form-data" novalidate>
+        <form id="formInsumos" enctype="multipart/form-data" novalidate>
 
             <!-- PASO 1: Documento y Transporte -->
             <section class="paso activo" data-paso="0" id="pasoDoc">
@@ -470,15 +524,154 @@
                 </div>
             </section>
         </form>
+    </div>
 
-        <div class="pie-foot" id="pieVigilancia">
-            <a href="dashboard.html" class="logout" id="linkDashboard">Volver al Dashboard General</a>
-            <br>
-            <button onclick="cerrarSesion()" class="btn-logout-custom">🔒 Cerrar Sesión (Salir)</button>
+    <!-- VISTA 2: Vehículos sin mercancía (asistente de 2 pasos)
+         Sin guía y sin proveedor: no aplican. Los campos de transporte ya los
+         tiene la tabla ingresos_vigilancia (placa, chofer, dni_chofer,
+         lugar_partida), asi que este registro entra por el mismo endpoint. -->
+    <div id="vistaVehiculo" class="card reveal" style="display: none;">
+        <div style="text-align: left;">
+            <button onclick="mostrarMenu()" class="btn-volver">← Volver al menú</button>
+        </div>
+        <h3>INGRESO DE VEHÍCULO SIN MERCADERÍA - VIGILANCIA</h3>
+
+        <div class="progreso-steps" id="chipsVehiculo" role="tablist" aria-label="Pasos del registro de vehículo">
+            <button type="button" class="chip-paso activo" data-paso="0" onclick="irAPaso(0)" aria-current="step">
+                <span class="chip-num">1</span><span>Vehículo</span>
+            </button>
+            <button type="button" class="chip-paso" data-paso="1" onclick="irAPaso(1)">
+                <span class="chip-num">2</span><span>Revisar</span>
+            </button>
+        </div>
+
+        <form id="formVehiculo" enctype="multipart/form-data" novalidate>
+
+            <!-- PASO 1: Vehículo -->
+            <section class="paso activo" data-paso="0" id="pasoVehiculo">
+                <div class="dropzone">
+                    <label for="foto_vehiculo">
+                        <div class="dz-ico">📷</div>
+                        <div class="dz-txt">Toca para subir la foto del vehículo</div>
+                        <div class="dz-sub">La IA lee y rellena la placa y el conductor si el texto se lee bien</div>
+                    </label>
+                    <input type="file" id="foto_vehiculo" name="foto_guia" accept=".pdf,.png,.jpg,.jpeg,.webp" onchange="leerDocumentoVehiculo(this)">
+                    <small id="leerDocumentoVehiculoEstado" style="display:block; color:#555;"></small>
+                    <button type="button" id="btnLeerDocVehiculo" onclick="leerDocumentoVehiculo()" class="btn-ia-leer">🤖 Leer y rellenar campos</button>
+                    <div id="avisoLeerDocVehiculo" class="aviso-ia" style="display:none;">
+                        <span id="avisoLeerDocVehiculoTexto"><b>Datos leídos por IA.</b> Revísalos y corrige lo que falte antes de guardar.</span>
+                        <button type="button" onclick="document.getElementById('avisoLeerDocVehiculo').style.display='none'" class="btn-x" title="Ocultar aviso" style="float:right;">X</button>
+                    </div>
+                </div>
+
+                <div class="grid-form" style="margin-top:16px;">
+                    <div>
+                        <label class="etiqueta-mini">🚛 Placa del Vehículo *</label>
+                        <input type="text" id="veh_placa" name="placa" placeholder="Ej. ABC-123">
+                    </div>
+                    <div>
+                        <label class="etiqueta-mini">👤 Nombre del Conductor *</label>
+                        <input type="text" id="veh_chofer" name="chofer" placeholder="Apellidos y nombres del chofer">
+                    </div>
+                    <div>
+                        <label class="etiqueta-mini">🪪 Documento de Identidad (DNI)</label>
+                        <input type="text" id="veh_dni" name="dni_chofer" placeholder="N° de DNI / Pasaporte">
+                    </div>
+                    <div>
+                        <label class="etiqueta-mini">🗺️ Lugar de Partida</label>
+                        <input type="text" id="veh_partida" name="lugar_partida" placeholder="Origen -> Planta Principal Belcen">
+                    </div>
+                    <div class="span-2">
+                        <label class="etiqueta-mini">📝 Motivo de la Visita / Observaciones</label>
+                        <input type="text" id="veh_observaciones" name="observaciones" placeholder="Ej. Mantenimiento, visita a proveedor, truck de vaciado">
+                    </div>
+                </div>
+            </section>
+
+            <!-- PASO 2: Revisión y Envío -->
+            <section class="paso" data-paso="1" id="pasoVehiculoRevisar">
+                <h4 style="margin:0 0 12px; color:#0a6ea8;">🔎 Revise antes de enviar</h4>
+
+                <div class="resumen-doc" id="resumenVehiculoRevisar"></div>
+
+                <div id="obsRevisarVehiculo" style="margin-top:18px;">
+                    <label class="etiqueta-mini">📝 Observaciones Especiales (estado del vehículo, EPP del conductor)</label>
+                    <input type="text" id="veh_obs_especiales" placeholder="Ej. Placa yreno, conductor con EPP completo">
+                </div>
+
+                <!-- Éxito -->
+                <div id="panelExitoVehiculo" class="exito-panel">
+                    <div class="exito-ico">✅</div>
+                    <h4>Ingreso registrado</h4>
+                    <div id="exitoResumenVehiculo" class="exito-resumen"></div>
+                    <div class="exito-botones">
+                        <button type="button" onclick="reiniciarFormularioVehiculo()" class="btn-exito-sec">＋ Registrar otro</button>
+                        <button type="button" onclick="mostrarMenu()" class="btn-exito-sec sec">Volver al menú</button>
+                    </div>
+                </div>
+            </section>
+        </form>
+    </div>
+
+    <!-- VISTA 3: INGRESO DE PERSONAL
+         Todavia no se puede registrar. El modelo de datos no tiene donde meterlo:
+         ingresos_vigilancia no tiene nombre de persona, ni documento, ni empresa,
+         ni area a la que se dirige, ni quien lo autoriza. Se encajaria en
+         proveedor / chofer / dni_chofer / observaciones, pero esas columnas son de
+         transporte y hacerlo dejaria el registro con otro significado. Mejor una
+         tabla propia cuando se defina que hay que guardar. -->
+    <div id="vistaPersonal" class="card reveal sec-naranja" style="display: none;">
+        <div style="text-align: left;">
+            <button onclick="mostrarMenu()" class="btn-volver">← Volver al menú</button>
+        </div>
+        <h3>INGRESO DE PERSONAL - VIGILANCIA</h3>
+        <div class="aviso-proximamente">
+            <p><b>Todavía no está disponible.</b></p>
+            <p style="margin:10px 0 0;">Este registro necesita datos que el sistema aún no guarda: nombre de la persona, documento de identidad, empresa, área a la que se dirige, quién autoriza el ingreso y la hora de salida.</p>
+            <p style="margin:10px 0 0;">Para no registrar esos datos en campos que son de transporte, se hará una tabla propia. Avísale a Sistemas cuando quieras que se arme.</p>
         </div>
     </div>
 
-    <footer class="barra-pasos" id="barraPasos">
+    <!-- VISTA 4: Consultar ingresos del día (solo lectura) -->
+    <div id="vistaConsulta" class="card reveal" style="display: none;">
+        <div style="text-align: left;">
+            <button onclick="mostrarMenu()" class="btn-volver">← Volver al menú</button>
+        </div>
+        <h3>INGRESOS REGISTRADOS HOY</h3>
+
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px;">
+            <button type="button" onclick="cargarIngresosHoy()" class="btn-add-vig">🔄 Actualizar</button>
+            <span id="resumenConsulta" style="font-size:13px; color:var(--texto2);"></span>
+        </div>
+
+        <div class="tabla-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>HORA</th>
+                        <th>TIPO</th>
+                        <th>PLACA / GUÍA</th>
+                        <th>CONDUCTOR / PROVEEDOR</th>
+                        <th>ÍTEMS</th>
+                        <th>ESTADO</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaIngresosHoy">
+                    <tr><td colspan="6" class="text-center sin-registros">Cargando…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="pie-foot" id="pieVigilancia">
+        <a href="dashboard.html" class="logout" id="linkDashboard">Volver al Dashboard General</a>
+        <br>
+        <button onclick="cerrarSesion()" class="btn-logout-custom">🔒 Cerrar Sesión (Salir)</button>
+    </div>
+
+    <!-- La barra se muestra sola dentro de los asistentes: en el menú y en la
+         consulta no hay pasos que avanzar, asi que arranca oculta. -->
+    <footer class="barra-pasos" id="barraPasos" style="display: none;">
         <button type="button" id="btnPasoAtras" class="btn-paso btn-atras" onclick="pasoAtras()" hidden>← Atrás</button>
         <button type="button" id="btnPasoNext" class="btn-paso btn-next" onclick="pasoNext()">Continuar</button>
     </footer>
@@ -499,6 +692,82 @@
         let itemsVigilanciaArray = [];
         let pasoActual = 0;
 
+        /* ---------- MENÚ: navegación entre vistas ----------
+           Mismo patrón que envasado.html: mostrarMenu() y mostrarVista(vista)
+           mueven el display de la vista pedida y esconden las demás.
+           La barra de pasos solo tiene sentido dentro de un asistente, así que
+           se oculta en el menú, en personal y en la consulta. */
+        const VISTAS = {
+            insumos: 'vistaInsumos',
+            vehiculo: 'vistaVehiculo',
+            personal: 'vistaPersonal',
+            consulta: 'vistaConsulta'
+        };
+
+        function mostrarMenu() {
+            Object.values(VISTAS).forEach(id => {
+                document.getElementById(id).style.display = 'none';
+            });
+            document.getElementById('menuVigilancia').style.display = 'block';
+            document.getElementById('barraPasos').style.display = 'none';
+        }
+
+        function mostrarVista(vista) {
+            mostrarMenu();
+            const id = VISTAS[vista];
+            if (!id) return;
+            document.getElementById('menuVigilancia').style.display = 'none';
+            document.getElementById(id).style.display = 'block';
+            if (vista === 'insumos' || vista === 'vehiculo') {
+                activarWizard(vista);
+                document.getElementById('barraPasos').style.display = '';
+            }
+            if (vista === 'consulta') cargarIngresosHoy();
+            window.scrollTo(0, 0);
+        }
+
+        /* ---------- WIZARD: configuración por asistente ----------
+           El de insumos tiene 3 pasos y el de vehículos 2, así que las
+           funciones de navegación no pueden tener las etiquetas y los ids
+           escritos dentro: leen de WIZ, que además dice qué campos son
+           obligatorios en cada paso y qué pintar en el resumen. */
+        const WIZ = {
+            insumos: {
+                vista: 'vistaInsumos',
+                chips: 'chipsInsumos',
+                form: 'formInsumos',
+                etiquetas: ['Documento', 'Carga', 'Revisar'],
+                secciones: ['pasoDoc', 'pasoCarga', 'pasoRevisar'],
+                // Campos que se marcan en rojo cuando el paso no está completo.
+                requeridos: { 0: ['numero_guia', 'proveedor'] },
+                // El paso de carga además necesita al menos un ítem, que no se
+                // puede expresar como lista de campos porque vive en el array.
+                extra: (n) => n !== 1 || itemsVigilanciaArray.length > 0,
+                resumen: renderResumenInsumos
+            },
+            vehiculo: {
+                vista: 'vistaVehiculo',
+                chips: 'chipsVehiculo',
+                form: 'formVehiculo',
+                etiquetas: ['Vehículo', 'Revisar'],
+                secciones: ['pasoVehiculo', 'pasoVehiculoRevisar'],
+                requeridos: { 0: ['veh_placa', 'veh_chofer'] },
+                resumen: renderResumenVehiculo
+            }
+        };
+
+        let wizardActual = 'insumos';
+
+        function activarWizard(nombre) {
+            wizardActual = nombre;
+            pasoActual = 0;
+            const w = WIZ[nombre];
+            w.secciones.forEach(id => {
+                document.getElementById(id).classList.toggle('activo', id === w.secciones[0]);
+            });
+            actualizarEstadoWizard();
+        }
+
         function cerrarSesion() {
             if (confirm('¿Estás seguro de que deseas cerrar sesión?')) {
                 limpiarSesion();
@@ -508,18 +777,19 @@
 
         /* ---------- WIZARD: navegación ---------- */
         function pasoCompletado(n) {
-            if (n === 0) {
-                return Boolean(
-                    document.getElementById('numero_guia').value.trim() &&
-                    document.getElementById('proveedor').value.trim()
-                );
-            }
-            if (n === 1) return itemsVigilanciaArray.length > 0;
-            return true;
+            const w = WIZ[wizardActual];
+            const campos = w.requeridos[n];
+            if (!campos) return true;
+            const base = campos.every(id => {
+                const el = document.getElementById(id);
+                return el && el.value.trim();
+            });
+            const extra = w.extra ? w.extra(n) : true;
+            return base && extra;
         }
 
         function marcarFaltantes(n) {
-            const campos = n === 0 ? ['numero_guia', 'proveedor'] : [];
+            const campos = (WIZ[wizardActual].requeridos[n]) || [];
             campos.forEach(id => {
                 const el = document.getElementById(id);
                 const falta = !el.value.trim();
@@ -532,7 +802,7 @@
         });
 
         function actualizarEstadoWizard() {
-            const chips = document.querySelectorAll('.chip-paso');
+            const chips = document.querySelectorAll('#' + WIZ[wizardActual].chips + ' .chip-paso');
             chips.forEach((chip, i) => {
                 const activo = i === pasoActual;
                 const completo = i < pasoActual || pasoCompletado(i);
@@ -545,7 +815,7 @@
                 if (!activo && completo) {
                     iconoHTML = '<span class="chip-check"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#1e7e34" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>';
                 }
-                chip.innerHTML = iconoHTML + '<span>' + ['Documento', 'Carga', 'Revisar'][i] + '</span>';
+                chip.innerHTML = iconoHTML + '<span>' + WIZ[wizardActual].etiquetas[i] + '</span>';
             });
 
             const atras = document.getElementById('btnPasoAtras');
@@ -553,7 +823,8 @@
             if (atras) atras.hidden = pasoActual === 0;
 
             if (next) {
-                if (pasoActual === 2) {
+                const ultimo = pasoActual === WIZ[wizardActual].secciones.length - 1;
+                if (ultimo) {
                     next.classList.add('registrar');
                     next.innerHTML = '🚀 Registrar' + (itemsVigilanciaArray.length ? ' · ' + itemsVigilanciaArray.length + ' ítems' : '');
                 } else {
@@ -567,20 +838,28 @@
         function irAPaso(n) {
             if (n === pasoActual) return;
             if (n > pasoActual) {
-                for (let i = pasoActual; i < n; i++) {
+                const total = WIZ[wizardActual].secciones.length;
+                for (let i = pasoActual; i < n && i < total - 1; i++) {
                     if (!pasoCompletado(i)) {
-                        alert('Completa el paso ' + ['de Documento', 'de Carga'][i] + ' para continuar.');
+                        const w = WIZ[wizardActual];
+                        alert('Completa el paso de ' + w.etiquetas[i].toLowerCase() + ' para continuar.');
                         marcarFaltantes(i);
-                        document.getElementById(['pasoDoc', 'pasoCarga', 'pasoRevisar'][i]).scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        const secId = w.secciones[i];
+                        document.getElementById(secId).scrollIntoView({ behavior: 'smooth', block: 'start' });
                         return;
                     }
                 }
             }
             pasoActual = n;
-            document.querySelectorAll('.paso').forEach(p => p.classList.toggle('activo', p.id === ['pasoDoc', 'pasoCarga', 'pasoRevisar'][n]));
-            if (n === 2) renderResumenPaso3();
+            const w2 = WIZ[wizardActual];
+            w2.secciones.forEach(id => {
+                document.getElementById(id).classList.toggle('activo', id === w2.secciones[n]);
+            });
+            if (n === w2.secciones.length - 1) {
+                if (w2.resumen) w2.resumen();
+            }
             actualizarEstadoWizard();
-            document.getElementById(['pasoDoc', 'pasoCarga', 'pasoRevisar'][n]).scrollIntoView({ behavior: 'smooth', block: 'start' });
+            document.getElementById(w2.secciones[n]).scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
 
         function pasoAtras() {
@@ -593,15 +872,19 @@
                 marcarFaltantes(pasoActual);
                 return;
             }
-            if (pasoActual === 2) {
-                enviarFormularioVigilancia(null);
+            if (pasoActual === WIZ[wizardActual].secciones.length - 1) {
+                if (wizardActual === 'insumos') {
+                    enviarFormularioInsumos(null);
+                } else if (wizardActual === 'vehiculo') {
+                    enviarFormularioVehiculo(null);
+                }
             } else {
                 irAPaso(pasoActual + 1);
             }
         }
 
-        /* ---------- Resumen paso 3 ---------- */
-        function renderResumenPaso3() {
+        /* ---------- Resumen paso 3 (insumos) ---------- */
+        function renderResumenInsumos() {
             const chips = document.getElementById('resumenDocPaso3');
             const datos = [
                 { label: 'N°', value: document.getElementById('numero_guia').value },
@@ -645,6 +928,23 @@
         function badgeDiferencia(dif) {
             if (dif === 0) return '<span class="badge-diff ok">OK</span>';
             return '<span class="badge-diff warn">⚠ ' + (dif > 0 ? '+' : '') + dif + '</span>';
+        }
+
+        /* ---------- Resumen paso 2 (vehículos sin mercancía) ----------
+           No hay tabla de ítems ni diferencias porque no hay guía: el vehicle
+           se registra con la lista de mercancía vacía. */
+        function renderResumenVehiculo() {
+            const chips = document.getElementById('resumenVehiculoRevisar');
+            const datos = [
+                { label: 'Placa', value: document.getElementById('veh_placa').value },
+                { label: 'Conductor', value: document.getElementById('veh_chofer').value },
+                { label: 'DNI', value: document.getElementById('veh_dni').value },
+                { label: 'Partida', value: document.getElementById('veh_partida').value },
+                { label: 'Observaciones', value: document.getElementById('veh_observaciones').value }
+            ].filter(d => d.value);
+            chips.innerHTML = datos.map(d =>
+                '<span class="chip-dato">' + d.label + ': <b>' + d.value + '</b></span>'
+            ).join('') || '<span class="sin-registros">Sin datos del vehículo.</span>';
         }
 
         /* ---------- ítems de carga ---------- */
@@ -783,9 +1083,10 @@
 
         /* ---------- Envío (barra fija + Enter) ---------- */
         let enviandoVigilancia = false;
-        async function enviarFormularioVigilancia(e) {
+        async function enviarFormularioInsumos(e) {
             if (e && typeof e.preventDefault === 'function') e.preventDefault();
             if (enviandoVigilancia) return;
+            if (wizardActual !== 'insumos') { mostrarVista('insumos'); return; }
             if (pasoActual !== 2) {
                 pasoNext();
                 return;
@@ -831,6 +1132,115 @@
             }
         }
 
+        /* ---------- Lectura con IA para vehículos ---------- */
+        async function leerDocumentoVehiculo() {
+            const input = document.getElementById('foto_vehiculo');
+            if (!input.files || !input.files[0]) {
+                alert('Selecciona primero la foto o el PDF del vehículo.');
+                return;
+            }
+            const btn = document.getElementById('btnLeerDocVehiculo');
+            const estado = document.getElementById('leerDocumentoVehiculoEstado');
+            if (btn) { btn.disabled = true; btn.textContent = '🤖 Leyendo…'; }
+            if (estado) estado.textContent = 'Leyendo documento…';
+            try {
+                const fd = new FormData();
+                fd.append('archivo_documento', input.files[0]);
+                const res = await fetch('/api/documento/leer', { method: 'POST', body: fd });
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    alert('❌ ' + (data.mensaje || 'No se pudo leer el documento.'));
+                    return;
+                }
+                const c = data.campos || {};
+                if (c.placa) document.getElementById('veh_placa').value = String(c.placa).replace(/\s+Principal$/i, '');
+                if (c.chofer) document.getElementById('veh_chofer').value = c.chofer;
+                if (c.dni_chofer) document.getElementById('veh_dni').value = c.dni_chofer;
+                if (c.partida) document.getElementById('veh_partida').value = c.partida;
+
+                const aviso = document.getElementById('avisoLeerDocVehiculo');
+                aviso.querySelector('#avisoLeerDocVehiculoTexto').innerHTML =
+                    '<b>Datos leídos por IA.</b> Revísalos y corrige lo que falte antes de guardar.';
+                aviso.style.display = 'block';
+                if (estado) estado.textContent = '';
+                aviso.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            } catch (err) {
+                console.error(err);
+                alert('Error de conexión al leer el documento: ' + err.message);
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '🤖 Leer y rellenar campos'; }
+            }
+            actualizarEstadoWizard();
+        }
+
+        /* ---------- Envío de vehículos sin mercancía ---------- */
+        async function enviarFormularioVehiculo(e) {
+            if (e && typeof e.preventDefault === 'function') e.preventDefault();
+            if (enviandoVigilancia) return;
+            if (wizardActual !== 'vehiculo') { mostrarVista('vehiculo'); return; }
+            if (pasoActual !== 1) {
+                pasoNext();
+                return;
+            }
+            enviandoVigilancia = true;
+            const btnEnviar = (e && e.submitter) || document.getElementById('btnPasoNext');
+            if (btnEnviar) { btnEnviar.disabled = true; btnEnviar.textContent = 'Enviando…'; }
+
+            const formData = new FormData();
+            // El backend usa este tipo para marcar el ingreso como
+            // 'INGRESO SIN MERCADERIA' y sacarlo de la cola de almacén.
+            formData.append('tipo_documento', 'VEHICULO SIN MERCADERIA');
+            formData.append('chofer', document.getElementById('veh_chofer').value);
+            formData.append('dni_chofer', document.getElementById('veh_dni').value);
+            formData.append('placa', document.getElementById('veh_placa').value);
+            formData.append('lugar_partida', document.getElementById('veh_partida').value);
+            formData.append('observaciones', [
+                document.getElementById('veh_observaciones').value,
+                document.getElementById('veh_obs_especiales').value
+            ].filter(Boolean).join(' · '));
+            const inputFoto = document.getElementById('foto_vehiculo');
+            if (inputFoto && inputFoto.files && inputFoto.files[0]) formData.append('foto_guia', inputFoto.files[0]);
+            formData.append('usuario', localStorage.getItem('usuario_actual') || 'vigilancia1');
+            formData.append('items_json', '[]');
+
+            try {
+                const res = await fetch('/api/vigilancia/registrar', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    mostrarExitoVehiculo(data);
+                } else {
+                    alert('❌ ' + (data.mensaje || 'Error al registrar.'));
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Error de conexión con el servidor.');
+            } finally {
+                enviandoVigilancia = false;
+                if (btnEnviar) { btnEnviar.disabled = false; btnEnviar.innerHTML = '🚀 Registrar'; }
+                actualizarEstadoWizard();
+            }
+        }
+
+        function mostrarExitoVehiculo(data) {
+            document.getElementById('exitoResumenVehiculo').innerHTML = `
+                <div><b>Placa:</b> ${document.getElementById('veh_placa').value || 'S/N'}</div>
+                <div><b>Conductor:</b> ${document.getElementById('veh_chofer').value || '—'}</div>
+                <div><b>Motivo:</b> ${document.getElementById('veh_observaciones').value || '—'}</div>
+                <div><b>Hora:</b> ${new Date().toLocaleString('es-PE')}</div>
+                <div>${data.mensaje || ''}</div>
+            `;
+            document.getElementById('panelExitoVehiculo').style.display = 'block';
+            document.getElementById('resumenVehiculoRevisar').style.display = 'none';
+            document.getElementById('obsRevisarVehiculo').style.display = 'none';
+            document.getElementById('barraPasos').style.display = 'none';
+            document.getElementById('pieVigilancia').style.display = 'none';
+            document.querySelector('#chipsVehiculo').style.display = 'none';
+            document.getElementById('pasoVehiculoRevisar').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        // Mantener el nombre antiguo por compatibilidad si alguien lo llama
+        const enviarFormularioVigilancia = enviarFormularioInsumos;
+
         function mostrarExito(data) {
             const resumen = document.getElementById('exitoResumen');
             resumen.innerHTML = `
@@ -846,28 +1256,97 @@
             document.getElementById('obsRevisar').style.display = 'none';
             document.getElementById('barraPasos').style.display = 'none';
             document.getElementById('pieVigilancia').style.display = 'none';
-            document.querySelector('.progreso-steps').style.display = 'none';
-            document.getElementById('pasoRevisar').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            document.querySelector('#chipsInsumos').style.display = 'none';
+            document.getElementById(WIZ[wizardActual].secciones[WIZ[wizardActual].secciones.length-1]).scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
 
         function reiniciarFormulario() {
-            document.getElementById('formVigilancia').reset();
+            document.getElementById('formInsumos').reset();
             itemsVigilanciaArray = [];
             renderTablaVigilancia();
             document.getElementById('panelExito').style.display = 'none';
             document.getElementById('resumenDocPaso3').style.display = '';
             document.querySelector('#pasoRevisar .tabla-wrap').style.display = '';
             document.getElementById('obsRevisar').style.display = '';
-            document.getElementById('barraPasos').style.display = '';
+            document.getElementById('chipsInsumos').style.display = '';
+            document.getElementById('barraPasos').style.display = 'none';
             document.getElementById('pieVigilancia').style.display = '';
-            document.querySelector('.progreso-steps').style.display = '';
+            // Volver al menu: reiniciar todo y mostrar el selector.
             pasoActual = 0;
-            document.querySelectorAll('.paso').forEach(p => p.classList.toggle('activo', p.id === 'pasoDoc'));
-            actualizarEstadoWizard();
+            wizardActual = 'insumos';
+            mostrarMenu();
         }
 
-        document.getElementById('formVigilancia').addEventListener('submit', enviarFormularioVigilancia);
+        function reiniciarFormularioVehiculo() {
+            document.getElementById('formVehiculo').reset();
+            document.getElementById('panelExitoVehiculo').style.display = 'none';
+            document.getElementById('resumenVehiculoRevisar').style.display = '';
+            document.getElementById('obsRevisarVehiculo').style.display = '';
+            document.getElementById('chipsVehiculo').style.display = '';
+            document.getElementById('barraPasos').style.display = 'none';
+            document.getElementById('pieVigilancia').style.display = '';
+            pasoActual = 0;
+            wizardActual = 'vehiculo';
+            mostrarMenu();
+        }
+
+        /* ---------- Consulta de ingresos del día ---------- */
+        async function cargarIngresosHoy() {
+            const tbody = document.getElementById('tablaIngresosHoy');
+            const resumen = document.getElementById('resumenConsulta');
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center sin-registros">Cargando…</td></tr>';
+            try {
+                const res = await fetch('/api/vigilancia/ingresos');
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.mensaje || 'No se pudieron cargar los ingresos.');
+
+                // El endpoint ya devuelve solo los ingresos de hoy: el dia lo
+                // decide el servidor con CURRENT_DATE, no la maquina del usuario.
+                const filas = data;
+                const resumenTexto = filas.length === 1 ? '1 ingreso hoy' : filas.length + ' ingresos hoy';
+                resumen.textContent = filas.length ? resumenTexto : 'Todavía no hay ingresos hoy';
+
+                if (!filas.length) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center sin-registros">Sin ingresos registrados hoy.</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = filas.map(r => {
+                    const hora = new Date(r.fecha_ingreso).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+                    let items = 0;
+                    try { items = JSON.parse(r.items_json || '[]').length; } catch (e) { items = 0; }
+                    const referencia = r.tipo_documento === 'VEHICULO SIN MERCADERIA'
+                        ? (r.placa || 'S/N')
+                        : (r.numero_guia || 'S/N');
+                    const responsable = r.tipo_documento === 'VEHICULO SIN MERCADERIA'
+                        ? (r.chofer || '—')
+                        : (r.proveedor || '—');
+                    const tipo = r.tipo_documento === 'VEHICULO SIN MERCADERIA'
+                        ? 'Vehículo s/ mercancía'
+                        : (r.tipo_documento || '—');
+                    return `<tr>
+                        <td>${hora}</td>
+                        <td>${tipo}</td>
+                        <td><b>${referencia}</b></td>
+                        <td>${responsable}</td>
+                        <td class="text-center">${items}</td>
+                        <td>${r.estado || '—'}</td>
+                    </tr>`;
+                }).join('');
+            } catch (err) {
+                console.error(err);
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center sin-registros">Error al cargar: ' + err.message + '</td></tr>';
+            }
+        }
+
+        document.getElementById('formInsumos').addEventListener('submit', enviarFormularioInsumos);
+        document.getElementById('formVehiculo').addEventListener('submit', enviarFormularioVehiculo);
+        ['veh_placa', 'veh_chofer'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('input', () => { el.classList.remove('campo-falta'); actualizarEstadoWizard(); });
+        });
         actualizarEstadoWizard();
+        mostrarMenu();
     </script>
 </body>
 </html>

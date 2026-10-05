@@ -99,11 +99,13 @@ app.post('/api/vigilancia/registrar', gVigilancia, upload.single('foto_guia'), a
         
         const foto_url = req.file ? `/uploads/${req.file.filename}` : null;
         const items = JSON.parse(items_json || '[]');
+        const esVehiculo = tipo_documento === 'VEHICULO SIN MERCADERIA';
+        const estado = esVehiculo ? 'INGRESO SIN MERCADERIA' : 'PENDIENTE CONFORMIDAD';
 
         const query = `
             INSERT INTO ingresos_vigilancia 
             (tipo_documento, numero_guia, proveedor, chofer, dni_chofer, placa, lugar_partida, punto_llegada, observaciones, foto_url, usuario_vigilancia, items_json, estado, fecha_ingreso)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'PENDIENTE CONFORMIDAD', NOW()) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW()) 
             RETURNING *;
         `;
         
@@ -119,7 +121,8 @@ app.post('/api/vigilancia/registrar', gVigilancia, upload.single('foto_guia'), a
             observaciones || '', 
             foto_url, 
             usuario || 'vigilancia1', 
-            JSON.stringify(items)
+            JSON.stringify(items),
+            estado
         ];
         
         const nuevoIngreso = await pool.query(query, values);

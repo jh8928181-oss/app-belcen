@@ -123,12 +123,14 @@ const ANCHOS_BANCOS = repartirAnchos([4.2, 4.8, 5.6, 2.4, 10.7]);
 // Condiciones que dependen de datos de la orden. Cada una dice de donde sale el
 // valor y si es fecha, porque no todas lo son y aplicarles a todas un
 // formateador de fecha las dejaria en diez caracteres.
+// Solo van aqui las condiciones que no salen ya en el bloque de datos de arriba.
+// Fecha de entrega, forma de pago y horario de recepcion se imprimen en el
+// encabezado, y repetirlas en el pie hace que el mismo dato aparezca dos veces en
+// la misma hoja con dos redacciones distintas ("HORARIO DE ATENCIÓN" arriba y
+// "Horario de recepción" abajo), que es como un documento empieza a contradecirse.
 const CONDICIONES = [
   { etiqueta: 'Lugar de entrega', campo: 'lugar_entrega' },
-  { etiqueta: 'Fecha de entrega', campo: 'fecha_entrega', fecha: true },
-  { etiqueta: 'Área solicitante', campo: 'area_solicitante' },
-  { etiqueta: 'Forma de pago', campo: 'forma_pago' },
-  { etiqueta: 'Horario de recepción', campo: 'horario_recepcion' }
+  { etiqueta: 'Área solicitante', campo: 'area_solicitante' }
 ];
 
 // Condiciones fijas del pie. Van como objetos y no como cadenas con <b> porque
@@ -267,29 +269,52 @@ async function generarPDFOrdenCompra(datos) {
   doc.y += 0.6 * CM;
 
   // ---- Datos de la orden ----
-  // Cuatro columnas y no dos. Es el cambio que hace que la orden quepa en una
-  // hoja: los mismos datos, en vez de trece renglones en dos columnas, ocupan
-  // cuatro. La hoja apaisada da el ancho justo para eso sin que el valor del
-  // proveedor quede pisado por la etiqueta de al lado.
-  const pares = [
-    ['PROVEEDOR:', valorO(orden.proveedor_nombre_actual || orden.proveedor_nombre)],
-    ['RUC:', valorO(orden.ruc)],
-    ['ATENCIÓN:', valorO(orden.atencion || orden.contacto)],
-    ['CEL:', valorO(orden.telefono)],
-    ['E-MAIL:', valorO(orden.email)],
-    ['FORMA DE PAGO:', valorO(orden.forma_pago)],
-    ['MONEDA:', `${simbolo} ${valorO(orden.moneda)}`],
-    ['EMITIDO POR:', valorO(emisor && emisor.nombre)],
-    ['CARGO:', valorO(emisor && emisor.cargo)],
-    ['CEL:', valorO(emisor && emisor.celular)],
-    ['FECHA:', fmtFecha(orden.fecha_orden || orden.fecha_registro)],
-    ['HORA:', valorO(fmtHora(orden.fecha_registro))],
-    ['ÁREA SOLICITANTE:', valorO(orden.area_solicitante)],
-    ['HORARIO RECEPCIÓN:', valorO(orden.horario_recepcion)]
+  // Cuatro columnas, repartidas en dos mitades: las dos primeras son el lado
+  // izquierdo (el proveedor) y las dos ultimas el derecho (quien emite). Cada
+  // campo cae en la columna que le toca por su lugar en la lista, asi que el
+  // orden de lectura es: proveedor completo de arriba a abajo por la izquierda,
+  // emisor completo por la derecha.
+  //
+  // Van en grupos explicitos y no como una lista plana que se corte cada N: con
+  // quince campos en cuatro columnas el corte automatico deja "EMITIDO POR" en
+  // la columna del proveedor, y el bloque queda partido por la mitad sin que se
+  // note en el codigo.
+  const IZQUIERDA = [
+    // Columna 1: quien es el proveedor y como se le localiza.
+    [
+      ['PROVEEDOR:', valorO(orden.proveedor_nombre_actual || orden.proveedor_nombre)],
+      ['RUC:', valorO(orden.ruc)],
+      ['ATENCIÓN:', valorO(orden.atencion || orden.contacto)],
+      ['CEL:', valorO(orden.telefono)]
+    ],
+    // Columna 2: como se le cobra y con que moneda.
+    [
+      ['E-MAIL:', valorO(orden.email)],
+      ['FORMA DE PAGO:', valorO(orden.forma_pago)],
+      ['MONEDA:', `${simbolo} ${valorO(orden.moneda)}`]
+    ]
   ];
+  const DERECHA = [
+    // Columna 3: quien firma la orden.
+    [
+      ['EMITIDO POR:', valorO(emisor && emisor.nombre)],
+      ['CARGO:', valorO(emisor && emisor.cargo)],
+      ['CEL:', valorO(emisor && emisor.celular)],
+      ['FECHA:', fmtFecha(orden.fecha_orden || orden.fecha_registro)]
+    ],
+    // Columna 4: el momento de la orden y cuando hay que entregar.
+    [
+      ['HORA:', valorO(fmtHora(orden.fecha_registro))],
+      ['E-MAIL:', valorO(emisor && emisor.email)],
+      ['HORARIO DE ATENCIÓN:', valorO(orden.horario_recepcion)],
+      ['FECHA DE ENTREGA:', fmtFecha(orden.fecha_entrega)]
+    ]
+  ];
+  // "ÁREA SOLICITANTE" no va aqui: queda entre las condiciones del pie, que es
+  // donde se lee como condicon y no como dato de cabecera.
 
   const yBloque = doc.y;
-  const yFin = dibujarDatos(doc, pares, MARGEN + RELLENO_DATOS, yBloque, ANCHO - 2 * RELLENO_DATOS, 4);
+  const yFin = dibujarDatos(doc, IZQUIERDA.concat(DERECHA), MARGEN + RELLENO_DATOS, yBloque, ANCHO - 2 * RELLENO_DATOS);
   // El recuadro se dibuja al final para que el texto quede encima del borde.
   // El relleno va por dentro: el borde queda a RELLENO_DATOS del texto, no encima.
   doc.save().lineWidth(1).strokeColor(GRIS)
@@ -440,8 +465,8 @@ function dibujarCondiciones(doc, pares) {
  *
  * Se mide antes de dibujar, en dos pasadas, y eso no es opcional:
  *
- *  - El ancho de la etiqueta sale de la etiqueta mas larga. Con una caja fija,
- *    "HORARIO RECEPCIÓN:" no entra y se parte en dos lineas, dejando la
+ *  - El ancho de la etiqueta sale de medir, no de un valor fijo. Con una caja
+ *    fija, "HORARIO DE ATENCIÓN:" no entra y se parte en dos lineas, dejando la
  *    etiqueta y su valor desalineados.
  *  - El alto de cada renglon es el maximo entre columnas. Si cada columna
  *    avanzara su Y por su cuenta, en cuanto un valor envuelve (un correo o un
@@ -449,39 +474,47 @@ function dibujarCondiciones(doc, pares) {
  *    etiquetas dejarian de caer en linea con las de al lado. En un documento que
  *    van a firmar tres personas, esas filas torcidas se notan.
  *
+ * El ancho medido sale de la etiqueta mas larga de SU columna, no de una sola
+ * caja para todas: con una caja comun, la cuarta columna
+ * ("HORARIO DE ATENCIÓN:") reserva casi 94 puntos de etiqueta y deja 92 de
+ * valor, y el nombre de un proveedor o un correo de compras se parten en cuatro
+ * lineas. Midiendo por columna, las que tienen etiquetas cortas recuperan ese
+ * ancho para el valor. Todas las etiquetas de una columna siguen arrancando en el
+ * mismo punto, que es lo que hace que los valores queden en fila.
+ *
  * @param {object} doc
- * @param {Array<[string,string]>} pares - Etiqueta y valor.
+ * @param {Array<Array<[string,string]>>} columnas - Columnas, cada una con sus
+ *   pares [etiqueta, valor] de arriba abajo. Van como grupos y no como una lista
+ *   plana para que el reparto sea el que se pidio: quince campos partidos en
+ *   cuatro columnas por las automatica dejan "EMITIDO POR" del lado del proveedor.
  * @param {number} x - Donde arranca el texto. Ya viene corrido por el relleno del
  *   recuadro, para que la primera letra no caiga encima del borde.
  * @param {number} ancho - Ancho disponible para las columnas, ya sin el relleno
  *   de los dos lados. Va aparte del ancho porque si no, cuatro columnas repartidas
  *   sobre el ancho completo se salen del recuadro por la derecha.
- * @param {number} columnas - Cuantas columnas.
  * @returns {number} La Y de debajo del bloque.
  */
-function dibujarDatos(doc, pares, x, y, ancho, columnas) {
-  const anchoColumna = ancho / columnas;
-  const filasPorColumna = Math.ceil(pares.length / columnas);
-  const bloques = [];
-  for (let c = 0; c < columnas; c++) {
-    bloques.push(pares.slice(c * filasPorColumna, (c + 1) * filasPorColumna));
-  }
+function dibujarDatos(doc, columnas, x, y, ancho) {
+  const bloques = columnas;
+  const anchoColumna = ancho / bloques.length;
+  const filasPorColumna = Math.max(...bloques.map(b => b.length));
 
   doc.font('Helvetica-Bold').fontSize(TAMANO_DATOS);
-  const anchoEtiqueta = Math.max(
+  const anchoEtiquetaDe = (bloque) => Math.max(
     ANCHO_ETIQUETA,
-    ...pares.map(([etiqueta]) => doc.widthOfString(etiqueta) + 3)
+    ...bloque.map(([etiqueta]) => doc.widthOfString(etiqueta) + 3)
   );
-  const anchoValor = anchoColumna - anchoEtiqueta - HOLGURA;
+  const anchoEtiquetaPorColumna = bloques.map(anchoEtiquetaDe);
+  const anchoValorPorColumna = anchoEtiquetaPorColumna.map(w => anchoColumna - w - HOLGURA);
 
   // Pasada de medicion: alto del texto de cada celda con los anchos definitivos.
   // Se guarda el alto del texto y no el de la fila, porque el desvío vertical sale
   // de la diferencia entre las dos cosas.
   doc.font('Helvetica').fontSize(TAMANO_DATOS);
-  const altoTexto = bloques.map(bloque => bloque.map(([etiqueta, valor]) =>
+  const altoTexto = bloques.map((bloque, c) => bloque.map(([etiqueta, valor]) =>
     Math.max(
-      doc.heightOfString(etiqueta, { width: anchoEtiqueta }),
-      doc.heightOfString(valor, { width: anchoValor })
+      doc.heightOfString(etiqueta, { width: anchoEtiquetaPorColumna[c] }),
+      doc.heightOfString(valor, { width: anchoValorPorColumna[c] })
     )));
 
   // Un alto por renglon, compartido por las cuatro columnas, y un solo desvío para
@@ -504,8 +537,9 @@ function dibujarDatos(doc, pares, x, y, ancho, columnas) {
     bloque.forEach(([etiqueta, valor], f) => {
       const yTexto = yc + desvio[f];
       doc.font('Helvetica-Bold').fontSize(TAMANO_DATOS)
-        .text(etiqueta, xc, yTexto, { width: anchoEtiqueta, align: 'left', lineBreak: false });
-      doc.font('Helvetica').text(valor, xc + anchoEtiqueta, yTexto, { width: anchoValor, align: 'left' });
+        .text(etiqueta, xc, yTexto, { width: anchoEtiquetaPorColumna[c], align: 'left', lineBreak: false });
+      doc.font('Helvetica')
+        .text(valor, xc + anchoEtiquetaPorColumna[c], yTexto, { width: anchoValorPorColumna[c], align: 'left' });
       yc += altoFila[f];
     });
     yFin = Math.max(yFin, yc);

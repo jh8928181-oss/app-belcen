@@ -343,7 +343,10 @@ describe('basededatosgeneral.html datos para la OC', () => {
   });
 
   test('el formulario previo pide tambien emisor y cuentas del proveedor', () => {
-    for (const id of ['ocEmisorNombre', 'ocEmisorCargo', 'ocEmisorCelular', 'tablaCuentasOC']) {
+    // El correo del emisor entra con los demas: el encabezado derecho lo imprime
+    // junto a la hora y a la fecha de entrega, y sin este campo ese renglon
+    // saldria siempre con guion aunque el usuario ya lo tenga guardado.
+    for (const id of ['ocEmisorNombre', 'ocEmisorCargo', 'ocEmisorCelular', 'ocEmisorEmail', 'tablaCuentasOC']) {
       expect(html).toContain(`id="${id}"`);
     }
     // Las cuentas del PDF salen de una tabla distinta a la de la orden, asi que

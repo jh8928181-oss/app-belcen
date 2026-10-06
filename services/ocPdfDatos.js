@@ -85,7 +85,7 @@ function repartirIgv(items, igvPct, igvOrden) {
  * agrega uno aca, aparece en los tres.
  */
 const CAMPOS_ENTREGA = ['lugar_entrega', 'fecha_entrega', 'area_solicitante', 'forma_pago', 'horario_recepcion', 'atencion'];
-const CAMPOS_EMISOR = ['nombre', 'cargo', 'celular'];
+const CAMPOS_EMISOR = ['nombre', 'cargo', 'celular', 'email'];
 
 /**
  * Se queda con los campos indicados que vengan con texto.
@@ -175,10 +175,10 @@ async function datosParaOrdenPDF(pool, id, overrides = {}) {
   // se reescribe al editar; usuario_registro es la reserva por si las ordenes
   // anteriores a la migracion no lo tienen.
   const login = orden.rows[0].usuario_emision || orden.rows[0].usuario_registro || '';
-  let emisor = { nombre: '', cargo: '', celular: '' };
+  let emisor = { nombre: '', cargo: '', celular: '', email: '' };
   if (login) {
     const usr = await pool.query(
-      'SELECT nombre, cargo, celular FROM usuarios_sistema WHERE usuario = $1',
+      'SELECT nombre, cargo, celular, email FROM usuarios_sistema WHERE usuario = $1',
       [login]
     );
     if (usr.rows.length) emisor = usr.rows[0];
@@ -220,7 +220,8 @@ const ETIQUETAS_ENTREGA = {
 const ETIQUETAS_EMISOR = {
   nombre: 'Nombre de quien emite',
   cargo: 'Cargo',
-  celular: 'Celular del emisor'
+  celular: 'Celular del emisor',
+  email: 'Correo del emisor'
 };
 
 /** Lo que el formulario previo a imprimir necesita, mas la lista de huecos. */

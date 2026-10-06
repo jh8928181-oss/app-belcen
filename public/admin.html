@@ -86,8 +86,12 @@
                     <label><b>Celular:</b></label>
                     <input type="tel" id="editCelular" placeholder="Ej. 987 654 321" style="margin-top:5px;">
                 </div>
+                <div>
+                    <label><b>Correo:</b></label>
+                    <input type="email" id="editEmail" placeholder="Ej. nombre@empresa.com" style="margin-top:5px;">
+                </div>
             </div>
-            <div class="aviso-info" style="margin-top:12px;">ℹ️ Nombre, cargo y celular salen impresos en la OC que genera este usuario. Si los dejas vacíos, la OC mostrará un guion.</div>
+            <div class="aviso-info" style="margin-top:12px;">ℹ️ Nombre, cargo, celular y correo salen impresos en la OC que genera este usuario. Si los dejas vacíos, la OC mostrará un guion.</div>
             <div style="display: flex; gap: 10px; margin-top: 18px;">
                 <button onclick="guardarEditarUsuario()" id="btnGuardarEditar" class="btn-editar" style="padding:9px 16px; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">💾 GUARDAR CAMBIOS</button>
                 <button onclick="cerrarPanelEditar()" class="btn-eliminar" style="border:none; border-radius:4px; cursor:pointer; padding:9px 16px; font-weight:bold;">✖ Cancelar</button>
@@ -127,6 +131,10 @@
                     <label><b>Celular:</b></label>
                     <input type="tel" id="nuevoCelular" placeholder="Ej. 987 654 321" style="margin-top:5px;">
                 </div>
+                <div>
+                    <label><b>Correo:</b></label>
+                    <input type="email" id="nuevoEmail" placeholder="Ej. nombre@empresa.com" style="margin-top:5px;">
+                </div>
                 <div class="span-3" style="grid-column: span 3;">
                     <button type="submit" class="btn-accion">👤 CREAR USUARIO</button>
                 </div>
@@ -147,11 +155,12 @@
                             <th>Nombre</th>
                             <th>Cargo</th>
                             <th>Celular</th>
+                    <th>Correo</th>
                             <th class="text-center">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="tablaUsuarios">
-                        <tr><td colspan="7" class="text-center">Cargando usuarios...</td></tr>
+                        <tr><td colspan="8" class="text-center">Cargando usuarios...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -249,7 +258,7 @@
                 renderUsuarios();
             } catch (err) {
                 console.error(err);
-                document.getElementById('tablaUsuarios').innerHTML = '<tr><td colspan="7" class="text-center" style="color:red;">Error al cargar los usuarios.</td></tr>';
+                document.getElementById('tablaUsuarios').innerHTML = '<tr><td colspan="8" class="text-center" style="color:red;">Error al cargar los usuarios.</td></tr>';
             }
         }
 
@@ -272,7 +281,7 @@
             document.getElementById('totalUsuarios').textContent = usuariosGlobal.length;
             const tbody = document.getElementById('tablaUsuarios');
             tbody.innerHTML = filtrados.length === 0
-                ? '<tr><td colspan="7" class="text-center sin-registros">No hay usuarios que coincidan con la búsqueda.</td></tr>'
+                ? '<tr><td colspan="8" class="text-center sin-registros">No hay usuarios que coincidan con la búsqueda.</td></tr>'
                 : '';
             filtrados.forEach(u => {
                 const tr = document.createElement('tr');
@@ -283,6 +292,7 @@
                     <td>${esc(u.nombre) || '<span style="color:#999;">-</span>'}</td>
                     <td>${esc(u.cargo) || '<span style="color:#999;">-</span>'}</td>
                     <td>${esc(u.celular) || '<span style="color:#999;">-</span>'}</td>
+                    <td>${esc(u.email) || '<span style="color:#999;">-</span>'}</td>
                     <td class="text-center">
                         <div class="botones-accion">
                             <button onclick="abrirEditarUsuario(${u.id})" style="background:#ffc107; color:#000;" title="Editar">✏️</button>
@@ -305,6 +315,7 @@
             document.getElementById('editNombre').value = u.nombre || '';
             document.getElementById('editCargo').value = u.cargo || '';
             document.getElementById('editCelular').value = u.celular || '';
+            document.getElementById('editEmail').value = u.email || '';
             document.getElementById('panelEditar').style.display = 'block';
             document.getElementById('panelEditar').scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
@@ -324,6 +335,7 @@
             const nombre = document.getElementById('nuevoNombre').value.trim();
             const cargo = document.getElementById('nuevoCargo').value.trim();
             const celular = document.getElementById('nuevoCelular').value.trim();
+            const email = document.getElementById('nuevoEmail').value.trim();
 
             if (!/^[A-Za-z0-9_]{3,50}$/.test(usuario)) {
                 alert('❌ El usuario debe tener entre 3 y 50 caracteres (letras, números y guión bajo).');
@@ -344,7 +356,7 @@
                 const res = await fetch('/api/usuarios', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ usuario, password, rol, nombre, cargo, celular })
+                    body: JSON.stringify({ usuario, password, rol, nombre, cargo, celular, email })
                 });
                 const data = await res.json();
                 if (res.ok && data.success) {
@@ -375,6 +387,7 @@
             const nombre = document.getElementById('editNombre').value.trim();
             const cargo = document.getElementById('editCargo').value.trim();
             const celular = document.getElementById('editCelular').value.trim();
+            const email = document.getElementById('editEmail').value.trim();
 
             if (!/^[A-Za-z0-9_]{3,50}$/.test(usuario)) {
                 alert('❌ El usuario debe tener entre 3 y 50 caracteres (letras, números y guión bajo).');
@@ -396,7 +409,7 @@
                 const res = await fetch('/api/usuarios/' + editarId + '/editar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ usuario, rol, password, nombre, cargo, celular })
+                    body: JSON.stringify({ usuario, rol, password, nombre, cargo, celular, email })
                 });
                 const data = await res.json();
                 if (res.ok && data.success) {

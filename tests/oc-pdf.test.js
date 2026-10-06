@@ -479,10 +479,9 @@ describe('contenido del PDF', () => {
       return { x, y };
     };
 
-    // Se busca el nombre completo de cada firma y no un trozo suelto: el
-    // encabezado ahora trae una etiqueta "ÁREA SOLICITANTE:" que contiene la
-    // palabra "SOLICITANTE", y buscar solo esa palabra tomaba la coordenada de la
-    // etiqueta del encabezado en vez de la firma.
+    // Se busca el nombre completo de cada firma y no un trozo suelto: tanto
+    // "ÁREA SOLICITANTE:" (en las condiciones) como "VB SOLICITANTE:" contienen
+    // "SOLICITANTE", y buscar solo esa palabra tomaba la coordenada de otra cosa.
     const admin = posicionDe('VB ADMINISTRACIÓN');
     const produccion = posicionDe('ÁREA PRODUCCIÓN');
     const solicitante = posicionDe('VB SOLICITANTE');
@@ -824,8 +823,9 @@ describe('hoja A4 apaisada', () => {
     });
     const pos = posiciones(buffer);
 
-    // Las cuatro etiquetas de la primera fila comparten linea base.
-    const etiquetas = ['PROVEEDOR:', 'E-MAIL:', 'CARGO:', 'ÁREA SOLICITANTE:'];
+    // Las cuatro etiquetas de la primera fila comparten linea base: una por
+    // columna, empezando por la del proveedor y acabando por la del emisor.
+    const etiquetas = ['PROVEEDOR:', 'E-MAIL:', 'EMITIDO POR:', 'HORA:'];
     const fila = etiquetas.map(t => pos.find(p => p.texto.startsWith(t)));
     for (const e of fila) expect(e).toBeDefined();
     const ys = new Set(fila.map(e => Math.round(e.y * 10) / 10));
@@ -833,14 +833,22 @@ describe('hoja A4 apaisada', () => {
   });
 
   test('una etiqueta larga no se parte en dos lineas', async () => {
-    // "HORARIO RECEPCIÓN:" no entraba en la caja de etiqueta fija y se partia,
-    // dejando la etiqueta desalineada de su valor.
+    // "HORARIO DE ATENCIÓN:" y "FECHA DE ENTREGA:" son las dos etiquetas mas
+    // largas del bloque y no caben en ANCHO_ETIQUETA fijo (2.9 cm). Si la caja
+    // no se agranda, se parten y dejan la etiqueta desalineada de su valor.
+    //
+    // Se mira "ENTREGA:" y no "ATENCIÓN:" como trozo suelto porque "ATENCIÓN:" es
+    // una etiqueta legitima por derecho propio, la del proveedor: buscarla
+    // daria un falso positivo aunque la de la derecha si estuviera partida.
     const pos = posiciones(await generarPDFOrdenCompra({
       orden: ORDEN, items: ITEMS, bancos: CUENTAS,
       emisor: { nombre: 'Angelica', cargo: '', celular: '' }
     }));
-    expect(pos.some(p => p.texto.startsWith('HORARIO RECEPCIÓN:'))).toBe(true);
-    expect(pos.some(p => p.texto.trim() === 'RECEPCIÓN:')).toBe(false);
+    expect(pos.some(p => p.texto === 'HORARIO DE ATENCIÓN:')).toBe(true);
+    expect(pos.some(p => p.texto === 'FECHA DE ENTREGA:')).toBe(true);
+    expect(pos.some(p => p.texto.trim() === 'ATENCIÓN:')).toBe(true);
+    expect(pos.some(p => /^\s*ENTREGA:/.test(p.texto))).toBe(false);
+    expect(pos.some(p => p.texto.trim() === 'DE ATENCIÓN:')).toBe(false);
   });
 
   test('el recuadro de datos no toca el texto', async () => {
@@ -853,9 +861,16 @@ describe('hoja A4 apaisada', () => {
       emisor: { nombre: 'Angelica Ruiz', cargo: 'Jefe de almacen', celular: '987654321' }
     });
     const marco = recuadroDeDatos(buffer);
-    const ETIQUETAS = ['PROVEEDOR:', 'RUC:', 'ATENCIÓN:', 'E-MAIL:', 'CARGO:', 'ÁREA SOLICITANTE:', 'HORARIO RECEPCIÓN:'];
+    // Las quince etiquetas del bloque, tal como quedaron al repartirse en cuatro
+    // columnas. "CEL:" y "E-MAIL:" salen dos veces (una por lado) y por eso el
+    // recuento se hace sobre las etiquetas distintas: si se comparara el numero
+    // de textos con el de la lista, el propio diseno haria fallar la prueba.
+    const ETIQUETAS = ['PROVEEDOR:', 'RUC:', 'ATENCIÓN:', 'CEL:', 'E-MAIL:', 'FORMA DE PAGO:',
+      'MONEDA:', 'EMITIDO POR:', 'CARGO:', 'FECHA:', 'HORA:', 'HORARIO DE ATENCIÓN:',
+      'FECHA DE ENTREGA:'];
     const filas = posiciones(buffer).filter(p => p.hoja === 0 && ETIQUETAS.some(e => p.texto.startsWith(e)));
-    expect(filas.length).toBe(ETIQUETAS.length);
+    expect([...new Set(filas.map(p => p.texto))].sort()).toEqual([...ETIQUETAS].sort());
+    expect(filas.length).toBe(ETIQUETAS.length + 2);
 
     // Lo que se mide no es la linea base sino la caja de la letra: la base
     // queda 5,4 puntos mas abajo que la mayuscula, y con ella de referencia
@@ -947,6 +962,24 @@ describe('condiciones del pie', () => {
     expect(todo).toContain('lugar y fecha no establecidos');
     expect(todo).not.toContain('no establecidas');
     expect(todo).not.toContain('El envió');
+  });
+
+  test('lo que ya sale en el encabezado no se repite como condicion', async () => {
+    // Fecha de entrega, forma de pago y horario de recepcion se mudaron al
+    // bloque de datos. Si se dejan tambien en CONDICIONES, el mismo dato aparece
+    // dos veces en la hoja y con dos redacciones ("HORARIO DE ATENCIÓN" arriba,
+    // "Horario de recepción" abajo), que es como un documento se contradice.
+    const pos = posiciones(await generarPDFOrdenCompra({
+      orden: ORDEN, items: ITEMS, bancos: CUENTAS,
+      emisor: { nombre: 'Angelica Ruiz', cargo: 'Jefe de almacen', celular: '987654321' }
+    }));
+    const etiquetas = pos.map(p => p.texto.trim());
+    for (const repetida of ['Fecha de entrega:', 'Forma de pago:', 'Horario de recepción:']) {
+      expect(etiquetas).not.toContain(repetida);
+    }
+    // Las que si son condicion del documento siguen abajo, en su propia redaccion.
+    expect(etiquetas.some(t => t.startsWith('Lugar de entrega:'))).toBe(true);
+    expect(etiquetas.some(t => t.startsWith('Área solicitante:'))).toBe(true);
   });
 });
 

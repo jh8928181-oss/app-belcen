@@ -82,7 +82,7 @@ async function listarUsuarios(req, res) {
     // nombre/cargo/celular son los datos que salen firmados en la OC, asi que
     // la lista tambien los trae para que el admin los complete sin adivinar.
     const result = await pool.query(
-      'SELECT id, usuario, rol, nombre, cargo, celular FROM usuarios_sistema ORDER BY usuario ASC'
+      'SELECT id, usuario, rol, nombre, cargo, celular, email FROM usuarios_sistema ORDER BY usuario ASC'
     );
     res.json(result.rows);
   } catch (err) {
@@ -101,7 +101,7 @@ async function listarUsuarios(req, res) {
 function datosContactoDe(entrada, actual) {
   const base = actual || {};
   const salida = {};
-  for (const campo of ['nombre', 'cargo', 'celular']) {
+  for (const campo of ['nombre', 'cargo', 'celular', 'email']) {
     const bruto = entrada[campo];
     const valor = bruto === undefined || bruto === null
       ? (base[campo] === undefined ? null : base[campo])
@@ -129,8 +129,8 @@ async function crearUsuario(req, res) {
     const hash = await hashPassword(pwd, salt);
     const contacto = datosContactoDe(req.body, null);
     const result = await client.query(
-      'INSERT INTO usuarios_sistema (usuario, password, rol, nombre, cargo, celular) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, usuario, rol, nombre, cargo, celular',
-      [usu, `${hash}:${salt}`, rolOk, contacto.nombre, contacto.cargo, contacto.celular]
+      'INSERT INTO usuarios_sistema (usuario, password, rol, nombre, cargo, celular, email) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, usuario, rol, nombre, cargo, celular, email',
+      [usu, `${hash}:${salt}`, rolOk, contacto.nombre, contacto.cargo, contacto.celular, contacto.email]
     );
     await client.query('COMMIT');
     res.json({ success: true, mensaje: 'Usuario creado correctamente.', usuario: result.rows[0] });
@@ -201,13 +201,13 @@ async function editarUsuario(req, res) {
       const salt = crypto.randomBytes(16).toString('hex');
       const hash = await hashPassword(nuevoPassword, salt);
       await client.query(
-        'UPDATE usuarios_sistema SET usuario = $1, rol = $2, password = $3, nombre = $4, cargo = $5, celular = $6 WHERE id = $7',
-        [nuevoUsuario, nuevoRol, `${hash}:${salt}`, contacto.nombre, contacto.cargo, contacto.celular, id]
+        'UPDATE usuarios_sistema SET usuario = $1, rol = $2, password = $3, nombre = $4, cargo = $5, celular = $6, email = $7 WHERE id = $8',
+        [nuevoUsuario, nuevoRol, `${hash}:${salt}`, contacto.nombre, contacto.cargo, contacto.celular, contacto.email, id]
       );
     } else {
       await client.query(
-        'UPDATE usuarios_sistema SET usuario = $1, rol = $2, nombre = $3, cargo = $4, celular = $5 WHERE id = $6',
-        [nuevoUsuario, nuevoRol, contacto.nombre, contacto.cargo, contacto.celular, id]
+        'UPDATE usuarios_sistema SET usuario = $1, rol = $2, nombre = $3, cargo = $4, celular = $5, email = $6 WHERE id = $7',
+        [nuevoUsuario, nuevoRol, contacto.nombre, contacto.cargo, contacto.celular, contacto.email, id]
       );
     }
 

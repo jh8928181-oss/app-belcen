@@ -94,7 +94,11 @@ function ejecutarScript() {
   return contexto;
 }
 
-const CAMPOS = ['Nombre', 'Cargo', 'Celular'];
+// Los cuatro datos que salen firmados en la OC. El correo se sumo cuando el
+// encabezado derecho pidio "E-MAIL" junto a HORA y a la fecha de entrega. La
+// columna se llama Correo pero el campo que manda el servidor es email.
+const CAMPOS = ['Nombre', 'Cargo', 'Celular', 'Correo'];
+const CAMPOS_API = ['nombre', 'cargo', 'celular', 'email'];
 
 describe('admin.html estructura', () => {
   test('el HTML esta balanceado', () => {
@@ -117,19 +121,19 @@ describe('admin.html estructura', () => {
 });
 
 describe('admin.html datos de contacto para la OC', () => {
-  test('crear usuario tiene los tres campos', () => {
-    for (const id of ['nuevoNombre', 'nuevoCargo', 'nuevoCelular']) {
+  test('crear usuario tiene los cuatro campos', () => {
+    for (const id of ['nuevoNombre', 'nuevoCargo', 'nuevoCelular', 'nuevoEmail']) {
       expect(html).toContain(`id="${id}"`);
     }
   });
 
-  test('editar usuario tiene los tres campos', () => {
-    for (const id of ['editNombre', 'editCargo', 'editCelular']) {
+  test('editar usuario tiene los cuatro campos', () => {
+    for (const id of ['editNombre', 'editCargo', 'editCelular', 'editEmail']) {
       expect(html).toContain(`id="${id}"`);
     }
   });
 
-  test('el listado de usuarios muestra los tres datos', () => {
+  test('el listado de usuarios muestra los cuatro datos', () => {
     for (const campo of CAMPOS) {
       expect(html).toContain(`<th>${campo}</th>`);
     }
@@ -137,24 +141,27 @@ describe('admin.html datos de contacto para la OC', () => {
 
   test('crear y editar los mandan al backend', () => {
     const crear = bloquesInline.join('\n');
-    // El controlador guarda nombre, cargo y celular; si el admin no los manda,
-    // se guardan como null y la OC imprime el guion de "sin dato".
-    expect(crear).toContain('JSON.stringify({ usuario, password, rol, nombre, cargo, celular })');
-    expect(crear).toContain('JSON.stringify({ usuario, rol, password, nombre, cargo, celular })');
+    // El controlador guarda nombre, cargo, celular y correo; si el admin no los
+    // manda, se guardan como null y la OC imprime el guion de "sin dato".
+    expect(crear).toContain('JSON.stringify({ usuario, password, rol, nombre, cargo, celular, email })');
+    expect(crear).toContain('JSON.stringify({ usuario, rol, password, nombre, cargo, celular, email })');
   });
 
   test('abrir la edicion los rellena con lo que ya tiene el usuario', () => {
     const fuente = vm.runInContext('abrirEditarUsuario.toString()', ejecutarScript());
-    for (const id of ['editNombre', 'editCargo', 'editCelular']) expect(fuente).toContain(`'${id}'`);
+    for (const id of ['editNombre', 'editCargo', 'editCelular', 'editEmail']) {
+      expect(fuente).toContain(`'${id}'`);
+    }
     // Sin el || '' un null dejaria "null" escrito en el campo.
     expect(fuente).toContain("u.celular || ''");
+    expect(fuente).toContain("u.email || ''");
   });
 
   test('el listado escapa los datos que vienen del servidor', () => {
     const fuente = vm.runInContext('renderUsuarios.toString()', ejecutarScript());
     // Un nombre con "<" o un salto de linea romperia la tabla si se inserta tal cual.
     expect(fuente).toContain('esc(');
-    for (const campo of CAMPOS) expect(fuente).toContain(`u.${campo.toLowerCase()}`);
+    for (const campo of CAMPOS_API) expect(fuente).toContain(`u.${campo}`);
   });
 
   test('esc escapa los cinco caracteres que rompen HTML', () => {

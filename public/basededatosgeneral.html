@@ -1135,6 +1135,10 @@
                     <label>Celular</label>
                     <input type="text" id="ocEmisorCelular" placeholder="9XX XXX XXX">
                 </div>
+                <div class="campo-flex" style="min-width:220px;">
+                    <label>Correo</label>
+                    <input type="text" id="ocEmisorEmail" placeholder="nombre@empresa.com">
+                </div>
             </div>
 
             <h3 class="ambar" style="margin-top:16px;">🏦 Cuentas del proveedor</h3>
@@ -2212,6 +2216,7 @@
                 document.getElementById('ocEmisorNombre').value = em.nombre || '';
                 document.getElementById('ocEmisorCargo').value = em.cargo || '';
                 document.getElementById('ocEmisorCelular').value = em.celular || '';
+                document.getElementById('ocEmisorEmail').value = em.email || '';
 
                 renderCuentasProv(d.cuentas || [], 'tablaCuentasOC');
                 pintarAvisoFaltantes(d.faltantes || []);
@@ -2262,7 +2267,8 @@
                     emisor: {
                         nombre: document.getElementById('ocEmisorNombre').value,
                         cargo: document.getElementById('ocEmisorCargo').value,
-                        celular: document.getElementById('ocEmisorCelular').value
+                        celular: document.getElementById('ocEmisorCelular').value,
+                        email: document.getElementById('ocEmisorEmail').value
                     },
                     cuentas: leerCuentasProv('tablaCuentasOC')
                 });

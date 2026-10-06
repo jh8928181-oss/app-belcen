@@ -675,8 +675,17 @@ const lista = Array.isArray(estados) ? estados : [];
                         totalCajas += parseInt(r.cantidad_cajas || 0, 10);
                         totalTn += parseFloat(r.toneladas || 0);
                     });
-document.getElementById('resumenEnvasado').textContent =
-                        lista.length + ' reportes hoy · ' + formatearNumero(totalCajas) + ' cajas · ' + totalTn.toFixed(2) + ' TM';
+// Esta lista es el historial completo, no el día. Antes se sumaba y se
+                    // rotulaba "reportes hoy", así que la tarjeta mostraba el
+                    // acumulado de hasta 50 registros de cualquier fecha. Lo
+                    // que queda de verdad en el inventario es la tabla de
+                    // producto terminado, más abajo.
+                    const fechas = lista.map(r => r.fecha_produccion).filter(Boolean).sort();
+                    const rango = fechas.length
+                        ? (fechas.length === 1 ? fechas[0] : fechas[0] + ' a ' + fechas[fechas.length - 1])
+                        : 'sin registros';
+                    document.getElementById('resumenEnvasado').textContent =
+                        lista.length + ' reportes · ' + formatearNumero(totalCajas) + ' cajas · ' + totalTn.toFixed(2) + ' TM · ' + rango;
                     const ultimo = lista.length ? lista[0] : null;
                     document.getElementById('detalleEnvasado').textContent =
                         'Anterior: ' + (ultimo ? ultimo.presentacion + ' · ' + ultimo.cantidad_cajas + ' cajas' : '—') +

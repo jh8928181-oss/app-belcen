@@ -742,6 +742,7 @@ app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
         }
 
         await client.query('BEGIN');
+        await exigirLineaEnMarcha(client, 'soplado');
 
         let etiquetaNombre = null;
         let botellaNombre = '';
@@ -883,7 +884,7 @@ app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Error al registrar soplado:', error);
-        res.status(500).json({ success: false, mensaje: 'Error al procesar el reporte de soplado: ' + error.message });
+        res.status(error.status || 500).json({ success: false, mensaje: (error.status ? '' : 'Error al procesar el reporte de soplado: ') + error.message });
     } finally {
         client.release();
     }
@@ -891,7 +892,7 @@ app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
 
 app.get('/api/soplado/reportes', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM reportes_soplado ORDER BY id DESC LIMIT 50');
+        const result = await pool.query('SELECT * FROM reportes_soplado ORDER BY id DESC LIMIT 500');
         res.json(result.rows);
     } catch (err) {
         res.status(500).json({ success: false, mensaje: err.message });
@@ -950,36 +951,59 @@ async function actualizarEstadoArticulo(q, nombre, id = null) {
     );
 }
 
+// --- LÍNEA EN MARCHA: condición para registrar producción ---
+// `estado_lineas` se escribía y se pintaba en pantalla, pero ninguna ruta de
+// producción la consultaba: una línea en PARADO seguía Laplacando y sumando
+// producto terminado, y el indicador no describía nada real. Ahora la consulta
+// bloquea el registro, que es lo que el operario espera al ver "PARADO".
+//
+// Si el área no tiene fila se deja pasar. La tabla se puebla desde la propia
+// pantalla y no toda planta la tiene configurada para las dos áreas; bloquear
+// por una fila que nunca se creó dejaría la planta sin poder producir.
+async function exigirLineaEnMarcha(client, area) {
+    const r = await client.query('SELECT estado FROM estado_lineas WHERE area = $1', [area]);
+    if (!r.rows.length) return;
+    const estado = String(r.rows[0].estado || '').trim().toUpperCase();
+    if (estado === 'EN MARCHA') return;
+    const err = new Error(
+        `La línea de ${area} está ${estado || 'sin estado registrado'}. Ponla en marcha antes de registrar producción.`
+    );
+    err.status = 409;
+    throw err;
+}
+
 // --- FUNCIÓN AUXILIAR: HISTORIAL DE MOVIMIENTOS DE INVENTARIO ---
 // La auditoría es obligatoria: si el movimiento de stock no queda registrado,
 // el error sube y la transacción que lo llamó se revierte. Un stock movido sin
 // rastro es indistinguible de un stock inventado.
 //
-// `tolerante: true` queda solo para los módulos fuera de este alcance (refinado),
-// donde el comportamiento anterior era best-effort y no se cambia a la fuerza.
+// No hay modo best-effort. Antes `tolerable: true` permitia tragarse el fallo
+// del INSERT; eso dejaba el stock movido y sin auditoria, y era el unico punto
+// donde refinado se movia sin dejar rastro. Si una vez mas hiciera falta, el
+// movimiento tiene que ser reversible por transaccion, no silencioso.
+/**
+ * Registra el movimiento. No captura el error a proposito: la exception sube a la
+ * transaccion que la llamo y esa revierte el stock, de modo que el inventario nunca
+ * queda movido sin la fila que lo justifica.
+ */
 async function registrarHistorial(q, datos) {
-    try {
-        await q.query(
-            `INSERT INTO historial_inventario (tipo, origen, producto, producto_key, articulo_id, cantidad, tipo_cambio, stock_anterior, stock_nuevo, usuario, referencia)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-            [
-                datos.tipo || 'MOVIMIENTO',
-                datos.origen || '',
-                datos.producto || 'N/D',
-                datos.producto_key || null,
-                datos.articulo_id || null,
-                Number(datos.cantidad) || 0,
-                datos.tipo_cambio === 'RESTA' ? 'RESTA' : 'SUMA',
-                datos.stock_anterior !== undefined && datos.stock_anterior !== null ? Number(datos.stock_anterior) : null,
-                datos.stock_nuevo !== undefined && datos.stock_nuevo !== null ? Number(datos.stock_nuevo) : null,
-                datos.usuario || 'sistema',
-                datos.referencia || ''
-            ]
-        );
-    } catch (err) {
-        if (!datos.tolerante) throw err;
-        console.error("No se pudo registrar en el historial de inventario:", err.message);
-    }
+    await q.query(
+        `INSERT INTO historial_inventario (tipo, origen, producto, producto_key, articulo_id, cantidad, tipo_cambio, stock_anterior, stock_nuevo, usuario, referencia)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [
+            datos.tipo || 'MOVIMIENTO',
+            datos.origen || '',
+            datos.producto || 'N/D',
+            datos.producto_key || null,
+            datos.articulo_id || null,
+            Number(datos.cantidad) || 0,
+            datos.tipo_cambio === 'RESTA' ? 'RESTA' : 'SUMA',
+            datos.stock_anterior !== undefined && datos.stock_anterior !== null ? Number(datos.stock_anterior) : null,
+            datos.stock_nuevo !== undefined && datos.stock_nuevo !== null ? Number(datos.stock_nuevo) : null,
+            datos.usuario || 'sistema',
+            datos.referencia || ''
+        ]
+    );
 }
 
 // Resuelve el nombre de usuario priorizando la sesión (token) y luego el enviado por el formulario.
@@ -2170,14 +2194,17 @@ app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
         if (!producto_tipo) {
             return res.status(400).json({ success: false, mensaje: `La presentación "${presentacion}" no tiene receta registrada.` });
         }
-        if (!cajas || isNaN(cajas) || cajas <= 0 || cajas > 1000000) {
-            return res.status(400).json({ success: false, mensaje: 'Cantidad de cajas inválida. Debe ser un número mayor a 0.' });
+        // stock_cajas es int: un 10.7 pasaba la validación y reventaba con un
+        // error de tipo de Postgres en vez de un 400 con mensaje útil.
+        if (!Number.isInteger(cajas) || cajas <= 0 || cajas > 1000000) {
+            return res.status(400).json({ success: false, mensaje: 'Cantidad de cajas inválida. Debe ser un número entero mayor a 0.' });
         }
 
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
             await client.query(`SELECT set_config('app.current_user', $1, true)`, [usuarioResponsable(req, usuario) || 'produccion']);
+            await exigirLineaEnMarcha(client, 'envasado');
 
             // El motor devuelve hojas de inventario ya aplanadas (insumo_id) con
             // merma y stock de seguridad aplicados: no hay segunda búsqueda por
@@ -2292,10 +2319,15 @@ app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
                 });
             }
 
+            // producto_key queda guardado en el reporte: al borrarlo, las cajas
+            // se devuelven a la clave que realmente se produjo. Antes se
+            // re-resolvía por nombre de receta, así que si la receta se desactivó
+            // o renombró entre la producción y el borrado, los insumos volvían
+            // (van por snapshot) pero las cajas no.
             await client.query(
-                `INSERT INTO reportes_produccion (fecha_produccion, presentacion, cantidad_cajas, unidad_medida, toneladas, observaciones, usuario_registro, desglose_insumos) 
-                 VALUES ($1, $2, $3, 'CAJAS', $4, $5, $6, $7)`,
-                [fecha_produccion || new Date(), presentacion, cajas, toneladas, observaciones || '', usuario || 'envasado_user', desgloseJson]
+                `INSERT INTO reportes_produccion (fecha_produccion, presentacion, cantidad_cajas, unidad_medida, toneladas, observaciones, usuario_registro, desglose_insumos, producto_key)
+                 VALUES ($1, $2, $3, 'CAJAS', $4, $5, $6, $7, $8)`,
+                [fecha_produccion || new Date(), presentacion, cajas, toneladas, observaciones || '', usuario || 'envasado_user', desgloseJson, producto_tipo]
             );
 
             await client.query('COMMIT');
@@ -2308,14 +2340,18 @@ app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
         }
     } catch (err) {
         console.error("Error en reporte producción:", err);
-        res.status(500).json({ success: false, mensaje: err.message });
+        res.status(err.status || 500).json({ success: false, mensaje: err.message });
     }
 });
 
 app.get('/api/produccion/reportes', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM reportes_produccion ORDER BY id DESC LIMIT 50');
-        res.json(result.rows);
+// Historial completo de producción, sin filtro de fecha a propósito: la
+    // fecha la pone quien consulta (ver /api/produccion/informes). El LIMIT es
+    // alto para que la lista no se trunque en silencio —con 50, un día con más
+    // de 50 reportes perdía el resto sin avisar— y la vista pagina.
+    const result = await pool.query('SELECT * FROM reportes_produccion ORDER BY id DESC LIMIT 500');
+    res.json(result.rows);
     } catch (err) {
         res.status(500).json({ success: false, mensaje: err.message });
     }
@@ -2374,15 +2410,28 @@ app.post('/api/produccion/eliminar', gProduccion, async (req, res) => {
         const { reporte_id } = req.body;
         await client.query('BEGIN');
 
-        const repRes = await client.query('SELECT * FROM reportes_produccion WHERE id = $1', [reporte_id]);
+        // FOR UPDATE: el reporte se bloquea antes de leerlo porque toda la
+        // devolucion se calcula a partir de esta fila. Sin el bloqueo, dos
+        // borrados simultaneos (doble clic, doble operador, reintento) leen la
+        // misma fila, devuelven los insumos dos veces y restan las cajas dos
+        // veces: el reporte se borra y el inventario queda inflado.
+        const repRes = await client.query('SELECT * FROM reportes_produccion WHERE id = $1 FOR UPDATE', [reporte_id]);
         if (repRes.rows.length === 0) {
             await client.query('ROLLBACK');
             return res.status(404).json({ success: false, mensaje: 'El reporte ya no existe (pudo haber sido cerrado).' });
         }
         const reporte = repRes.rows[0];
 
-        const producto_tipo = await resolverProductoKey(reporte.presentacion, client);
+        // La clave guardada manda. Solo si el reporte es anterior a la migración se
+        // re-resuelve por nombre, que es el camino legacy y puede fallar si la
+        // receta cambió.
+        const producto_tipo = (reporte.producto_key && String(reporte.producto_key).trim())
+            ? String(reporte.producto_key).trim()
+            : await resolverProductoKey(reporte.presentacion, client);
         const cantidad_cajas = parseInt(reporte.cantidad_cajas, 10);
+        // Aviso para el operador cuando las cajas del reporte ya se habian
+        // despachado y solo una parte pudo volver al inventario.
+        let avisoCajas = null;
 
         // Se devuelve con las MISMAS hojas que se descontaron, por id de
         // inventario. Si la receta cambió desde el reporte, el desglose guardado
@@ -2482,31 +2531,54 @@ app.post('/api/produccion/eliminar', gProduccion, async (req, res) => {
             }
 
             // El producto terminado solo se devuelve si el reporte lo descontó.
+            //
+            // Si las cajas del reporte ya se despacharon, no hay stock que
+            // restar: la resta completa reventaba contra el CHECK
+            // (stock_cajas >= 0) y el ROLLBACK arrastraba la devolución de
+            // insumos, dejando un reporte que no se podía borrar de ninguna
+            // forma. Se devuelve solo lo que queda y la diferencia se reporta,
+            // porque esas cajas se produjeron de verdad: el despache ya las
+            // consumió del inventario.
             if (producto_tipo) {
-                const stPT = await client.query('SELECT nombre_producto, stock_cajas FROM producto_terminado WHERE producto_key = $1', [producto_tipo]);
+                const stPT = await client.query('SELECT id, nombre_producto, stock_cajas FROM producto_terminado WHERE producto_key = $1 FOR UPDATE', [producto_tipo]);
                 if (stPT.rows.length > 0) {
                     const stockAnteriorPT = Number(stPT.rows[0].stock_cajas) || 0;
-                    await client.query(
-                        'UPDATE producto_terminado SET stock_cajas = stock_cajas - $1 WHERE producto_key = $2',
-                        [cantidad_cajas, producto_tipo]
-                    );
+                    const restituidas = Math.max(0, Math.min(cantidad_cajas, stockAnteriorPT));
+                    const noRestituidas = cantidad_cajas - restituidas;
+                    if (noRestituidas > 0) {
+                        avisoCajas = `De las ${cantidad_cajas} cajas del reporte solo ${restituidas} volvieron al inventario de producto terminado: las ${noRestituidas} restantes ya estaban despachadas. Los insumos se devolvieron completos.`;
+                    }
+                    if (restituidas > 0) {
+                        await client.query(
+                            'UPDATE producto_terminado SET stock_cajas = stock_cajas - $1 WHERE id = $2',
+                            [restituidas, stPT.rows[0].id]
+                        );
+                    }
                     await registrarHistorial(client, {
                         tipo: 'DEVOLUCION', origen: 'envasado',
                         producto: stPT.rows[0].nombre_producto,
                         producto_key: producto_tipo,
                         cantidad: cantidad_cajas, tipo_cambio: 'RESTA',
-                        stock_anterior: stockAnteriorPT, stock_nuevo: stockAnteriorPT - cantidad_cajas,
+                        stock_anterior: stockAnteriorPT, stock_nuevo: stockAnteriorPT - restituidas,
                         usuario: usuarioResponsable(req, req.body.usuario),
-                        referencia: 'Devolución al eliminar reporte de ' + reporte.presentacion
+                        referencia: 'Devolución al eliminar reporte de ' + reporte.presentacion +
+                            (noRestituidas > 0 ? ` (solo ${restituidas} de ${cantidad_cajas}: ${noRestituidas} ya despachadas)` : '')
                     });
                 }
             }
         }
 
-        await client.query('DELETE FROM reportes_produccion WHERE id = $1', [reporte_id]);
+        const del = await client.query('DELETE FROM reportes_produccion WHERE id = $1', [reporte_id]);
+        if (del.rowCount !== 1) {
+            throw new Error('El reporte cambio mientras se procesaba el borrado. Revisa el inventario y reintenta.');
+        }
 
         await client.query('COMMIT');
-        res.json({ success: true, mensaje: 'Reporte de producción eliminado. Insumos devueltos al inventario; ya puedes volver a reportarlo.' });
+        res.json({
+            success: true,
+            mensaje: 'Reporte de producción eliminado. Insumos devueltos al inventario; ya puedes volver a reportarlo.',
+            aviso: avisoCajas
+        });
     } catch (err) {
         await client.query('ROLLBACK');
         console.error("Error al eliminar reporte:", err);
@@ -2676,23 +2748,30 @@ function sanitizarLote(o) {
 }
 
 // Descuenta/restaura un insumo del stock de refinado (Almacén) según el reporte de lotes.
-async function aplicarMovimientoStockInsumoRefinado(nombre, cantidad, signo, usuario, referencia) {
+async function aplicarMovimientoStockInsumoRefinado(q, nombre, cantidad, signo, usuario, referencia) {
     if (!nombre || !(Number(cantidad) > 0)) return;
-    const res = await pool.query('SELECT id, nombre, stock FROM stock_insumos_refinado WHERE LOWER(BTRIM(nombre)) = $1', [String(nombre).trim().toLowerCase()]);
+    // FOR UPDATE mantiene la fila bloqueada hasta el COMMIT, asi que el stock que
+    // se lee para la auditoria es exactamente el mismo que ve el UPDATE de abajo.
+    const res = await q.query('SELECT id, nombre, stock FROM stock_insumos_refinado WHERE LOWER(BTRIM(nombre)) = $1 FOR UPDATE', [String(nombre).trim().toLowerCase()]);
     if (!res.rows.length) return;
     const item = res.rows[0];
     const stockAnterior = Number(item.stock) || 0;
-    const stockNuevo = Math.max(0, stockAnterior + signo * Number(cantidad));
-    await pool.query(
+    // El delta viaja al servidor. Calcular el stock absoluto en JavaScript y
+    // escribirlo con SET pisaba cualquier movimiento concurrente del mismo
+    // insumo: el ultimo en escribir se llevaba un stock ya viejo y el descuento
+    // del otro se perdia.
+    const upd = await q.query(
         `UPDATE stock_insumos_refinado SET
-             stock = $1::numeric,
-             estado = CASE WHEN $1::numeric <= 0 THEN 'REALIZAR PEDIDO' ELSE 'STOCK SUFICIENTE' END,
+             stock = GREATEST(0, stock + $1::numeric),
+             estado = CASE WHEN GREATEST(0, stock + $1::numeric) <= 0 THEN 'REALIZAR PEDIDO' ELSE 'STOCK SUFICIENTE' END,
              usuario_ajuste = $2,
              fecha_ajuste = CURRENT_TIMESTAMP
-         WHERE id = $3`,
-        [stockNuevo, usuario, item.id]
+         WHERE id = $3
+         RETURNING stock`,
+        [signo * Number(cantidad), usuario, item.id]
     );
-    await registrarHistorial(pool, {
+    const stockNuevo = Number(upd.rows[0].stock);
+    await registrarHistorial(q, {
         tipo: signo < 0 ? 'SALIDA' : 'ENTRADA',
         origen: 'refinado',
         producto: item.nombre,
@@ -2702,22 +2781,26 @@ async function aplicarMovimientoStockInsumoRefinado(nombre, cantidad, signo, usu
         stock_anterior: stockAnterior,
         stock_nuevo: stockNuevo,
         usuario: usuario,
-        referencia: referencia || 'Movimiento por lote de refinado',
-        tolerable: true
+        referencia: referencia || 'Movimiento por lote de refinado'
+        // Sin tolerable: si el movimiento no queda en historial, la
+        // transacción revierte. Refinado era el único módulo donde el stock se
+        // movía sin dejar rastro, y un stock sin registro es indistinguible de
+        // un stock inventado.
     });
 }
 
-async function aplicarInsumosLoteStock(insumos, signo, usuario, referencia) {
+async function aplicarInsumosLoteStock(q, insumos, signo, usuario, referencia) {
     insumos = Array.isArray(insumos) ? insumos : [];
     for (const it of insumos) {
         const cant = (it && it.cantidad !== null && it.cantidad !== undefined) ? Number(it.cantidad) : 0;
         if ((it && it.nombre) && cant > 0) {
-            await aplicarMovimientoStockInsumoRefinado(it.nombre, cant, signo, usuario, referencia);
+            await aplicarMovimientoStockInsumoRefinado(q, it.nombre, cant, signo, usuario, referencia);
         }
     }
 }
 
 app.post('/api/refinado/guardar', requerirRolRefinado, async (req, res) => {
+    const client = await pool.connect();
     try {
         const { fecha_reporte, turno, lote, observaciones, produccion_manana } = req.body || {};
         if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fecha_reporte || ''))) {
@@ -2727,7 +2810,20 @@ app.post('/api/refinado/guardar', requerirRolRefinado, async (req, res) => {
         if (!['DIA', 'NOCHE'].includes(turnoVal)) {
             return res.status(400).json({ success: false, mensaje: 'Turno inválido. Use DIA o NOCHE.' });
         }
-        const sel = await pool.query('SELECT aceite_json, totales_json, observaciones FROM reportes_refinado WHERE fecha_reporte = $1 AND turno = $2', [fecha_reporte, turnoVal]);
+        await client.query('BEGIN');
+
+        // El reporte del turno se lee, se modifica en memoria y se vuelve a
+        // guardar. Sin transaccion, dos personas guardando el mismo turno leen
+        // la misma lista de lotes y la ultima escritura pisa la del otro: el
+        // lote que se perdio ya habia descontado su stock, que queda sin ningun
+        // lote que lo justifique.
+        await client.query(
+            `INSERT INTO reportes_refinado (fecha_reporte, turno, insumos_json, aceite_json, totales_json, observaciones, usuario_registro)
+             VALUES ($1, $2, '[]', '[]', $3, '', $4)
+             ON CONFLICT (fecha_reporte, turno) DO NOTHING`,
+            [fecha_reporte, turnoVal, JSON.stringify({ produccion_manana: null, total_lotes: 0, total_tm: 0 }), req.usuario]
+        );
+        const sel = await client.query('SELECT id, aceite_json, totales_json, observaciones FROM reportes_refinado WHERE fecha_reporte = $1 AND turno = $2 FOR UPDATE', [fecha_reporte, turnoVal]);
         let lotes = [];
         let obs = '';
         let totales = null;
@@ -2739,16 +2835,17 @@ app.post('/api/refinado/guardar', requerirRolRefinado, async (req, res) => {
         if (lote && typeof lote === 'object') {
             const limpio = sanitizarLote(lote);
             if (!limpio.lote) {
+                await client.query('ROLLBACK');
                 return res.status(400).json({ success: false, mensaje: 'Ingrese el número de lote para registrarlo.' });
             }
             const idx = lotes.findIndex(x => String(x.lote || '').trim() === limpio.lote);
             if (idx >= 0) {
-                await aplicarInsumosLoteStock(lotes[idx].insumos, 1, req.usuario, 'Restauración por edición del lote ' + limpio.lote);
+                await aplicarInsumosLoteStock(client, lotes[idx].insumos, 1, req.usuario, 'Restauración por edición del lote ' + limpio.lote);
                 lotes[idx] = limpio;
             } else {
                 lotes.push(limpio);
             }
-            await aplicarInsumosLoteStock(limpio.insumos, -1, req.usuario, 'Descuento por registro del lote de refinado ' + limpio.lote);
+            await aplicarInsumosLoteStock(client, limpio.insumos, -1, req.usuario, 'Descuento por registro del lote de refinado ' + limpio.lote);
             lotes = ordenarLotes(lotes);
         }
         if (observaciones !== undefined && observaciones !== null) obs = String(observaciones);
@@ -2760,7 +2857,7 @@ app.post('/api/refinado/guardar', requerirRolRefinado, async (req, res) => {
             total_tm: lotes.reduce((sum, a) => sum + (Number(a.cantidad) || 0), 0)
         };
 
-        const result = await pool.query(`
+        const result = await client.query(`
             INSERT INTO reportes_refinado (fecha_reporte, turno, insumos_json, aceite_json, totales_json, observaciones, usuario_registro)
             VALUES ($1, $2, '[]', $3, $4, $5, $6)
             ON CONFLICT (fecha_reporte, turno) DO UPDATE SET
@@ -2773,14 +2870,19 @@ app.post('/api/refinado/guardar', requerirRolRefinado, async (req, res) => {
             fecha_reporte, turnoVal, JSON.stringify(lotes), JSON.stringify(totalesLimpio), obs, req.usuario
         ]);
 
+        await client.query('COMMIT');
         res.json({ success: true, mensaje: lote && typeof lote === 'object' ? 'Lote guardado correctamente.' : 'Datos del turno guardados correctamente.', id: result.rows[0].id });
     } catch (err) {
+        await client.query('ROLLBACK');
         console.error("Error guardar refinado:", err);
         res.status(500).json({ success: false, mensaje: 'Error en el servidor: ' + err.message });
+    } finally {
+        client.release();
     }
 });
 
 app.post('/api/refinado/lotes/eliminar', requerirRolRefinado, async (req, res) => {
+    const client = await pool.connect();
     try {
         const { fecha_reporte, turno, lote } = req.body || {};
         if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fecha_reporte || ''))) {
@@ -2794,8 +2896,10 @@ app.post('/api/refinado/lotes/eliminar', requerirRolRefinado, async (req, res) =
         if (!numLote) {
             return res.status(400).json({ success: false, mensaje: 'Indique el número de lote a eliminar.' });
         }
-        const sel = await pool.query('SELECT aceite_json, totales_json FROM reportes_refinado WHERE fecha_reporte = $1 AND turno = $2', [fecha_reporte, turnoVal]);
+        await client.query('BEGIN');
+        const sel = await client.query('SELECT id, aceite_json, totales_json FROM reportes_refinado WHERE fecha_reporte = $1 AND turno = $2 FOR UPDATE', [fecha_reporte, turnoVal]);
         if (!sel.rows.length) {
+            await client.query('ROLLBACK');
             return res.json({ success: true, mensaje: 'No hay reporte para el turno indicado.' });
         }
         let lotes = [];
@@ -2805,30 +2909,38 @@ app.post('/api/refinado/lotes/eliminar', requerirRolRefinado, async (req, res) =
         const antes = lotes.length;
         const loteEliminado = lotes.find(x => String(x.lote || '').trim() === numLote);
         lotes = lotes.filter(x => String(x.lote || '').trim() !== numLote);
-        if (loteEliminado) {
-            await aplicarInsumosLoteStock(loteEliminado.insumos, 1, req.usuario, 'Restauración por eliminación del lote de refinado ' + numLote);
-        }
         if (lotes.length === antes) {
+            await client.query('ROLLBACK');
             return res.json({ success: true, mensaje: 'El lote no existía en este turno.' });
+        }
+        // El ajuste de stock y el borrado del lote van juntos: si el guardado
+        // fallara despues de este descuento, el insumo volveria sin lote que lo
+        // consuma.
+        if (loteEliminado) {
+            await aplicarInsumosLoteStock(client, loteEliminado.insumos, 1, req.usuario, 'Restauración por eliminación del lote de refinado ' + numLote);
         }
         const totalesLimpio = {
             produccion_manana: (totales && totales.produccion_manana) || null,
             total_lotes: lotes.length,
             total_tm: lotes.reduce((sum, a) => sum + (Number(a.cantidad) || 0), 0)
         };
-        await pool.query(`
+        await client.query(`
             UPDATE reportes_refinado SET
                 aceite_json = $1,
                 totales_json = $2,
                 usuario_registro = $3,
                 fecha_registro = CURRENT_TIMESTAMP
-            WHERE fecha_reporte = $4 AND turno = $5`, [
-            JSON.stringify(lotes), JSON.stringify(totalesLimpio), req.usuario, fecha_reporte, turnoVal
+            WHERE id = $4`, [
+            JSON.stringify(lotes), JSON.stringify(totalesLimpio), req.usuario, sel.rows[0].id
         ]);
+        await client.query('COMMIT');
         res.json({ success: true, mensaje: 'Lote eliminado correctamente.' });
     } catch (err) {
+        await client.query('ROLLBACK');
         console.error("Error eliminar lote refinado:", err);
         res.status(500).json({ success: false, mensaje: 'Error en el servidor: ' + err.message });
+    } finally {
+        client.release();
     }
 });
 
@@ -2848,18 +2960,24 @@ app.get('/api/almacen/stock-refinado', requerirRolAlmacenInvRef, async (req, res
 });
 
 app.post('/api/almacen/stock-refinado/ajustar', requerirRolAlmacenInvRef, async (req, res) => {
+    const client = await pool.connect();
     try {
         const { nombre, nuevo_stock } = req.body || {};
         const cantidadNueva = Number(nuevo_stock);
         if (!nombre || isNaN(cantidadNueva)) {
             return res.status(400).json({ success: false, mensaje: 'Indique un insumo válido y que el nuevo stock sea un número.' });
         }
-        const actual = await pool.query('SELECT id, nombre, stock FROM stock_insumos_refinado WHERE nombre = $1', [String(nombre)]);
+        await client.query('BEGIN');
+        // El ajuste y su registro en el historial tienen que ser el mismo hecho:
+        // sin transaccion, un historial fallido dejaba el stock cambiado sin
+        // rastro de quien lo hizo.
+        const actual = await client.query('SELECT id, nombre, stock FROM stock_insumos_refinado WHERE nombre = $1 FOR UPDATE', [String(nombre)]);
         if (actual.rows.length === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ success: false, mensaje: 'El insumo de refinado no existe.' });
         }
         const stockAnterior = Number(actual.rows[0].stock) || 0;
-        await pool.query(
+        await client.query(
             `UPDATE stock_insumos_refinado
              SET stock = $1::numeric,
                  estado = CASE WHEN $1::numeric <= 0 THEN 'REALIZAR PEDIDO' ELSE 'STOCK SUFICIENTE' END,
@@ -2869,7 +2987,7 @@ app.post('/api/almacen/stock-refinado/ajustar', requerirRolAlmacenInvRef, async 
             [cantidadNueva, req.usuario, actual.rows[0].id]
         );
         const diferencia = cantidadNueva - stockAnterior;
-        await registrarHistorial(pool, {
+        await registrarHistorial(client, {
             tipo: 'AJUSTE',
             origen: 'almacen',
             producto: String(nombre),
@@ -2879,13 +2997,19 @@ app.post('/api/almacen/stock-refinado/ajustar', requerirRolAlmacenInvRef, async 
             stock_anterior: stockAnterior,
             stock_nuevo: cantidadNueva,
             usuario: usuarioResponsable(req, req.body.usuario),
-            referencia: 'Ajuste manual de stock de refinado',
-            tolerable: true
+            referencia: 'Ajuste manual de stock de refinado'
+            // Sin tolerable: el ajuste y su historial son el mismo hecho. Si la
+            // auditoría falla, revierte el ajuste en vez de dejar el stock
+            // cambiado sin registro de quién lo hizo.
         });
+        await client.query('COMMIT');
         res.json({ success: true, mensaje: 'Stock de insumo de refinado ajustado manualmente.' });
     } catch (err) {
+        await client.query('ROLLBACK');
         console.error('Error ajustar stock refinado:', err);
         res.status(500).json({ success: false, mensaje: 'Error en el servidor: ' + err.message });
+    } finally {
+        client.release();
     }
 });
 

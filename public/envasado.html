@@ -758,7 +758,10 @@
                 });
                 const data = await res.json();
                 if (res.ok && data.success) {
-                    alert('✅ ' + data.mensaje);
+                    // El aviso aparece cuando las cajas ya estaban despachadas:
+                    // los insumos volvieron completos pero solo una parte de las
+                    // cajas pudo regresar al inventario de producto terminado.
+                    alert('✅ ' + data.mensaje + (data.aviso ? '\n\n⚠️ ' + data.aviso : ''));
                     cargarProduccionActiva();
                 } else {
                     alert('❌ ' + (data.mensaje || 'Error al eliminar el reporte.'));

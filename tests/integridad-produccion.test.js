@@ -516,3 +516,183 @@ describe('C3. Borrar un reporte devuelve solo las cajas que quedan', () => {
     expect(mockRelease).toHaveBeenCalled();
   });
 });
+
+/**
+ * P1. El "siguiente" vivia en estado_lineas.proximo_producto, un varchar de texto
+ *     libre. Solo guardaba UN producto, no una secuencia, y no se validaba contra
+ *     recetas: el dashboard podia mostrar un nombre de producto inexistente.
+ *     linea_plan guarda la secuencia completa y obliga a que cada clave sea una
+ *     receta vigente.
+ *
+ * P2. Soplado fabrica el envase, no un producto terminado, y no tiene recetas: la
+ *     API rechaza 'soplado' en vez de aceptar una cola que no podria validar.
+ */
+describe('Plan de produccion por linea', () => {
+  /** Recetas vigentes que el servidor "encuentra" para las claves pedidas. */
+  function recetasVigentes(claves) {
+    mockQuery.mockImplementation((sql) => {
+      const t = String(sql);
+      if (t.includes('FROM recetas')) {
+        const solicitadas = mockQuery.mock.calls
+          .filter(c => String(c[0]).includes('FROM recetas'))
+          .map(c => c[1])
+          .pop() || [];
+        const vigentes = (solicitadas[0] || []).filter(k => claves.includes(k));
+        return Promise.resolve({
+          rows: vigentes.map(k => ({ producto_key: k, nombre_producto: k + ' (receta)' }))
+        });
+      }
+      return Promise.resolve({ rows: [], rowCount: 0 });
+    });
+  }
+
+  describe('GET /api/linea-plan', () => {
+    test('devuelve siempre las dos areas para que el dashboard lea igual', async () => {
+      mockQuery.mockResolvedValue({ rows: [] });
+      const res = await invocar('get', '/api/linea-plan');
+
+      expect(res.statusCode).toBe(200);
+      expect(res.cuerpo).toEqual({ envasado: [], soplado: [] });
+    });
+
+    test('el LEFT JOIN conserva la fila aunque la receta ya no este vigente', async () => {
+      mockQuery.mockResolvedValue({
+        rows: [{
+          area: 'envasado', orden: 1, producto_key: 'b1_1lt', usuario_registro: 'ing_blas',
+          fecha_actualizacion: '2026-09-21 10:00:00', nombre_producto: null, receta_huerfana: true
+        }]
+      });
+      const res = await invocar('get', '/api/linea-plan');
+
+      expect(res.cuerpo.envasado[0].receta_huerfana).toBe(true);
+      expect(res.cuerpo.envasado[0].nombre_producto).toBeNull();
+      // La cola no se pierde cuando se desactiva una receta.
+      expect(res.cuerpo.envasado[0].producto_key).toBe('b1_1lt');
+    });
+
+    test('las filas llegan ordenadas por area y orden', async () => {
+      mockQuery.mockResolvedValue({ rows: [] });
+      await invocar('get', '/api/linea-plan');
+      expect(sqlDe('ORDER BY p.area, p.orden')).toHaveLength(1);
+    });
+
+    test('es de lectura: no abre transaccion ni escribe', async () => {
+      mockQuery.mockResolvedValue({ rows: [] });
+      await invocar('get', '/api/linea-plan');
+
+      expect(sqlDe('DELETE FROM linea_plan')).toHaveLength(0);
+      expect(sqlDe('BEGIN')).toHaveLength(0);
+    });
+  });
+
+  describe('POST /api/linea-plan', () => {
+    test('guarda la secuencia completa con orden correlativo', async () => {
+      recetasVigentes(['belini_1lt', 'b1_1lt']);
+      const res = await invocar('post', '/api/linea-plan', {
+        body: { area: 'envasado', productos: ['belini_1lt', 'b1_1lt'], usuario: 'ing_blas' }
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.cuerpo.success).toBe(true);
+      const inserciones = sqlDe('INSERT INTO linea_plan');
+      expect(inserciones).toHaveLength(2);
+      expect(inserciones[0].params[1]).toBe(1);
+      expect(inserciones[1].params[1]).toBe(2);
+    });
+
+    test('el orden guardado es el que mando el operario, no el de la base', async () => {
+      recetasVigentes(['b1_1lt', 'belini_1lt']);
+      await invocar('post', '/api/linea-plan', {
+        body: { area: 'envasado', productos: ['b1_1lt', 'belini_1lt'] }
+      });
+
+      const inserciones = sqlDe('INSERT INTO linea_plan');
+      expect(inserciones[0].params[2]).toBe('b1_1lt');
+      expect(inserciones[1].params[2]).toBe('belini_1lt');
+    });
+
+    test('rechaza una clave sin receta vigente y no escribe nada', async () => {
+      recetasVigentes(['belini_1lt']);
+      const res = await invocar('post', '/api/linea-plan', {
+        body: { area: 'envasado', productos: ['belini_1lt', 'producto_fantasma'] }
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.cuerpo.detalle).toEqual(['producto_fantasma']);
+      // Media cola guardada dejaria a la linea sin saber que sigue.
+      expect(sqlDe('INSERT INTO linea_plan')).toHaveLength(0);
+      expect(sqlDe('DELETE FROM linea_plan')).toHaveLength(0);
+    });
+
+    test('no admite el mismo producto dos veces', async () => {
+      const res = await invocar('post', '/api/linea-plan', {
+        body: { area: 'envasado', productos: ['belini_1lt', 'belini_1lt'] }
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(sqlDe('INSERT INTO linea_plan')).toHaveLength(0);
+    });
+
+    test('reemplaza la cola completa en vez de editarla fila por fila', async () => {
+      recetasVigentes(['belini_1lt']);
+      await invocar('post', '/api/linea-plan', { body: { area: 'envasado', productos: ['belini_1lt'] } });
+
+      // Una reordenacion parcial deja huecos y rompe "orden 1 = en curso".
+      expect(sqlDe('DELETE FROM linea_plan WHERE area')).toHaveLength(1);
+    });
+
+    test('acepta una secuencia vacia para dejarla limpia', async () => {
+      const res = await invocar('post', '/api/linea-plan', { body: { area: 'envasado', productos: [] } });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.cuerpo.total).toBe(0);
+      expect(sqlDe('DELETE FROM linea_plan WHERE area')).toHaveLength(1);
+      expect(sqlDe('INSERT INTO linea_plan')).toHaveLength(0);
+    });
+
+    test('descarta claves vacias en vez de guardarlas como productos', async () => {
+      recetasVigentes(['belini_1lt']);
+      await invocar('post', '/api/linea-plan', {
+        body: { area: 'envasado', productos: ['belini_1lt', '', '   ', null] }
+      });
+
+      const inserciones = sqlDe('INSERT INTO linea_plan');
+      expect(inserciones).toHaveLength(1);
+      expect(inserciones[0].params[2]).toBe('belini_1lt');
+    });
+
+    test('no admite mas de 50 productos', async () => {
+      const muchos = Array.from({ length: 51 }, (_, i) => 'producto_' + i);
+      const res = await invocar('post', '/api/linea-plan', { body: { area: 'envasado', productos: muchos } });
+
+      expect(res.statusCode).toBe(400);
+      expect(sqlDe('INSERT INTO linea_plan')).toHaveLength(0);
+    });
+
+    test('rechaza el area invalida', async () => {
+      const res = await invocar('post', '/api/linea-plan', { body: { area: 'inventado', productos: [] } });
+      expect(res.statusCode).toBe(400);
+    });
+
+    test('rechaza soplado: produce el envase y no tiene recetas', async () => {
+      const res = await invocar('post', '/api/linea-plan', { body: { area: 'soplado', productos: ['belini_1lt'] } });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.cuerpo.mensaje).toMatch(/soplado/i);
+      expect(sqlDe('INSERT INTO linea_plan')).toHaveLength(0);
+    });
+
+    test('un cuerpo que no es lista no llega a la base', async () => {
+      const res = await invocar('post', '/api/linea-plan', { body: { area: 'envasado', productos: 'belini_1lt' } });
+
+      expect(res.statusCode).toBe(400);
+      expect(sqlDe('INSERT INTO linea_plan')).toHaveLength(0);
+    });
+
+    test('el cliente siempre se devuelve al pool', async () => {
+      recetasVigentes(['belini_1lt']);
+      await invocar('post', '/api/linea-plan', { body: { area: 'envasado', productos: ['belini_1lt'] } });
+      expect(mockRelease).toHaveBeenCalled();
+    });
+  });
+});

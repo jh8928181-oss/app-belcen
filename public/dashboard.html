@@ -6,6 +6,7 @@
     <meta name="theme-color" content="#0f172a">
     <title>Dashboard General - Corporación Belcen</title>
     <link rel="stylesheet" href="/motion.css">
+    <link rel="stylesheet" href="/plan-linea.css">
     <style>
         :root {
             --bg1: #0f172a;
@@ -343,22 +344,34 @@
                 <h2>Estado de Producción</h2>
                 <span class="subtitulo">Líneas de Envasado y Soplado</span>
             </div>
-            <div class="estado-grid">
+<div class="estado-grid">
                 <div class="estado-bloque">
                     <div class="estado-bloque-head">
                         <b>🧴 Envasado</b>
                         <span id="badgeEnvasado" class="badge badge-parado">🔴 PARADO</span>
                     </div>
 <div id="resumenEnvasado" class="estado-resumen">Cargando…</div>
+                    <!-- El boton solo lleva la fila del producto en curso; la cola
+                         vive aparte porque un <button> no puede contener una lista. -->
+                    <button type="button" id="planToggleEnvasado" class="plan-tarjeta" aria-expanded="false" aria-controls="planColaEnvasado">
+                        <span class="plan-fila-actual">
+                            <span class="plan-etiqueta">En producción</span>
+                            <span id="planActualEnvasado" class="plan-producto-actual">—</span>
+                            <span id="planMasEnvasado" class="plan-mas"></span>
+                        </span>
+                    </button>
+                    <div id="planColaEnvasado" class="plan-detalle" hidden></div>
                     <div id="horaEnvasado" class="estado-hora">—</div>
-                    <div id="detalleEnvasado" class="estado-hora" style="margin-top:4px;">Anterior: — · Siguiente: —</div>
                 </div>
                 <div class="estado-bloque">
                     <div class="estado-bloque-head">
                         <b>🏭 Soplado</b>
                         <span id="badgeSoplado" class="badge badge-parado">🔴 PARADO</span>
                     </div>
-                    <div id="resumenSoplado" class="estado-resumen">Cargando…</div>
+<div id="resumenSoplado" class="estado-resumen">Cargando…</div>
+                    <!-- Soplado no tiene secuencia: produce el envase, no un
+                         producto terminado, asi que no hay "producto en produccion". -->
+                    <p class="plan-sin-plan">Sin producto en producción: la línea fabrica la botella, no un producto terminado.</p>
                     <div id="horaSoplado" class="estado-hora">—</div>
                 </div>
             </div>
@@ -628,6 +641,51 @@ const bajoStock = inventarioGlobal.filter(a => (a.estado || '').trim() === 'REAL
             return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
         }
 
+function escDash(texto) {
+            return String(texto == null ? '' : texto)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        // El dashboard es de solo lectura: aqui no se cambia ni estado ni
+        // secuencia. La secuencia la arma el operario en la pantalla de su linea.
+        function pintarPlanEnvasado(cola) {
+            const items = Array.isArray(cola) ? cola : [];
+            const actual = document.getElementById('planActualEnvasado');
+            const mas = document.getElementById('planMasEnvasado');
+            const contenedor = document.getElementById('planColaEnvasado');
+            const toggle = document.getElementById('planToggleEnvasado');
+
+            if (!items.length) {
+                actual.textContent = 'Sin secuencia en la línea';
+                actual.className = 'plan-sin-producto';
+                mas.textContent = '';
+                toggle.disabled = true;
+                contenedor.innerHTML = '<p class="plan-vacio">El operario de envasado aún no ha armado la secuencia.</p>';
+                return;
+            }
+
+            toggle.disabled = false;
+            actual.className = 'plan-producto-actual';
+            const primero = items[0];
+            actual.textContent = primero.receta_huerfana
+                ? primero.producto_key + ' — receta no vigente'
+                : (primero.nombre_producto || primero.producto_key);
+            mas.textContent = items.length > 1 ? 'Ver secuencia ▾' : '';
+
+            contenedor.innerHTML = '<ol class="plan-lista">'
+                + items.map((item, i) => {
+                    const nombre = item.receta_huerfana
+                        ? escDash(item.producto_key) + ' — receta no vigente'
+                        : escDash(item.nombre_producto || item.producto_key);
+                    return '<li class="plan-item' + (i === 0 ? ' plan-actual' : '') + '">'
+                        + '<span class="plan-pos">' + (i === 0 ? 'En producción' : 'Luego') + '</span>'
+                        + '<span class="plan-nombre' + (item.receta_huerfana ? ' plan-huerfana' : '') + '">' + nombre + '</span>'
+                        + '</li>';
+                }).join('')
+                + '</ol>';
+        }
+
         async function cargarEstadoProduccion() {
             try {
                 const res = await fetch('/api/estado-lineas');
@@ -638,7 +696,6 @@ const lista = Array.isArray(estados) ? estados : [];
                 lista.forEach(f => {
                     if (mapa[f.area] !== undefined) mapa[f.area] = f;
                 });
-                let siguienteEnvasado = (mapa.envasado && mapa.envasado.proximo_producto) || '';
 
                 const ids = {
                     envasado: { badge: 'badgeEnvasado', hora: 'horaEnvasado' },
@@ -658,6 +715,21 @@ const lista = Array.isArray(estados) ? estados : [];
                 });
             } catch (err) {
                 console.error(err);
+            }
+
+            // La secuencia va aparte del estado: si esta consulta falla, el
+            // estado de las lineas ya quedo pintado y no se pierde.
+            try {
+                const res = await fetch('/api/linea-plan');
+                if (res.ok) {
+                    const plan = await res.json();
+                    pintarPlanEnvasado(plan && plan.envasado);
+                } else {
+                    pintarPlanEnvasado([]);
+                }
+            } catch (err) {
+                console.error(err);
+                pintarPlanEnvasado([]);
             }
 
             try {
@@ -681,11 +753,7 @@ const lista = Array.isArray(estados) ? estados : [];
                         ? (fechas.length === 1 ? fechas[0] : fechas[0] + ' a ' + fechas[fechas.length - 1])
                         : 'sin registros';
                     document.getElementById('resumenEnvasado').textContent =
-                        lista.length + ' reportes · ' + formatearNumero(totalCajas) + ' cajas · ' + totalTn.toFixed(2) + ' TM · ' + rango;
-                    const ultimo = lista.length ? lista[0] : null;
-                    document.getElementById('detalleEnvasado').textContent =
-                        'Anterior: ' + (ultimo ? ultimo.presentacion + ' · ' + ultimo.cantidad_cajas + ' cajas' : '—') +
-                        ' | Siguiente: ' + (siguienteEnvasado || '—');
+lista.length + ' reportes · ' + formatearNumero(totalCajas) + ' cajas · ' + totalTn.toFixed(2) + ' TM · ' + rango;
                 }
             } catch (err) {
                 console.error(err);
@@ -748,8 +816,26 @@ const lista = Array.isArray(estados) ? estados : [];
             }
         }
 
+        // Mostrar la secuencia es una vista, no una edicion: por eso es un
+        // toggle de un solo boton y no un control de la linea.
+        function conectarTogglePlan() {
+            const toggle = document.getElementById('planToggleEnvasado');
+            const cola = document.getElementById('planColaEnvasado');
+            if (!toggle || !cola || toggle.dataset.conectado) return;
+            toggle.dataset.conectado = '1';
+            toggle.addEventListener('click', () => {
+                const abierto = cola.hasAttribute('hidden');
+                if (abierto) cola.removeAttribute('hidden');
+                else cola.setAttribute('hidden', '');
+                toggle.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+                const mas = document.getElementById('planMasEnvasado');
+                if (mas && mas.textContent) mas.textContent = abierto ? 'Ocultar secuencia ▴' : 'Ver secuencia ▾';
+            });
+        }
+
         actualizarReloj();
         setInterval(actualizarReloj, 1000);
+        conectarTogglePlan();
         cargarInventario();
         cargarEstadoProduccion();
         cargarProductoTerminado();

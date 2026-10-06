@@ -934,6 +934,137 @@ app.post('/api/estado-linea', gEnvasado, async (req, res) => {
     }
 });
 
+// --- PLAN DE PRODUCCIÓN POR LÍNEA ---
+// La secuencia de productos que la línea va a producir: el de orden 1 es el que
+// está en curso, los siguientes son los que le siguen.
+//
+// Esto reemplaza a estado_lineas.proximo_producto, que era texto libre y solo
+// guardaba un producto. Ahí era fácil que el dashboard mostrara un producto que
+// no existía: el nombre no se comprobaba contra nada. Ahora cada clave de la
+// secuencia tiene que ser una receta vigente, y una receta desactivada se ve
+// como tal en vez de dejar un producto fantasma en pantalla.
+
+// El plan de produccion solo aplica a envasado. Soplado fabrica el envase
+// (botellas y preformas), no un producto terminado: esas piezas viven en el
+// inventario como insumos y no tienen receta, asi que no hay catalogo contra el
+// cual validar una secuencia. Por eso la linea de soplado solo publica su estado.
+const AREAS_CON_PLAN = ['envasado'];
+
+app.get('/api/linea-plan', async (req, res) => {
+    try {
+        // LEFT JOIN a proposito: si la receta se desactiva, la fila del plan
+        // sigue existiendo (el operario no pierde la cola) pero se marca como
+        // huerfana para que el dashboard no la presente como producto real.
+        const result = await pool.query(`
+            SELECT p.area,
+                   p.orden,
+                   p.producto_key,
+                   p.usuario_registro,
+                   p.fecha_actualizacion,
+                   r.nombre_producto,
+                   (r.producto_key IS NULL) AS receta_huerfana
+            FROM linea_plan p
+            LEFT JOIN LATERAL (
+                SELECT rec.producto_key, rec.nombre_producto
+                FROM recetas rec
+                WHERE rec.producto_key = p.producto_key
+                  AND rec.activa IS TRUE
+                ORDER BY rec.version DESC
+                LIMIT 1
+            ) r ON true
+            ORDER BY p.area, p.orden`);
+
+        // La forma de la respuesta no cambia aunque soplado no tenga secuencia:
+        // el dashboard lee siempre las mismas dos claves.
+        const plan = { envasado: [], soplado: [] };
+        result.rows.forEach(f => {
+            if (!plan[f.area]) return;
+            plan[f.area].push({
+                orden: f.orden,
+                producto_key: f.producto_key,
+                nombre_producto: f.nombre_producto,
+                receta_huerfana: Boolean(f.receta_huerfana),
+                usuario_registro: f.usuario_registro,
+                fecha_actualizacion: f.fecha_actualizacion
+            });
+        });
+        res.json(plan);
+    } catch (err) {
+        console.error('Error al leer el plan de línea:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+app.post('/api/linea-plan', gEnvasado, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { area, productos, usuario } = req.body;
+        if (!AREAS_CON_PLAN.includes(area)) {
+            return res.status(400).json({
+                success: false,
+                mensaje: area === 'soplado'
+                    ? 'La línea de soplado no maneja secuencia: produce el envase, no un producto terminado.'
+                    : 'Área inválida.'
+            });
+        }
+        if (!Array.isArray(productos)) {
+            return res.status(400).json({ success: false, mensaje: 'La lista de productos debe ser un arreglo.' });
+        }
+        if (productos.length > 50) {
+            return res.status(400).json({ success: false, mensaje: 'La secuencia no puede tener más de 50 productos.' });
+        }
+
+        const claves = productos.map(p => String(p == null ? '' : p).trim()).filter(Boolean);
+        if (new Set(claves).size !== claves.length) {
+            return res.status(400).json({
+                success: false,
+                mensaje: 'El mismo producto no puede repetirse en la secuencia.'
+            });
+        }
+
+        // Nada se escribe antes de validar: una clave que no corresponda a una
+        // receta vigente se rechaza entera, para que la linea no se quede con
+        // media cola guardada.
+        if (claves.length) {
+            const validas = await client.query(
+                `SELECT DISTINCT producto_key FROM recetas
+                 WHERE activa IS TRUE AND producto_key = ANY($1::varchar[])`,
+                [claves]
+            );
+            const encontradas = new Set(validas.rows.map(r => r.producto_key));
+            const desconocidas = claves.filter(k => !encontradas.has(k));
+            if (desconocidas.length) {
+                return res.status(400).json({
+                    success: false,
+                    mensaje: 'Hay productos en la secuencia que no tienen receta vigente. Revísalos antes de guardar.',
+                    detalle: desconocidas
+                });
+            }
+        }
+
+        await client.query('BEGIN');
+        // Se reemplaza la cola completa en vez de editarla fila por fila: una
+        // reordenacion parcial deja huecos que rompen el "orden 1 = en curso".
+        await client.query('DELETE FROM linea_plan WHERE area = $1', [area]);
+        for (let i = 0; i < claves.length; i++) {
+            await client.query(
+                `INSERT INTO linea_plan (area, orden, producto_key, usuario_registro, fecha_actualizacion)
+                 VALUES ($1, $2, $3, $4, (now() at time zone 'utc'))`,
+                [area, i + 1, claves[i], usuario || 'operador']
+            );
+        }
+        await client.query('COMMIT');
+
+        res.json({ success: true, area, total: claves.length });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('Error al guardar el plan de línea:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
+    } finally {
+        client.release();
+    }
+});
+
 // --- FUNCIÓN AUXILIAR: RECALCULAR ESTADO DE ARTÍCULOS SEGÚN STOCK ---
 // Con id se actualiza por clave primaria (sin ambigüedad de nombres);
 // por nombre es el camino legacy para los módulos que no usan recetas.

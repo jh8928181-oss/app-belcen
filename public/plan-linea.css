@@ -1,0 +1,239 @@
+/* Estilos del plan de produccion por linea.
+ *
+ * Compartido por las tres pantallas que muestran la secuencia: el dashboard
+ * (lectura), envasado y soplado (donde el operario la arma). Antes el editor vivia
+ * como un select suelto dentro de envasado y no habia estilos compartidos, que es
+ * parte de que soplado nunca tuviera la pantalla.
+ */
+
+.plan-caja {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    margin-top: 6px;
+}
+
+/* --- Editor del operario --- */
+
+.plan-lista {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    counter-reset: plan;
+}
+
+.plan-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid rgba(10, 132, 255, 0.20);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.85);
+}
+
+.plan-item.plan-actual {
+    border-color: rgba(25, 135, 84, 0.45);
+    background: rgba(25, 135, 84, 0.08);
+}
+
+.plan-pos {
+    flex: 0 0 auto;
+    min-width: 92px;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--texto2, #556);
+}
+
+.plan-actual .plan-pos { color: #198754; }
+
+.plan-nombre {
+    flex: 1 1 auto;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--texto, #122);
+    overflow-wrap: anywhere;
+}
+
+/* Una clave sin receta vigente se dice, no se disimula: mostrarla como producto
+ * seria mostrar algo que no existe. */
+.plan-huerfana {
+    color: #b02a37;
+    font-style: italic;
+    font-weight: 600;
+}
+
+.plan-acciones { display: flex; gap: 4px; flex: 0 0 auto; }
+
+.plan-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    background: #fff;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    color: #333;
+    line-height: 1;
+}
+
+.plan-btn:hover:not(:disabled) { background: #f1f5f9; }
+.plan-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.plan-btn-quitar:hover:not(:disabled) { background: #fde8ea; color: #b02a37; }
+
+.plan-agregar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+
+.plan-select {
+    flex: 1 1 200px;
+    min-width: 0;
+    margin: 0;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    border: 1px solid rgba(0, 0, 0, 0.14);
+    border-radius: 8px;
+    background: #fff;
+}
+
+.btn-guardar-plan {
+    align-self: flex-start;
+    background: #198754;
+    color: #fff;
+    border: none;
+    padding: 9px 16px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-weight: 800;
+    font-size: 13px;
+    font-family: inherit;
+}
+
+.btn-guardar-plan:hover:not(:disabled) { filter: brightness(0.95); }
+.btn-guardar-plan:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.plan-vacio, .plan-vacio-inline {
+    font-size: 13px;
+    color: var(--texto2, #667);
+    font-style: italic;
+    margin: 0;
+}
+
+.plan-error {
+    font-size: 13px;
+    color: #b02a37;
+    background: rgba(176, 42, 55, 0.08);
+    border: 1px solid rgba(176, 42, 55, 0.25);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin: 0;
+}
+
+/* --- Lectura del dashboard ---
+ *
+ * El dashboard es oscuro y el editor de linea es claro, asi que estas reglas
+ * reescriben colores en vez de heredarlos: los tokens --texto y --texto2 no
+ * existen en el tema oscuro y caerian en el fallback claro sobre fondo oscuro.
+ */
+
+.plan-tarjeta {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 10px 12px;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    color: inherit;
+    margin-top: 8px;
+}
+
+.plan-tarjeta:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); }
+.plan-tarjeta:disabled { cursor: default; opacity: 0.75; }
+.plan-tarjeta:disabled .plan-mas { display: none; }
+
+.plan-sin-plan {
+    margin: 8px 0 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--txt-dim);
+    font-style: italic;
+}
+
+.plan-fila-actual {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.plan-etiqueta {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--texto2, #667);
+}
+
+.plan-producto-actual {
+    font-size: 17px;
+    font-weight: 800;
+    color: var(--texto, #122);
+}
+
+.plan-mas {
+    margin-left: auto;
+    font-size: 12px;
+    font-weight: 700;
+    color: #0a6ea8;
+    white-space: nowrap;
+}
+
+.plan-sin-producto {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--texto2, #667);
+    font-style: italic;
+}
+
+.plan-detalle {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed rgba(0, 0, 0, 0.14);
+}
+
+.plan-detalle .plan-lista { gap: 4px; }
+.plan-detalle .plan-item { padding: 6px 8px; }
+.plan-detalle .plan-pos { min-width: 56px; }
+.plan-detalle .plan-nombre { font-size: 13px; }
+
+/* Cola dentro del tema oscuro del dashboard. */
+.glass .plan-detalle { border-top-color: var(--glass-border); }
+.glass .plan-detalle .plan-item {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+.glass .plan-detalle .plan-item.plan-actual {
+    background: rgba(34, 197, 94, 0.14);
+    border-color: rgba(34, 197, 94, 0.40);
+}
+.glass .plan-detalle .plan-pos { color: var(--txt-dim); }
+.glass .plan-detalle .plan-nombre { color: var(--txt); }
+.glass .plan-etiqueta { color: var(--txt-dim); }
+.glass .plan-producto-actual { color: var(--txt); }
+.glass .plan-sin-producto { color: var(--txt-dim); }
+.glass .plan-detalle .plan-vacio { color: var(--txt-dim); }
+.glass .plan-huerfana { color: #fecaca; }
+
+@media (max-width: 640px) {
+    .plan-item { flex-wrap: wrap; }
+    .plan-acciones { margin-left: auto; }
+    .plan-fila-actual { gap: 4px; }
+}

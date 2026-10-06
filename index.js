@@ -219,13 +219,10 @@ app.post('/api/almacen/conformidad', gAlmacen, async (req, res) => {
             `, [ingreso.numero_guia, ingreso.proveedor, nombreFinal, cantidadFisica, estadoItem, targetArticuloId]);
         }
 
-        // BASE DE DATOS GENERAL: disminuye el stock de proveedores por la cantidad que llegó en la guía.
-        try {
-            await aplicarGuiaAStockProveedores(client, ingreso.proveedor, items, ingreso.numero_guia, usuarioResponsable(req, usuario_almacen));
-        } catch (eAuto) {
-            console.error('Guía -> stock proveedores (conformidad):', eAuto.message);
-        }
-
+        // El descuento contra el stock de proveedores ya no se hace a ciegas por
+        // nombre: si la guia llego sin orden, sus filas quedan en SIN_OC y esperan
+        // en el boton de Notificaciones de Base de Datos General, que es quien le
+        // asigna la OC contra la que abonar.
         const estadoFinalIngreso = tieneDiferencias ? 'CONFORME CON DIFERENCIAS (POR REGULARIZAR)' : `RECIBIDO POR ${usuario_almacen}`;
         await client.query(`UPDATE ingresos_vigilancia SET estado = $1 WHERE id = $2`, [estadoFinalIngreso, ingreso_id]);
 
@@ -255,8 +252,22 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
             punto_llegada,
             observaciones,
             usuario,
-            items_json
+            items_json,
+            numero_oc
         } = req.body;
+
+        // La OC declarada en la guia se valida antes de abrir la transaccion: una
+        // guia con un numero de orden inexistente o de otro proveedor no debe
+        // quedar registrada a medias.
+        const ordenDeclarada = String(numero_oc || '').trim();
+        let ordenAsociada = null;
+        if (ordenDeclarada) {
+            const buscada = await buscarOrdenParaGuia(client, ordenDeclarada, proveedor);
+            if (!buscada.ok) {
+                return res.status(400).json({ success: false, mensaje: buscada.mensaje });
+            }
+            ordenAsociada = buscada.orden;
+        }
 
         await client.query('BEGIN');
 
@@ -283,18 +294,22 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
 
         const insert = await client.query(
             `INSERT INTO ingresos_vigilancia
-             (tipo_documento, numero_guia, proveedor, chofer, dni_chofer, placa, lugar_partida, punto_llegada, observaciones, foto_url, usuario_vigilancia, items_json, estado, fecha_ingreso)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+             (tipo_documento, numero_guia, proveedor, chofer, dni_chofer, placa, lugar_partida, punto_llegada, observaciones, foto_url, usuario_vigilancia, items_json, estado, fecha_ingreso, orden_id, orden_numero)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), $14, $15)
              RETURNING id, numero_guia`,
             [
                 tipo_documento, numero_guia, proveedor,
                 chofer || '', dni_chofer || '', placa || '',
                 lugar_partida || '', punto_llegada || 'Planta Principal - Corporación Belcen',
-                observaciones || '', foto_url, usuarioRegistro, JSON.stringify(items), estadoFinal
+                observaciones || '', foto_url, usuarioRegistro, JSON.stringify(items), estadoFinal,
+                ordenAsociada ? ordenAsociada.id : null,
+                ordenAsociada ? ordenAsociada.numero : null
             ]
         );
         const ingresoId = insert.rows[0].id;
 
+        let asociados = 0;
+        let sinCoincidencia = 0;
         for (const item of items) {
             let estadoItem = 'CON GUIA';
             if (Number(item.cantidad_guia) !== Number(item.cantidad_fisica)) {
@@ -333,28 +348,90 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
             }
             await actualizarEstadoArticulo(client, item.nombre);
 
-            await client.query(
-                `INSERT INTO registro_ingresos_almacen (fecha_registro, numero_guia, proveedor, producto_nombre, cantidad, estado, articulo_id)
-                 VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6)`,
+            const fila = await client.query(
+                `INSERT INTO registro_ingresos_almacen (fecha_registro, numero_guia, proveedor, producto_nombre, cantidad, estado, articulo_id, asociacion)
+                 VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6, 'SIN_OC')
+                 RETURNING id`,
                 [numero_guia, proveedor, item.nombre, item.cantidad_fisica, estadoItem, targetArticuloId]
             );
-        }
 
-        // BASE DE DATOS GENERAL: disminuye el stock de proveedores por la cantidad que llegó en la guía.
-        try {
-            await aplicarGuiaAStockProveedores(client, proveedor, items, numero_guia, usuarioRegistro);
-        } catch (eAuto) {
-            console.error('Guía -> stock proveedores (registrar-conforme):', eAuto.message);
+            // Con OC declarada se abona contra el item que empate. Lo que no empate
+            // se queda en SIN_OC y aparece en Notificaciones.
+            if (ordenAsociada) {
+                const r = await asociarItemDeGuia(client, {
+                    fila: {
+                        id: fila.rows[0].id,
+                        cantidad: Number(item.cantidad_fisica) || 0,
+                        producto_nombre: item.nombre
+                    },
+                    orden: ordenAsociada,
+                    numeroGuia: numero_guia,
+                    usuario: usuarioRegistro
+                });
+                if (r.ok) asociados++; else sinCoincidencia++;
+            }
         }
 
         await client.query('COMMIT');
-        res.json({ success: true, mensaje: 'Ingreso registrado conforme. Stock actualizado.', ingreso: { id: ingresoId, numero_guia } });
+        let mensaje = 'Ingreso registrado conforme. Stock actualizado.';
+        if (ordenAsociada) {
+            mensaje = sinCoincidencia
+                ? `Ingreso asociado a la orden ${ordenAsociada.numero}. ${sinCoincidencia} producto(s) sin coincidencia quedaron en Notificaciones.`
+                : `Ingreso asociado a la orden ${ordenAsociada.numero}. Stock del proveedor descontado.`;
+        } else if (items.length) {
+            mensaje = 'Ingreso registrado conforme. Los productos quedaron en Notificaciones hasta que se les asigne una OC.';
+        }
+        res.json({
+            success: true,
+            mensaje,
+            ingreso: { id: ingresoId, numero_guia },
+            asociados,
+            sin_coincidencia: sinCoincidencia
+        });
     } catch (err) {
         await client.query('ROLLBACK');
         console.error('Error en registrar-conforme:', err);
         res.status(500).json({ success: false, mensaje: 'Error al registrar el ingreso conforme: ' + err.message });
     } finally {
         client.release();
+    }
+});
+
+// --- ALMACÉN: VALIDAR EL N° DE OC QUE SE DECLARA EN LA GUIA ---
+// El asistente de ingreso lo consulta al salir del campo para avisar en el paso 1
+// si la orden no existe o si es de otro proveedor, antes de cargar la carga.
+app.post('/api/almacen/guia-orden/validar', gAlmacen, async (req, res) => {
+    try {
+        const cuerpo = req.body || {};
+        const buscada = await buscarOrdenParaGuia(pool, cuerpo.numero_oc, cuerpo.proveedor);
+        if (!buscada.ok) return res.status(400).json({ success: false, mensaje: buscada.mensaje });
+
+        const orden = buscada.orden;
+        const pend = (await pool.query(
+            `SELECT COUNT(*)::int AS n_items,
+                    COALESCE(SUM(cantidad), 0) AS total_cantidad,
+                    COALESCE(SUM(recibido), 0) AS total_recibido
+               FROM ordenes_items WHERE orden_id = $1`,
+            [orden.id]
+        )).rows[0];
+
+        res.json({
+            success: true,
+            mensaje: `Orden ${orden.numero} de ${orden.proveedor_nombre} verificada.`,
+            orden: {
+                id: orden.id,
+                numero: orden.numero,
+                tipo: orden.tipo,
+                estado: orden.estado,
+                proveedor_nombre: orden.proveedor_nombre,
+                n_items: pend.n_items,
+                total_cantidad: Number(pend.total_cantidad) || 0,
+                total_recibido: Number(pend.total_recibido) || 0
+            }
+        });
+    } catch (err) {
+        console.error('Error validar guia-orden:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al validar la orden: ' + err.message });
     }
 });
 
@@ -3310,6 +3387,15 @@ async function upsertStockProveedor(q, datos) {
     const unidad = datos.unidad || 'UNIDADES';
     const usuario = datos.usuario || 'sistema';
 
+    // La categoria la pone el alta del proveedor y se relee en cada movimiento:
+    // el inventario propio de cada proveedor se agrupa por la lista de
+    // categorias ya establecida, no por como se escribio el producto en la guia.
+    const catRes = await q.query(
+        `SELECT categoria FROM proveedores WHERE LOWER(BTRIM(nombre)) = LOWER(BTRIM($1))`,
+        [proveedor]
+    );
+    const categoria = String((catRes.rows[0] && catRes.rows[0].categoria) || '').trim() || null;
+
     const res = await q.query(
         `SELECT id, stock FROM stock_proveedores
          WHERE LOWER(BTRIM(proveedor_nombre)) = LOWER(BTRIM($1)) AND LOWER(BTRIM(producto)) = LOWER(BTRIM($2))`,
@@ -3322,16 +3408,17 @@ async function upsertStockProveedor(q, datos) {
         stockNuevo = Math.max(0, stockAnterior + signo * cantidad);
         await q.query(
             `UPDATE stock_proveedores
-             SET stock = $1::numeric, unidad = $2, usuario_registro = $3, fecha_actualizacion = CURRENT_TIMESTAMP
+             SET stock = $1::numeric, unidad = $2, usuario_registro = $3, fecha_actualizacion = CURRENT_TIMESTAMP,
+                 categoria = COALESCE($5, categoria)
              WHERE id = $4`,
-            [stockNuevo, unidad, usuario, res.rows[0].id]
+            [stockNuevo, unidad, usuario, res.rows[0].id, categoria]
         );
     } else {
         stockNuevo = signo < 0 ? 0 : cantidad;
         await q.query(
-            `INSERT INTO stock_proveedores (proveedor_nombre, producto, unidad, stock, usuario_registro)
-             VALUES ($1, $2, $3, $4, $5)`,
-            [proveedor, producto, unidad, stockNuevo, usuario]
+            `INSERT INTO stock_proveedores (proveedor_nombre, producto, unidad, stock, usuario_registro, categoria)
+             VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'General'))`,
+            [proveedor, producto, unidad, stockNuevo, usuario, categoria]
         );
     }
     await registrarHistorialStockProveedor(q, {
@@ -3360,33 +3447,132 @@ async function aplicarItemsOrdenStock(q, items, proveedor, signo, usuario, orden
     }
 }
 
-// Resta automáticamente la cantidad de una guía conformada del stock de proveedores (best-effort por nombre).
-async function aplicarGuiaAStockProveedores(q, proveedor, items, numeroGuia, usuario) {
-    if (!String(proveedor || '').trim()) return;
-    items = Array.isArray(items) ? items : [];
-    for (const it of items) {
-        const producto = String(it && (it.nombre || it.producto_nombre || it.descripcion) || '').trim();
-        const cant = Number(it && it.cantidad_fisica !== null && it.cantidad_fisica !== undefined ? it.cantidad_fisica : (it && it.cantidad)) || 0;
-        if (!producto || !(cant > 0)) continue;
-        const res = await q.query(
-            `SELECT id, stock FROM stock_proveedores
-             WHERE LOWER(BTRIM(proveedor_nombre)) = LOWER(BTRIM($1)) AND LOWER(BTRIM(producto)) = LOWER(BTRIM($2))`,
-            [String(proveedor).trim(), producto]
-        );
-        if (!res.rows.length) continue;
-        const disponible = Number(res.rows[0].stock) || 0;
-        if (disponible <= 0) continue;
-        const aRestar = Math.min(disponible, cant);
-        const nuevo = disponible - aRestar;
-        await q.query('UPDATE stock_proveedores SET stock = $1::numeric, fecha_actualizacion = CURRENT_TIMESTAMP WHERE id = $2', [nuevo, res.rows[0].id]);
-        await registrarHistorialStockProveedor(q, {
-            tipo: 'RESTA', origen: 'GUIA',
-            proveedor: String(proveedor).trim(), producto,
-            unidad: it.unidad_medida || it.unidad || 'UNIDADES', cantidad: aRestar,
-            orden_ref: null, guia_ref: numeroGuia || null, usuario: usuario || 'sistema'
-        });
-    }
+// Compara nombres de producto o de proveedor como los escribe la gente. Las
+// descripciones de los items de la orden y las de la guia salen de dos
+// formularios distintos y no coinciden literalmente: acentos, mayusculas y
+// espacios repetidos no deberian separar un producto de su orden.
+function normalizarTexto(valor) {
+    return String(valor || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
 }
+
+// Busca la orden de compra contra la que se va a aplicar una guia y comprueba
+// que sea del mismo proveedor: descontarle una guia a la orden de otro proveedor
+// descuadra dos inventarios a la vez.
+// Devuelve { ok: true, orden } o { ok: false, mensaje }.
+async function buscarOrdenParaGuia(q, numero, proveedor) {
+    const num = String(numero || '').trim();
+    if (!num) return { ok: false, mensaje: 'Indique el número de orden de compra.' };
+
+    // numero es unico por (tipo, numero), asi que el mismo numero puede existir
+    // como OC y como OS: gana la OC, que es lo que se declara en la guia.
+    const res = await q.query(
+        `SELECT o.*, COALESCE(NULLIF(BTRIM(o.proveedor_nombre), ''), p.nombre) AS proveedor_nombre
+           FROM ordenes_compras_servicios o
+           LEFT JOIN proveedores p ON p.id = o.proveedor_id
+          WHERE UPPER(BTRIM(o.numero)) = UPPER(BTRIM($1))
+          ORDER BY CASE WHEN UPPER(BTRIM(o.tipo)) = 'OC' THEN 0 ELSE 1 END, o.id DESC`,
+        [num]
+    );
+    if (!res.rows.length) return { ok: false, mensaje: `No existe ninguna orden con el número ${num}.` };
+
+    const orden = res.rows[0];
+    if (String(orden.estado) === 'CANCELADA') {
+        return { ok: false, mensaje: `La orden ${num} está cancelada y no puede recibir mercadería.` };
+    }
+
+    // Se acepta la igualdad exacta o que un nombre contenga al otro: la guia se
+    // escribe a mano y a veces trae "Belcen" donde la orden trae la razon social
+    // completa. Lo que no se acepta es otro proveedor.
+    const declarado = normalizarTexto(proveedor);
+    const deLaOrden = normalizarTexto(orden.proveedor_nombre);
+    if (declarado && declarado !== deLaOrden) {
+        const contenidos = Math.min(declarado.length, deLaOrden.length) >= 5 &&
+            (deLaOrden.includes(declarado) || declarado.includes(deLaOrden));
+        if (!contenidos) {
+            return { ok: false, mensaje: `La orden ${num} pertenece a "${orden.proveedor_nombre}", no a "${proveedor}".` };
+        }
+    }
+
+    return { ok: true, orden };
+}
+
+// Recalcula el estado de la orden a partir de lo recibido en sus items. Es la
+// misma regla del boton Recibir: COMPLETADA cuando todos los items llegaron al
+// 100%, RECIBIDA cuando llego algo. El stock del proveedor no sirve para esto,
+// porque acumula varias ordenes del mismo proveedor y no dice de cual es cada cosa.
+// Devuelve el estado vigente.
+async function marcarEstadoOrdenRecibido(client, orden) {
+    if (String(orden.estado) === 'CANCELADA') return orden.estado;
+    const items = (await client.query(
+        'SELECT cantidad, recibido FROM ordenes_items WHERE orden_id = $1', [orden.id]
+    )).rows;
+    if (!items.length) return orden.estado;
+
+    const todosRecibidos = items.every(x => (Number(x.recibido) || 0) >= (Number(x.cantidad) || 0));
+    const algunRecibido = items.some(x => (Number(x.recibido) || 0) > 0);
+    let estadoNuevo = orden.estado;
+    if (String(orden.estado) === 'PENDIENTE' && algunRecibido) estadoNuevo = 'RECIBIDA';
+    else if (todosRecibidos) estadoNuevo = 'COMPLETADA';
+    else if (algunRecibido) estadoNuevo = 'RECIBIDA';
+
+    if (estadoNuevo !== orden.estado) {
+        await client.query('UPDATE ordenes_compras_servicios SET estado = $1 WHERE id = $2', [estadoNuevo, orden.id]);
+        orden.estado = estadoNuevo;
+    }
+    return estadoNuevo;
+}
+
+// Abona en la orden lo que trajo la guia de un producto: suma lo recibido del
+// item, resta del stock del proveedor contra esa orden y deja la fila del
+// registro marcada como ASOCIADA.
+// Devuelve { ok: true, aplicada } o { ok: false, mensaje }.
+async function asociarItemDeGuia(client, { fila, orden, numeroGuia, usuario }) {
+    const cantidad = Number(fila.cantidad) || 0;
+    if (!(cantidad > 0)) return { ok: false, mensaje: 'La fila de la guía no tiene una cantidad válida.' };
+
+    const itemsDeOrden = (await client.query('SELECT * FROM ordenes_items WHERE orden_id = $1', [orden.id])).rows;
+    const objetivo = itemsDeOrden.find(it =>
+        (Number(it.recibido) || 0) < (Number(it.cantidad) || 0) &&
+        normalizarTexto(it.descripcion) === normalizarTexto(fila.producto_nombre)
+    );
+    if (!objetivo) {
+        return { ok: false, mensaje: `La orden ${orden.numero} no tiene un ítem pendiente con el producto "${fila.producto_nombre}".` };
+    }
+
+    // Si la orden todavia no se emitio, primero suma al stock de proveedores y
+    // recien ahi se descuenta lo que llego: hace lo mismo que el boton Recibir.
+    if (String(orden.estado) === 'PENDIENTE') {
+        await aplicarItemsOrdenStock(client, itemsDeOrden, orden.proveedor_nombre || 'N/D', 1, usuario, orden.numero);
+    }
+
+    const pendiente = Math.max(0, (Number(objetivo.cantidad) || 0) - (Number(objetivo.recibido) || 0));
+    const aplicada = Math.min(pendiente, cantidad);
+    await client.query(
+        'UPDATE ordenes_items SET recibido = $1::numeric WHERE id = $2',
+        [(Number(objetivo.recibido) || 0) + aplicada, objetivo.id]
+    );
+    await upsertStockProveedor(client, {
+        proveedor: orden.proveedor_nombre || 'N/D',
+        producto: objetivo.descripcion,
+        unidad: objetivo.unidad || 'UNIDADES',
+        cantidad: aplicada, signo: -1,
+        usuario, orden_ref: orden.numero,
+        origen: 'GUIA', guia_ref: numeroGuia || null
+    });
+    await client.query(
+        `UPDATE registro_ingresos_almacen SET orden_id = $1, orden_item_id = $2, asociacion = 'ASOCIADA' WHERE id = $3`,
+        [orden.id, objetivo.id, fila.id]
+    );
+    await marcarEstadoOrdenRecibido(client, orden);
+
+    return { ok: true, aplicada, pendiente };
+}
+
 
 // Redondea a 2 decimales. El IGV se calcula aqui y no llega del cliente: un
 // total montado en el navegador no es un dato contable.
@@ -3671,6 +3857,8 @@ app.get('/api/bd/ordenes', requerirRolBDGeneral, async (req, res) => {
                 ${agg.pagado} AS pagado,
                 COALESCE(o.total_igv, 0) - ${agg.facturado} AS por_facturar,
                 ${agg.facturado} - ${agg.pagado} AS por_cobrar,
+                (SELECT COUNT(*)::int FROM facturas f4
+                 WHERE f4.orden_id = o.id AND f4.estado <> '${FACTURA_NO_IMPUTABLE}') AS n_facturas,
                 (SELECT COUNT(*)::int FROM facturas f3
                  WHERE f3.orden_id = o.id AND f3.estado = 'CREDITO'
                    AND f3.fecha_vencimiento IS NOT NULL AND f3.fecha_vencimiento < CURRENT_DATE) AS n_vencidas
@@ -4684,11 +4872,12 @@ app.get('/api/bd/stock-proveedores', requerirRolBDGeneral, async (req, res) => {
     try {
         const proveedorId = req.query.proveedor_id ? parseInt(req.query.proveedor_id, 10) : null;
         const result = await pool.query(`
-            SELECT s.*, p.categoria AS categoria_proveedor
+            SELECT s.*, COALESCE(NULLIF(BTRIM(s.categoria), ''), p.categoria, 'General') AS categoria_proveedor
             FROM stock_proveedores s
             LEFT JOIN proveedores p ON LOWER(BTRIM(p.nombre)) = LOWER(BTRIM(s.proveedor_nombre))
             WHERE ($1::int IS NULL OR p.id = $1)
-            ORDER BY LOWER(s.proveedor_nombre) ASC, LOWER(s.producto) ASC`, [proveedorId]);
+            ORDER BY COALESCE(NULLIF(BTRIM(s.categoria), ''), p.categoria, 'General') ASC,
+                     LOWER(s.proveedor_nombre) ASC, LOWER(s.producto) ASC`, [proveedorId]);
         res.json({ success: true, stock: result.rows });
     } catch (err) {
         console.error('Error GET stock proveedores:', err);
@@ -4709,6 +4898,117 @@ app.get('/api/bd/stock-proveedores/movimientos', requerirRolBDGeneral, async (re
     } catch (err) {
         console.error('Error GET movimientos stock proveedores:', err);
         res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+// --- BD GENERAL: PRODUCTOS DE GUÍA SIN ORDEN DE COMPRA (botón Notificaciones) ---
+// Todo lo que entra por Almacén o Vigilancia sin OC declarada queda en SIN_OC.
+// Aquí es donde se le asigna la orden: mientras no se asocie, no se descuenta
+// nada del stock del proveedor.
+app.get('/api/bd/guias-sin-oc', requerirRolBDGeneral, async (req, res) => {
+    try {
+        const filas = await pool.query(`
+            SELECT id, fecha_registro, numero_guia, proveedor, producto_nombre, cantidad, unidad_medida, estado
+              FROM registro_ingresos_almacen
+             WHERE asociacion = 'SIN_OC'
+             ORDER BY id DESC
+             LIMIT 500`);
+        const conteo = await pool.query(
+            `SELECT COUNT(*)::int AS total FROM registro_ingresos_almacen WHERE asociacion = 'SIN_OC'`
+        );
+        res.json({ success: true, pendientes: filas.rows, total: Number(conteo.rows[0].total) || 0 });
+    } catch (err) {
+        console.error('Error GET guias sin OC:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+// Asigna una OC a un producto de guía y abona su cantidad contra esa orden.
+app.post('/api/bd/guias-sin-oc/:id/asociar', requerirRolBDGeneral, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ success: false, mensaje: 'Producto de guía no válido.' });
+        }
+        await client.query('BEGIN');
+
+        const filaRes = await client.query('SELECT * FROM registro_ingresos_almacen WHERE id = $1', [id]);
+        if (!filaRes.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'El producto de la guía no existe.' });
+        }
+        const fila = filaRes.rows[0];
+        if (String(fila.asociacion) !== 'SIN_OC') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: 'Este producto ya fue asociado o revisado.' });
+        }
+
+        const buscada = await buscarOrdenParaGuia(client, (req.body || {}).numero_oc, fila.proveedor);
+        if (!buscada.ok) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: buscada.mensaje });
+        }
+
+        const r = await asociarItemDeGuia(client, {
+            fila, orden: buscada.orden, numeroGuia: fila.numero_guia, usuario: req.usuario
+        });
+        if (!r.ok) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: r.mensaje });
+        }
+
+        // La cabecera de la guía toma la orden de la primera fila que se asocie.
+        if (String(fila.numero_guia || '').trim()) {
+            await client.query(
+                `UPDATE ingresos_vigilancia
+                    SET orden_id = $1, orden_numero = $2
+                  WHERE orden_id IS NULL
+                    AND LOWER(BTRIM(numero_guia)) = LOWER(BTRIM($3))
+                    AND LOWER(BTRIM(proveedor)) = LOWER(BTRIM($4))`,
+                [buscada.orden.id, buscada.orden.numero, fila.numero_guia, fila.proveedor]
+            );
+        }
+
+        await client.query('COMMIT');
+        const estadoFinal = String(buscada.orden.estado);
+        const avisoEstado = estadoFinal === 'COMPLETADA' ? ' La orden quedó COMPLETADA.' : '';
+        res.json({
+            success: true,
+            mensaje: `Producto abonado a la orden ${buscada.orden.numero}.${avisoEstado}`,
+            aplicada: r.aplicada,
+            estado_orden: estadoFinal
+        });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Error asociar guia-orden:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al asociar la orden: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// Marca un producto de guía como revisado: no tiene orden que vincular y por
+// eso no vuelve a aparecer en Notificaciones.
+app.post('/api/bd/guias-sin-oc/:id/revisar', requerirRolBDGeneral, async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ success: false, mensaje: 'Producto de guía no válido.' });
+        }
+        const upd = await pool.query(
+            `UPDATE registro_ingresos_almacen SET asociacion = 'REVISADA'
+              WHERE id = $1 AND asociacion = 'SIN_OC'
+              RETURNING id`,
+            [id]
+        );
+        if (!upd.rows.length) {
+            return res.status(400).json({ success: false, mensaje: 'El producto no está pendiente de asociar.' });
+        }
+        res.json({ success: true, mensaje: 'Producto marcado como revisado. No se le descontará ninguna orden.' });
+    } catch (err) {
+        console.error('Error revisar guia-orden:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al marcar el producto: ' + err.message });
     }
 });
 

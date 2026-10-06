@@ -506,6 +506,11 @@
                             <input type="text" id="almProveedor" name="proveedor" placeholder="Razón Social del Proveedor" required>
                         </div>
                         <div>
+                            <label class="etiqueta-mini">📑 N° de Orden de Compra (opcional)</label>
+                            <input type="text" id="almNumeroOC" name="numero_oc" placeholder="Ej. OC-001" autocomplete="off">
+                            <small id="almNumeroOCEstado" style="display:block; color:#555; font-size:11px; line-height:1.3;"></small>
+                        </div>
+                        <div>
                             <label class="etiqueta-mini">👤 Nombre del Conductor</label>
                             <input type="text" id="almChofer" name="chofer" placeholder="Apellidos y nombres del chofer">
                         </div>
@@ -1107,6 +1112,69 @@
             return (el && el.value != null) ? el.value : '';
         }
 
+        // N° de OC declarado en la guía. El campo es opcional: sin OC los productos
+        // quedan en SIN_OC y esperan en Notificaciones de Base de Datos General.
+        // Con OC, el paso no se abre hasta que el servidor la verifique contra el
+        // mismo proveedor: una orden inexistente o de otro proveedor no puede
+        // descuentar el inventario de nadie.
+        let wizardAlmOcEstado = '';
+        let wizardAlmOcNumero = '';
+
+        function wizardAlmOcTextoEstado(msg, tipo) {
+            const el = document.getElementById('almNumeroOCEstado');
+            if (!el) return;
+            el.textContent = msg || '';
+            el.style.color = tipo === 'error' ? '#b91c1c' : (tipo === 'ok' ? '#15803d' : '#555');
+        }
+
+        function wizardAlmOcInvalidar() {
+            wizardAlmOcEstado = '';
+            wizardAlmOcNumero = '';
+            wizardAlmOcTextoEstado('');
+        }
+
+        async function validarOcAlmacen() {
+            const oc = wizardAlmVal('almNumeroOC').trim();
+            const proveedor = wizardAlmVal('almProveedor').trim();
+            wizardAlmOcEstado = '';
+            wizardAlmOcNumero = '';
+            if (!oc) {
+                wizardAlmOcTextoEstado('');
+                wizardAlmActualizar();
+                return true;
+            }
+            if (!proveedor) {
+                wizardAlmOcTextoEstado('Escribe primero la empresa proveedora para validar la orden.', 'error');
+                wizardAlmActualizar();
+                return false;
+            }
+            wizardAlmOcTextoEstado('Verificando orden…');
+            try {
+                const res = await fetch('/api/almacen/guia-orden/validar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ numero_oc: oc, proveedor })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok && data.success) {
+                    const o = data.orden;
+                    wizardAlmOcEstado = 'ok';
+                    wizardAlmOcNumero = oc;
+                    wizardAlmOcTextoEstado(
+                        `✔ Orden ${o.numero} · ${o.estado} · recibido ${o.total_recibido} de ${o.total_cantidad}`,
+                        'ok'
+                    );
+                    wizardAlmActualizar();
+                    return true;
+                }
+                wizardAlmOcTextoEstado('❌ ' + (data.mensaje || 'No se pudo validar la orden.'), 'error');
+            } catch (e) {
+                wizardAlmOcTextoEstado('❌ Sin conexión con el servidor para validar la orden.', 'error');
+            }
+            wizardAlmActualizar();
+            return false;
+        }
+
         function wizardAlmInit() {
             if (wizardAlmActivado) return;
             wizardAlmActivado = true;
@@ -1114,13 +1182,29 @@
             if (form) form.addEventListener('submit', enviarFormularioAlmacen);
             ['almNumeroGuia', 'almProveedor'].forEach(id => {
                 const el = document.getElementById(id);
-                if (el) el.addEventListener('input', () => { el.classList.remove('campo-falta'); wizardAlmActualizar(); });
+                if (el) el.addEventListener('input', () => {
+                    el.classList.remove('campo-falta');
+                    // La OC se valido contra ese proveedor: al cambiarlo deja de valer.
+                    wizardAlmOcInvalidar();
+                    wizardAlmActualizar();
+                });
             });
+            const oc = document.getElementById('almNumeroOC');
+            if (oc) {
+                oc.addEventListener('input', () => {
+                    oc.classList.remove('campo-falta');
+                    wizardAlmOcInvalidar();
+                    wizardAlmActualizar();
+                });
+                oc.addEventListener('blur', () => { validarOcAlmacen(); });
+            }
             wizardAlmActualizar();
         }
 
         function wizardAlmPasoCompletado(n) {
             if (n === 0) {
+                const oc = wizardAlmVal('almNumeroOC').trim();
+                if (oc && (wizardAlmOcEstado !== 'ok' || wizardAlmOcNumero !== oc)) return false;
                 return Boolean(
                     document.getElementById('almNumeroGuia').value.trim() &&
                     document.getElementById('almProveedor').value.trim()
@@ -1136,6 +1220,15 @@
                 const el = document.getElementById(id);
                 el.classList.toggle('campo-falta', !el.value.trim());
             });
+            if (n === 0) {
+                const oc = document.getElementById('almNumeroOC');
+                const pendiente = oc && oc.value.trim() && wizardAlmOcEstado !== 'ok';
+                if (oc) oc.classList.toggle('campo-falta', Boolean(pendiente));
+                const estadoEl = document.getElementById('almNumeroOCEstado');
+                if (pendiente && estadoEl && !estadoEl.textContent) {
+                    wizardAlmOcTextoEstado('La orden se valida al salir del campo.', 'error');
+                }
+            }
         }
 
         function wizardAlmActualizar() {
@@ -1193,7 +1286,10 @@
 
         function wizardAlmNext() {
             if (!wizardAlmPasoCompletado(pasoWizardAlmacen)) {
-                alert('Completa los campos requeridos de este paso para continuar.');
+                const ocPendiente = pasoWizardAlmacen === 0 && wizardAlmVal('almNumeroOC').trim() && wizardAlmOcEstado !== 'ok';
+                alert(ocPendiente
+                    ? 'El N° de Orden de Compra todavía no está verificado. Corrige el aviso bajo el campo o déjalo vacío.'
+                    : 'Completa los campos requeridos de este paso para continuar.');
                 wizardAlmMarcarFaltantes(pasoWizardAlmacen);
                 return;
             }
@@ -1214,6 +1310,7 @@
                 { label: 'N°', value: wizardAlmVal('almNumeroGuia') },
                 { label: 'Tipo', value: document.getElementById('almTipoDocumento').options[document.getElementById('almTipoDocumento').selectedIndex].text },
                 { label: 'Proveedor', value: wizardAlmVal('almProveedor') },
+                { label: 'OC', value: wizardAlmVal('almNumeroOC') },
                 { label: 'Conductor', value: [wizardAlmVal('almChofer'), wizardAlmVal('almDniChofer')].filter(Boolean).join(' · ') },
                 { label: 'Placa', value: wizardAlmVal('almPlaca') },
                 { label: 'Ruta', value: wizardAlmVal('almLugarPartida') }
@@ -1343,6 +1440,9 @@
                 if (c.dni_chofer) document.getElementById('almDniChofer').value = c.dni_chofer;
                 if (c.placa) document.getElementById('almPlaca').value = String(c.placa).replace(/\s+Principal$/i, '');
                 if (c.partida) document.getElementById('almLugarPartida').value = c.partida;
+                // El documento rellenado cambia proveedor y número de guía: una OC
+                // declarada deja de estar verificada hasta que se vuelva a validar.
+                wizardAlmOcInvalidar();
 
                 if (data.items && data.items.length) {
                     itemsAlmacenArray = data.items.map(i => ({
@@ -1397,6 +1497,7 @@
             formData.append('tipo_documento', wizardAlmVal('almTipoDocumento'));
             formData.append('numero_guia', wizardAlmVal('almNumeroGuia'));
             formData.append('proveedor', wizardAlmVal('almProveedor'));
+            formData.append('numero_oc', wizardAlmVal('almNumeroOC'));
             formData.append('chofer', wizardAlmVal('almChofer'));
             formData.append('dni_chofer', wizardAlmVal('almDniChofer'));
             formData.append('placa', wizardAlmVal('almPlaca'));
@@ -1446,6 +1547,7 @@
 
         function reiniciarFormularioAlmacen() {
             document.getElementById('formWizardAlm').reset();
+            wizardAlmOcInvalidar();
             itemsAlmacenArray = [];
             wizardAlmRenderTabla();
             document.getElementById('almPanelExito').style.display = 'none';

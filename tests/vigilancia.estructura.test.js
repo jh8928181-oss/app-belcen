@@ -95,7 +95,7 @@ describe('Estructura de public/vigilancia.html', () => {
   });
 
   test('el menu ofrece las 4 opciones y la de personal va deshabilitada', () => {
-    expect(html).toMatch(/Ingreso de insumos/);
+    expect(html).toMatch(/Reporte de ingreso de guía/);
     expect(html).toMatch(/Vehículos sin mercancía/);
     expect(html).toMatch(/Consultar ingresos del día/);
     expect(html).toMatch(/id="menuVigilancia"[\s\S]*?mostrarVista\('personal'\)[^>]*disabled/);

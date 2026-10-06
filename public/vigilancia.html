@@ -357,19 +357,19 @@
         <h3>VIGILANCIA - MENÚ PRINCIPAL</h3>
         <p style="color: var(--texto2); margin-top: 10px;">Selecciona una opción para continuar:</p>
         <div class="menu-opciones">
-            <button onclick="mostrarVista('insumos')" class="opcion-menu opc-verde">📦 Ingreso de insumos<small>Con guía de remisión y carga de mercancía</small></button>
+            <button onclick="mostrarVista('insumos')" class="opcion-menu opc-verde">📦 Reporte de ingreso de guía<small>Con guía de remisión y carga de mercancía</small></button>
             <button onclick="mostrarVista('vehiculo')" class="opcion-menu opc-azul">🚛 Vehículos sin mercancía<small>Placa, conductor y motivo de la visita</small></button>
             <button onclick="mostrarVista('personal')" class="opcion-menu opc-naranja" disabled>👤 INGRESO DE PERSONAL<small>Personal —próximamente</small></button>
             <button onclick="mostrarVista('consulta')" class="opcion-menu opc-gris">📋 Consultar ingresos del día<small>Ver los registros hechos en vigilancia</small></button>
         </div>
     </div>
 
-    <!-- VISTA 1: Ingreso de insumos (asistente de 3 pasos) -->
+    <!-- VISTA 1: Reporte de ingreso de guía (asistente de 3 pasos) -->
     <div id="vistaInsumos" class="card reveal" style="display: none;">
         <div style="text-align: left;">
             <button onclick="mostrarMenu()" class="btn-volver">← Volver al menú</button>
         </div>
-        <h3>REGISTRO DE Ingreso de insumos - VIGILANCIA</h3>
+        <h3>REPORTE DE INGRESO DE GUÍA - VIGILANCIA</h3>
 
         <!-- Progreso de pasos -->
         <div class="progreso-steps" id="chipsInsumos" role="tablist" aria-label="Pasos del registro de insumos">

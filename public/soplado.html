@@ -186,12 +186,9 @@
                 <label><b>Seleccionar Preforma Utilizada:</b></label>
                 <select id="preforma_nombre" name="preforma_nombre" required>
                     <option value="">-- Seleccione la preforma exacta --</option>
-                    <option value="SERVICIO SAUÑE (1LT-900ML)">SERVICIO SAUÑE (1LT-900ML)</option>
-                    <option value="SERVICIO SAUÑE PREFORMA 09 GR (200ML)">SERVICIO SAUÑE PREFORMA 09 GR (200ML)</option>
-                    <option value="Preforma cristal 23.5 gr (PICO 26MM)">Preforma cristal 23.5 gr (PICO 26MM)</option>
-                    <option value="SERVICIO SOPLADO 500 ML PREF-15.5GR (SAUÑE)">SERVICIO SOPLADO 500 ML PREF-15.5GR (SAUÑE)</option>
-                    <option value="Preforma cristal de 104 gr pico 45mm (3LT)">Preforma cristal de 104 gr pico 45mm (3LT)</option>
                 </select>
+                <!-- Las opciones se cargan del inventario (solo preformas
+                     fisicas, sin servicios) con cargarPreformas(). -->
             </div>
 
             <div>
@@ -254,6 +251,40 @@
                 window.location.href = 'index.html';
             }
         }
+
+        // Preformas fisicas del inventario (los servicios de soplado tienen
+        // su propio cuadro y no entran aqui).
+        function esPreformaFisica(item) {
+            const cat = String(item.categoria || '').toUpperCase();
+            if (cat !== 'PREFORMAS Y SERVICIOS') return false;
+            return !String(item.nombre || '').trim().toUpperCase().startsWith('SERVICIO');
+        }
+
+        async function cargarPreformas() {
+            const sel = document.getElementById('preforma_nombre');
+            try {
+                const res = await fetch('/api/inventario');
+                if (!res.ok) throw new Error('Error del servidor.');
+                const items = await res.json();
+                const preformas = (Array.isArray(items) ? items : []).filter(esPreformaFisica);
+                sel.innerHTML = '<option value="">-- Seleccione la preforma exacta --</option>';
+                preformas.forEach(p => {
+                    const n = Number(p.stock);
+                    const stockTxt = Number.isInteger(n) ? String(n) : n.toFixed(2);
+                    const opt = document.createElement('option');
+                    opt.value = p.nombre;
+                    opt.textContent = `${p.nombre} (Stock: ${stockTxt} MILLARES)`;
+                    sel.appendChild(opt);
+                });
+                if (preformas.length === 0) {
+                    sel.innerHTML = '<option value="">-- Sin preformas en inventario --</option>';
+                }
+            } catch (e) {
+                console.error(e);
+                sel.innerHTML = '<option value="">-- No se pudo cargar preformas --</option>';
+            }
+        }
+        cargarPreformas();
 
         let enviandoSoplado = false;
         document.getElementById('formSoplado').addEventListener('submit', async (e) => {

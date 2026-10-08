@@ -351,11 +351,15 @@
                         <span id="badgeEnvasado" class="badge badge-parado">🔴 PARADO</span>
                     </div>
 <div id="resumenEnvasado" class="estado-resumen">Cargando…</div>
+                    <div class="plan-fila-actual" style="margin-top:8px;">
+                        <span class="plan-etiqueta">Producto envasado</span>
+                        <span id="previoEnvasado" class="plan-producto-actual">—</span>
+                    </div>
                     <!-- El boton solo lleva la fila del producto en curso; la cola
                          vive aparte porque un <button> no puede contener una lista. -->
                     <button type="button" id="planToggleEnvasado" class="plan-tarjeta" aria-expanded="false" aria-controls="planColaEnvasado">
                         <span class="plan-fila-actual">
-                            <span class="plan-etiqueta">En producción</span>
+                            <span class="plan-etiqueta">Envasando</span>
                             <span id="planActualEnvasado" class="plan-producto-actual">—</span>
                             <span id="planMasEnvasado" class="plan-mas"></span>
                         </span>
@@ -704,6 +708,17 @@ const bajoStock = inventarioGlobal.filter(a => !esServicioSoplado(a) && (a.estad
             return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
         }
 
+        // Fecha corta DD/MM/AAAA sin objeto Date (evita que el huso horario
+        // mueva el día: '2026-10-08T00:00:00.000Z' debe mostrar 08/10/2026).
+        function fmtFechaCorta(iso) {
+            const base = String(iso || '').substring(0, 10);
+            const m = base.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            return m ? m[3] + '/' + m[2] + '/' + m[1] : base;
+        }
+
+        // Producto que está en marcha según la secuencia (lo pone pintarPlanEnvasado).
+        let productoEnMarchaEnvasado = '';
+
 function escDash(texto) {
             return String(texto == null ? '' : texto)
                 .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -722,6 +737,8 @@ function escDash(texto) {
             if (!items.length) {
                 actual.textContent = 'Sin secuencia en la línea';
                 actual.className = 'plan-sin-producto';
+                productoEnMarchaEnvasado = '';
+                document.getElementById('previoEnvasado').textContent = '—';
                 mas.textContent = '';
                 toggle.disabled = true;
                 contenedor.innerHTML = '<p class="plan-vacio">El operario de envasado aún no ha armado la secuencia.</p>';
@@ -731,6 +748,7 @@ function escDash(texto) {
             toggle.disabled = false;
             actual.className = 'plan-producto-actual';
             const primero = items[0];
+            productoEnMarchaEnvasado = primero.nombre_producto || primero.producto_key || '';
             actual.textContent = primero.receta_huerfana
                 ? primero.producto_key + ' — receta no vigente'
                 : (primero.nombre_producto || primero.producto_key);
@@ -742,7 +760,7 @@ function escDash(texto) {
                         ? escDash(item.producto_key) + ' — receta no vigente'
                         : escDash(item.nombre_producto || item.producto_key);
                     return '<li class="plan-item' + (i === 0 ? ' plan-actual' : '') + '">'
-                        + '<span class="plan-pos">' + (i === 0 ? 'En producción' : 'Luego') + '</span>'
+                        + '<span class="plan-pos">' + (i === 0 ? 'Envasando' : 'Luego') + '</span>'
                         + '<span class="plan-nombre' + (item.receta_huerfana ? ' plan-huerfana' : '') + '">' + nombre + '</span>'
                         + '</li>';
                 }).join('')
@@ -812,11 +830,25 @@ const lista = Array.isArray(estados) ? estados : [];
                     // que queda de verdad en el inventario es la tabla de
                     // producto terminado, más abajo.
                     const fechas = lista.map(r => r.fecha_produccion).filter(Boolean).sort();
-                    const rango = fechas.length
-                        ? (fechas.length === 1 ? fechas[0] : fechas[0] + ' a ' + fechas[fechas.length - 1])
+                    const unicas = [...new Set(fechas.map(fmtFechaCorta))];
+                    const rango = unicas.length
+                        ? (unicas.length === 1 ? unicas[0] : unicas[0] + ' a ' + unicas[unicas.length - 1])
                         : 'sin registros';
                     document.getElementById('resumenEnvasado').textContent =
 lista.length + ' reportes · ' + formatearNumero(totalCajas) + ' cajas · ' + totalTn.toFixed(2) + ' TM · ' + rango;
+                    // Producto envasado (anterior): el último reporte de un
+                    // producto distinto al que está en marcha; si solo hay uno,
+                    // ese mismo. La lista viene ordenada del más nuevo al más viejo.
+                    const norm = s => String(s || '').toLowerCase().trim();
+                    const marcha = norm(productoEnMarchaEnvasado);
+                    let previo = '';
+                    for (const r of lista) {
+                        const nom = String(r.presentacion || r.producto || '').trim();
+                        if (!nom) continue;
+                        const n = norm(nom);
+                        if (!marcha || (!n.includes(marcha) && !marcha.includes(n))) { previo = nom; break; }
+                    }
+                    document.getElementById('previoEnvasado').textContent = previo || '—';
                 }
             } catch (err) {
                 console.error(err);

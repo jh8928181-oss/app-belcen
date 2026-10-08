@@ -192,3 +192,57 @@ describe('DELETE /api/inventario/:id', () => {
     expect(res.cuerpo.success).toBe(false);
   });
 });
+
+describe('PUT /api/inventario/:id (renombrar, solo admin)', () => {
+  const SQL_PUT = {
+    fila: /SELECT nombre FROM inventario WHERE id = \$1/,
+    duplicado: /SELECT id FROM inventario WHERE LOWER\(BTRIM\(nombre\)\)/,
+    renombrar: /UPDATE inventario SET nombre = \$1 WHERE id = \$2/,
+    historial: /INSERT INTO historial_inventario/
+  };
+
+  test('bloquea con 403 a rol almacen', async () => {
+    const res = await invocar('put', '/api/inventario/7', {
+      params: { id: '7' }, body: { nombre: 'X' }, rol: 'almacen', usuario: 'almacen1'
+    });
+    expect(res.statusCode).toBe(403);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  test('rechaza nombre vacio con 400', async () => {
+    const res = await invocar('put', '/api/inventario/7', { params: { id: '7' }, body: { nombre: '   ' } });
+    expect(res.statusCode).toBe(400);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  test('devuelve 404 si el articulo no existe', async () => {
+    responder([[SQL_PUT.fila, { rows: [], rowCount: 0 }]]);
+    const res = await invocar('put', '/api/inventario/99', { params: { id: '99' }, body: { nombre: 'Nuevo' } });
+    expect(res.statusCode).toBe(404);
+  });
+
+  test('devuelve 409 si el nombre ya lo usa otro articulo', async () => {
+    responder([
+      [SQL_PUT.fila, { rows: [{ nombre: 'Viejo' }], rowCount: 1 }],
+      [SQL_PUT.duplicado, { rows: [{ id: 9 }], rowCount: 1 }]
+    ]);
+    const res = await invocar('put', '/api/inventario/7', { params: { id: '7' }, body: { nombre: 'Existente' } });
+    expect(res.statusCode).toBe(409);
+    expect(mockQuery.mock.calls.some(c => SQL_PUT.renombrar.test(String(c[0])))).toBe(false);
+  });
+
+  test('renombra, registra EDICION en historial y confirma', async () => {
+    responder([
+      [SQL_PUT.fila, { rows: [{ nombre: 'Preforma 23 GR' }], rowCount: 1 }],
+      [SQL_PUT.duplicado, { rows: [], rowCount: 0 }],
+      [SQL_PUT.renombrar, { rows: [], rowCount: 1 }],
+      [SQL_PUT.historial, { rows: [], rowCount: 1 }]
+    ]);
+    const res = await invocar('put', '/api/inventario/7', { params: { id: '7' }, body: { nombre: 'Preforma 23.5 GR (PICO 26MM)' } });
+    expect(res.statusCode).toBe(200);
+    expect(res.cuerpo.success).toBe(true);
+    const llamadaHistorial = mockQuery.mock.calls.find(c => SQL_PUT.historial.test(String(c[0])));
+    expect(llamadaHistorial[1][0]).toBe('EDICION');
+    expect(llamadaHistorial[1][10]).toMatch('Preforma 23 GR');
+  });
+});

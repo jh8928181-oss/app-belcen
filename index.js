@@ -720,6 +720,67 @@ app.delete('/api/inventario/:id', requerirRolAdmin, async (req, res) => {
     }
 });
 
+// --- ALMACEN: RENOMBRAR ARTICULO DEL INVENTARIO (solo admin) ---
+// El cambio es inmediato en todos los modulos porque leen el inventario en
+// vivo (stock, soplado, recetas por join, dashboard). Los historiales viejos
+// conservan el nombre anterior como snapshot de auditoria.
+app.put('/api/inventario/:id', requerirRolAdmin, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const articulo_id = parseInt(req.params.id, 10);
+        const nombreNuevo = String((req.body && req.body.nombre) || '').trim();
+        if (!articulo_id) {
+            return res.status(400).json({ success: false, mensaje: 'Id de artículo inválido.' });
+        }
+        if (!nombreNuevo) {
+            return res.status(400).json({ success: false, mensaje: 'El nuevo nombre no puede estar vacío.' });
+        }
+        if (nombreNuevo.length > 150) {
+            return res.status(400).json({ success: false, mensaje: 'El nombre no puede superar 150 caracteres.' });
+        }
+        await client.query('BEGIN');
+        const actual = await client.query('SELECT nombre FROM inventario WHERE id = $1', [articulo_id]);
+        if (actual.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'El artículo no existe.' });
+        }
+        const nombreAnterior = actual.rows[0].nombre;
+        if (nombreAnterior === nombreNuevo) {
+            await client.query('ROLLBACK');
+            return res.json({ success: true, mensaje: 'Sin cambios: el nombre es el mismo.' });
+        }
+        const duplicado = await client.query(
+            'SELECT id FROM inventario WHERE LOWER(BTRIM(nombre)) = LOWER(BTRIM($1)) AND id <> $2',
+            [nombreNuevo, articulo_id]
+        );
+        if (duplicado.rows.length > 0) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, mensaje: `Ya existe otro artículo con el nombre "${nombreNuevo}".` });
+        }
+        await client.query('UPDATE inventario SET nombre = $1 WHERE id = $2', [nombreNuevo, articulo_id]);
+        await registrarHistorial(client, {
+            tipo: 'EDICION',
+            origen: 'almacen',
+            producto: nombreNuevo,
+            articulo_id: articulo_id,
+            cantidad: 0,
+            tipo_cambio: 'SUMA',
+            stock_anterior: null,
+            stock_nuevo: null,
+            usuario: usuarioResponsable(req, req.body && req.body.usuario),
+            referencia: `Cambio de nombre (admin): "${nombreAnterior}" → "${nombreNuevo}"`
+        });
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: `Artículo renombrado a "${nombreNuevo}".` });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error("Error al renombrar artículo:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al renombrar el artículo: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
 // --- PRODUCTO TERMINADO: CONSULTA Y AJUSTE ---
 app.get('/api/producto-terminado', async (req, res) => {
     try {

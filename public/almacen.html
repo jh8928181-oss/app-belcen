@@ -2196,14 +2196,23 @@
             const u = String(item.unidad_medida || 'UNIDADES').trim().toUpperCase();
             return (u === 'MILL' || u === 'MILLARES') ? 'MILLARES' : u;
         }
+        // Servicios de soplado (SAUÑE, B&M): van en su propio cuadro, no en el stock.
+        function esServicioSoplado(item) {
+            const cat = String(item.categoria || '').toUpperCase();
+            if (cat === 'SERVICIOS DE SOPLADO') return true;
+            return cat === 'PREFORMAS Y SERVICIOS' &&
+                String(item.nombre || '').trim().toUpperCase().startsWith('SERVICIO');
+        }
         function mostrarInventarioAlmacen(data) {
+            // Solo preformas fisicas: los servicios tienen su propio cuadro.
+            const soloPreformas = (data || []).filter(i => !esServicioSoplado(i));
             const tbody = document.getElementById('tablaInventarioAlmacen');
-            if (data.length === 0) {
+            if (soloPreformas.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="5" class="text-center">No se encontraron artículos.</td></tr>`;
                 return;
             }
             const grupos = {};
-            data.forEach(item => {
+            soloPreformas.forEach(item => {
                 const cat = item.categoria || 'SIN CATEGORÍA';
                 (grupos[cat] = grupos[cat] || []).push(item);
             });

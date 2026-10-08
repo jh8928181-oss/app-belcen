@@ -458,6 +458,31 @@
             </div>
         </section>
 
+        <!-- ESTADOS DE SERVICIO DE SOPLADO -->
+        <section class="glass inv" id="seccionServiciosSoplado">
+            <div class="seccion-head">
+                <h2>Estados de servicio de soplado</h2>
+                <div class="inv-actions">
+                    <span id="totalServicios"></span>
+                </div>
+            </div>
+            <div class="tabla-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Servicio</th>
+                            <th>Stock Actual</th>
+                            <th>Unidad</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaServiciosSoplado">
+                        <tr><td colspan="4" class="text-center">Cargando servicios…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
         <!-- PIE -->
         <footer class="pie">
             <span>Corporación Belcen S.A.C. · ERP Interno · Inventario en tiempo real</span>
@@ -540,6 +565,20 @@
             return String(art.estado || '').trim() === 'REALIZAR PEDIDO';
         }
 
+        // Servicios de soplado (SAUÑE, B&M): no van en el inventario,
+        // tienen su propio cuadro de estados.
+        function esServicioSoplado(a) {
+            const cat = String(a.categoria || '').toUpperCase();
+            if (cat === 'SERVICIOS DE SOPLADO') return true;
+            return cat === 'PREFORMAS Y SERVICIOS' &&
+                String(a.nombre || '').trim().toUpperCase().startsWith('SERVICIO');
+        }
+
+        function unidadDash(a) {
+            const u = String(a.unidad_medida || 'UNIDADES').trim().toUpperCase();
+            return (u === 'MILL' || u === 'MILLARES') ? 'MILLARES' : u;
+        }
+
         function actualizarKpiBajoStock() {
             const card = document.getElementById('kpiBajoStockCard');
             card.classList.toggle('on', soloBajoStock);
@@ -572,7 +611,8 @@
 
         function renderInventario() {
             const q = (document.getElementById('filtroInventario').value || '').toLowerCase();
-const filtrados = inventarioGlobal.filter(a =>
+const baseInventario = inventarioGlobal.filter(a => !esServicioSoplado(a));
+const filtrados = baseInventario.filter(a =>
                 (!soloBajoStock || esBajoStock(a)) &&
                 ((a.nombre || '').toLowerCase().includes(q) ||
                 (a.categoria || '').toLowerCase().includes(q) ||
@@ -595,13 +635,35 @@ const filtrados = inventarioGlobal.filter(a =>
                     <td><b>${art.nombre}</b></td>
                     <td>${art.categoria || 'General'}</td>
                     <td><b>${formatearNumero(art.stock)}</b></td>
-                    <td>${art.unidad_medida || 'UNIDADES'}</td>
+                    <td>${unidadDash(art)}</td>
                     <td><span class="badge ${estadoClass}">${estadoTexto}</span></td>
                 `;
                 tbody.appendChild(tr);
             });
 
-            document.getElementById('totalFiltrado').textContent = filtrados.length + ' de ' + inventarioGlobal.length + ' artículos';
+            document.getElementById('totalFiltrado').textContent = filtrados.length + ' de ' + baseInventario.length + ' artículos';
+        }
+
+        function renderServiciosSoplado() {
+            const servicios = inventarioGlobal.filter(esServicioSoplado);
+            const tbody = document.getElementById('tablaServiciosSoplado');
+            if (!tbody) return;
+            tbody.innerHTML = servicios.length === 0
+                ? '<tr><td colspan="4" class="text-center sin-registros">Sin servicios registrados.</td></tr>'
+                : '';
+            servicios.forEach(s => {
+                const estadoTexto = s.estado || 'STOCK SUFICIENTE';
+                const estadoClass = estadoTexto === 'REALIZAR PEDIDO' ? 'badge-low' : 'badge-ok';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><b>${s.nombre}</b></td>
+                    <td><b>${formatearNumero(s.stock)}</b></td>
+                    <td>${unidadDash(s)}</td>
+                    <td><span class="badge ${estadoClass}">${estadoTexto}</span></td>
+                `;
+                tbody.appendChild(tr);
+            });
+            document.getElementById('totalServicios').textContent = servicios.length + ' servicios';
         }
 
         async function cargarInventario() {
@@ -611,7 +673,7 @@ const filtrados = inventarioGlobal.filter(a =>
                 const articulos = await res.json();
                 inventarioGlobal = Array.isArray(articulos) ? articulos : [];
 
-const bajoStock = inventarioGlobal.filter(a => (a.estado || '').trim() === 'REALIZAR PEDIDO').length;
+const bajoStock = inventarioGlobal.filter(a => !esServicioSoplado(a) && (a.estado || '').trim() === 'REALIZAR PEDIDO').length;
 
                 setearKpi('kpiBajoStock', bajoStock, 0);
                 kpisInicializados = true;
@@ -620,6 +682,7 @@ const bajoStock = inventarioGlobal.filter(a => (a.estado || '').trim() === 'REAL
                 document.getElementById('ultimaActualizacion').textContent =
                     'Última actualización: ' + ahora.toLocaleTimeString('es-PE');
                 renderInventario();
+                renderServiciosSoplado();
             } catch (err) {
                 console.error(err);
                 document.getElementById('tablaInventario').innerHTML =

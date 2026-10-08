@@ -14,7 +14,7 @@ const os = require('os');
 const tesseract = require('tesseract.js');
 const { analizarDocumentoConGemini } = require('./services/geminiService');
 const { initRedis } = require('./services/rateLimiter');
-const { authMiddleware, crearGuardRoles, ROLES_MODULO } = require('./middleware/auth');
+const { authMiddleware, crearGuardRoles, ROLES_MODULO, requerirRolAdmin } = require('./middleware/auth');
 const { calcularInsumosProduccion } = require('./services/recipeService');
 const { datosParaOrdenPDF, datosFormularioOC } = require('./services/ocPdfDatos');
 const { generarPDFOrdenCompra, nombreArchivoSeguro } = require('./services/pdfOrdenCompra');
@@ -666,6 +666,51 @@ app.post('/api/almacen/ajustar-stock', gAlmacen, async (req, res) => {
         await client.query('ROLLBACK').catch(() => {});
         console.error("Error al ajustar stock:", err);
         res.status(500).json({ success: false, mensaje: 'Error al actualizar el stock manualmente: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// --- ALMACEN: ELIMINAR ARTICULO DEL INVENTARIO (solo admin) ---
+// Borra la fila de inventario. Si guias, salidas o recetas todavia la
+// referencian (FK), Postgres responde 23503 y se devuelve 409 en vez de 500.
+app.delete('/api/inventario/:id', requerirRolAdmin, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const articulo_id = parseInt(req.params.id, 10);
+        if (!articulo_id) {
+            return res.status(400).json({ success: false, mensaje: 'Id de artículo inválido.' });
+        }
+        await client.query('BEGIN');
+        const actual = await client.query('SELECT nombre, stock FROM inventario WHERE id = $1', [articulo_id]);
+        if (actual.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'El artículo no existe.' });
+        }
+        const nombreArticulo = actual.rows[0].nombre;
+        const stockAnterior = Number(actual.rows[0].stock) || 0;
+        await client.query('DELETE FROM inventario WHERE id = $1', [articulo_id]);
+        await registrarHistorial(client, {
+            tipo: 'ELIMINACION',
+            origen: 'almacen',
+            producto: nombreArticulo,
+            articulo_id: articulo_id,
+            cantidad: stockAnterior,
+            tipo_cambio: 'RESTA',
+            stock_anterior: stockAnterior,
+            stock_nuevo: 0,
+            usuario: usuarioResponsable(req, req.body && req.body.usuario),
+            referencia: 'Eliminación manual de artículo (admin)'
+        });
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: `Artículo "${nombreArticulo}" eliminado del inventario.` });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        if (err && err.code === '23503') {
+            return res.status(409).json({ success: false, mensaje: 'No se puede eliminar: el artículo tiene guías, salidas o recetas registradas.' });
+        }
+        console.error("Error al eliminar artículo:", err);
+        res.status(500).json({ success: false, mensaje: 'Error al eliminar el artículo: ' + err.message });
     } finally {
         client.release();
     }

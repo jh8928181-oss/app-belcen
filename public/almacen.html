@@ -225,6 +225,8 @@
         .btn-accion:active { transform: scale(0.97); }
         .btn-ajustar { background: #ffd60a; color: #5c3a00; }
         .btn-ajustar:hover { filter: brightness(0.95); }
+        .btn-eliminar { background: #dc3545; color: #fff; margin-left: 6px; }
+        .btn-eliminar:hover { filter: brightness(0.92); }
         .btn-regularizar { background: var(--azul); }
         .btn-regularizar:hover { filter: brightness(0.95); }
         .btn-anular { background: #c62828; }
@@ -2211,7 +2213,7 @@
                 grupos[cat].forEach(item => {
                     const estado = item.estado || 'STOCK SUFICIENTE';
                     const esSuficiente = estado === 'STOCK SUFICIENTE';
-                    tbody.innerHTML += `<tr><td><b>${item.nombre}</b></td><td>${item.categoria || 'SIN CATEGORÍA'}</td><td class="text-center celda-azul">${fmtStock(item.stock)} ${unidadMostrar(item)}</td><td class="text-center"><span class="${esSuficiente ? 'badge-stock-ok' : 'badge-stock-bajo'}">${estado}</span></td><td class="text-center"><button onclick="ajustarStock(${item.id}, '${item.nombre}', ${item.stock})" class="btn-accion btn-ajustar">Ajustar</button></td></tr>`;
+                    tbody.innerHTML += `<tr><td><b>${item.nombre}</b></td><td>${item.categoria || 'SIN CATEGORÍA'}</td><td class="text-center celda-azul">${fmtStock(item.stock)} ${unidadMostrar(item)}</td><td class="text-center"><span class="${esSuficiente ? 'badge-stock-ok' : 'badge-stock-bajo'}">${estado}</span></td><td class="text-center"><button onclick="ajustarStock(${item.id}, '${item.nombre}', ${item.stock})" class="btn-accion btn-ajustar">Ajustar</button>${rolUsuario === 'admin' ? `<button onclick="eliminarArticulo(${item.id}, '${item.nombre}')" class="btn-accion btn-eliminar">Eliminar</button>` : ''}</td></tr>`;
             });
                 });
                 etiquetarTablas();
@@ -2246,6 +2248,21 @@
                 cargarInventarioAlmacen();
             }).catch(err => { console.error(err); alert('Error de conexión.'); })
             .finally(() => { guardAjustarStock = false; });
+        }
+
+        let guardEliminarArticulo = false;
+        function eliminarArticulo(id, nombre) {
+            if (rolUsuario !== 'admin') { alert('❌ Solo el administrador puede eliminar artículos.'); return; }
+            if (guardEliminarArticulo) return;
+            if (!confirm(`¿Eliminar "${nombre}" del inventario? Esta acción no se puede deshacer.`)) return;
+            if (!confirm(`Confirma de nuevo: se borrará "${nombre}" con todo su stock.`)) return;
+            guardEliminarArticulo = true;
+            fetch(`/api/inventario/${id}`, { method: 'DELETE' })
+            .then(r => r.json().then(d => ({ estado: r.status, cuerpo: d }))).then(({ estado, cuerpo }) => {
+                alert((estado === 200 && cuerpo.success ? '✅ ' : '❌ ') + (cuerpo.mensaje || 'Respuesta del servidor.'));
+                cargarInventarioAlmacen();
+            }).catch(err => { console.error(err); alert('Error de conexión.'); })
+            .finally(() => { guardEliminarArticulo = false; });
         }
 
         function poblarSelectSalida() {

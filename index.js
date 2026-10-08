@@ -672,8 +672,9 @@ app.post('/api/almacen/ajustar-stock', gAlmacen, async (req, res) => {
 });
 
 // --- ALMACEN: ELIMINAR ARTICULO DEL INVENTARIO (solo admin) ---
-// Borra la fila de inventario. Si guias, salidas o recetas todavia la
-// referencian (FK), Postgres responde 23503 y se devuelve 409 en vez de 500.
+// Borrado en cascada: primero las filas que referencian al articulo
+// (guias de almacen, salidas y recetas) y luego el articulo. El historial
+// no tiene FK y se conserva; ademas se anota la ELIMINACION para auditoria.
 app.delete('/api/inventario/:id', requerirRolAdmin, async (req, res) => {
     const client = await pool.connect();
     try {
@@ -689,6 +690,9 @@ app.delete('/api/inventario/:id', requerirRolAdmin, async (req, res) => {
         }
         const nombreArticulo = actual.rows[0].nombre;
         const stockAnterior = Number(actual.rows[0].stock) || 0;
+        const guias = await client.query('DELETE FROM registro_ingresos_almacen WHERE articulo_id = $1', [articulo_id]);
+        const salidas = await client.query('DELETE FROM salidas_almacen WHERE articulo_id = $1', [articulo_id]);
+        const recetas = await client.query('DELETE FROM receta_insumos WHERE insumo_id = $1', [articulo_id]);
         await client.query('DELETE FROM inventario WHERE id = $1', [articulo_id]);
         await registrarHistorial(client, {
             tipo: 'ELIMINACION',
@@ -700,14 +704,14 @@ app.delete('/api/inventario/:id', requerirRolAdmin, async (req, res) => {
             stock_anterior: stockAnterior,
             stock_nuevo: 0,
             usuario: usuarioResponsable(req, req.body && req.body.usuario),
-            referencia: 'Eliminación manual de artículo (admin)'
+            referencia: `Eliminación manual de artículo (admin): ${guias.rowCount} guías, ${salidas.rowCount} salidas, ${recetas.rowCount} recetas desvinculadas`
         });
         await client.query('COMMIT');
-        res.json({ success: true, mensaje: `Artículo "${nombreArticulo}" eliminado del inventario.` });
+        res.json({ success: true, mensaje: `Artículo "${nombreArticulo}" eliminado (${guias.rowCount} guías, ${salidas.rowCount} salidas, ${recetas.rowCount} recetas desvinculadas).` });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         if (err && err.code === '23503') {
-            return res.status(409).json({ success: false, mensaje: 'No se puede eliminar: el artículo tiene guías, salidas o recetas registradas.' });
+            return res.status(409).json({ success: false, mensaje: 'No se puede eliminar: otra tabla todavía referencia al artículo.' });
         }
         console.error("Error al eliminar artículo:", err);
         res.status(500).json({ success: false, mensaje: 'Error al eliminar el artículo: ' + err.message });

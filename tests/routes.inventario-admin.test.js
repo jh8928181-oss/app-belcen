@@ -99,6 +99,9 @@ function responder(reglas) {
 
 const SQL = {
   filaInventario: /SELECT nombre, stock FROM inventario WHERE id = \$1/,
+  borrarGuias: /DELETE FROM registro_ingresos_almacen WHERE articulo_id = \$1/,
+  borrarSalidas: /DELETE FROM salidas_almacen WHERE articulo_id = \$1/,
+  borrarRecetas: /DELETE FROM receta_insumos WHERE insumo_id = \$1/,
   borrarInventario: /DELETE FROM inventario WHERE id = \$1/,
   historial: /INSERT INTO historial_inventario/
 };
@@ -137,6 +140,9 @@ describe('DELETE /api/inventario/:id', () => {
   test('el admin borra, registra ELIMINACION en historial y confirma', async () => {
     responder([
       [SQL.filaInventario, { rows: [{ nombre: 'ETIQUETA B-1 X 1LT', stock: '0.000000' }], rowCount: 1 }],
+      [SQL.borrarGuias, { rows: [], rowCount: 0 }],
+      [SQL.borrarSalidas, { rows: [], rowCount: 0 }],
+      [SQL.borrarRecetas, { rows: [], rowCount: 0 }],
       [SQL.borrarInventario, { rows: [], rowCount: 1 }],
       [SQL.historial, { rows: [], rowCount: 1 }]
     ]);
@@ -149,6 +155,29 @@ describe('DELETE /api/inventario/:id', () => {
     expect(llamadaHistorial[1][0]).toBe('ELIMINACION');
     const textos = mockQuery.mock.calls.map(c => String(c[0]));
     expect(textos).toContain('COMMIT');
+  });
+
+  test('borra en cascada: primero guias, salidas y recetas, y lo reporta', async () => {
+    responder([
+      [SQL.filaInventario, { rows: [{ nombre: 'Botella X', stock: '100' }], rowCount: 1 }],
+      [SQL.borrarGuias, { rows: [], rowCount: 2 }],
+      [SQL.borrarSalidas, { rows: [], rowCount: 1 }],
+      [SQL.borrarRecetas, { rows: [], rowCount: 3 }],
+      [SQL.borrarInventario, { rows: [], rowCount: 1 }],
+      [SQL.historial, { rows: [], rowCount: 1 }]
+    ]);
+    const res = await invocar('delete', '/api/inventario/8', { params: { id: '8' } });
+    expect(res.statusCode).toBe(200);
+    expect(res.cuerpo.mensaje).toMatch('2 guías, 1 salidas, 3 recetas');
+    const orden = mockQuery.mock.calls.map(c => String(c[0]));
+    const iGuias = orden.findIndex(t => SQL.borrarGuias.test(t));
+    const iSalidas = orden.findIndex(t => SQL.borrarSalidas.test(t));
+    const iRecetas = orden.findIndex(t => SQL.borrarRecetas.test(t));
+    const iInv = orden.findIndex(t => SQL.borrarInventario.test(t));
+    expect(iGuias).toBeGreaterThanOrEqual(0);
+    expect(iSalidas).toBeGreaterThan(iGuias);
+    expect(iRecetas).toBeGreaterThan(iSalidas);
+    expect(iInv).toBeGreaterThan(iRecetas);
   });
 
   test('responde 409 si el articulo esta referenciado (FK 23503)', async () => {

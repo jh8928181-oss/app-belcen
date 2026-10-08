@@ -2255,7 +2255,7 @@
             if (rolUsuario !== 'admin') { alert('❌ Solo el administrador puede eliminar artículos.'); return; }
             if (guardEliminarArticulo) return;
             if (!confirm(`¿Eliminar "${nombre}" del inventario? Esta acción no se puede deshacer.`)) return;
-            if (!confirm(`Confirma de nuevo: se borrará "${nombre}" con todo su stock.`)) return;
+            if (!confirm(`ATENCIÓN: se borrará "${nombre}" con todo su stock, sus guías, salidas y recetas vinculadas. ¿Continuar?`)) return;
             guardEliminarArticulo = true;
             fetch(`/api/inventario/${id}`, { method: 'DELETE' })
             .then(r => r.json().then(d => ({ estado: r.status, cuerpo: d }))).then(({ estado, cuerpo }) => {

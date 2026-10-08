@@ -2179,6 +2179,21 @@
             } catch(e) { console.error(e); }
         }
 
+        // Stock sin .000000 (NUMERIC de Postgres llega como texto) y unidad por categoria:
+        // cajas/botellas/galoneras/latas/baldes -> UNIDADES; etiquetas/preformas -> MILLARES
+        function fmtStock(n) {
+            const v = Number(n);
+            if (!isFinite(v)) return '0';
+            if (Number.isInteger(v)) return String(v);
+            return String(Math.round((v + Number.EPSILON) * 100) / 100);
+        }
+        function unidadMostrar(item) {
+            const cat = String(item.categoria || '').toUpperCase();
+            if (cat.includes('ETIQUETA') || cat.includes('PREFORMA')) return 'MILLARES';
+            if (['CAJA', 'BOTELLA', 'GALONERA', 'LATA', 'BALDE'].some(c => cat.includes(c))) return 'UNIDADES';
+            const u = String(item.unidad_medida || 'UNIDADES').trim().toUpperCase();
+            return (u === 'MILL' || u === 'MILLARES') ? 'MILLARES' : u;
+        }
         function mostrarInventarioAlmacen(data) {
             const tbody = document.getElementById('tablaInventarioAlmacen');
             if (data.length === 0) {
@@ -2196,7 +2211,7 @@
                 grupos[cat].forEach(item => {
                     const estado = item.estado || 'STOCK SUFICIENTE';
                     const esSuficiente = estado === 'STOCK SUFICIENTE';
-                    tbody.innerHTML += `<tr><td><b>${item.nombre}</b></td><td>${item.categoria || 'SIN CATEGORÍA'}</td><td class="text-center celda-azul">${item.stock} ${item.unidad_medida}</td><td class="text-center"><span class="${esSuficiente ? 'badge-stock-ok' : 'badge-stock-bajo'}">${estado}</span></td><td class="text-center"><button onclick="ajustarStock(${item.id}, '${item.nombre}', ${item.stock})" class="btn-accion btn-ajustar">Ajustar</button></td></tr>`;
+                    tbody.innerHTML += `<tr><td><b>${item.nombre}</b></td><td>${item.categoria || 'SIN CATEGORÍA'}</td><td class="text-center celda-azul">${fmtStock(item.stock)} ${unidadMostrar(item)}</td><td class="text-center"><span class="${esSuficiente ? 'badge-stock-ok' : 'badge-stock-bajo'}">${estado}</span></td><td class="text-center"><button onclick="ajustarStock(${item.id}, '${item.nombre}', ${item.stock})" class="btn-accion btn-ajustar">Ajustar</button></td></tr>`;
             });
                 });
                 etiquetarTablas();
@@ -2219,7 +2234,7 @@
         let guardAjustarStock = false;
         function ajustarStock(id, nombre, stockActual) {
             if (guardAjustarStock) return;
-            const nuevoStock = prompt(`Ajustar stock de insumo ${nombre}:`, stockActual);
+            const nuevoStock = prompt(`Ajustar stock de insumo ${nombre}:`, fmtStock(stockActual));
             if (nuevoStock === null) return;
             guardAjustarStock = true;
             fetch('/api/almacen/ajustar-stock', {

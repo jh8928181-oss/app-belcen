@@ -1536,7 +1536,7 @@ function parsearCabeceraSUNAT(textoPdf) {
     res.punto_partida = dirs.partida;
     res.destino = dirs.llegada;
     if (!res.punto_partida) {
-        const pp = textoPdf.match(/(?:Punto de\s+|P\.?)Partida:?\s*(?:\d{6}\s*-\s*)?([A-ZÁÉÍÓÚÑÜ].*)/i);
+        const pp = textoPdf.match(/(?:Punto de\s+|P\.?\s*)Partida:?\s*(?:\d{6}\s*-\s*)?([A-ZÁÉÍÓÚÑÜ].*)/i);
         if (pp) {
             let dir = pp[1].trim();
             // La dirección puede continuar en las líneas siguientes
@@ -1557,11 +1557,11 @@ function parsearCabeceraSUNAT(textoPdf) {
         }
     }
     if (!res.destino) {
-        const ll = textoPdf.match(/(?:Punto de\s+|P\.?)Llegada:?\s*(?:\d{6}\s*-\s*)?([A-ZÁÉÍÓÚÑÜ].*)/i);
+        const ll = textoPdf.match(/(?:Punto de\s+|P\.?\s*)Llegada:?\s*(?:\d{6}\s*-\s*)?([A-ZÁÉÍÓÚÑÜ].*)/i);
         if (ll) res.destino = ll[1].trim();
     }
     if (!res.destino) {
-        const lleg = textoPdf.match(/(?:Punto de\s+|P\.?)Llegada[:\s]*[\d\s-]+(.*)/i);
+        const lleg = textoPdf.match(/(?:Punto de\s+|P\.?\s*)Llegada[:\s]*[\d\s-]+(.*)/i);
         if (lleg) res.destino = lleg[1].trim();
         else {
             const dir = textoPdf.match(/Direcci[oó]n[:\s]*(.*)/i);

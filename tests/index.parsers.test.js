@@ -137,6 +137,33 @@ describe('parsearCabeceraSUNAT', () => {
     expect(res.items[0].product_key).toBe('donlalo_800ml');
     expect(res.items[0].cantidad).toBe(600);
   });
+
+  // Formato T009 (traslado interno): partida/llegada con P. abreviado.
+  const PDF_T009 = [
+    'CORPORACION DON LALO S.A.C.',
+    'RUC 20609912694',
+    'GUIA DE REMISION ELECTRONICA REMITENTE',
+    'T009-00000831',
+    'DESTINATARIO',
+    'Razón Social: CORPORACION DON LALO S.A.C.',
+    'RUC: 20609912694',
+    'Dirección: CAL. ANDALUCIA NRO. 340, Ate, Lima - LIMA',
+    'Fecha Inicio de Traslado: 2026-10-07',
+    'P.Partida: 150118 - CAL.LOS CIPRESES NRO. 105 Z.I. CAJAMARQUILLA 2DA ETAPA',
+    'P.Llegada: 150101 - AV. LA CULTURA 701 MERCADO DE PRODUCTORE',
+    'Número de placa del vehículo: BJP776',
+    'Conductor: 60011823',
+    'Licencia del conductor: Q60011823'
+  ].join('\n');
+
+  test('formato T009: partida y llegada, sin destinatario externo', () => {
+    const res = parsearCabeceraSUNAT(PDF_T009);
+    expect(res.numero_guia).toBe('T009-00000831');
+    expect(res.es_destinatario_externo).toBe(false);
+    expect(res.punto_partida).toMatch(/CAL\.LOS CIPRESES/);
+    expect(res.destino).toBe('AV. LA CULTURA 701 MERCADO DE PRODUCTORE');
+    expect(res.placa).toBe('BJP776');
+  });
 });
 
 describe('extraerDireccionSUNAT', () => {

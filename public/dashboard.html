@@ -818,12 +818,32 @@ const lista = Array.isArray(estados) ? estados : [];
                 if (res.ok) {
                     const reportes = await res.json();
                     const lista = Array.isArray(reportes) ? reportes : [];
-                    let totalCajas = 0;
                     let totalTn = 0;
                     lista.forEach(r => {
-                        totalCajas += parseInt(r.cantidad_cajas || 0, 10);
                         totalTn += parseFloat(r.toneladas || 0);
                     });
+                    const norm = s => String(s || '').toLowerCase().trim();
+                    // Cajas acumuladas por producto (misma lista del resumen)
+                    // para mostrarlas junto al nombre en vez de un total global.
+                    const cajasPorProducto = new Map();
+                    for (const r of lista) {
+                        const nom = String(r.presentacion || r.producto || '').trim();
+                        if (!nom) continue;
+                        cajasPorProducto.set(nom, (cajasPorProducto.get(nom) || 0) + (parseInt(r.cantidad_cajas, 10) || 0));
+                    }
+                    const cajasDe = (nombre) => {
+                        const n = norm(nombre);
+                        if (!n) return null;
+                        for (const [nom, total] of cajasPorProducto) {
+                            const k = norm(nom);
+                            if (k.includes(n) || n.includes(k)) return total;
+                        }
+                        return null;
+                    };
+                    const conCajas = (nombre) => {
+                        const t = cajasDe(nombre);
+                        return t === null ? nombre : nombre + ' · ' + formatearNumero(t) + ' cajas';
+                    };
 // Esta lista es el historial completo, no el día. Antes se sumaba y se
                     // rotulaba "reportes hoy", así que la tarjeta mostraba el
                     // acumulado de hasta 50 registros de cualquier fecha. Lo
@@ -835,11 +855,10 @@ const lista = Array.isArray(estados) ? estados : [];
                         ? (unicas.length === 1 ? unicas[0] : unicas[0] + ' a ' + unicas[unicas.length - 1])
                         : 'sin registros';
                     document.getElementById('resumenEnvasado').textContent =
-lista.length + ' reportes · ' + formatearNumero(totalCajas) + ' cajas · ' + totalTn.toFixed(2) + ' TM · ' + rango;
+lista.length + ' reportes · ' + totalTn.toFixed(2) + ' TM · ' + rango;
                     // Producto envasado (anterior): el último reporte de un
                     // producto distinto al que está en marcha; si solo hay uno,
                     // ese mismo. La lista viene ordenada del más nuevo al más viejo.
-                    const norm = s => String(s || '').toLowerCase().trim();
                     const marcha = norm(productoEnMarchaEnvasado);
                     let previo = '';
                     for (const r of lista) {
@@ -848,7 +867,11 @@ lista.length + ' reportes · ' + formatearNumero(totalCajas) + ' cajas · ' + to
                         const n = norm(nom);
                         if (!marcha || (!n.includes(marcha) && !marcha.includes(n))) { previo = nom; break; }
                     }
-                    document.getElementById('previoEnvasado').textContent = previo || '—';
+                    document.getElementById('previoEnvasado').textContent = previo ? conCajas(previo) : '—';
+                    const elActual = document.getElementById('planActualEnvasado');
+                    if (productoEnMarchaEnvasado && !/receta no vigente/i.test(elActual.textContent)) {
+                        elActual.textContent = conCajas(productoEnMarchaEnvasado);
+                    }
                 }
             } catch (err) {
                 console.error(err);

@@ -1486,7 +1486,7 @@ function extraerDireccionSUNAT(lineas) {
 // Cabecera y transporte de la guía de remisión (emisión SUNAT o formato anterior)
 function parsearCabeceraSUNAT(textoPdf) {
     const lineas = textoPdf.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    const res = { numero_guia: '', ruc: '', empresa: '', destino: '', punto_partida: '', placa: '', chofer: '', licencia: '' };
+    const res = { numero_guia: '', ruc: '', empresa: '', destino: '', punto_partida: '', placa: '', chofer: '', licencia: '', emisor_ruc: '', es_destinatario_externo: false };
 
     let m = textoPdf.match(/N[°º.]?\s*([A-Z0-9]{2,8})\s*[-–]\s*(\d{4,8})/i);
     if (m) {
@@ -1496,11 +1496,20 @@ function parsearCabeceraSUNAT(textoPdf) {
         if (m) res.numero_guia = m[1].replace(/\s+/g, '').toUpperCase();
     }
 
+    // RUC del emisor: el primero del documento (cabecera). Sirve para saber
+    // si el destinatario es un cliente real o la propia empresa (traslado
+    // interno, donde NO debe autorrellenarse cliente ni RUC).
+    const emis = textoPdf.match(/RUC\s*N[°º]?\s*(\d{11})/i) || textoPdf.match(/RUC:?\s*(\d{11})/i);
+    if (emis) res.emisor_ruc = emis[1];
+
+    let rucDestinatario = '';
     m = textoPdf.match(/Datos del\s+[Dd]estinatario\s*:?\s*(.+?)\s*-\s*REGISTRO\s*[UÚ]?NICO\s*DE\s*CONTRIBUYENTES\s*N[°º]?\s*(\d{11})/i);
     if (m) {
         res.empresa = m[1].trim();
         res.ruc = m[2];
+        rucDestinatario = m[2];
     }
+    res.es_destinatario_externo = !!(rucDestinatario && res.emisor_ruc && rucDestinatario !== res.emisor_ruc);
 
     if (!res.ruc) {
         m = textoPdf.match(/RUC\s*N[°º]?\s*(\d{11})/i);
@@ -1527,15 +1536,32 @@ function parsearCabeceraSUNAT(textoPdf) {
     res.punto_partida = dirs.partida;
     res.destino = dirs.llegada;
     if (!res.punto_partida) {
-        const pp = textoPdf.match(/P\.?Partida:?\s*(?:\d{6}\s*-\s*)?([A-ZÁÉÍÓÚÑÜ].*)/i);
-        if (pp) res.punto_partida = pp[1].trim();
+        const pp = textoPdf.match(/(?:Punto de\s+|P\.?)Partida:?\s*(?:\d{6}\s*-\s*)?([A-ZÁÉÍÓÚÑÜ].*)/i);
+        if (pp) {
+            let dir = pp[1].trim();
+            // La dirección puede continuar en las líneas siguientes
+            // ("Punto de Partida CAL. LOS CIPRESES... 2DA ETAPA -" y luego
+            // "LURIGANCHO - LIMA - LIMA"). Se agregan hasta 2 continuaciones
+            // con guion, frenando en la siguiente etiqueta.
+            const idx = lineas.findIndex(l => l.includes(pp[1].trim().slice(0, 20)));
+            if (idx !== -1) {
+                for (let i = idx + 1; i < Math.min(idx + 3, lineas.length); i++) {
+                    const s = lineas[i].trim();
+                    if (!s || /:/.test(s)) break;
+                    if (/Punto de llegada|Datos del|Bienes por transportar/i.test(s)) break;
+                    if (!/-/.test(s)) break;
+                    dir += ' ' + s;
+                }
+            }
+            res.punto_partida = dir;
+        }
     }
     if (!res.destino) {
-        const ll = textoPdf.match(/P\.?Llegada:?\s*(?:\d{6}\s*-\s*)?([A-ZÁÉÍÓÚÑÜ].*)/i);
+        const ll = textoPdf.match(/(?:Punto de\s+|P\.?)Llegada:?\s*(?:\d{6}\s*-\s*)?([A-ZÁÉÍÓÚÑÜ].*)/i);
         if (ll) res.destino = ll[1].trim();
     }
     if (!res.destino) {
-        const lleg = textoPdf.match(/P\.?Llegada[:\s]*[\d\s-]+(.*)/i);
+        const lleg = textoPdf.match(/(?:Punto de\s+|P\.?)Llegada[:\s]*[\d\s-]+(.*)/i);
         if (lleg) res.destino = lleg[1].trim();
         else {
             const dir = textoPdf.match(/Direcci[oó]n[:\s]*(.*)/i);
@@ -1544,6 +1570,7 @@ function parsearCabeceraSUNAT(textoPdf) {
     }
 
     let pm = textoPdf.match(/[Nn][°ºoóO0]?\.?\s*(?:úmero de placa del veh[ií]culo|umero de placa del vehiculo)[^\w]*:?\s*([A-Z]{2,3}[-–\s]?\d{3,4})/i);
+    if (!pm) pm = textoPdf.match(/Numero de placa[:\s]*([A-Z]{2,3}\s?\d{3,4})/i);
     if (!pm) pm = textoPdf.match(/veh[ií]culo[^\w]*:?\s*([A-Z]{2,3}[-–\s]?\d{3,4})/i);
     if (!pm) pm = textoPdf.match(/Principal[:\s]+([A-Z]{2,3}[-–\s]?\d{3,4})/i);
     if (!pm) pm = textoPdf.match(/\b([A-Z]{2,3}[-–]\d{3,4})\b/i);
@@ -1764,6 +1791,15 @@ app.post('/api/salidas/leer-pdf', gIA, upload.single('archivo_guia'), async (req
             }
         } catch (errG) {
             console.error('Gemini no disponible en salidas:', errG.message);
+        }
+
+        // Solo se autorrellenan cliente y RUC cuando el destinatario es
+        // externo (RUC distinto al del emisor). En traslados internos el
+        // destinatario es la propia empresa y el cliente se elige a mano
+        // (TIENDA / COBERTURA / PROVINCIA).
+        if (!cabecera.es_destinatario_externo) {
+            cabecera.empresa = '';
+            cabecera.ruc = '';
         }
 
         const { items: itemsTabla, advertencias: advertenciasTabla } = detectarItemsTabla(textoPdf);

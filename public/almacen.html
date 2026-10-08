@@ -2307,15 +2307,15 @@
         }
 
         // La empresa emisora de la guia (Don Lalo/Belcen) NO es el cliente:
-        // el cliente se elige a mano (TIENDA/COBERTURA/PROVINCIA) y el RUC
-        // tampoco se autorrellena con el del emisor.
-        function fijarEmpresaCliente(valor) {
+        // el cliente se elige a mano (TIENDA/COBERTURA/PROVINCIA), salvo que
+        // la guia traiga un destinatario externo real (se agrega y selecciona).
+        function fijarEmpresaCliente(valor, esHistorico) {
             const sel = document.getElementById('empresa');
             const vals = Array.from(sel.options).map(o => o.value);
             if (valor && !vals.includes(valor)) {
                 const opt = document.createElement('option');
                 opt.value = valor;
-                opt.textContent = valor + ' (histórico)';
+                opt.textContent = esHistorico ? valor + ' (histórico)' : valor;
                 sel.appendChild(opt);
             }
             sel.value = valor || '';
@@ -2349,6 +2349,8 @@
                 const esIA = !!data.usadoGemini;
 
                 if (d.numero_guia) document.getElementById('numero_guia').value = d.numero_guia;
+                if (d.empresa) fijarEmpresaCliente(d.empresa, false);
+                if (d.ruc) document.getElementById('ruc').value = d.ruc;
                 if (d.destino) document.getElementById('destino').value = d.destino;
                 if (d.punto_partida) document.getElementById('punto_partida').value = d.punto_partida;
                 if (d.placa) document.getElementById('placa').value = d.placa;
@@ -2566,7 +2568,7 @@
             const h = filas[0];
             document.getElementById('tipo_registro').value = h.tipo_registro || 'CON GUIA';
             document.getElementById('numero_guia').value = h.numero_guia && h.numero_guia !== 'S/N' ? h.numero_guia : '';
-            fijarEmpresaCliente(h.empresa || '');
+            fijarEmpresaCliente(h.empresa || '', true);
             document.getElementById('ruc').value = h.ruc || '';
             document.getElementById('destino').value = h.destino || '';
             document.getElementById('chofer_licencia').value = h.chofer_licencia && h.chofer_licencia !== 'N/A' ? h.chofer_licencia : '';

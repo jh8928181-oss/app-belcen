@@ -29,7 +29,8 @@ describe('parsearCabeceraSUNAT', () => {
     const res = parsearCabeceraSUNAT('');
     expect(res).toEqual({
       numero_guia: '', ruc: '', empresa: '', destino: '',
-      punto_partida: '', placa: '', chofer: '', licencia: ''
+      punto_partida: '', placa: '', chofer: '', licencia: '',
+      emisor_ruc: '', es_destinatario_externo: false
     });
   });
 
@@ -74,6 +75,67 @@ describe('parsearCabeceraSUNAT', () => {
     const resSinTilde = parsearCabeceraSUNAT(PDF_SIMPLIFICADO);
     expect(resSinTilde.ruc).toBe('20545678901');
     expect(resSinTilde.empresa).toBe('ACEITES DON LALO S.A.C.');
+  });
+
+  // Formato EG07 con destinatario real (cliente externo, no la propia empresa).
+  const PDF_EG07 = [
+    'CORPORACION DON LALO S.A.C.',
+    'RUC N°20609912694',
+    'GUIA DE REMISION ELECTRONICA REMITENTE',
+    'N° EG07 - 00004480',
+    'Fecha y hora de emisión :07/10/2026 05:01 PM',
+    'Fecha de inicio de Traslado :07/10/2026',
+    'Motivo de Traslado :Venta',
+    'Punto de Partida CAL. LOS CIPRESES NRO. 105 Z.I. CAJAMARQUILLA 2DA ETAPA -',
+    'LURIGANCHO - LIMA - LIMA',
+    'Punto de llegada HUACHO - HUACHO - HUAURA - LIMA',
+    'Datos del Destinatario :C.H. RETAIL S.A.C. - REGISTRO ÚNICO DE CONTRIBUYENTES N° 20606990058',
+    'Bienes por transportar:',
+    'N° Bien normalizado Código de Bien Descripción Detallada Unidad de medida Cantidad',
+    '1 NO 1040003 ACEITE DE SOYA DON LALO X 800ML X 12 UND CAJA 600.00',
+    'Datos del traslado:',
+    'Modalidad de Traslado:Privado',
+    'Datos de los vehiculos:',
+    'Principal: Numero de placa: AAS936',
+    'Datos de los conductores:',
+    'Principal: LOMOTE ACUÑA HUGO ROLANDO - DOCUMENTO NACIONAL DE IDENTIDAD N° 40850065',
+    'Número de licencia de conducir: Q40850065'
+  ].join('\n');
+
+  test('formato EG07: numero, destinatario externo y transporte', () => {
+    const res = parsearCabeceraSUNAT(PDF_EG07);
+    expect(res.numero_guia).toBe('EG07-00004480');
+    expect(res.empresa).toBe('C.H. RETAIL S.A.C.');
+    expect(res.ruc).toBe('20606990058');
+    expect(res.emisor_ruc).toBe('20609912694');
+    expect(res.es_destinatario_externo).toBe(true);
+    expect(res.destino).toBe('HUACHO - HUACHO - HUAURA - LIMA');
+    expect(res.placa).toBe('AAS936');
+    expect(res.chofer).toBe('LOMOTE ACUÑA HUGO ROLANDO');
+    expect(res.licencia).toBe('Q40850065');
+  });
+
+  test('formato EG07: punto de partida junta la linea de continuacion', () => {
+    const res = parsearCabeceraSUNAT(PDF_EG07);
+    expect(res.punto_partida).toMatch(/CAL\. LOS CIPRESES/);
+    expect(res.punto_partida).toMatch(/LURIGANCHO - LIMA - LIMA/);
+    expect(res.punto_partida).not.toMatch(/HUACHO/);
+  });
+
+  test('traslado interno (mismo RUC) no marca destinatario externo', () => {
+    const interno = PDF_EG07.replace(
+      'C.H. RETAIL S.A.C. - REGISTRO ÚNICO DE CONTRIBUYENTES N° 20606990058',
+      'CORPORACION DON LALO S.A.C. - REGISTRO ÚNICO DE CONTRIBUYENTES N° 20609912694'
+    );
+    const res = parsearCabeceraSUNAT(interno);
+    expect(res.es_destinatario_externo).toBe(false);
+  });
+
+  test('formato EG07: lee el item con unidad CAJA y cantidad 600', () => {
+    const res = detectarItemsTabla(PDF_EG07);
+    expect(res.items).toHaveLength(1);
+    expect(res.items[0].product_key).toBe('donlalo_800ml');
+    expect(res.items[0].cantidad).toBe(600);
   });
 });
 

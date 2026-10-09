@@ -781,6 +781,381 @@ app.put('/api/inventario/:id', requerirRolAdmin, async (req, res) => {
     }
 });
 
+// --- SERVICIOS EXTERNOS DE SOPLADO (SAUÑE / B&M DYLPLAST) ---
+// Se les envian etiquetas y preformas (millares) y devuelven botellas por
+// guia o control interno. La guia descuenta 1 a 1 y suma las botellas.
+const SERVICIOS_SOPLADO = ['SAUÑE', 'B&M DYLPLAST'];
+
+// Resuelve etiqueta y preforma para un producto via su receta activa.
+// Devuelve { etiqueta: {id, nombre, stock}, preforma: {...} } o faltantes.
+async function resolverInsumosServicio(q, productoKey) {
+    const out = { etiqueta: null, preforma: null };
+    if (!productoKey) return out;
+    const rec = await q.query(
+        `SELECT id FROM recetas WHERE producto_key = $1 AND activa = true ORDER BY version DESC LIMIT 1`,
+        [productoKey]
+    );
+    if (!rec.rows.length) return out;
+    const ins = await q.query(
+        `SELECT ri.insumo_id AS id, inv.nombre, inv.categoria, inv.stock
+           FROM receta_insumos ri
+           LEFT JOIN inventario inv ON inv.id = ri.insumo_id
+          WHERE ri.receta_id = $1 AND ri.componente_receta_id IS NULL`,
+        [rec.rows[0].id]
+    );
+    for (const l of ins.rows) {
+        const cat = String(l.categoria || '').toUpperCase();
+        if (!out.etiqueta && cat.includes('ETIQUETA') && l.id) {
+            out.etiqueta = { id: l.id, nombre: l.nombre, stock: Number(l.stock) || 0 };
+        }
+        if (!out.preforma && cat.includes('PREFORMA') && l.id) {
+            out.preforma = { id: l.id, nombre: l.nombre, stock: Number(l.stock) || 0 };
+        }
+    }
+    return out;
+}
+
+// Panel: saldos por servicio e insumo + guias con su factura.
+app.get('/api/servicios/panel', async (req, res) => {
+    try {
+        const env = await pool.query(
+            `SELECT servicio, articulo_id, articulo_nombre, tipo_item,
+                    COALESCE(SUM(cantidad), 0) AS enviado
+               FROM servicios_envios GROUP BY servicio, articulo_id, articulo_nombre, tipo_item`
+        );
+        const con = await pool.query(
+            `SELECT servicio,
+                    etiqueta_id AS articulo_id, etiqueta_nombre AS nombre,
+                    COALESCE(SUM(cant_etiquetas), 0) AS consumido
+               FROM servicios_guias WHERE tipo_doc = 'GUIA' AND etiqueta_id IS NOT NULL
+               GROUP BY servicio, etiqueta_id, etiqueta_nombre
+             UNION ALL
+             SELECT servicio,
+                    preforma_id AS articulo_id, preforma_nombre AS nombre,
+                    COALESCE(SUM(cant_preformas), 0) AS consumido
+               FROM servicios_guias WHERE tipo_doc = 'GUIA' AND preforma_id IS NOT NULL
+               GROUP BY servicio, preforma_id, preforma_nombre`
+        );
+        const consumidoPor = {};
+        for (const c of con.rows) {
+            const k = c.servicio + '|' + c.articulo_id;
+            consumidoPor[k] = (consumidoPor[k] || 0) + Number(c.consumido);
+        }
+        const stocks = await pool.query('SELECT id, stock FROM inventario');
+        const stockPorId = {};
+        for (const s of stocks.rows) stockPorId[s.id] = Number(s.stock) || 0;
+        const servicios = SERVICIOS_SOPLADO.map(sv => {
+            const insumos = env.rows
+                .filter(e => e.servicio === sv)
+                .map(e => {
+                    const cons = consumidoPor[sv + '|' + e.articulo_id] || 0;
+                    const enviado = Number(e.enviado) || 0;
+                    return {
+                        articulo_id: e.articulo_id,
+                        nombre: e.articulo_nombre,
+                        tipo_item: e.tipo_item,
+                        stock_actual: stockPorId[e.articulo_id] ?? null,
+                        enviado,
+                        consumido: cons,
+                        saldo: enviado - cons
+                    };
+                });
+            return { servicio: sv, insumos };
+        });
+        const guias = await pool.query(
+            `SELECT * FROM servicios_guias ORDER BY fecha DESC NULLS LAST, id DESC LIMIT 200`
+        );
+        const pendientes = await pool.query(
+            `SELECT servicio, COUNT(*)::int AS n FROM servicios_guias
+              WHERE tipo_doc = 'CONTROL' AND estado = 'PENDIENTE' GROUP BY servicio`
+        );
+        const sinFactura = await pool.query(
+            `SELECT servicio, COUNT(*)::int AS n FROM servicios_guias
+              WHERE tipo_doc = 'GUIA' AND factura_estado = 'PENDIENTE' GROUP BY servicio`
+        );
+        res.json({ success: true, servicios, guias: guias.rows, pendientes: pendientes.rows, sinFactura: sinFactura.rows });
+    } catch (err) {
+        console.error('Error en panel de servicios:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al cargar el panel de servicios: ' + err.message });
+    }
+});
+
+// Controles pendientes de un servicio (para vincularlos a una guia).
+app.get('/api/servicios/controles-pendientes', async (req, res) => {
+    try {
+        const servicio = String(req.query.servicio || '').trim().toUpperCase();
+        if (!SERVICIOS_SOPLADO.includes(servicio)) {
+            return res.status(400).json({ success: false, mensaje: 'Servicio inválido.' });
+        }
+        const r = await pool.query(
+            `SELECT id, numero, fecha, producto, cantidad FROM servicios_guias
+              WHERE servicio = $1 AND tipo_doc = 'CONTROL' AND estado = 'PENDIENTE'
+              ORDER BY fecha DESC NULLS LAST, id DESC`,
+            [servicio]
+        );
+        res.json({ success: true, controles: r.rows });
+    } catch (err) {
+        console.error('Error en controles pendientes:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al cargar controles: ' + err.message });
+    }
+});
+
+// Sugiere etiqueta y preforma para un producto via su receta activa.
+app.get('/api/servicios/resolver', async (req, res) => {
+    try {
+        let productoKey = String(req.query.producto_key || '').trim();
+        const productoNombre = String(req.query.producto || '').trim();
+        if (!productoKey && productoNombre) {
+            const pt = await pool.query(
+                'SELECT producto_key FROM producto_terminado WHERE LOWER(nombre_producto) = LOWER($1) LIMIT 1',
+                [productoNombre]
+            );
+            if (pt.rows.length) productoKey = pt.rows[0].producto_key;
+        }
+        if (!productoKey) {
+            return res.json({ success: true, etiqueta: null, preforma: null });
+        }
+        const r = await resolverInsumosServicio(pool, productoKey);
+        res.json({ success: true, etiqueta: r.etiqueta, preforma: r.preforma });
+    } catch (err) {
+        console.error('Error al resolver insumos:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al resolver insumos: ' + err.message });
+    }
+});
+
+// Registrar envio de insumos al servicio (descuenta stock en millares).
+app.post('/api/servicios/envios', gAlmacen, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const servicio = String(req.body.servicio || '').trim().toUpperCase();
+        const articulo_id = parseInt(req.body.articulo_id, 10);
+        const cantidad = Number(req.body.cantidad);
+        if (!SERVICIOS_SOPLADO.includes(servicio)) {
+            return res.status(400).json({ success: false, mensaje: 'Servicio inválido (SAUÑE o B&M DYLPLAST).' });
+        }
+        if (!articulo_id || !(cantidad > 0)) {
+            return res.status(400).json({ success: false, mensaje: 'Artículo y cantidad válida son requeridos.' });
+        }
+        await client.query('BEGIN');
+        const art = await client.query('SELECT nombre, categoria, stock FROM inventario WHERE id = $1', [articulo_id]);
+        if (!art.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'El artículo no existe.' });
+        }
+        const cat = String(art.rows[0].categoria || '').toUpperCase();
+        const tipoItem = cat.includes('ETIQUETA') ? 'ETIQUETA' : (cat.includes('PREFORMA') ? 'PREFORMA' : '');
+        if (!tipoItem) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: 'Solo se envían etiquetas o preformas al servicio.' });
+        }
+        const stockActual = Number(art.rows[0].stock) || 0;
+        if (stockActual < cantidad) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: `Stock insuficiente de "${art.rows[0].nombre}" (disponible: ${stockActual}).` });
+        }
+        await client.query('UPDATE inventario SET stock = stock - $1 WHERE id = $2', [cantidad, articulo_id]);
+        await actualizarEstadoArticulo(client, null, articulo_id);
+        await client.query(
+            `INSERT INTO servicios_envios (fecha, servicio, articulo_id, articulo_nombre, tipo_item, cantidad, usuario)
+             VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6)`,
+            [servicio, articulo_id, art.rows[0].nombre, tipoItem, cantidad, usuarioResponsable(req, req.body.usuario)]
+        );
+        await registrarHistorial(client, {
+            tipo: 'SALIDA', origen: 'servicio_envio',
+            producto: art.rows[0].nombre, articulo_id,
+            cantidad, tipo_cambio: 'RESTA',
+            stock_anterior: stockActual, stock_nuevo: stockActual - cantidad,
+            usuario: usuarioResponsable(req, req.body.usuario),
+            referencia: `Envío a servicio ${servicio}`
+        });
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: `Enviadas ${cantidad} MILLARES de "${art.rows[0].nombre}" a ${servicio}.` });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('Error en envío a servicio:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al registrar el envío: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// Registrar guia o control interno de llegada del servicio.
+// La GUIA descuenta 1 etiqueta + 1 preforma por botella (UND a MILL) y suma
+// las botellas al inventario. El CONTROL no mueve stock.
+app.post('/api/servicios/guias', gAlmacen, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const servicio = String(req.body.servicio || '').trim().toUpperCase();
+        const tipoDoc = String(req.body.tipo_doc || '').trim().toUpperCase();
+        const numero = String(req.body.numero || '').trim();
+        const fecha = req.body.fecha || null;
+        const producto = String(req.body.producto || '').trim();
+        const productoKey = String(req.body.producto_key || '').trim() || null;
+        const cantidad = Number(req.body.cantidad);
+        if (!SERVICIOS_SOPLADO.includes(servicio)) {
+            return res.status(400).json({ success: false, mensaje: 'Servicio inválido (SAUÑE o B&M DYLPLAST).' });
+        }
+        if (tipoDoc !== 'GUIA' && tipoDoc !== 'CONTROL') {
+            return res.status(400).json({ success: false, mensaje: 'Tipo de documento inválido (GUIA o CONTROL).' });
+        }
+        if (!numero || !producto || !(cantidad > 0)) {
+            return res.status(400).json({ success: false, mensaje: 'Número, producto y cantidad válida son requeridos.' });
+        }
+        await client.query('BEGIN');
+        const dup = await client.query(
+            'SELECT id FROM servicios_guias WHERE servicio = $1 AND tipo_doc = $2 AND numero = $3',
+            [servicio, tipoDoc, numero]
+        );
+        if (dup.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, mensaje: `El ${tipoDoc === 'GUIA' ? 'n° de guía' : 'control interno'} "${numero}" ya está registrado para ${servicio}.` });
+        }
+
+        let etiquetaId = req.body.etiqueta_id ? parseInt(req.body.etiqueta_id, 10) : null;
+        let preformaId = req.body.preforma_id ? parseInt(req.body.preforma_id, 10) : null;
+        let etiquetaNombre = '', preformaNombre = '';
+        let cantMill = 0;
+
+        if (tipoDoc === 'GUIA') {
+            if ((!etiquetaId || !preformaId) && productoKey) {
+                const sugeridos = await resolverInsumosServicio(client, productoKey);
+                if (!etiquetaId && sugeridos.etiqueta) etiquetaId = sugeridos.etiqueta.id;
+                if (!preformaId && sugeridos.preforma) preformaId = sugeridos.preforma.id;
+            }
+            if (!etiquetaId || !preformaId) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: 'Indica qué etiqueta y qué preforma descuenta esta guía (o registra su receta).' });
+            }
+            cantMill = Math.round(((cantidad / 1000) + Number.EPSILON) * 1000000) / 1000000;
+            const eRow = await client.query('SELECT nombre, stock FROM inventario WHERE id = $1', [etiquetaId]);
+            const pRow = await client.query('SELECT nombre, stock FROM inventario WHERE id = $1', [preformaId]);
+            if (!eRow.rows.length || !pRow.rows.length) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: 'La etiqueta o preforma indicada no existe.' });
+            }
+            etiquetaNombre = eRow.rows[0].nombre;
+            preformaNombre = pRow.rows[0].nombre;
+            if ((Number(eRow.rows[0].stock) || 0) < cantMill || (Number(pRow.rows[0].stock) || 0) < cantMill) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: `Stock insuficiente de etiqueta/preforma para descontar ${cantMill} MILLARES.` });
+            }
+            // Las botellas que trae el servicio ingresan al inventario.
+            const bRow = await client.query('SELECT id, stock FROM inventario WHERE LOWER(BTRIM(nombre)) = LOWER(BTRIM($1))', [producto]);
+            if (!bRow.rows.length) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: `La botella "${producto}" no existe en el inventario. Créala primero.` });
+            }
+            const botellaId = bRow.rows[0].id;
+            const stockBotAnt = Number(bRow.rows[0].stock) || 0;
+            await client.query('UPDATE inventario SET stock = stock - $1 WHERE id = $2', [cantMill, etiquetaId]);
+            await client.query('UPDATE inventario SET stock = stock - $1 WHERE id = $2', [cantMill, preformaId]);
+            await client.query('UPDATE inventario SET stock = stock + $1 WHERE id = $2', [cantidad, botellaId]);
+            await actualizarEstadoArticulo(client, null, etiquetaId);
+            await actualizarEstadoArticulo(client, null, preformaId);
+            await actualizarEstadoArticulo(client, null, botellaId);
+            await registrarHistorial(client, {
+                tipo: 'SALIDA', origen: 'servicio_guia',
+                producto: etiquetaNombre, articulo_id: etiquetaId,
+                cantidad: cantMill, tipo_cambio: 'RESTA',
+                stock_anterior: Number(eRow.rows[0].stock) || 0,
+                stock_nuevo: (Number(eRow.rows[0].stock) || 0) - cantMill,
+                usuario: usuarioResponsable(req, req.body.usuario),
+                referencia: `Guía ${numero} de ${servicio} (${producto} x ${cantidad})`
+            });
+            await registrarHistorial(client, {
+                tipo: 'SALIDA', origen: 'servicio_guia',
+                producto: preformaNombre, articulo_id: preformaId,
+                cantidad: cantMill, tipo_cambio: 'RESTA',
+                stock_anterior: Number(pRow.rows[0].stock) || 0,
+                stock_nuevo: (Number(pRow.rows[0].stock) || 0) - cantMill,
+                usuario: usuarioResponsable(req, req.body.usuario),
+                referencia: `Guía ${numero} de ${servicio} (${producto} x ${cantidad})`
+            });
+            await registrarHistorial(client, {
+                tipo: 'MOVIMIENTO', origen: 'servicio_guia',
+                producto, articulo_id: botellaId,
+                cantidad, tipo_cambio: 'SUMA',
+                stock_anterior: stockBotAnt, stock_nuevo: stockBotAnt + cantidad,
+                usuario: usuarioResponsable(req, req.body.usuario),
+                referencia: `Ingreso de botellas por guía ${numero} de ${servicio}`
+            });
+
+            let controlesIds = [];
+            if (Array.isArray(req.body.controles_ids)) {
+                controlesIds = req.body.controles_ids.map(v => parseInt(v, 10)).filter(v => v);
+            }
+            if (controlesIds.length) {
+                const propios = await client.query(
+                    `SELECT id FROM servicios_guias
+                      WHERE id = ANY($1::int[]) AND servicio = $2 AND tipo_doc = 'CONTROL' AND estado = 'PENDIENTE'`,
+                    [controlesIds, servicio]
+                );
+                if (propios.rows.length !== controlesIds.length) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, mensaje: 'Algún control a vincular no existe, es de otro servicio o ya fue vinculado.' });
+                }
+                await client.query(
+                    `UPDATE servicios_guias SET estado = 'VINCULADA' WHERE id = ANY($1::int[])`,
+                    [controlesIds]
+                );
+            }
+            await client.query(
+                `INSERT INTO servicios_guias (servicio, tipo_doc, numero, fecha, producto, producto_key,
+                    cantidad, etiqueta_id, etiqueta_nombre, cant_etiquetas,
+                    preforma_id, preforma_nombre, cant_preformas, botella_id,
+                    factura_estado, controles_ids, estado, usuario)
+                 VALUES ($1, 'GUIA', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'PENDIENTE', $14, 'PENDIENTE', $15)`,
+                [servicio, numero, fecha, producto, productoKey, cantidad,
+                 etiquetaId, etiquetaNombre, cantMill, preformaId, preformaNombre, cantMill,
+                 botellaId, controlesIds, usuarioResponsable(req, req.body.usuario)]
+            );
+            await client.query('COMMIT');
+            return res.json({ success: true, mensaje: `Guía ${numero} registrada: ingresaron ${cantidad} botellas y se descontaron ${cantMill} MILLARES de etiqueta y preforma.` });
+        }
+
+        await client.query(
+            `INSERT INTO servicios_guias (servicio, tipo_doc, numero, fecha, producto, producto_key,
+                cantidad, factura_estado, estado, usuario)
+             VALUES ($1, 'CONTROL', $2, $3, $4, $5, $6, 'PENDIENTE', 'PENDIENTE', $7)`,
+            [servicio, numero, fecha, producto, productoKey, cantidad, usuarioResponsable(req, req.body.usuario)]
+        );
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: `Control interno ${numero} registrado (pendiente de guía, sin mover stock).` });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('Error en guía de servicio:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al registrar: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// Vincular la factura de una guia de servicio.
+app.post('/api/servicios/guias/:id/factura', gAlmacen, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const id = parseInt(req.params.id, 10);
+        const factura = String((req.body && req.body.factura_numero) || '').trim();
+        if (!id || !factura) {
+            return res.status(400).json({ success: false, mensaje: 'Guía y número de factura requeridos.' });
+        }
+        const upd = await client.query(
+            `UPDATE servicios_guias SET factura_numero = $1, factura_estado = 'VINCULADA'
+              WHERE id = $2 AND tipo_doc = 'GUIA'`,
+            [factura, id]
+        );
+        if (upd.rowCount !== 1) {
+            return res.status(404).json({ success: false, mensaje: 'La guía no existe.' });
+        }
+        res.json({ success: true, mensaje: `Factura ${factura} vinculada a la guía.` });
+    } catch (err) {
+        console.error('Error al vincular factura:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al vincular factura: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
 // --- PRODUCTO TERMINADO: CONSULTA Y AJUSTE ---
 app.get('/api/producto-terminado', async (req, res) => {
     try {

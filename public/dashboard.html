@@ -467,6 +467,7 @@
             <div class="seccion-head">
                 <h2>Estados de servicio de soplado</h2>
                 <div class="inv-actions">
+                    <button class="btn-actualizar btn-anim" onclick="renderServiciosSoplado()">🔄 Actualizar</button>
                     <span id="totalServicios"></span>
                 </div>
             </div>
@@ -475,13 +476,15 @@
                     <thead>
                         <tr>
                             <th>Servicio</th>
-                            <th>Stock Actual</th>
-                            <th>Unidad</th>
-                            <th>Estado</th>
+                            <th>Insumo</th>
+                            <th>Enviado</th>
+                            <th>Consumido</th>
+                            <th>Saldo en servicio</th>
+                            <th>Stock actual</th>
                         </tr>
                     </thead>
                     <tbody id="tablaServiciosSoplado">
-                        <tr><td colspan="4" class="text-center">Cargando servicios…</td></tr>
+                        <tr><td colspan="6" class="text-center">Cargando servicios…</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -648,26 +651,55 @@ const filtrados = baseInventario.filter(a =>
             document.getElementById('totalFiltrado').textContent = filtrados.length + ' de ' + baseInventario.length + ' artículos';
         }
 
-        function renderServiciosSoplado() {
-            const servicios = inventarioGlobal.filter(esServicioSoplado);
+        async function renderServiciosSoplado() {
             const tbody = document.getElementById('tablaServiciosSoplado');
             if (!tbody) return;
-            tbody.innerHTML = servicios.length === 0
-                ? '<tr><td colspan="4" class="text-center sin-registros">Sin servicios registrados.</td></tr>'
-                : '';
-            servicios.forEach(s => {
-                const estadoTexto = s.estado || 'STOCK SUFICIENTE';
-                const estadoClass = estadoTexto === 'REALIZAR PEDIDO' ? 'badge-low' : 'badge-ok';
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td><b>${s.nombre}</b></td>
-                    <td><b>${formatearNumero(s.stock)}</b></td>
-                    <td>${unidadDash(s)}</td>
-                    <td><span class="badge ${estadoClass}">${estadoTexto}</span></td>
-                `;
-                tbody.appendChild(tr);
-            });
-            document.getElementById('totalServicios').textContent = servicios.length + ' servicios';
+            try {
+                const res = await fetch('/api/servicios/panel');
+                if (!res.ok) throw new Error('Error del servidor.');
+                const data = await res.json();
+                const servicios = data.servicios || [];
+                const pendPor = {};
+                (data.pendientes || []).forEach(p => { pendPor[p.servicio] = p.n; });
+                const sfPor = {};
+                (data.sinFactura || []).forEach(p => { sfPor[p.servicio] = p.n; });
+                tbody.innerHTML = '';
+                let filas = 0;
+                servicios.forEach(sv => {
+                    const insumos = sv.insumos || [];
+                    if (!insumos.length) {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `<td><b>${sv.servicio}</b></td><td colspan="5" class="text-center sin-registros">Sin movimientos.</td>`;
+                        tbody.appendChild(tr);
+                        return;
+                    }
+                    insumos.forEach((ins, i) => {
+                        filas++;
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td>${i === 0 ? `<b>${sv.servicio}</b>` : ''}</td>
+                            <td><b>${ins.nombre}</b> <span style="opacity:.7;">(${ins.tipo_item || ''})</span></td>
+                            <td><b>${formatearNumero(ins.enviado)}</b></td>
+                            <td><b>${formatearNumero(ins.consumido)}</b></td>
+                            <td><b>${formatearNumero(ins.saldo)}</b></td>
+                            <td>${ins.stock_actual === null ? '—' : `<b>${formatearNumero(ins.stock_actual)}</b>`}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                    const alertas = [];
+                    if (pendPor[sv.servicio]) alertas.push(pendPor[sv.servicio] + ' controles por vincular');
+                    if (sfPor[sv.servicio]) alertas.push(sfPor[sv.servicio] + ' guías sin factura');
+                    if (alertas.length) {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `<td></td><td colspan="5"><span class="badge badge-low">⚠️ ${alertas.join(' · ')}</span></td>`;
+                        tbody.appendChild(tr);
+                    }
+                });
+                document.getElementById('totalServicios').textContent = filas + ' insumos en servicio';
+            } catch (err) {
+                console.error(err);
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center" style="color:#fecaca;">Error al cargar servicios.</td></tr>';
+            }
         }
 
         async function cargarInventario() {

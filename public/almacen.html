@@ -832,6 +832,85 @@
     </div>
     </section>
 
+    <!-- 6B. SERVICIOS EXTERNOS DE SOPLADO (SAUÑE / B&M) -->
+    <div class="table-container sec-teal reveal">
+        <h3 class="h3-teal">🔧 SERVICIOS EXTERNOS DE SOPLADO</h3>
+        <p style="font-size:13px; color:#555;">Se envían <b>etiquetas y preformas en MILLARES</b>. La <b>guía</b> del servicio descuenta 1 a 1 y suma las botellas. El <b>control interno</b> no mueve stock: se vincula a su guía cuando el servicio la emite.</p>
+        <div class="caja-items">
+            <h4>📤 Envío de insumos al servicio</h4>
+            <form id="formEnvioServicio">
+                <div class="fila-agregar">
+                    <select id="envServicio" required>
+                        <option value="">-- Servicio --</option>
+                        <option value="SAUÑE">SAUÑE</option>
+                        <option value="B&M DYLPLAST">B&amp;M DYLPLAST</option>
+                    </select>
+                    <select id="envInsumo" required>
+                        <option value="">-- Etiqueta o preforma --</option>
+                    </select>
+                    <input type="number" id="envCantidad" min="0.01" step="0.01" placeholder="Millares" required>
+                    <button type="submit" class="btn-agregar-item">Enviar</button>
+                </div>
+            </form>
+        </div>
+        <div class="caja-items">
+            <h4>📥 Guía / control interno del servicio</h4>
+            <form id="formGuiaServicio">
+                <div class="fila-agregar">
+                    <select id="guiaServicio" required>
+                        <option value="">-- Servicio --</option>
+                        <option value="SAUÑE">SAUÑE</option>
+                        <option value="B&M DYLPLAST">B&amp;M DYLPLAST</option>
+                    </select>
+                    <select id="guiaTipo" required>
+                        <option value="">-- Documento --</option>
+                        <option value="GUIA">Guía de remisión</option>
+                        <option value="CONTROL">Control interno</option>
+                    </select>
+                    <input type="text" id="guiaNumero" placeholder="N° guía / control" required>
+                    <input type="date" id="guiaFecha">
+                </div>
+                <div class="fila-agregar">
+                    <input type="text" id="guiaProducto" list="listaBotellas" placeholder="Botella que llegó (ej. Botella B-1 x 1 Lt)" required style="flex:2;">
+                    <datalist id="listaBotellas"></datalist>
+                    <input type="number" id="guiaCantidad" min="0.01" step="0.01" placeholder="Cantidad (unds)" required>
+                    <button type="button" onclick="sugerirInsumosGuia()" class="btn-filtro">🔍 Sugerir insumos</button>
+                </div>
+                <div class="fila-agregar">
+                    <select id="guiaEtiqueta">
+                        <option value="">-- Etiqueta a descontar --</option>
+                    </select>
+                    <select id="guiaPreforma">
+                        <option value="">-- Preforma a descontar --</option>
+                    </select>
+                </div>
+                <div id="guiaControlesWrap" style="display:none; margin-bottom:12px;">
+                    <b>Vincular controles pendientes (opcional):</b>
+                    <div id="guiaControles"></div>
+                </div>
+                <button type="submit" class="btn-accion">Registrar llegada</button>
+                <span id="msgGuiaServicio" style="font-size:13px; font-weight:700;"></span>
+            </form>
+        </div>
+        <h4>Últimas guías y controles</h4>
+        <div class="tabla-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>SERVICIO</th>
+                        <th>DOCUMENTO</th>
+                        <th>PRODUCTO</th>
+                        <th class="text-center">CANTIDAD</th>
+                        <th class="text-center">FACTURA</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaGuiasServicio">
+                    <tr><td colspan="5" class="text-center">Cargando…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <!-- 7. INVENTARIO (STOCK) DE INSUMOS DE REFINADO -->
     <section class="modulo" id="modulo-refinado">
     <div class="modulo-dos-col modulo-stock-pila">
@@ -2776,11 +2855,189 @@
             }
         }
 
+        // ---- SERVICIOS EXTERNOS DE SOPLADO ----
+        function fmtMill(n) {
+            const v = Number(n) || 0;
+            return Number.isInteger(v) ? String(v) : String(Math.round((v + Number.EPSILON) * 100) / 100);
+        }
+
+        async function cargarInsumosServicio() {
+            try {
+                const res = await fetch('/api/inventario');
+                if (!res.ok) throw new Error('Error del servidor.');
+                const items = await res.json();
+                const arr = Array.isArray(items) ? items : [];
+                const esEtiq = it => String(it.categoria || '').toUpperCase().includes('ETIQUETA');
+                const esPref = it => String(it.categoria || '').toUpperCase() === 'PREFORMAS Y SERVICIOS'
+                    && !String(it.nombre || '').trim().toUpperCase().startsWith('SERVICIO');
+                const esBot = it => {
+                    const c = String(it.categoria || '').toUpperCase();
+                    return c.includes('BOTELLA') || c.includes('GALONERA');
+                };
+                const etiquetas = arr.filter(esEtiq);
+                const preformas = arr.filter(esPref);
+                const botellas = arr.filter(esBot);
+                const llenar = (id, lista) => {
+                    const sel = document.getElementById(id);
+                    const primero = sel.options[0] ? sel.options[0].textContent : '';
+                    sel.innerHTML = '';
+                    const ph = document.createElement('option');
+                    ph.value = '';
+                    ph.textContent = primero || '-- Seleccione --';
+                    sel.appendChild(ph);
+                    lista.forEach(p => {
+                        const opt = document.createElement('option');
+                        opt.value = p.id;
+                        opt.textContent = `${p.nombre} (Stock: ${fmtMill(p.stock)} MILLARES)`;
+                        sel.appendChild(opt);
+                    });
+                };
+                document.getElementById('listaBotellas').innerHTML = '';
+                llenar('envInsumo', [...etiquetas, ...preformas]);
+                llenar('guiaEtiqueta', etiquetas);
+                llenar('guiaPreforma', preformas);
+                const dl = document.getElementById('listaBotellas');
+                botellas.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p.nombre;
+                    dl.appendChild(opt);
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        async function sugerirInsumosGuia() {
+            const producto = (document.getElementById('guiaProducto').value || '').trim();
+            if (!producto) { alert('❌ Escribe primero la botella que llegó.'); return; }
+            try {
+                const res = await fetch('/api/servicios/resolver?producto=' + encodeURIComponent(producto));
+                const data = await res.json();
+                if (data.etiqueta) document.getElementById('guiaEtiqueta').value = data.etiqueta.id;
+                if (data.preforma) document.getElementById('guiaPreforma').value = data.preforma.id;
+                if (!data.etiqueta || !data.preforma) {
+                    alert('⚠️ No se encontró receta para ese producto. Elige etiqueta y preforma a mano.');
+                }
+            } catch (e) { console.error(e); alert('Error de conexión.'); }
+        }
+
+        async function cargarControlesGuia() {
+            const servicio = document.getElementById('guiaServicio').value;
+            const tipo = document.getElementById('guiaTipo').value;
+            const wrap = document.getElementById('guiaControlesWrap');
+            const cont = document.getElementById('guiaControles');
+            cont.innerHTML = '';
+            if (tipo !== 'GUIA' || !servicio) { wrap.style.display = 'none'; return; }
+            try {
+                const res = await fetch('/api/servicios/controles-pendientes?servicio=' + encodeURIComponent(servicio));
+                const data = await res.json();
+                const lista = data.controles || [];
+                if (!lista.length) { wrap.style.display = 'none'; return; }
+                wrap.style.display = 'block';
+                lista.forEach(c => {
+                    const lab = document.createElement('label');
+                    lab.style.cssText = 'display:block; font-size:13px;';
+                    lab.innerHTML = `<input type="checkbox" class="chk-control" value="${c.id}"> ${c.numero} · ${c.producto} · ${fmtMill(c.cantidad)} unds (${c.fecha ? String(c.fecha).substring(0, 10) : 's/f'})`;
+                    cont.appendChild(lab);
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        document.getElementById('formEnvioServicio').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            try {
+                const res = await fetch('/api/servicios/envios', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        servicio: document.getElementById('envServicio').value,
+                        articulo_id: parseInt(document.getElementById('envInsumo').value, 10),
+                        cantidad: parseFloat(document.getElementById('envCantidad').value),
+                        usuario: localStorage.getItem('usuario_actual') || 'almacen_user'
+                    })
+                });
+                const data = await res.json();
+                alert((res.ok && data.success ? '✅ ' : '❌ ') + (data.mensaje || 'Respuesta del servidor.'));
+                if (res.ok && data.success) {
+                    e.target.reset();
+                    cargarInsumosServicio();
+                    cargarInventarioAlmacen();
+                }
+            } catch (err) { console.error(err); alert('Error de conexión.'); }
+        });
+
+        document.getElementById('formGuiaServicio').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const msg = document.getElementById('msgGuiaServicio');
+            const controles = Array.from(document.querySelectorAll('.chk-control:checked')).map(c => parseInt(c.value, 10));
+            const cuerpo = {
+                servicio: document.getElementById('guiaServicio').value,
+                tipo_doc: document.getElementById('guiaTipo').value,
+                numero: (document.getElementById('guiaNumero').value || '').trim(),
+                fecha: document.getElementById('guiaFecha').value || null,
+                producto: (document.getElementById('guiaProducto').value || '').trim(),
+                cantidad: parseFloat(document.getElementById('guiaCantidad').value),
+                etiqueta_id: parseInt(document.getElementById('guiaEtiqueta').value, 10) || null,
+                preforma_id: parseInt(document.getElementById('guiaPreforma').value, 10) || null,
+                controles_ids: controles,
+                usuario: localStorage.getItem('usuario_actual') || 'almacen_user'
+            };
+            try {
+                const res = await fetch('/api/servicios/guias', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(cuerpo)
+                });
+                const data = await res.json();
+                msg.textContent = (res.ok && data.success ? '✅ ' : '❌ ') + (data.mensaje || 'Respuesta del servidor.');
+                msg.style.color = (res.ok && data.success) ? 'green' : 'red';
+                if (res.ok && data.success) {
+                    e.target.reset();
+                    document.getElementById('guiaControlesWrap').style.display = 'none';
+                    cargarInsumosServicio();
+                    cargarGuiasServicio();
+                    cargarInventarioAlmacen();
+                }
+            } catch (err) { console.error(err); alert('Error de conexión.'); }
+        });
+
+        async function cargarGuiasServicio() {
+            const tbody = document.getElementById('tablaGuiasServicio');
+            try {
+                const res = await fetch('/api/servicios/panel');
+                const data = await res.json();
+                const guias = (data.guias || []).slice(0, 15);
+                if (!guias.length) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center">Sin movimientos de servicios.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = '';
+                guias.forEach(g => {
+                    const docTxt = (g.tipo_doc === 'GUIA' ? 'Guía ' : 'Control ') + (g.numero || '');
+                    const fac = g.tipo_doc === 'GUIA'
+                        ? (g.factura_estado === 'VINCULADA'
+                            ? `<span class="badge-stock-ok">${g.factura_numero || 'VINCULADA'}</span>`
+                            : '<span class="badge-stock-bajo">PENDIENTE</span>')
+                        : `<span>${g.estado === 'VINCULADA' ? 'vinculada' : 'pendiente de guía'}</span>`;
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `<td>${g.servicio}</td><td>${docTxt}</td><td>${g.producto || ''}</td>`
+                        + `<td class="text-center">${fmtMill(g.cantidad)}</td><td class="text-center">${fac}</td>`;
+                    tbody.appendChild(tr);
+                });
+            } catch (e) {
+                console.error(e);
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center">Error al cargar.</td></tr>';
+            }
+        }
+
+        document.getElementById('guiaServicio').addEventListener('change', cargarControlesGuia);
+        document.getElementById('guiaTipo').addEventListener('change', cargarControlesGuia);
+
         cargarPendientes();
         cargarRegistroIngresos();
         cargarProductoTerminado();
         cargarInventarioAlmacen();
         cargarHistorialSalidas();
+        cargarInsumosServicio();
+        cargarGuiasServicio();
 
         cargarInvRef();
 

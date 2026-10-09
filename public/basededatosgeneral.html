@@ -300,6 +300,7 @@
             <button class="pestana teal-act" id="pestanaBtnOrden" onclick="mostrarPestana('orden')">📑 Órdenes OC / OS</button>
             <button class="pestana ambar-act" id="pestanaBtnStock" onclick="mostrarPestana('stock')">📦 Stock de Proveedores</button>
             <button class="pestana morado-act" id="pestanaBtnPrecio" onclick="mostrarPestana('precio')">💰 Precios y Facturas</button>
+            <button class="pestana" id="pestanaBtnServ" onclick="mostrarPestana('serv')">🔧 Servicios de Soplado</button>
             <button class="pestana" id="pestanaBtnNotif" onclick="abrirNotificaciones()" title="Productos de guía que entraron sin orden de compra">🔔 Notificaciones <span class="badge badge-pedido oculto" id="notifBadge">0</span></button>
 
         </div>
@@ -989,6 +990,15 @@
             </div>
         </div>
 
+        <div id="pestanaServ" class="oculto">
+
+            <div class="tarjeta borde-azul reveal">
+                <h3>🔧 SERVICIOS EXTERNOS DE SOPLADO</h3>
+                <div class="aviso aviso-info">ℹ️ Guías y controles de <b>SAUÑE</b> y <b>B&amp;M DYLPLAST</b>: solo el producto que llegó, con su N° de guía o control interno. Desde aquí se vincula cada guía con su <b>factura</b>.</div>
+                <div id="bloquesServiciosBD">Cargando servicios…</div>
+            </div>
+        </div>
+
         <div class="footer-acciones">
             <span class="nota-legal">Corporación Belcen S.A.C. · Base de Datos General · Proveedores, Órdenes y Stock</span>
         </div>
@@ -1310,10 +1320,12 @@
             document.getElementById('pestanaOrden').classList.toggle('oculto', nombre !== 'orden');
             document.getElementById('pestanaStock').classList.toggle('oculto', nombre !== 'stock');
             document.getElementById('pestanaPrecio').classList.toggle('oculto', nombre !== 'precio');
+            document.getElementById('pestanaServ').classList.toggle('oculto', nombre !== 'serv');
             document.getElementById('pestanaBtnProv').classList.toggle('activa', nombre === 'prov');
             document.getElementById('pestanaBtnOrden').classList.toggle('activa', nombre === 'orden');
             document.getElementById('pestanaBtnStock').classList.toggle('activa', nombre === 'stock');
             document.getElementById('pestanaBtnPrecio').classList.toggle('activa', nombre === 'precio');
+            document.getElementById('pestanaBtnServ').classList.toggle('activa', nombre === 'serv');
             if (nombre === 'prov') cargarProveedores();
             if (nombre === 'orden') { poblarSelectProveedores(); cargarOrdenes(); }
             if (nombre === 'stock') { poblarSelectProveedores(); cargarStock(); cargarMovimientos(); }
@@ -1324,6 +1336,7 @@
                 cargarResumenFacturas();
                 cargarFacturaOrdenes();
             }
+            if (nombre === 'serv') cargarServiciosBD();
         }
 
 
@@ -2739,6 +2752,78 @@
 
         document.getElementById('ordenFecha').value = new Date().toISOString().slice(0, 10);
         cargarProveedores();
+        // ============ SERVICIOS EXTERNOS DE SOPLADO ============
+        async function cargarServiciosBD() {
+            const cont = document.getElementById('bloquesServiciosBD');
+            try {
+                const data = await api('/api/servicios/panel');
+                const porServicio = {};
+                for (const g of (data.guias || [])) {
+                    (porServicio[g.servicio] = porServicio[g.servicio] || []).push(g);
+                }
+                const pendientes = {};
+                for (const p of (data.pendientes || [])) pendientes[p.servicio] = p.n;
+                const sinFac = {};
+                for (const p of (data.sinFactura || [])) sinFac[p.servicio] = p.n;
+                const nombres = Object.keys(porServicio).sort();
+                if (!nombres.length) {
+                    cont.innerHTML = '<p class="sin-registros text-center">Sin guías ni controles de servicios.</p>';
+                    return;
+                }
+                cont.innerHTML = nombres.map(sv => {
+                    const filas = porServicio[sv].map(g => {
+                        const esGuia = g.tipo_doc === 'GUIA';
+                        const docTxt = (esGuia ? 'Guía ' : 'Control ') + escapeHtml(g.numero || '');
+                        const vinc = (g.controles_ids || []).length
+                            ? `<div class="sub">Vincula: ${(g.controles_ids || []).join(', ')}</div>` : '';
+                        const fac = !esGuia
+                            ? `<span class="badge ${g.estado === 'VINCULADA' ? 'badge-suficiente' : 'badge-dia'}">${g.estado === 'VINCULADA' ? 'vinculada' : 'pendiente de guía'}</span>`
+                            : (g.factura_estado === 'VINCULADA'
+                                ? `<span class="badge badge-suficiente">${escapeHtml(g.factura_numero || 'VINCULADA')}</span>`
+                                : `<span class="badge badge-pedido">PENDIENTE</span>
+                                   <div style="margin-top:6px; display:flex; gap:6px;">
+                                       <input type="text" id="facServ-${g.id}" placeholder="N° factura" style="max-width:140px;">
+                                       <button class="btn btn-mini btn-verde" onclick="vincularFacturaServ(${g.id})">Vincular</button>
+                                   </div>`);
+                        return `<tr><td>${docTxt}${vinc}</td>`
+                            + `<td>${escapeHtml(g.producto || '')}</td>`
+                            + `<td class="text-center">${fmtN(g.cantidad)}</td>`
+                            + `<td class="text-center">${g.fecha ? fmtFecha(g.fecha) : '-'}</td>`
+                            + `<td class="text-center">${fac}</td></tr>`;
+                    }).join('');
+                    const alertas = [];
+                    if (pendientes[sv]) alertas.push(pendientes[sv] + ' controles por vincular');
+                    if (sinFac[sv]) alertas.push(sinFac[sv] + ' guías sin factura');
+                    return `<h4 style="margin:14px 0 8px;">🔧 ${escapeHtml(sv)}${alertas.length ? ` <span class="badge badge-dia">${alertas.join(' · ')}</span>` : ''}</h4>`
+                        + `<div class="tabla-wrap"><table><thead><tr>`
+                        + `<th>Documento</th><th>Producto que llegó</th>`
+                        + `<th class="text-center">Cantidad</th><th class="text-center">Fecha</th><th class="text-center">Factura</th>`
+                        + `</tr></thead><tbody>${filas}</tbody></table></div>`;
+                }).join('');
+            } catch (e) {
+                console.error(e);
+                cont.innerHTML = '<p class="sin-registros text-center">Error al cargar servicios.</p>';
+            }
+        }
+
+        async function vincularFacturaServ(id) {
+            const input = document.getElementById('facServ-' + id);
+            const numero = (input.value || '').trim();
+            if (!numero) { alert('❌ Escribe el número de factura.'); return; }
+            try {
+                const data = await api('/api/servicios/guias/' + id + '/factura', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ factura_numero: numero })
+                });
+                mostrarMensaje('✅ ' + (data.mensaje || 'Factura vinculada.'), true);
+                cargarServiciosBD();
+            } catch (e) {
+                console.error(e);
+                mostrarMensaje('❌ ' + e.message, false);
+            }
+        }
+
         registrarAutoRefresco(cargarProveedores, 30000);
         // El contador de guias sin OC vive fuera de cualquier pestana.
         cargarNotificaciones().catch(() => {});

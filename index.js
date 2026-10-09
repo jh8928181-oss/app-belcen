@@ -824,17 +824,21 @@ app.get('/api/servicios/panel', async (req, res) => {
                FROM servicios_envios GROUP BY servicio, articulo_id, articulo_nombre, tipo_item`
         );
         const con = await pool.query(
-            `SELECT servicio,
-                    etiqueta_id AS articulo_id, etiqueta_nombre AS nombre,
-                    COALESCE(SUM(cant_etiquetas), 0) AS consumido
-               FROM servicios_guias WHERE tipo_doc = 'GUIA' AND etiqueta_id IS NOT NULL
-               GROUP BY servicio, etiqueta_id, etiqueta_nombre
-             UNION ALL
-             SELECT servicio,
-                    preforma_id AS articulo_id, preforma_nombre AS nombre,
-                    COALESCE(SUM(cant_preformas), 0) AS consumido
-               FROM servicios_guias WHERE tipo_doc = 'GUIA' AND preforma_id IS NOT NULL
-               GROUP BY servicio, preforma_id, preforma_nombre`
+            `SELECT g.servicio,
+                    i.etiqueta_id AS articulo_id, i.etiqueta_nombre AS nombre,
+                    COALESCE(SUM(i.cant_etiquetas), 0) AS consumido
+               FROM servicios_guias_items i
+               JOIN servicios_guias g ON g.id = i.guia_id
+              WHERE g.tipo_doc = 'GUIA' AND i.etiqueta_id IS NOT NULL
+              GROUP BY g.servicio, i.etiqueta_id, i.etiqueta_nombre
+              UNION ALL
+             SELECT g.servicio,
+                    i.preforma_id AS articulo_id, i.preforma_nombre AS nombre,
+                    COALESCE(SUM(i.cant_preformas), 0) AS consumido
+               FROM servicios_guias_items i
+               JOIN servicios_guias g ON g.id = i.guia_id
+              WHERE g.tipo_doc = 'GUIA' AND i.preforma_id IS NOT NULL
+              GROUP BY g.servicio, i.preforma_id, i.preforma_nombre`
         );
         const consumidoPor = {};
         for (const c of con.rows) {
@@ -865,6 +869,18 @@ app.get('/api/servicios/panel', async (req, res) => {
         const guias = await pool.query(
             `SELECT * FROM servicios_guias ORDER BY fecha DESC NULLS LAST, id DESC LIMIT 200`
         );
+        let lineasPorGuia = {};
+        try {
+            const lin = await pool.query(
+                `SELECT * FROM servicios_guias_items ORDER BY guia_id, id`
+            );
+            for (const l of lin.rows) {
+                (lineasPorGuia[l.guia_id] = lineasPorGuia[l.guia_id] || []).push(l);
+            }
+        } catch (e) {
+            lineasPorGuia = {};
+        }
+        for (const g of guias.rows) g.lineas = lineasPorGuia[g.id] || [];
         const pendientes = await pool.query(
             `SELECT servicio, COUNT(*)::int AS n FROM servicios_guias
               WHERE tipo_doc = 'CONTROL' AND estado = 'PENDIENTE' GROUP BY servicio`
@@ -924,52 +940,64 @@ app.get('/api/servicios/resolver', async (req, res) => {
 });
 
 // Registrar envio de insumos al servicio (descuenta stock en millares).
+// Acepta una o varias lineas: items: [{ articulo_id, cantidad }].
 app.post('/api/servicios/envios', gAlmacen, async (req, res) => {
     const client = await pool.connect();
     try {
         const servicio = String(req.body.servicio || '').trim().toUpperCase();
-        const articulo_id = parseInt(req.body.articulo_id, 10);
-        const cantidad = Number(req.body.cantidad);
+        const items = Array.isArray(req.body.items) && req.body.items.length
+            ? req.body.items
+            : [{ articulo_id: req.body.articulo_id, cantidad: req.body.cantidad }];
         if (!SERVICIOS_SOPLADO.includes(servicio)) {
             return res.status(400).json({ success: false, mensaje: 'Servicio inválido (SAUÑE o B&M DYLPLAST).' });
         }
-        if (!articulo_id || !(cantidad > 0)) {
-            return res.status(400).json({ success: false, mensaje: 'Artículo y cantidad válida son requeridos.' });
+        if (!items.length) {
+            return res.status(400).json({ success: false, mensaje: 'Agrega al menos un insumo al envío.' });
         }
         await client.query('BEGIN');
-        const art = await client.query('SELECT nombre, categoria, stock FROM inventario WHERE id = $1', [articulo_id]);
-        if (!art.rows.length) {
-            await client.query('ROLLBACK');
-            return res.status(404).json({ success: false, mensaje: 'El artículo no existe.' });
+        const lineas = [];
+        for (const it of items) {
+            const articulo_id = parseInt(it.articulo_id, 10);
+            const cantidad = Number(it.cantidad);
+            if (!articulo_id || !(cantidad > 0)) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: 'Cada línea necesita artículo y cantidad válida.' });
+            }
+            const art = await client.query('SELECT nombre, categoria, stock FROM inventario WHERE id = $1', [articulo_id]);
+            if (!art.rows.length) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, mensaje: 'Un artículo del envío no existe.' });
+            }
+            const cat = String(art.rows[0].categoria || '').toUpperCase();
+            const tipoItem = cat.includes('ETIQUETA') ? 'ETIQUETA' : (cat.includes('PREFORMA') ? 'PREFORMA' : '');
+            if (!tipoItem) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: `Solo se envían etiquetas o preformas ("${art.rows[0].nombre}" no lo es).` });
+            }
+            const stockActual = Number(art.rows[0].stock) || 0;
+            if (stockActual < cantidad) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: `Stock insuficiente de "${art.rows[0].nombre}" (disponible: ${stockActual}).` });
+            }
+            await client.query('UPDATE inventario SET stock = stock - $1 WHERE id = $2', [cantidad, articulo_id]);
+            await actualizarEstadoArticulo(client, null, articulo_id);
+            await client.query(
+                `INSERT INTO servicios_envios (fecha, servicio, articulo_id, articulo_nombre, tipo_item, cantidad, usuario)
+                 VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6)`,
+                [servicio, articulo_id, art.rows[0].nombre, tipoItem, cantidad, usuarioResponsable(req, req.body.usuario)]
+            );
+            await registrarHistorial(client, {
+                tipo: 'SALIDA', origen: 'servicio_envio',
+                producto: art.rows[0].nombre, articulo_id,
+                cantidad, tipo_cambio: 'RESTA',
+                stock_anterior: stockActual, stock_nuevo: stockActual - cantidad,
+                usuario: usuarioResponsable(req, req.body.usuario),
+                referencia: `Envío a servicio ${servicio}`
+            });
+            lineas.push(`"${art.rows[0].nombre}" x ${cantidad}`);
         }
-        const cat = String(art.rows[0].categoria || '').toUpperCase();
-        const tipoItem = cat.includes('ETIQUETA') ? 'ETIQUETA' : (cat.includes('PREFORMA') ? 'PREFORMA' : '');
-        if (!tipoItem) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ success: false, mensaje: 'Solo se envían etiquetas o preformas al servicio.' });
-        }
-        const stockActual = Number(art.rows[0].stock) || 0;
-        if (stockActual < cantidad) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ success: false, mensaje: `Stock insuficiente de "${art.rows[0].nombre}" (disponible: ${stockActual}).` });
-        }
-        await client.query('UPDATE inventario SET stock = stock - $1 WHERE id = $2', [cantidad, articulo_id]);
-        await actualizarEstadoArticulo(client, null, articulo_id);
-        await client.query(
-            `INSERT INTO servicios_envios (fecha, servicio, articulo_id, articulo_nombre, tipo_item, cantidad, usuario)
-             VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6)`,
-            [servicio, articulo_id, art.rows[0].nombre, tipoItem, cantidad, usuarioResponsable(req, req.body.usuario)]
-        );
-        await registrarHistorial(client, {
-            tipo: 'SALIDA', origen: 'servicio_envio',
-            producto: art.rows[0].nombre, articulo_id,
-            cantidad, tipo_cambio: 'RESTA',
-            stock_anterior: stockActual, stock_nuevo: stockActual - cantidad,
-            usuario: usuarioResponsable(req, req.body.usuario),
-            referencia: `Envío a servicio ${servicio}`
-        });
         await client.query('COMMIT');
-        res.json({ success: true, mensaje: `Enviadas ${cantidad} MILLARES de "${art.rows[0].nombre}" a ${servicio}.` });
+        res.json({ success: true, mensaje: `Enviado a ${servicio}: ${lineas.join('; ')} (MILLARES).` });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         console.error('Error en envío a servicio:', err);
@@ -989,17 +1017,37 @@ app.post('/api/servicios/guias', gAlmacen, async (req, res) => {
         const tipoDoc = String(req.body.tipo_doc || '').trim().toUpperCase();
         const numero = String(req.body.numero || '').trim();
         const fecha = req.body.fecha || null;
-        const producto = String(req.body.producto || '').trim();
-        const productoKey = String(req.body.producto_key || '').trim() || null;
-        const cantidad = Number(req.body.cantidad);
         if (!SERVICIOS_SOPLADO.includes(servicio)) {
             return res.status(400).json({ success: false, mensaje: 'Servicio inválido (SAUÑE o B&M DYLPLAST).' });
         }
         if (tipoDoc !== 'GUIA' && tipoDoc !== 'CONTROL') {
             return res.status(400).json({ success: false, mensaje: 'Tipo de documento inválido (GUIA o CONTROL).' });
         }
-        if (!numero || !producto || !(cantidad > 0)) {
-            return res.status(400).json({ success: false, mensaje: 'Número, producto y cantidad válida son requeridos.' });
+        if (!numero) {
+            return res.status(400).json({ success: false, mensaje: 'Número de guía o control requerido.' });
+        }
+        // Lineas: una guia trae VARIOS productos. Compat: campos sueltos = una sola linea.
+        const items = Array.isArray(req.body.items) && req.body.items.length
+            ? req.body.items
+            : [{
+                producto: req.body.producto, producto_key: req.body.producto_key,
+                cantidad: req.body.cantidad,
+                etiqueta_id: req.body.etiqueta_id, preforma_id: req.body.preforma_id
+            }];
+        const lineas = [];
+        for (const it of items) {
+            const prod = String((it && it.producto) || '').trim();
+            const cant = Number(it && it.cantidad);
+            if (!prod || !(cant > 0)) {
+                return res.status(400).json({ success: false, mensaje: 'Cada producto necesita nombre y cantidad válida.' });
+            }
+            lineas.push({
+                producto: prod,
+                producto_key: String((it && it.producto_key) || '').trim() || null,
+                cantidad: cant,
+                etiqueta_id: it && it.etiqueta_id ? parseInt(it.etiqueta_id, 10) : null,
+                preforma_id: it && it.preforma_id ? parseInt(it.preforma_id, 10) : null
+            });
         }
         await client.query('BEGIN');
         const dup = await client.query(
@@ -1011,74 +1059,83 @@ app.post('/api/servicios/guias', gAlmacen, async (req, res) => {
             return res.status(409).json({ success: false, mensaje: `El ${tipoDoc === 'GUIA' ? 'n° de guía' : 'control interno'} "${numero}" ya está registrado para ${servicio}.` });
         }
 
-        let etiquetaId = req.body.etiqueta_id ? parseInt(req.body.etiqueta_id, 10) : null;
-        let preformaId = req.body.preforma_id ? parseInt(req.body.preforma_id, 10) : null;
-        let etiquetaNombre = '', preformaNombre = '';
-        let cantMill = 0;
+        const usuario = usuarioResponsable(req, req.body.usuario);
+        const detalle = [];
 
         if (tipoDoc === 'GUIA') {
-            if ((!etiquetaId || !preformaId) && productoKey) {
-                const sugeridos = await resolverInsumosServicio(client, productoKey);
-                if (!etiquetaId && sugeridos.etiqueta) etiquetaId = sugeridos.etiqueta.id;
-                if (!preformaId && sugeridos.preforma) preformaId = sugeridos.preforma.id;
+            for (const ln of lineas) {
+                if ((!ln.etiqueta_id || !ln.preforma_id) && !ln.producto_key) {
+                    const pt = await client.query(
+                        'SELECT producto_key FROM producto_terminado WHERE LOWER(nombre_producto) = LOWER($1) LIMIT 1',
+                        [ln.producto]
+                    );
+                    if (pt.rows.length) ln.producto_key = pt.rows[0].producto_key;
+                }
+                if ((!ln.etiqueta_id || !ln.preforma_id) && ln.producto_key) {
+                    const sugeridos = await resolverInsumosServicio(client, ln.producto_key);
+                    if (!ln.etiqueta_id && sugeridos.etiqueta) ln.etiqueta_id = sugeridos.etiqueta.id;
+                    if (!ln.preforma_id && sugeridos.preforma) ln.preforma_id = sugeridos.preforma.id;
+                }
+                if (!ln.etiqueta_id || !ln.preforma_id) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, mensaje: `Indica qué etiqueta y qué preforma descuenta "${ln.producto}" (o registra su receta).` });
+                }
+                const cantMill = Math.round(((ln.cantidad / 1000) + Number.EPSILON) * 1000000) / 1000000;
+                const eRow = await client.query('SELECT nombre, stock FROM inventario WHERE id = $1', [ln.etiqueta_id]);
+                const pRow = await client.query('SELECT nombre, stock FROM inventario WHERE id = $1', [ln.preforma_id]);
+                if (!eRow.rows.length || !pRow.rows.length) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, mensaje: `La etiqueta o preforma de "${ln.producto}" no existe.` });
+                }
+                ln.etiqueta_nombre = eRow.rows[0].nombre;
+                ln.preforma_nombre = pRow.rows[0].nombre;
+                ln.cantMill = cantMill;
+                if ((Number(eRow.rows[0].stock) || 0) < cantMill || (Number(pRow.rows[0].stock) || 0) < cantMill) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, mensaje: `Stock insuficiente de etiqueta/preforma para "${ln.producto}" (${cantMill} MILLARES).` });
+                }
+                // Las botellas que trae el servicio ingresan al inventario.
+                const bRow = await client.query('SELECT id, stock FROM inventario WHERE LOWER(BTRIM(nombre)) = LOWER(BTRIM($1))', [ln.producto]);
+                if (!bRow.rows.length) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, mensaje: `La botella "${ln.producto}" no existe en el inventario. Créala primero.` });
+                }
+                ln.botella_id = bRow.rows[0].id;
+                const stockBotAnt = Number(bRow.rows[0].stock) || 0;
+                await client.query('UPDATE inventario SET stock = stock - $1 WHERE id = $2', [cantMill, ln.etiqueta_id]);
+                await client.query('UPDATE inventario SET stock = stock - $1 WHERE id = $2', [cantMill, ln.preforma_id]);
+                await client.query('UPDATE inventario SET stock = stock + $1 WHERE id = $2', [ln.cantidad, ln.botella_id]);
+                await actualizarEstadoArticulo(client, null, ln.etiqueta_id);
+                await actualizarEstadoArticulo(client, null, ln.preforma_id);
+                await actualizarEstadoArticulo(client, null, ln.botella_id);
+                await registrarHistorial(client, {
+                    tipo: 'SALIDA', origen: 'servicio_guia',
+                    producto: ln.etiqueta_nombre, articulo_id: ln.etiqueta_id,
+                    cantidad: cantMill, tipo_cambio: 'RESTA',
+                    stock_anterior: Number(eRow.rows[0].stock) || 0,
+                    stock_nuevo: (Number(eRow.rows[0].stock) || 0) - cantMill,
+                    usuario,
+                    referencia: `Guía ${numero} de ${servicio} (${ln.producto} x ${ln.cantidad})`
+                });
+                await registrarHistorial(client, {
+                    tipo: 'SALIDA', origen: 'servicio_guia',
+                    producto: ln.preforma_nombre, articulo_id: ln.preforma_id,
+                    cantidad: cantMill, tipo_cambio: 'RESTA',
+                    stock_anterior: Number(pRow.rows[0].stock) || 0,
+                    stock_nuevo: (Number(pRow.rows[0].stock) || 0) - cantMill,
+                    usuario,
+                    referencia: `Guía ${numero} de ${servicio} (${ln.producto} x ${ln.cantidad})`
+                });
+                await registrarHistorial(client, {
+                    tipo: 'MOVIMIENTO', origen: 'servicio_guia',
+                    producto: ln.producto, articulo_id: ln.botella_id,
+                    cantidad: ln.cantidad, tipo_cambio: 'SUMA',
+                    stock_anterior: stockBotAnt, stock_nuevo: stockBotAnt + ln.cantidad,
+                    usuario,
+                    referencia: `Ingreso de botellas por guía ${numero} de ${servicio}`
+                });
+                detalle.push(`${ln.producto} x ${ln.cantidad} (${cantMill} MILLARES)`);
             }
-            if (!etiquetaId || !preformaId) {
-                await client.query('ROLLBACK');
-                return res.status(400).json({ success: false, mensaje: 'Indica qué etiqueta y qué preforma descuenta esta guía (o registra su receta).' });
-            }
-            cantMill = Math.round(((cantidad / 1000) + Number.EPSILON) * 1000000) / 1000000;
-            const eRow = await client.query('SELECT nombre, stock FROM inventario WHERE id = $1', [etiquetaId]);
-            const pRow = await client.query('SELECT nombre, stock FROM inventario WHERE id = $1', [preformaId]);
-            if (!eRow.rows.length || !pRow.rows.length) {
-                await client.query('ROLLBACK');
-                return res.status(400).json({ success: false, mensaje: 'La etiqueta o preforma indicada no existe.' });
-            }
-            etiquetaNombre = eRow.rows[0].nombre;
-            preformaNombre = pRow.rows[0].nombre;
-            if ((Number(eRow.rows[0].stock) || 0) < cantMill || (Number(pRow.rows[0].stock) || 0) < cantMill) {
-                await client.query('ROLLBACK');
-                return res.status(400).json({ success: false, mensaje: `Stock insuficiente de etiqueta/preforma para descontar ${cantMill} MILLARES.` });
-            }
-            // Las botellas que trae el servicio ingresan al inventario.
-            const bRow = await client.query('SELECT id, stock FROM inventario WHERE LOWER(BTRIM(nombre)) = LOWER(BTRIM($1))', [producto]);
-            if (!bRow.rows.length) {
-                await client.query('ROLLBACK');
-                return res.status(400).json({ success: false, mensaje: `La botella "${producto}" no existe en el inventario. Créala primero.` });
-            }
-            const botellaId = bRow.rows[0].id;
-            const stockBotAnt = Number(bRow.rows[0].stock) || 0;
-            await client.query('UPDATE inventario SET stock = stock - $1 WHERE id = $2', [cantMill, etiquetaId]);
-            await client.query('UPDATE inventario SET stock = stock - $1 WHERE id = $2', [cantMill, preformaId]);
-            await client.query('UPDATE inventario SET stock = stock + $1 WHERE id = $2', [cantidad, botellaId]);
-            await actualizarEstadoArticulo(client, null, etiquetaId);
-            await actualizarEstadoArticulo(client, null, preformaId);
-            await actualizarEstadoArticulo(client, null, botellaId);
-            await registrarHistorial(client, {
-                tipo: 'SALIDA', origen: 'servicio_guia',
-                producto: etiquetaNombre, articulo_id: etiquetaId,
-                cantidad: cantMill, tipo_cambio: 'RESTA',
-                stock_anterior: Number(eRow.rows[0].stock) || 0,
-                stock_nuevo: (Number(eRow.rows[0].stock) || 0) - cantMill,
-                usuario: usuarioResponsable(req, req.body.usuario),
-                referencia: `Guía ${numero} de ${servicio} (${producto} x ${cantidad})`
-            });
-            await registrarHistorial(client, {
-                tipo: 'SALIDA', origen: 'servicio_guia',
-                producto: preformaNombre, articulo_id: preformaId,
-                cantidad: cantMill, tipo_cambio: 'RESTA',
-                stock_anterior: Number(pRow.rows[0].stock) || 0,
-                stock_nuevo: (Number(pRow.rows[0].stock) || 0) - cantMill,
-                usuario: usuarioResponsable(req, req.body.usuario),
-                referencia: `Guía ${numero} de ${servicio} (${producto} x ${cantidad})`
-            });
-            await registrarHistorial(client, {
-                tipo: 'MOVIMIENTO', origen: 'servicio_guia',
-                producto, articulo_id: botellaId,
-                cantidad, tipo_cambio: 'SUMA',
-                stock_anterior: stockBotAnt, stock_nuevo: stockBotAnt + cantidad,
-                usuario: usuarioResponsable(req, req.body.usuario),
-                referencia: `Ingreso de botellas por guía ${numero} de ${servicio}`
-            });
 
             let controlesIds = [];
             if (Array.isArray(req.body.controles_ids)) {
@@ -1099,26 +1156,54 @@ app.post('/api/servicios/guias', gAlmacen, async (req, res) => {
                     [controlesIds]
                 );
             }
-            await client.query(
+            const totalBotellas = lineas.reduce((s, l) => s + l.cantidad, 0);
+            const primera = lineas[0];
+            const resumenProd = primera.producto + (lineas.length > 1 ? ` (+${lineas.length - 1})` : '');
+            const cab = await client.query(
                 `INSERT INTO servicios_guias (servicio, tipo_doc, numero, fecha, producto, producto_key,
                     cantidad, etiqueta_id, etiqueta_nombre, cant_etiquetas,
                     preforma_id, preforma_nombre, cant_preformas, botella_id,
                     factura_estado, controles_ids, estado, usuario)
-                 VALUES ($1, 'GUIA', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'PENDIENTE', $14, 'PENDIENTE', $15)`,
-                [servicio, numero, fecha, producto, productoKey, cantidad,
-                 etiquetaId, etiquetaNombre, cantMill, preformaId, preformaNombre, cantMill,
-                 botellaId, controlesIds, usuarioResponsable(req, req.body.usuario)]
+                 VALUES ($1, 'GUIA', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'PENDIENTE', $14, 'PENDIENTE', $15)
+                 RETURNING id`,
+                [servicio, numero, fecha, resumenProd, primera.producto_key, totalBotellas,
+                 primera.etiqueta_id, primera.etiqueta_nombre, primera.cantMill,
+                 primera.preforma_id, primera.preforma_nombre, primera.cantMill,
+                 primera.botella_id, controlesIds, usuario]
             );
+            const guiaId = cab.rows[0].id;
+            for (const ln of lineas) {
+                await client.query(
+                    `INSERT INTO servicios_guias_items (guia_id, producto, producto_key, cantidad,
+                        etiqueta_id, etiqueta_nombre, cant_etiquetas,
+                        preforma_id, preforma_nombre, cant_preformas, botella_id)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                    [guiaId, ln.producto, ln.producto_key, ln.cantidad,
+                     ln.etiqueta_id, ln.etiqueta_nombre, ln.cantMill,
+                     ln.preforma_id, ln.preforma_nombre, ln.cantMill, ln.botella_id]
+                );
+            }
             await client.query('COMMIT');
-            return res.json({ success: true, mensaje: `Guía ${numero} registrada: ingresaron ${cantidad} botellas y se descontaron ${cantMill} MILLARES de etiqueta y preforma.` });
+            return res.json({ success: true, mensaje: `Guía ${numero} registrada: ${totalBotellas} botellas en ${lineas.length} producto(s): ${detalle.join('; ')}.` });
         }
 
-        await client.query(
+        const totalControl = lineas.reduce((s, l) => s + l.cantidad, 0);
+        const resumenControl = lineas[0].producto + (lineas.length > 1 ? ` (+${lineas.length - 1})` : '');
+        const cabControl = await client.query(
             `INSERT INTO servicios_guias (servicio, tipo_doc, numero, fecha, producto, producto_key,
                 cantidad, factura_estado, estado, usuario)
-             VALUES ($1, 'CONTROL', $2, $3, $4, $5, $6, 'PENDIENTE', 'PENDIENTE', $7)`,
-            [servicio, numero, fecha, producto, productoKey, cantidad, usuarioResponsable(req, req.body.usuario)]
+             VALUES ($1, 'CONTROL', $2, $3, $4, $5, $6, 'PENDIENTE', 'PENDIENTE', $7)
+             RETURNING id`,
+            [servicio, numero, fecha, resumenControl, lineas[0].producto_key, totalControl, usuarioResponsable(req, req.body.usuario)]
         );
+        const controlId = cabControl.rows[0].id;
+        for (const ln of lineas) {
+            await client.query(
+                `INSERT INTO servicios_guias_items (guia_id, producto, producto_key, cantidad)
+                 VALUES ($1, $2, $3, $4)`,
+                [controlId, ln.producto, ln.producto_key, ln.cantidad]
+            );
+        }
         await client.query('COMMIT');
         res.json({ success: true, mensaje: `Control interno ${numero} registrado (pendiente de guía, sin mover stock).` });
     } catch (err) {

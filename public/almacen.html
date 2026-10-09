@@ -845,12 +845,10 @@
                         <option value="SAUÑE">SAUÑE</option>
                         <option value="B&M DYLPLAST">B&amp;M DYLPLAST</option>
                     </select>
-                    <select id="envInsumo" required>
-                        <option value="">-- Etiqueta o preforma --</option>
-                    </select>
-                    <input type="number" id="envCantidad" min="0.01" step="0.01" placeholder="Millares" required>
-                    <button type="submit" class="btn-agregar-item">Enviar</button>
                 </div>
+                <div id="envLineas"></div>
+                <button type="button" onclick="agregarLineaEnvio()" class="btn-filtro" style="margin-bottom:12px;">＋ Agregar insumo</button>
+                <div><button type="submit" class="btn-agregar-item">Enviar al servicio</button></div>
             </form>
         </div>
         <div class="caja-items">
@@ -870,20 +868,9 @@
                     <input type="text" id="guiaNumero" placeholder="N° guía / control" required>
                     <input type="date" id="guiaFecha">
                 </div>
-                <div class="fila-agregar">
-                    <input type="text" id="guiaProducto" list="listaBotellas" placeholder="Botella que llegó (ej. Botella B-1 x 1 Lt)" required style="flex:2;">
-                    <datalist id="listaBotellas"></datalist>
-                    <input type="number" id="guiaCantidad" min="0.01" step="0.01" placeholder="Cantidad (unds)" required>
-                    <button type="button" onclick="sugerirInsumosGuia()" class="btn-filtro">🔍 Sugerir insumos</button>
-                </div>
-                <div class="fila-agregar">
-                    <select id="guiaEtiqueta">
-                        <option value="">-- Etiqueta a descontar --</option>
-                    </select>
-                    <select id="guiaPreforma">
-                        <option value="">-- Preforma a descontar --</option>
-                    </select>
-                </div>
+                <div id="guiaLineas"></div>
+                <datalist id="listaBotellas"></datalist>
+                <button type="button" onclick="agregarLineaGuia()" class="btn-filtro" style="margin-bottom:12px;">＋ Agregar producto</button>
                 <div id="guiaControlesWrap" style="display:none; margin-bottom:12px;">
                     <b>Vincular controles pendientes (opcional):</b>
                     <div id="guiaControles"></div>
@@ -2861,6 +2848,12 @@
             return Number.isInteger(v) ? String(v) : String(Math.round((v + Number.EPSILON) * 100) / 100);
         }
 
+        let opcionesEtiquetaServ = '';
+        let opcionesPreformaServ = '';
+        let opcionesInsumoEnvio = '';
+
+        const escOpServ = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
         async function cargarInsumosServicio() {
             try {
                 const res = await fetch('/api/inventario');
@@ -2876,43 +2869,76 @@
                 };
                 const etiquetas = arr.filter(esEtiq);
                 const preformas = arr.filter(esPref);
-                const botellas = arr.filter(esBot);
-                const llenar = (id, lista) => {
-                    const sel = document.getElementById(id);
-                    const primero = sel.options[0] ? sel.options[0].textContent : '';
-                    sel.innerHTML = '';
-                    const ph = document.createElement('option');
-                    ph.value = '';
-                    ph.textContent = primero || '-- Seleccione --';
-                    sel.appendChild(ph);
-                    lista.forEach(p => {
-                        const opt = document.createElement('option');
-                        opt.value = p.id;
-                        opt.textContent = `${p.nombre} (Stock: ${fmtMill(p.stock)} MILLARES)`;
-                        sel.appendChild(opt);
-                    });
-                };
-                document.getElementById('listaBotellas').innerHTML = '';
-                llenar('envInsumo', [...etiquetas, ...preformas]);
-                llenar('guiaEtiqueta', etiquetas);
-                llenar('guiaPreforma', preformas);
+                const ops = (lista) => lista.map(p => {
+                    const n = Number(p.stock);
+                    const s = Number.isInteger(n) ? String(n) : n.toFixed(2);
+                    return `<option value="${p.id}">${escOpServ(p.nombre)} (Stock: ${s} MILLARES)</option>`;
+                }).join('');
+                opcionesEtiquetaServ = ops(etiquetas);
+                opcionesPreformaServ = ops(preformas);
+                opcionesInsumoEnvio = ops([...etiquetas, ...preformas]);
                 const dl = document.getElementById('listaBotellas');
-                botellas.forEach(p => {
+                dl.innerHTML = '';
+                arr.filter(esBot).forEach(p => {
                     const opt = document.createElement('option');
                     opt.value = p.nombre;
                     dl.appendChild(opt);
                 });
+                document.querySelectorAll('#envLineas .linea-env select').forEach(sel => {
+                    const v = sel.value;
+                    sel.innerHTML = '<option value="">-- Etiqueta o preforma --</option>' + opcionesInsumoEnvio;
+                    sel.value = v;
+                });
+                document.querySelectorAll('#guiaLineas .linea-guia').forEach(row => {
+                    const se = row.querySelector('.ln-etiqueta'), sp = row.querySelector('.ln-preforma');
+                    const ve = se.value, vp = sp.value;
+                    se.innerHTML = '<option value="">-- Etiqueta a descontar --</option>' + opcionesEtiquetaServ;
+                    sp.innerHTML = '<option value="">-- Preforma a descontar --</option>' + opcionesPreformaServ;
+                    se.value = ve; sp.value = vp;
+                });
+                if (!document.querySelectorAll('#envLineas .linea-env').length) agregarLineaEnvio();
+                if (!document.querySelectorAll('#guiaLineas .linea-guia').length) agregarLineaGuia();
             } catch (e) { console.error(e); }
         }
 
-        async function sugerirInsumosGuia() {
-            const producto = (document.getElementById('guiaProducto').value || '').trim();
+        function agregarLineaEnvio() {
+            const cont = document.getElementById('envLineas');
+            const div = document.createElement('div');
+            div.className = 'fila-agregar linea-env';
+            div.innerHTML = `<select required><option value="">-- Etiqueta o preforma --</option>${opcionesInsumoEnvio}</select>
+                <input type="number" min="0.01" step="0.01" placeholder="Millares" required>
+                <button type="button" onclick="this.parentElement.remove()" class="btn-filtro">✕</button>`;
+            cont.appendChild(div);
+        }
+
+        function agregarLineaGuia() {
+            const cont = document.getElementById('guiaLineas');
+            const div = document.createElement('div');
+            div.className = 'linea-guia';
+            div.style.cssText = 'border:1px dashed #bbb; border-radius:10px; padding:10px; margin-bottom:10px;';
+            div.innerHTML = `
+                <div class="fila-agregar">
+                    <input type="text" list="listaBotellas" class="ln-producto" placeholder="Botella que llegó" required style="flex:2;">
+                    <input type="number" class="ln-cantidad" min="0.01" step="0.01" placeholder="Cantidad (unds)" required>
+                    <button type="button" onclick="sugerirInsumosGuia(this)" class="btn-filtro" title="Sugerir etiqueta y preforma por receta">🔍</button>
+                    <button type="button" onclick="this.closest('.linea-guia').remove()" class="btn-filtro">✕</button>
+                </div>
+                <div class="fila-agregar">
+                    <select class="ln-etiqueta"><option value="">-- Etiqueta a descontar --</option>${opcionesEtiquetaServ}</select>
+                    <select class="ln-preforma"><option value="">-- Preforma a descontar --</option>${opcionesPreformaServ}</select>
+                </div>`;
+            cont.appendChild(div);
+        }
+
+        async function sugerirInsumosGuia(btn) {
+            const row = btn.closest('.linea-guia');
+            const producto = (row.querySelector('.ln-producto').value || '').trim();
             if (!producto) { alert('❌ Escribe primero la botella que llegó.'); return; }
             try {
                 const res = await fetch('/api/servicios/resolver?producto=' + encodeURIComponent(producto));
                 const data = await res.json();
-                if (data.etiqueta) document.getElementById('guiaEtiqueta').value = data.etiqueta.id;
-                if (data.preforma) document.getElementById('guiaPreforma').value = data.preforma.id;
+                if (data.etiqueta) row.querySelector('.ln-etiqueta').value = data.etiqueta.id;
+                if (data.preforma) row.querySelector('.ln-preforma').value = data.preforma.id;
                 if (!data.etiqueta || !data.preforma) {
                     alert('⚠️ No se encontró receta para ese producto. Elige etiqueta y preforma a mano.');
                 }
@@ -2943,14 +2969,18 @@
 
         document.getElementById('formEnvioServicio').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const items = Array.from(document.querySelectorAll('#envLineas .linea-env')).map(row => ({
+                articulo_id: parseInt(row.querySelector('select').value, 10),
+                cantidad: parseFloat(row.querySelector('input').value)
+            }));
+            if (!items.length) { alert('❌ Agrega al menos un insumo.'); return; }
             try {
                 const res = await fetch('/api/servicios/envios', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         servicio: document.getElementById('envServicio').value,
-                        articulo_id: parseInt(document.getElementById('envInsumo').value, 10),
-                        cantidad: parseFloat(document.getElementById('envCantidad').value),
+                        items,
                         usuario: localStorage.getItem('usuario_actual') || 'almacen_user'
                     })
                 });
@@ -2958,6 +2988,8 @@
                 alert((res.ok && data.success ? '✅ ' : '❌ ') + (data.mensaje || 'Respuesta del servidor.'));
                 if (res.ok && data.success) {
                     e.target.reset();
+                    document.getElementById('envLineas').innerHTML = '';
+                    agregarLineaEnvio();
                     cargarInsumosServicio();
                     cargarInventarioAlmacen();
                 }
@@ -2968,15 +3000,19 @@
             e.preventDefault();
             const msg = document.getElementById('msgGuiaServicio');
             const controles = Array.from(document.querySelectorAll('.chk-control:checked')).map(c => parseInt(c.value, 10));
+            const items = Array.from(document.querySelectorAll('#guiaLineas .linea-guia')).map(row => ({
+                producto: (row.querySelector('.ln-producto').value || '').trim(),
+                cantidad: parseFloat(row.querySelector('.ln-cantidad').value),
+                etiqueta_id: parseInt(row.querySelector('.ln-etiqueta').value, 10) || null,
+                preforma_id: parseInt(row.querySelector('.ln-preforma').value, 10) || null
+            }));
+            if (!items.length) { alert('❌ Agrega al menos un producto.'); return; }
             const cuerpo = {
                 servicio: document.getElementById('guiaServicio').value,
                 tipo_doc: document.getElementById('guiaTipo').value,
                 numero: (document.getElementById('guiaNumero').value || '').trim(),
                 fecha: document.getElementById('guiaFecha').value || null,
-                producto: (document.getElementById('guiaProducto').value || '').trim(),
-                cantidad: parseFloat(document.getElementById('guiaCantidad').value),
-                etiqueta_id: parseInt(document.getElementById('guiaEtiqueta').value, 10) || null,
-                preforma_id: parseInt(document.getElementById('guiaPreforma').value, 10) || null,
+                items,
                 controles_ids: controles,
                 usuario: localStorage.getItem('usuario_actual') || 'almacen_user'
             };
@@ -2992,6 +3028,8 @@
                 if (res.ok && data.success) {
                     e.target.reset();
                     document.getElementById('guiaControlesWrap').style.display = 'none';
+                    document.getElementById('guiaLineas').innerHTML = '';
+                    agregarLineaGuia();
                     cargarInsumosServicio();
                     cargarGuiasServicio();
                     cargarInventarioAlmacen();

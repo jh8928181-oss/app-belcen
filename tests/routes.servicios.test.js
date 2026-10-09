@@ -158,13 +158,27 @@ describe('POST /api/servicios/envios', () => {
     const hist = mockQuery.mock.calls.find(c => SQL.historial.test(String(c[0])));
     expect(hist[1][0]).toBe('SALIDA');
   });
+  test('el envio acepta varias lineas en un solo registro', async () => {
+    responder([
+      [SQL.artEnvio, { rows: [{ nombre: 'Et X', categoria: 'ETIQUETAS', stock: '10' }], rowCount: 1 }],
+      [SQL.updateMenos, { rows: [], rowCount: 1 }],
+      [SQL.insEnvio, { rows: [], rowCount: 1 }],
+      [SQL.historial, { rows: [], rowCount: 1 }]
+    ]);
+    const res = await invocar('post', '/api/servicios/envios', {
+      body: { servicio: 'B&M DYLPLAST', items: [{ articulo_id: 4, cantidad: 5 }, { articulo_id: 4, cantidad: 2 }] }
+    });
+    expect(res.statusCode).toBe(200);
+    const ins = mockQuery.mock.calls.filter(c => SQL.insEnvio.test(String(c[0])));
+    expect(ins).toHaveLength(2);
+  });
 });
 
 describe('POST /api/servicios/guias', () => {
   test('el CONTROL no mueve stock y queda pendiente', async () => {
     responder([
       [/SELECT id FROM servicios_guias/, { rows: [], rowCount: 0 }],
-      [SQL.insGuia, { rows: [], rowCount: 1 }]
+      [SQL.insGuia, { rows: [{ id: 5 }], rowCount: 1 }]
     ]);
     const res = await invocar('post', '/api/servicios/guias', {
       body: { servicio: 'SAUÑE', tipo_doc: 'CONTROL', numero: 'CI-1', producto: 'Botella X', cantidad: 100 }
@@ -196,7 +210,9 @@ describe('POST /api/servicios/guias', () => {
       if (SQL.botella.test(texto)) return { rows: [{ id: 30, stock: '100' }], rowCount: 1 };
       if (SQL.updateMenos.test(texto) || SQL.updateMas.test(texto)) return { rows: [], rowCount: 1 };
       if (/UPDATE inventario SET estado/.test(texto)) return { rows: [], rowCount: 1 };
-      if (SQL.insGuia.test(texto) || SQL.historial.test(texto)) return { rows: [], rowCount: 1 };
+      if (/INSERT INTO servicios_guias_items/.test(texto)) return { rows: [], rowCount: 1 };
+      if (SQL.insGuia.test(texto)) return { rows: [{ id: 7 }], rowCount: 1 };
+      if (SQL.historial.test(texto)) return { rows: [], rowCount: 1 };
       return { rows: [], rowCount: 0 };
     });
     const res = await invocar('post', '/api/servicios/guias', { body: GUIA_BASE });
@@ -219,6 +235,40 @@ describe('POST /api/servicios/guias', () => {
     });
     expect(res.statusCode).toBe(400);
     expect(res.cuerpo.mensaje).toMatch('etiqueta');
+  });
+
+  test('la GUIA acepta varios productos con sus insumos', async () => {
+    mockQuery.mockImplementation(async (sql, params) => {
+      const texto = String(sql || '').trim();
+      if (/^(BEGIN|COMMIT|ROLLBACK)$/i.test(texto)) return { rows: [], rowCount: 0 };
+      if (/SELECT id FROM servicios_guias/.test(texto)) return { rows: [], rowCount: 0 };
+      if (SQL.artGuia.test(texto)) {
+        return { rows: [{ nombre: 'Ins ' + params[0], stock: '50' }], rowCount: 1 };
+      }
+      if (SQL.botella.test(texto)) return { rows: [{ id: 31, stock: '0' }], rowCount: 1 };
+      if (/UPDATE inventario SET estado/.test(texto)) return { rows: [], rowCount: 1 };
+      if (/INSERT INTO servicios_guias_items/.test(texto)) return { rows: [], rowCount: 1 };
+      if (SQL.insGuia.test(texto)) return { rows: [{ id: 9 }], rowCount: 1 };
+      if (SQL.historial.test(texto)) return { rows: [], rowCount: 1 };
+      if (SQL.updateMenos.test(texto) || SQL.updateMas.test(texto)) return { rows: [], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    });
+    const res = await invocar('post', '/api/servicios/guias', {
+      body: {
+        servicio: 'B&M DYLPLAST', tipo_doc: 'GUIA', numero: 'G-5', fecha: '2026-10-08',
+        items: [
+          { producto: 'Botella A', cantidad: 1000, etiqueta_id: 10, preforma_id: 20 },
+          { producto: 'Botella B', cantidad: 500, etiqueta_id: 11, preforma_id: 21 }
+        ]
+      }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.cuerpo.mensaje).toMatch('2 producto');
+    const itemsIns = mockQuery.mock.calls.filter(c => /INSERT INTO servicios_guias_items/.test(String(c[0])));
+    expect(itemsIns).toHaveLength(2);
+    expect(itemsIns[0][1][0]).toBe(9);
+    const menos = mockQuery.mock.calls.filter(c => SQL.updateMenos.test(String(c[0])));
+    expect(menos).toHaveLength(4);
   });
 });
 

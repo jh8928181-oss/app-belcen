@@ -2776,6 +2776,13 @@
                         const docTxt = (esGuia ? 'Guía ' : 'Control ') + escapeHtml(g.numero || '');
                         const vinc = (g.controles_ids || []).length
                             ? `<div class="sub">Vincula: ${(g.controles_ids || []).join(', ')}</div>` : '';
+                        const lineas = Array.isArray(g.lineas) && g.lineas.length
+                            ? g.lineas
+                            : [{ producto: g.producto, cantidad: g.cantidad }];
+                        const prodHtml = lineas.map(l =>
+                            `<div>${escapeHtml(l.producto || '')} <b>× ${fmtN(l.cantidad)}</b></div>`
+                        ).join('');
+                        const cantTotal = lineas.reduce((s, l) => s + (Number(l.cantidad) || 0), 0);
                         const fac = !esGuia
                             ? `<span class="badge ${g.estado === 'VINCULADA' ? 'badge-suficiente' : 'badge-dia'}">${g.estado === 'VINCULADA' ? 'vinculada' : 'pendiente de guía'}</span>`
                             : (g.factura_estado === 'VINCULADA'
@@ -2786,8 +2793,8 @@
                                        <button class="btn btn-mini btn-verde" onclick="vincularFacturaServ(${g.id})">Vincular</button>
                                    </div>`);
                         return `<tr><td>${docTxt}${vinc}</td>`
-                            + `<td>${escapeHtml(g.producto || '')}</td>`
-                            + `<td class="text-center">${fmtN(g.cantidad)}</td>`
+                            + `<td>${prodHtml}</td>`
+                            + `<td class="text-center">${fmtN(cantTotal)}</td>`
                             + `<td class="text-center">${g.fecha ? fmtFecha(g.fecha) : '-'}</td>`
                             + `<td class="text-center">${fac}</td></tr>`;
                     }).join('');

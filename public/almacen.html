@@ -3042,6 +3042,10 @@
             try {
                 const res = await fetch('/api/servicios/panel');
                 const data = await res.json();
+                if (data.migracionPendiente) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center">Faltan las tablas de servicios: corre <b>npm run migrate</b> en el servidor.</td></tr>';
+                    return;
+                }
                 const guias = (data.guias || []).slice(0, 15);
                 if (!guias.length) {
                     tbody.innerHTML = '<tr><td colspan="5" class="text-center">Sin movimientos de servicios.</td></tr>';

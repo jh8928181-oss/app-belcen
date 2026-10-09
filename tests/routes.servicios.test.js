@@ -311,4 +311,14 @@ describe('GET /api/servicios', () => {
     const res = await invocar('get', '/api/servicios/controles-pendientes', { query: { servicio: 'X' } });
     expect(res.statusCode).toBe(400);
   });
+
+  test('el panel avisa si faltan las tablas (migracion pendiente)', async () => {
+    const sinTabla = new Error('relation does not exist');
+    sinTabla.code = '42P01';
+    mockQuery.mockRejectedValue(sinTabla);
+    const res = await invocar('get', '/api/servicios/panel');
+    expect(res.statusCode).toBe(200);
+    expect(res.cuerpo.migracionPendiente).toBe(true);
+    expect(res.cuerpo.guias).toEqual([]);
+  });
 });

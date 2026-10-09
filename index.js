@@ -892,6 +892,13 @@ app.get('/api/servicios/panel', async (req, res) => {
         res.json({ success: true, servicios, guias: guias.rows, pendientes: pendientes.rows, sinFactura: sinFactura.rows });
     } catch (err) {
         console.error('Error en panel de servicios:', err);
+        if (err && err.code === '42P01') {
+            // Tablas aun no creadas: la migracion esta pendiente de aplicar.
+            return res.json({
+                success: true, migracionPendiente: true, servicios: [],
+                guias: [], pendientes: [], sinFactura: []
+            });
+        }
         res.status(500).json({ success: false, mensaje: 'Error al cargar el panel de servicios: ' + err.message });
     }
 });

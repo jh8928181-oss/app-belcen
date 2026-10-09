@@ -658,6 +658,11 @@ const filtrados = baseInventario.filter(a =>
                 const res = await fetch('/api/servicios/panel');
                 if (!res.ok) throw new Error('Error del servidor.');
                 const data = await res.json();
+                if (data.migracionPendiente) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">Faltan las tablas de servicios: corre <b>npm run migrate</b> en el servidor.</td></tr>';
+                    document.getElementById('totalServicios').textContent = '';
+                    return;
+                }
                 const servicios = data.servicios || [];
                 const pendPor = {};
                 (data.pendientes || []).forEach(p => { pendPor[p.servicio] = p.n; });

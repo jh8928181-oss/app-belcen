@@ -2757,6 +2757,10 @@
             const cont = document.getElementById('bloquesServiciosBD');
             try {
                 const data = await api('/api/servicios/panel');
+                if (data.migracionPendiente) {
+                    cont.innerHTML = '<p class="sin-registros text-center">Faltan las tablas de servicios: corre <b>npm run migrate</b> en el servidor.</p>';
+                    return;
+                }
                 const porServicio = {};
                 for (const g of (data.guias || [])) {
                     (porServicio[g.servicio] = porServicio[g.servicio] || []).push(g);

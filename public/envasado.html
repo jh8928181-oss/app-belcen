@@ -618,19 +618,25 @@
         }
 
         function resumenEstadoEnvasado() {
-            // Comparación por texto (no por Date): '2026-10-08T00:00:00.000Z'
-            // debe contar como 08/10 aunque el huso horario reste horas.
-            const d = new Date();
-            const hoy = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-            let totalTn = 0;
-            let nHoy = 0;
+            // Totales del ULTIMO día con producción (no del calendario de hoy:
+            // si lo último fue hace días, "Hoy" salía en cero y parecía roto).
+            // Comparación por texto para no mover el día por huso horario.
+            const porDia = {};
             reportesGlobal.forEach(r => {
-                if (String(r.fecha_produccion || '').substring(0, 10) !== hoy) return;
-                nHoy++;
-                totalTn += parseFloat(r.toneladas || 0);
+                const dia = String(r.fecha_produccion || '').substring(0, 10);
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return;
+                const g = porDia[dia] = porDia[dia] || { tm: 0, n: 0 };
+                g.n++;
+                g.tm += parseFloat(r.toneladas || 0);
             });
-            document.getElementById('totalesEstadoEnvasado').textContent =
-                `Hoy: ${totalTn.toFixed(2)} TM · ${nHoy} reportes`;
+            const dias = Object.keys(porDia).sort();
+            const el = document.getElementById('totalesEstadoEnvasado');
+            if (!dias.length) {
+                el.textContent = 'Sin reportes';
+            } else {
+                const ult = dias[dias.length - 1].split('-');
+                el.textContent = `${ult[2]}/${ult[1]}/${ult[0]}: ${porDia[dias[dias.length - 1]].tm.toFixed(2)} TM · ${porDia[dias[dias.length - 1]].n} reportes`;
+            }
             pintarAnteriorEnvasado();
             pintarSiguienteEnvasado();
         }

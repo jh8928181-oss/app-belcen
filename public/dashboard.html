@@ -821,15 +821,18 @@ const lista = Array.isArray(estados) ? estados : [];
                 };
 
                 Object.keys(ids).forEach(area => {
-                    const f = mapa[area];
-                    const activo = f && f.estado === 'EN MARCHA';
-                    const badge = document.getElementById(ids[area].badge);
-                    const hora = document.getElementById(ids[area].hora);
-                    badge.className = 'badge ' + (activo ? 'badge-marcha' : 'badge-parado');
-                    badge.textContent = activo ? '🟢 EN MARCHA' : '🔴 PARADO';
-                    hora.textContent = f && f.fecha_actualizacion
-                        ? 'Actualizado: ' + new Date(f.fecha_actualizacion).toLocaleTimeString('es-PE')
-                        : 'Sin registros';
+                    try {
+                        const f = mapa[area];
+                        const activo = f && f.estado === 'EN MARCHA';
+                        const badge = document.getElementById(ids[area].badge);
+                        const hora = document.getElementById(ids[area].hora);
+                        if (!badge || !hora) return;
+                        badge.className = 'badge ' + (activo ? 'badge-marcha' : 'badge-parado');
+                        badge.textContent = activo ? '🟢 EN MARCHA' : '🔴 PARADO';
+                        hora.textContent = f && f.fecha_actualizacion
+                            ? 'Actualizado: ' + new Date(f.fecha_actualizacion).toLocaleTimeString('es-PE')
+                            : 'Sin registros';
+                    } catch (e) { console.error('Badge ' + area + ':', e); }
                 });
             } catch (err) {
                 console.error(err);
@@ -995,7 +998,7 @@ lista.length + ' reportes · ' + totalTn.toFixed(2) + ' TM · ' + rango;
         cargarEstadoProduccion();
         cargarProductoTerminado();
         registrarAutoRefresco(cargarInventario, 15000);
-        registrarAutoRefresco(cargarEstadoProduccion, 15000);
+        registrarAutoRefresco(cargarEstadoProduccion, 10000);
         registrarAutoRefresco(cargarProductoTerminado, 30000);
     </script>
 </body>

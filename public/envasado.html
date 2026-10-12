@@ -464,6 +464,14 @@
             if (!el) return;
             // "Anterior" es el ultimo reporte y "En produccion" es el primero de
             // la secuencia: son cosas distintas y el operador las ve separadas.
+            // Si hay una produccion abierta, esa es la que se esta envasando.
+            const abierta = Array.isArray(reportesGlobal)
+                ? reportesGlobal.find(r => r.estado === 'EN_CURSO')
+                : null;
+            if (abierta) {
+                el.innerHTML = `⏭️ En producción: <b>${escEnvasado(abierta.presentacion)}</b> <span class="plan-vacio-inline">en curso</span>`;
+                return;
+            }
             if (planEnvasado && planEnvasado.cola.length) {
                 el.innerHTML = `⏭️ En producción: <b>${escEnvasado(planEnvasado.cola[0].nombre_producto || planEnvasado.cola[0].producto_key)}</b>`
                     + (planEnvasado.cola.length > 1 ? ` · luego: <b>${escEnvasado(planEnvasado.cola.length - 1)}</b> más` : '');
@@ -475,7 +483,11 @@
         function pintarAnteriorEnvasado() {
             const el = document.getElementById('anteriorEnvasado');
             if (!el) return;
-            const ult = Array.isArray(reportesGlobal) && reportesGlobal.length ? reportesGlobal[0] : null;
+            // Solo reportes cerrados con cantidad: la produccion abierta aun
+            // no tiene cantidad (sale al cerrarla).
+            const ult = Array.isArray(reportesGlobal)
+                ? reportesGlobal.find(r => r.estado !== 'EN_CURSO' && r.cantidad_cajas !== null && r.cantidad_cajas !== undefined)
+                : null;
             el.innerHTML = ult
                 ? `⬅️ Anterior: <b>${ult.presentacion}</b> · <b>${ult.cantidad_cajas}</b> cajas`
                 : '⬅️ Anterior: —';
@@ -606,15 +618,21 @@
         }
 
         function resumenEstadoEnvasado() {
-            let totalCajas = 0;
+            // Comparación por texto (no por Date): '2026-10-08T00:00:00.000Z'
+            // debe contar como 08/10 aunque el huso horario reste horas.
+            const d = new Date();
+            const hoy = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
             let totalTn = 0;
+            let nHoy = 0;
             reportesGlobal.forEach(r => {
-                totalCajas += parseInt(r.cantidad_cajas || 0, 10);
+                if (String(r.fecha_produccion || '').substring(0, 10) !== hoy) return;
+                nHoy++;
                 totalTn += parseFloat(r.toneladas || 0);
             });
             document.getElementById('totalesEstadoEnvasado').textContent =
-                `Hoy: ${totalCajas} cajas · ${totalTn.toFixed(2)} TM · ${reportesGlobal.length} reportes`;
+                `Hoy: ${totalTn.toFixed(2)} TM · ${nHoy} reportes`;
             pintarAnteriorEnvasado();
+            pintarSiguienteEnvasado();
         }
 
         async function cargarEstadoEnvasado() {

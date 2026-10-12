@@ -896,12 +896,17 @@ const lista = Array.isArray(estados) ? estados : [];
                         : 'sin registros';
                     document.getElementById('resumenEnvasado').textContent =
 lista.length + ' reportes · ' + totalTn.toFixed(2) + ' TM · ' + rango;
-                    // Producto envasado (anterior): el último reporte de un
+                    // Producto envasado (anterior): el último reporte CERRADO de un
                     // producto distinto al que está en marcha; si solo hay uno,
                     // ese mismo. La lista viene ordenada del más nuevo al más viejo.
-                    const marcha = norm(productoEnMarchaEnvasado);
+                    // Abierta manda: si hay producción en curso, esa es la que se
+                    // está envasando (por encima de la secuencia armada).
+                    const abierta = lista.find(r => r.estado === 'EN_CURSO');
+                    const marchaNombre = (abierta && abierta.presentacion) ? abierta.presentacion : productoEnMarchaEnvasado;
+                    const marcha = norm(marchaNombre);
                     let previo = '';
                     for (const r of lista) {
+                        if (r.estado === 'EN_CURSO') continue;
                         const nom = String(r.presentacion || r.producto || '').trim();
                         if (!nom) continue;
                         const n = norm(nom);
@@ -909,8 +914,8 @@ lista.length + ' reportes · ' + totalTn.toFixed(2) + ' TM · ' + rango;
                     }
                     document.getElementById('previoEnvasado').textContent = previo ? conCajas(previo) : '—';
                     const elActual = document.getElementById('planActualEnvasado');
-                    if (productoEnMarchaEnvasado && !/receta no vigente/i.test(elActual.textContent)) {
-                        elActual.textContent = conCajas(productoEnMarchaEnvasado);
+                    if (marchaNombre && !/receta no vigente/i.test(elActual.textContent)) {
+                        elActual.textContent = conCajas(marchaNombre);
                     }
                 }
             } catch (err) {

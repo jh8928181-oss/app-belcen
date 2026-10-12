@@ -3003,6 +3003,124 @@ function safeParseJson(str) {
     }
 }
 
+// Núcleo compartido entre reportar directo (/api/produccion/reporte) y cerrar
+// una producción abierta (/api/produccion/cerrar): descuenta insumos por
+// receta, suma producto terminado e historialea. No abre transacción ni
+// escribe la fila del reporte: eso lo hace quien llama. Los errores llevan
+// .status (y a veces .detalle) para que la ruta responda bien tras el ROLLBACK.
+async function aplicarMovimientosProduccion(client, req, { producto_tipo, presentacion, cajas, usuario }) {
+    // El motor devuelve hojas de inventario ya aplanadas (insumo_id) con
+    // merma y stock de seguridad aplicados: no hay segunda búsqueda por
+    // texto que pueda fallar o golpear otro artículo con nombre parecido.
+    const insumosADescontar = await calcularInsumosProduccion(producto_tipo, cajas, client);
+    if (!insumosADescontar || insumosADescontar.length === 0) {
+        const e = new Error(`No existe receta vigente para "${presentacion}". Contacte a producción para registrar la receta desde el módulo de Recetas.`);
+        e.status = 400;
+        throw e;
+    }
+
+    // Un solo SELECT ... FOR UPDATE, ordenado por id: todas las
+    // transacciones toman los bloqueos en el mismo orden y no se
+    // traban entre sí. Sin esto, dos producciones simultáneas del mismo
+    // producto se bloquean mutuamente y una falla.
+    const obligatorios = insumosADescontar.filter(i => i.obligatorio !== false)
+        .sort((a, b) => a.insumo_id - b.insumo_id);
+    const stockPorId = new Map();
+    if (obligatorios.length) {
+        const st = await client.query(
+            'SELECT id, nombre, stock, unidad_medida, categoria FROM inventario WHERE id = ANY($1::int[]) ORDER BY id FOR UPDATE',
+            [obligatorios.map(i => i.insumo_id)]
+        );
+        st.rows.forEach(r => stockPorId.set(r.id, r));
+    }
+
+    const faltantes = [];
+    const faltantesId = [];
+    for (const insumo of obligatorios) {
+        const fila = stockPorId.get(insumo.insumo_id);
+        const stockActual = fila ? Number(fila.stock || 0) : 0;
+        if (stockActual < insumo.cantidad) {
+            faltantes.push(`${insumo.nombre}: requiere ${insumo.cantidad} | stock: ${stockActual}`);
+            if (!fila) faltantesId.push(insumo.insumo_id);
+        }
+    }
+    if (faltantesId.length) {
+        const e = new Error('La receta apunta a insumos que no existen en inventario. Revisa las líneas de la receta.');
+        e.status = 409;
+        e.detalle = faltantes;
+        throw e;
+    }
+    if (faltantes.length > 0) {
+        const e = new Error('Stock insuficiente. No se registró nada:\n- ' + faltantes.join('\n- '));
+        e.status = 400;
+        throw e;
+    }
+
+    // El desglose guardado incluye el id del insumo: al borrar el reporte
+    // se devuelve exactamente lo que se descontó, aunque la receta haya
+    // cambiado desde entonces.
+    const desglose = obligatorios.map(insumo => {
+        const fila = stockPorId.get(insumo.insumo_id);
+        return {
+            nombre: insumo.nombre,
+            articulo_id: insumo.insumo_id,
+            cantidad: Number(insumo.cantidad),
+            unidad_medida: insumo.unidad || (fila ? fila.unidad_medida : 'UNIDADES'),
+            categoria: insumo.categoria || (fila ? fila.categoria : '')
+        };
+    });
+
+    for (const insumo of obligatorios) {
+        const fila = stockPorId.get(insumo.insumo_id);
+        const stockAnterior = Number(fila.stock) || 0;
+        const desc = await client.query(
+            'UPDATE inventario SET stock = stock - $1 WHERE id = $2 RETURNING stock',
+            [insumo.cantidad, insumo.insumo_id]
+        );
+        if (desc.rowCount !== 1) {
+            throw new Error(`No se pudo descontar el stock de "${insumo.nombre}".`);
+        }
+        const stockNuevo = Number(desc.rows[0].stock);
+        await actualizarEstadoArticulo(client, insumo.nombre, insumo.insumo_id);
+        await registrarHistorial(client, {
+            tipo: 'PRODUCCION', origen: 'envasado',
+            producto: insumo.nombre,
+            articulo_id: insumo.insumo_id,
+            cantidad: Number(insumo.cantidad), tipo_cambio: 'RESTA',
+            stock_anterior: stockAnterior, stock_nuevo: stockNuevo,
+            usuario: usuarioResponsable(req, usuario),
+            referencia: 'Descuento por envasado: ' + cajas + ' cajas de ' + presentacion
+        });
+    }
+
+    if (producto_tipo) {
+        // El nombre legible sale de la receta (que es donde vive para los
+        // productos nuevos); el mapa fijo queda como respaldo.
+        const nombreLegible = (insumosADescontar[0] && insumosADescontar[0].nombre_producto)
+            || PRODUCTOS_TERMINADOS_MAP[producto_tipo]
+            || presentacion;
+        const previo = await client.query('SELECT stock_cajas FROM producto_terminado WHERE producto_key = $1', [producto_tipo]);
+        const stockAnteriorPT = previo.rows.length > 0 ? Number(previo.rows[0].stock_cajas) || 0 : 0;
+        await client.query(`
+            INSERT INTO producto_terminado (producto_key, nombre_producto, stock_cajas)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (producto_key)
+            DO UPDATE SET stock_cajas = producto_terminado.stock_cajas + EXCLUDED.stock_cajas;
+        `, [producto_tipo, nombreLegible, cajas]);
+        await registrarHistorial(client, {
+            tipo: 'PRODUCCION', origen: 'envasado',
+            producto: nombreLegible,
+            producto_key: producto_tipo,
+            cantidad: cajas, tipo_cambio: 'SUMA',
+            stock_anterior: stockAnteriorPT, stock_nuevo: stockAnteriorPT + cajas,
+            usuario: usuarioResponsable(req, usuario),
+            referencia: 'Producción de ' + cajas + ' cajas - ' + presentacion
+        });
+    }
+
+    return desglose;
+}
+
 app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
     try {
         const { fecha_produccion, presentacion, cantidad_cajas, toneladas, observaciones, usuario } = req.body;
@@ -3026,119 +3144,8 @@ app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
             await client.query('BEGIN');
             await client.query(`SELECT set_config('app.current_user', $1, true)`, [usuarioResponsable(req, usuario) || 'produccion']);
             await exigirLineaEnMarcha(client, 'envasado');
-
-            // El motor devuelve hojas de inventario ya aplanadas (insumo_id) con
-            // merma y stock de seguridad aplicados: no hay segunda búsqueda por
-            // texto que pueda fallar o golpear otro artículo con nombre parecido.
-            const insumosADescontar = await calcularInsumosProduccion(producto_tipo, cajas, client);
-            if (!insumosADescontar || insumosADescontar.length === 0) {
-                await client.query('ROLLBACK');
-                return res.status(400).json({ success: false, mensaje: `No existe receta vigente para "${presentacion}". Contacte a producción para registrar la receta desde el módulo de Recetas.` });
-            }
-
-            // Un solo SELECT ... FOR UPDATE, ordenado por id: todas las
-            // transacciones toman los bloqueos en el mismo orden y no se
-            // traban entre sí. Sin esto, dos producciones simultáneas del mismo
-            // producto se bloquean mutuamente y una falla.
-            const obligatorios = insumosADescontar.filter(i => i.obligatorio !== false)
-                .sort((a, b) => a.insumo_id - b.insumo_id);
-            const stockPorId = new Map();
-            if (obligatorios.length) {
-                const st = await client.query(
-                    'SELECT id, nombre, stock, unidad_medida, categoria FROM inventario WHERE id = ANY($1::int[]) ORDER BY id FOR UPDATE',
-                    [obligatorios.map(i => i.insumo_id)]
-                );
-                st.rows.forEach(r => stockPorId.set(r.id, r));
-            }
-
-            const faltantes = [];
-            const faltantesId = [];
-            for (const insumo of obligatorios) {
-                const fila = stockPorId.get(insumo.insumo_id);
-                const stockActual = fila ? Number(fila.stock || 0) : 0;
-                if (stockActual < insumo.cantidad) {
-                    faltantes.push(`${insumo.nombre}: requiere ${insumo.cantidad} | stock: ${stockActual}`);
-                    if (!fila) faltantesId.push(insumo.insumo_id);
-                }
-            }
-            if (faltantesId.length) {
-                await client.query('ROLLBACK');
-                return res.status(409).json({
-                    success: false,
-                    mensaje: 'La receta apunta a insumos que no existen en inventario. Revisa las líneas de la receta.',
-                    errores: faltantes
-                });
-            }
-            if (faltantes.length > 0) {
-                await client.query('ROLLBACK');
-                return res.status(400).json({
-                    success: false,
-                    mensaje: 'Stock insuficiente. No se registró nada:\n- ' + faltantes.join('\n- ')
-                });
-            }
-
-            // El desglose guardado incluye el id del insumo: al borrar el reporte
-            // se devuelve exactamente lo que se descontó, aunque la receta haya
-            // cambiado desde entonces.
-            const desglose = obligatorios.map(insumo => {
-                const fila = stockPorId.get(insumo.insumo_id);
-                return {
-                    nombre: insumo.nombre,
-                    articulo_id: insumo.insumo_id,
-                    cantidad: Number(insumo.cantidad),
-                    unidad_medida: insumo.unidad || (fila ? fila.unidad_medida : 'UNIDADES'),
-                    categoria: insumo.categoria || (fila ? fila.categoria : '')
-                };
-            });
+            const desglose = await aplicarMovimientosProduccion(client, req, { producto_tipo, presentacion, cajas, usuario });
             const desgloseJson = JSON.stringify(desglose);
-
-            for (const insumo of obligatorios) {
-                const fila = stockPorId.get(insumo.insumo_id);
-                const stockAnterior = Number(fila.stock) || 0;
-                const desc = await client.query(
-                    'UPDATE inventario SET stock = stock - $1 WHERE id = $2 RETURNING stock',
-                    [insumo.cantidad, insumo.insumo_id]
-                );
-                if (desc.rowCount !== 1) {
-                    throw new Error(`No se pudo descontar el stock de "${insumo.nombre}".`);
-                }
-                const stockNuevo = Number(desc.rows[0].stock);
-                await actualizarEstadoArticulo(client, insumo.nombre, insumo.insumo_id);
-                await registrarHistorial(client, {
-                    tipo: 'PRODUCCION', origen: 'envasado',
-                    producto: insumo.nombre,
-                    articulo_id: insumo.insumo_id,
-                    cantidad: Number(insumo.cantidad), tipo_cambio: 'RESTA',
-                    stock_anterior: stockAnterior, stock_nuevo: stockNuevo,
-                    usuario: usuarioResponsable(req, usuario),
-                    referencia: 'Descuento por envasado: ' + cajas + ' cajas de ' + presentacion
-                });
-            }
-
-            if (producto_tipo) {
-                // El nombre legible sale de la receta (que es donde vive para los
-                // productos nuevos); el mapa fijo queda como respaldo.
-                const nombreLegible = (insumosADescontar[0] && insumosADescontar[0].nombre_producto)
-                    || PRODUCTOS_TERMINADOS_MAP[producto_tipo]
-                    || presentacion;
-                const previo = await client.query('SELECT stock_cajas FROM producto_terminado WHERE producto_key = $1', [producto_tipo]);
-                const stockAnteriorPT = previo.rows.length > 0 ? Number(previo.rows[0].stock_cajas) || 0 : 0;
-                await client.query(`
-                    INSERT INTO producto_terminado (producto_key, nombre_producto, stock_cajas)
-                    VALUES ($1, $2, $3)
-                    ON CONFLICT (producto_key) 
-                    DO UPDATE SET stock_cajas = producto_terminado.stock_cajas + EXCLUDED.stock_cajas;
-                `, [producto_tipo, nombreLegible, cajas]);
-                await registrarHistorial(client, {
-                    tipo: 'PRODUCCION', origen: 'envasado',
-                    producto: nombreLegible,
-                    producto_key: producto_tipo,
-                    cantidad: cajas, tipo_cambio: 'SUMA',
-                    stock_anterior: stockAnteriorPT, stock_nuevo: stockAnteriorPT + cajas,
-                    usuario: usuarioResponsable(req, usuario),
-                    referencia: 'Producción de ' + cajas + ' cajas - ' + presentacion
-                });
-            }
 
             // producto_key queda guardado en el reporte: al borrarlo, las cajas
             // se devuelven a la clave que realmente se produjo. Antes se
@@ -3161,7 +3168,107 @@ app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
         }
     } catch (err) {
         console.error("Error en reporte producción:", err);
+        res.status(err.status || 500).json({
+            success: false,
+            mensaje: err.message,
+            ...(err.detalle ? { errores: err.detalle } : {})
+        });
+    }
+});
+
+// --- ENVASADO: abrir una produccion eligiendo solo el producto. La cantidad
+// sale al cerrarla. Solo puede haber una abierta a la vez: asi el cierre
+// pregunta "que producto sigue" y la cadena no se rompe.
+app.post('/api/produccion/iniciar', gProduccion, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { fecha_produccion, presentacion, observaciones, usuario } = req.body;
+        if (!presentacion || !String(presentacion).trim()) {
+            return res.status(400).json({ success: false, mensaje: 'Debe seleccionar el producto a envasar.' });
+        }
+        const producto_tipo = await resolverProductoKey(presentacion);
+        if (!producto_tipo) {
+            return res.status(400).json({ success: false, mensaje: `La presentación "${presentacion}" no tiene receta registrada.` });
+        }
+        await client.query('BEGIN');
+        await client.query(`SELECT set_config('app.current_user', $1, true)`, [usuarioResponsable(req, usuario) || 'produccion']);
+        await exigirLineaEnMarcha(client, 'envasado');
+        const abierta = await client.query(
+            `SELECT id, presentacion FROM reportes_produccion WHERE estado = 'EN_CURSO' ORDER BY id DESC LIMIT 1`
+        );
+        if (abierta.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, mensaje: `Ya hay una producción en curso ("${abierta.rows[0].presentacion}"). Ciérrala primero.` });
+        }
+        const ins = await client.query(
+            `INSERT INTO reportes_produccion (fecha_produccion, presentacion, cantidad_cajas, unidad_medida, toneladas, observaciones, usuario_registro, producto_key, estado)
+             VALUES ($1, $2, NULL, 'CAJAS', NULL, $3, $4, $5, 'EN_CURSO') RETURNING id`,
+            [fecha_produccion || new Date(), presentacion, observaciones || '', usuario || 'envasado_user', producto_tipo]
+        );
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: `Producción de "${presentacion}" iniciada.`, reporte_id: ins.rows[0].id });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('Error al iniciar producción:', err);
         res.status(err.status || 500).json({ success: false, mensaje: err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// --- ENVASADO: cerrar la produccion en curso con su cantidad producida.
+// Recien aqui se descuentan insumos y se suman cajas (mismo nucleo que el
+// reporte directo). Despues el operador elige que producto sigue.
+app.post('/api/produccion/cerrar', gProduccion, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { reporte_id, cantidad_cajas, toneladas, usuario } = req.body;
+        const cajas = Number(cantidad_cajas);
+        const tm = toneladas === undefined || toneladas === null || toneladas === '' ? 0 : Number(toneladas);
+        if (!Number.isInteger(cajas) || cajas <= 0 || cajas > 1000000) {
+            return res.status(400).json({ success: false, mensaje: 'Cantidad de cajas inválida. Debe ser un número entero mayor a 0.' });
+        }
+        if (isNaN(tm) || tm < 0) {
+            return res.status(400).json({ success: false, mensaje: 'Toneladas inválidas.' });
+        }
+        await client.query('BEGIN');
+        await client.query(`SELECT set_config('app.current_user', $1, true)`, [usuarioResponsable(req, usuario) || 'produccion']);
+        const repRes = await client.query('SELECT * FROM reportes_produccion WHERE id = $1 FOR UPDATE', [reporte_id]);
+        if (!repRes.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'La producción ya no existe.' });
+        }
+        const reporte = repRes.rows[0];
+        if (reporte.estado !== 'EN_CURSO') {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, mensaje: 'Esa producción ya está cerrada.' });
+        }
+        const producto_tipo = (reporte.producto_key && String(reporte.producto_key).trim())
+            ? String(reporte.producto_key).trim()
+            : await resolverProductoKey(reporte.presentacion, client);
+        if (!producto_tipo) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: `La presentación "${reporte.presentacion}" no tiene receta registrada.` });
+        }
+        await aplicarMovimientosProduccion(client, req, {
+            producto_tipo, presentacion: reporte.presentacion, cajas, usuario
+        });
+        await client.query(
+            `UPDATE reportes_produccion SET cantidad_cajas = $1, toneladas = $2, estado = 'CERRADO' WHERE id = $3`,
+            [cajas, tm, reporte_id]
+        );
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: `Producción de "${reporte.presentacion}" cerrada con ${cajas} cajas.`, reporte_id });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('Error al cerrar producción:', err);
+        res.status(err.status || 500).json({
+            success: false,
+            mensaje: err.message,
+            ...(err.detalle ? { errores: err.detalle } : {})
+        });
+    } finally {
+        client.release();
     }
 });
 
@@ -3242,6 +3349,14 @@ app.post('/api/produccion/eliminar', gProduccion, async (req, res) => {
             return res.status(404).json({ success: false, mensaje: 'El reporte ya no existe (pudo haber sido cerrado).' });
         }
         const reporte = repRes.rows[0];
+
+        // Una producción abierta nunca movió stock: se borra directo, sin
+        // devoluciones ni avisos de cajas despachadas.
+        if (reporte.estado === 'EN_CURSO') {
+            await client.query('DELETE FROM reportes_produccion WHERE id = $1', [reporte_id]);
+            await client.query('COMMIT');
+            return res.json({ success: true, mensaje: 'Producción en curso eliminada (no había movimientos de stock).' });
+        }
 
         // La clave guardada manda. Solo si el reporte es anterior a la migración se
         // re-resuelve por nombre, que es el camino legacy y puede fallar si la

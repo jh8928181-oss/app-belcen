@@ -279,14 +279,14 @@
                 </select>
             </div>
 
-            <div>
+            <div style="display:none;">
                 <label><b>Cantidad Producida (Cajas):</b></label>
-                <input type="number" id="cantidad_cajas" name="cantidad_cajas" min="1" placeholder="Ej. 100" required>
+                <input type="number" id="cantidad_cajas" name="cantidad_cajas" min="1" placeholder="Ej. 100">
             </div>
 
-            <div>
+            <div style="display:none;">
                 <label><b>Toneladas (TM):</b></label>
-                <input type="number" step="0.01" id="toneladas" name="toneladas" placeholder="Ej. 1.5" required>
+                <input type="number" step="0.01" id="toneladas" name="toneladas" placeholder="Ej. 1.5">
             </div>
 
             <div id="grupoTapaDinamica" class="tapa-box span-2" style="display: none;">
@@ -308,21 +308,22 @@
                 </select>
             </div>
 
-            <div class="span-2">
+            <div class="span-2" style="display:none;">
                 <label><b>Observaciones (N° de Lote / Detalles adicionales):</b></label>
                 <textarea id="observaciones" name="observaciones" rows="2" placeholder="Ej. Lote: 0885 | Observaciones de línea..."></textarea>
             </div>
 
             <div class="span-2">
-                <button type="submit" class="btn-accion">💾 REGISTRAR PRODUCCIÓN EN CURSO</button>
+                <button type="submit" class="btn-accion">▶ INICIAR PRODUCCIÓN (solo elige el producto)</button>
             </div>
             </form>
         </div>
 
         <!-- VISTA 2: PRODUCCIÓN ACTIVA -->
         <div id="vistaActiva" class="card sec-azul" style="display: none;">
-            <div style="text-align: left;">
+            <div style="text-align: left; display:flex; gap:10px; align-items:center;">
                 <button onclick="mostrarMenu()" class="btn-volver">← Volver al menú</button>
+                <button onclick="cierreProduccion()" class="btn-accion" style="margin-left:auto;">🔒 Cierre de producción</button>
             </div>
                 <h3 class="h3-azul">PRODUCCIÓN ACTIVA (DÍA EN CURSO)</h3>
                 <div class="tabla-wrap tabla-card-movil">
@@ -520,20 +521,8 @@
         }
 
         function verificarSeleccionTapa() {
-            const presentacion = document.getElementById('presentacion').value;
-            const grupoTapa = document.getElementById('grupoTapaDinamica');
-
-            const requiereTapa = presentacion.includes('500 ml') || 
-                                 presentacion.includes('900 ml') || 
-                                 presentacion.includes('1 Lt') || 
-                                 presentacion.includes('800 ml') || 
-                                 presentacion.includes('3 Lt');
-
-            if (requiereTapa) {
-                grupoTapa.style.display = 'block';
-            } else {
-                grupoTapa.style.display = 'none';
-            }
+            // Al iniciar solo se elige el producto: la tapa no se pide aquí.
+            document.getElementById('grupoTapaDinamica').style.display = 'none';
         }
 
         function fechaLocalISO(iso) {
@@ -577,15 +566,18 @@
                     const fechaStr = row.fecha_produccion ? fechaLocalISO(row.fecha_produccion) : '';
                     sumaTn += parseFloat(row.toneladas || 0);
                     const presentacionSegura = String(row.presentacion || '').replace(/'/g, "\\'");
+                    const esAbierta = row.estado === 'EN_CURSO';
+                    const cantTxt = (row.cantidad_cajas === null || row.cantidad_cajas === undefined) ? '—' : row.cantidad_cajas;
+                    const tnTxt = (row.toneladas === null || row.toneladas === undefined) ? '—' : row.toneladas;
                     tbody.innerHTML += `
                         <tr>
                             <td>${fechaStr}</td>
-                            <td><b>${row.presentacion}</b></td>
-                            <td class="text-center">${row.cantidad_cajas}</td>
+                            <td><b>${esAbierta ? '🟢 ' : ''}${row.presentacion}</b></td>
+                            <td class="text-center">${cantTxt}</td>
                             <td class="text-center">${row.unidad_medida || 'CAJAS'}</td>
-                            <td class="text-center">${row.toneladas}</td>
-                            <td>${row.observaciones || '-'}</td>
-                            <td class="text-center"><button onclick="eliminarReporte(${row.id}, '${presentacionSegura}')" class="btn-comer" title="Eliminar reporte"><span class="ico-papelera"><span class="tapa"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/></svg></span><span class="base"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></span></span><span class="texto-papelera"><span class="letra">D</span><span class="letra">e</span><span class="letra">l</span><span class="letra">e</span><span class="letra">t</span><span class="letra">e</span></span></button></td>
+                            <td class="text-center">${tnTxt}</td>
+                            <td>${esAbierta ? 'En curso…' : (row.observaciones || '-')}</td>
+                            <td class="text-center">${esAbierta ? `<button onclick="cerrarProduccionPorId(${row.id}, '${presentacionSegura}')" class="btn-accion" style="margin-right:6px;">🔒 Cerrar</button>` : ''}<button onclick="eliminarReporte(${row.id}, '${presentacionSegura}')" class="btn-comer" title="Eliminar reporte"><span class="ico-papelera"><span class="tapa"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/></svg></span><span class="base"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></span></span><span class="texto-papelera"><span class="letra">D</span><span class="letra">e</span><span class="letra">l</span><span class="letra">e</span><span class="letra">t</span><span class="letra">e</span></span></button></td>
                         </tr>
                     `;
                 });
@@ -673,56 +665,121 @@
         }
 
         let enviandoEnvasado = false;
+
+        // Inicia una producción eligiendo SOLO el producto. La cantidad sale
+        // al cerrarla. También se usa cuando el cierre pregunta qué sigue.
+        async function iniciarProducto(presentacion, fecha) {
+            const res = await fetch('/api/produccion/iniciar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fecha_produccion: fecha || new Date().toISOString().substring(0, 10),
+                    presentacion,
+                    usuario: localStorage.getItem('usuario_actual') || 'envasado_user'
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                alert('✅ ' + data.mensaje);
+                document.getElementById('formEnvasado').reset();
+                document.getElementById('fecha_produccion').valueAsDate = new Date();
+                cargarProduccionActiva();
+                return true;
+            }
+            alert('❌ ' + (data.mensaje || 'Error al iniciar.'));
+            return false;
+        }
+
         document.getElementById('formEnvasado').addEventListener('submit', async (e) => {
             e.preventDefault();
             if (enviandoEnvasado) return;
             enviandoEnvasado = true;
             const btnEnviar = e.submitter || document.querySelector('#formEnvasado button[type="submit"]');
             if (btnEnviar) btnEnviar.disabled = true;
-
-            const presentacionSeleccionada = document.getElementById('presentacion').value;
-            const observacionesTexto = document.getElementById('observaciones').value;
-            const grupoTapaVisible = document.getElementById('grupoTapaDinamica').style.display === 'block';
-
-            let observacionesFinales = observacionesTexto;
-            if (grupoTapaVisible) {
-                const tapaSeleccionada = document.getElementById('tapa_elegida').value;
-                observacionesFinales = observacionesFinales ? `${observacionesFinales} | Tapa: ${tapaSeleccionada}` : `Tapa: ${tapaSeleccionada}`;
-            }
-
-            const formData = {
-                fecha_produccion: document.getElementById('fecha_produccion').value,
-                presentacion: presentacionSeleccionada,
-                cantidad_cajas: parseInt(document.getElementById('cantidad_cajas').value),
-                toneladas: parseFloat(document.getElementById('toneladas').value),
-                observaciones: observacionesFinales,
-                usuario: localStorage.getItem('usuario_actual') || 'envasado_user'
-            };
-
             try {
-                const res = await fetch('/api/produccion/reporte', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(formData)
-                });
-                const data = await res.json();
-                if (res.ok && data.success) {
-                    alert('✅ Producción registrada correctamente.');
-                    document.getElementById('formEnvasado').reset();
-                    document.getElementById('fecha_produccion').valueAsDate = new Date();
-                    document.getElementById('grupoTapaDinamica').style.display = 'none';
-                    cargarProduccionActiva();
-                } else {
-                    alert('❌ ' + (data.mensaje || 'Error al registrar.'));
+                const presentacionSeleccionada = document.getElementById('presentacion').value;
+                if (!presentacionSeleccionada) {
+                    alert('❌ Seleccione el producto a envasar.');
+                    return;
                 }
-            } catch (err) {
-                console.error(err);
-                alert('Error de conexión con el servidor.');
+                await iniciarProducto(
+                    presentacionSeleccionada,
+                    document.getElementById('fecha_produccion').value || null
+                );
             } finally {
                 enviandoEnvasado = false;
                 if (btnEnviar) btnEnviar.disabled = false;
             }
         });
+
+        let cerrandoProduccion = false;
+        // Cierra la producción en curso pidiendo la cantidad recién al final.
+        async function cerrarProduccionPorId(id, presentacion) {
+            if (cerrandoProduccion) return;
+            const cantTxt = prompt(`Cerrar "${presentacion}".\n\nCantidad producida (cajas):`);
+            if (cantTxt === null) return;
+            const cajas = parseInt(cantTxt, 10);
+            if (!Number.isInteger(cajas) || cajas <= 0) { alert('❌ Cantidad inválida.'); return; }
+            const tmTxt = prompt(`Toneladas (TM) de "${presentacion}":`, '0');
+            if (tmTxt === null) return;
+            const tm = parseFloat(tmTxt);
+            if (isNaN(tm) || tm < 0) { alert('❌ Toneladas inválidas.'); return; }
+            cerrandoProduccion = true;
+            try {
+                const res = await fetch('/api/produccion/cerrar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        reporte_id: id,
+                        cantidad_cajas: cajas,
+                        toneladas: tm,
+                        usuario: localStorage.getItem('usuario_actual') || 'envasado_user'
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    cargarProduccionActiva();
+                    preguntarSiguiente(presentacion);
+                } else {
+                    alert('❌ ' + (data.mensaje || 'Error al cerrar.'));
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Error de conexión con el servidor.');
+            } finally {
+                cerrandoProduccion = false;
+            }
+        }
+
+        // Botón "Cierre de producción": cierra la que esté en curso.
+        function cierreProduccion() {
+            const abiertas = (reportesGlobal || []).filter(r => r.estado === 'EN_CURSO');
+            if (!abiertas.length) { alert('No hay producción en curso.'); return; }
+            cerrarProduccionPorId(abiertas[0].id, abiertas[0].presentacion);
+        }
+
+        // Al cerrar se pregunta qué producto sigue: el siguiente de la
+        // secuencia si hay, si no se ofrece elegir otro, si no se termina.
+        async function preguntarSiguiente(nombreCerrado) {
+            let siguiente = '';
+            try {
+                const res = await fetch('/api/linea-plan');
+                const plan = await res.json();
+                const cola = (plan && plan.envasado) || [];
+                const norm = s => String(s || '').toLowerCase().trim();
+                const idx = cola.findIndex(it => norm(it.nombre_producto || it.producto_key) === norm(nombreCerrado));
+                const cand = idx >= 0 ? cola[idx + 1] : cola[0];
+                if (cand) siguiente = cand.nombre_producto || cand.producto_key;
+            } catch (e) { console.error(e); }
+            if (siguiente && confirm(`✅ Producción cerrada.\n\n¿Sigue "${siguiente}"?`)) {
+                await iniciarProducto(siguiente, null);
+                return;
+            }
+            if (confirm('✅ Producción cerrada.\n\n¿Iniciar otro producto ahora?')) {
+                mostrarVista('reportar');
+                setTimeout(() => document.getElementById('presentacion').focus(), 100);
+            }
+        }
 
         async function eliminarReporte(id, presentacion) {
             if (!confirm(`¿Eliminar el reporte de "${presentacion}"?\n\nSe devolverán los insumos al inventario y se quitarán las cajas de producto terminado. Podrás volver a reportarlo.`)) return;

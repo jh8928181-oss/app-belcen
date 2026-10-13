@@ -3043,6 +3043,10 @@ function safeParseJson(str) {
 // receta, suma producto terminado e historialea. No abre transacción ni
 // escribe la fila del reporte: eso lo hace quien llama. Los errores llevan
 // .status (y a veces .detalle) para que la ruta responda bien tras el ROLLBACK.
+//
+// Si falta stock de un insumo, NO se bloquea: se descuenta lo que hay, el
+// producto terminado igual se registra y lo que falto queda PENDIENTE para
+// que almacén lo revise y lo salde contra un reporte (soplado) o una guía.
 async function aplicarMovimientosProduccion(client, req, { producto_tipo, presentacion, cajas, usuario }) {
     // El motor devuelve hojas de inventario ya aplanadas (insumo_id) con
     // merma y stock de seguridad aplicados: no hay segunda búsqueda por
@@ -3069,63 +3073,50 @@ async function aplicarMovimientosProduccion(client, req, { producto_tipo, presen
         st.rows.forEach(r => stockPorId.set(r.id, r));
     }
 
-    const faltantes = [];
-    const faltantesId = [];
+    // Se descuenta lo que hay (sin dejar el stock en negativo: hay CHECK) y
+    // lo que falte queda pendiente para que almacén lo revise y lo salde
+    // contra un reporte de soplado o una guía de ingreso.
+    const desglose = [];
+    const pendientes = [];
     for (const insumo of obligatorios) {
         const fila = stockPorId.get(insumo.insumo_id);
         const stockActual = fila ? Number(fila.stock || 0) : 0;
-        if (stockActual < insumo.cantidad) {
-            faltantes.push(`${insumo.nombre}: requiere ${insumo.cantidad} | stock: ${stockActual}`);
-            if (!fila) faltantesId.push(insumo.insumo_id);
+        const requerido = Number(insumo.cantidad) || 0;
+        const aplicado = fila ? Math.min(stockActual, requerido) : 0;
+        if (aplicado > 0) {
+            const desc = await client.query(
+                'UPDATE inventario SET stock = stock - $1 WHERE id = $2 RETURNING stock',
+                [aplicado, insumo.insumo_id]
+            );
+            if (desc.rowCount !== 1) {
+                throw new Error(`No se pudo descontar el stock de "${insumo.nombre}".`);
+            }
+            const stockNuevo = Number(desc.rows[0].stock);
+            await actualizarEstadoArticulo(client, insumo.nombre, insumo.insumo_id);
+            await registrarHistorial(client, {
+                tipo: 'PRODUCCION', origen: 'envasado',
+                producto: insumo.nombre,
+                articulo_id: insumo.insumo_id,
+                cantidad: aplicado, tipo_cambio: 'RESTA',
+                stock_anterior: stockActual, stock_nuevo: stockNuevo,
+                usuario: usuarioResponsable(req, usuario),
+                referencia: 'Descuento por envasado: ' + cajas + ' cajas de ' + presentacion
+            });
+            desglose.push({
+                nombre: insumo.nombre,
+                articulo_id: insumo.insumo_id,
+                cantidad: aplicado,
+                unidad_medida: insumo.unidad || (fila ? fila.unidad_medida : 'UNIDADES'),
+                categoria: insumo.categoria || (fila ? fila.categoria : '')
+            });
         }
-    }
-    if (faltantesId.length) {
-        const e = new Error('La receta apunta a insumos que no existen en inventario. Revisa las líneas de la receta.');
-        e.status = 409;
-        e.detalle = faltantes;
-        throw e;
-    }
-    if (faltantes.length > 0) {
-        const e = new Error('Stock insuficiente. No se registró nada:\n- ' + faltantes.join('\n- '));
-        e.status = 400;
-        throw e;
-    }
-
-    // El desglose guardado incluye el id del insumo: al borrar el reporte
-    // se devuelve exactamente lo que se descontó, aunque la receta haya
-    // cambiado desde entonces.
-    const desglose = obligatorios.map(insumo => {
-        const fila = stockPorId.get(insumo.insumo_id);
-        return {
-            nombre: insumo.nombre,
-            articulo_id: insumo.insumo_id,
-            cantidad: Number(insumo.cantidad),
-            unidad_medida: insumo.unidad || (fila ? fila.unidad_medida : 'UNIDADES'),
-            categoria: insumo.categoria || (fila ? fila.categoria : '')
-        };
-    });
-
-    for (const insumo of obligatorios) {
-        const fila = stockPorId.get(insumo.insumo_id);
-        const stockAnterior = Number(fila.stock) || 0;
-        const desc = await client.query(
-            'UPDATE inventario SET stock = stock - $1 WHERE id = $2 RETURNING stock',
-            [insumo.cantidad, insumo.insumo_id]
-        );
-        if (desc.rowCount !== 1) {
-            throw new Error(`No se pudo descontar el stock de "${insumo.nombre}".`);
+        if (requerido - aplicado > 0) {
+            pendientes.push({
+                articulo_id: fila ? insumo.insumo_id : null,
+                articulo_nombre: insumo.nombre,
+                cantidad: requerido - aplicado
+            });
         }
-        const stockNuevo = Number(desc.rows[0].stock);
-        await actualizarEstadoArticulo(client, insumo.nombre, insumo.insumo_id);
-        await registrarHistorial(client, {
-            tipo: 'PRODUCCION', origen: 'envasado',
-            producto: insumo.nombre,
-            articulo_id: insumo.insumo_id,
-            cantidad: Number(insumo.cantidad), tipo_cambio: 'RESTA',
-            stock_anterior: stockAnterior, stock_nuevo: stockNuevo,
-            usuario: usuarioResponsable(req, usuario),
-            referencia: 'Descuento por envasado: ' + cajas + ' cajas de ' + presentacion
-        });
     }
 
     if (producto_tipo) {
@@ -3153,7 +3144,7 @@ async function aplicarMovimientosProduccion(client, req, { producto_tipo, presen
         });
     }
 
-    return desglose;
+    return { desglose, pendientes };
 }
 
 app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
@@ -3179,21 +3170,38 @@ app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
             await client.query('BEGIN');
             await client.query(`SELECT set_config('app.current_user', $1, true)`, [usuarioResponsable(req, usuario) || 'produccion']);
             await exigirLineaEnMarcha(client, 'envasado');
-            const desglose = await aplicarMovimientosProduccion(client, req, { producto_tipo, presentacion, cajas, usuario });
-            const desgloseJson = JSON.stringify(desglose);
+            const mov = await aplicarMovimientosProduccion(client, req, { producto_tipo, presentacion, cajas, usuario });
+            const desgloseJson = JSON.stringify(mov.desglose);
 
             // producto_key queda guardado en el reporte: al borrarlo, las cajas
             // se devuelven a la clave que realmente se produjo. Antes se
             // re-resolvía por nombre de receta, así que si la receta se desactivó
             // o renombró entre la producción y el borrado, los insumos volvían
             // (van por snapshot) pero las cajas no.
-            await client.query(
+            const repIns = await client.query(
                 `INSERT INTO reportes_produccion (fecha_produccion, presentacion, cantidad_cajas, unidad_medida, toneladas, observaciones, usuario_registro, desglose_insumos, producto_key)
-                 VALUES ($1, $2, $3, 'CAJAS', $4, $5, $6, $7, $8)`,
+                 VALUES ($1, $2, $3, 'CAJAS', $4, $5, $6, $7, $8) RETURNING id`,
                 [fecha_produccion || new Date(), presentacion, cajas, toneladas, observaciones || '', usuario || 'envasado_user', desgloseJson, producto_tipo]
             );
+            const reporteId = repIns.rows[0].id;
+            for (const p of mov.pendientes) {
+                await client.query(
+                    `INSERT INTO ajustes_pendientes (origen, reporte_id, articulo_id, articulo_nombre, cantidad_pendiente, usuario)
+                     VALUES ('ENVASADO', $1, $2, $3, $4, $5)`,
+                    [reporteId, p.articulo_id, p.articulo_nombre, p.cantidad, usuarioResponsable(req, usuario)]
+                );
+            }
 
             await client.query('COMMIT');
+            if (mov.pendientes.length) {
+                const detallePend = mov.pendientes.map(p => `${p.articulo_nombre}: ${p.cantidad} pendiente(s)`).join('; ');
+                return res.json({
+                    success: true,
+                    mensaje: `Producción registrada con ${mov.pendientes.length} insumo(s) pendiente(s) de ajuste: ${detallePend}. Revisa almacén.`,
+                    advertencia: true,
+                    pendientes: mov.pendientes
+                });
+            }
             res.json({ success: true, mensaje: 'Reporte registrado y stock de insumos/tapas descontado correctamente.' });
         } catch (innerErr) {
             await client.query('ROLLBACK');
@@ -3285,14 +3293,31 @@ app.post('/api/produccion/cerrar', gProduccion, async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, mensaje: `La presentación "${reporte.presentacion}" no tiene receta registrada.` });
         }
-        await aplicarMovimientosProduccion(client, req, {
+        const mov = await aplicarMovimientosProduccion(client, req, {
             producto_tipo, presentacion: reporte.presentacion, cajas, usuario
         });
+        for (const p of mov.pendientes) {
+            await client.query(
+                `INSERT INTO ajustes_pendientes (origen, reporte_id, articulo_id, articulo_nombre, cantidad_pendiente, usuario)
+                 VALUES ('ENVASADO', $1, $2, $3, $4, $5)`,
+                [reporte_id, p.articulo_id, p.articulo_nombre, p.cantidad, usuarioResponsable(req, usuario)]
+            );
+        }
         await client.query(
             `UPDATE reportes_produccion SET cantidad_cajas = $1, toneladas = $2, estado = 'CERRADO' WHERE id = $3`,
             [cajas, tm, reporte_id]
         );
         await client.query('COMMIT');
+        if (mov.pendientes.length) {
+            const detallePend = mov.pendientes.map(p => `${p.articulo_nombre}: ${p.cantidad} pendiente(s)`).join('; ');
+            return res.json({
+                success: true,
+                mensaje: `Producción de "${reporte.presentacion}" cerrada con ${cajas} cajas, con ${mov.pendientes.length} insumo(s) pendiente(s): ${detallePend}.`,
+                advertencia: true,
+                pendientes: mov.pendientes,
+                reporte_id
+            });
+        }
         res.json({ success: true, mensaje: `Producción de "${reporte.presentacion}" cerrada con ${cajas} cajas.`, reporte_id });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
@@ -3364,6 +3389,113 @@ app.get('/api/produccion/informes', async (req, res) => {
         res.json(informes);
     } catch (err) {
         res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+// --- AJUSTES PENDIENTES: lo que envasado no pudo descontar por falta de
+// stock. Almacén los ve, ajusta para seguir trabajando y cada pendiente se
+// salda vinculándolo a un reporte (soplado) o una guía que traiga el insumo.
+app.get('/api/almacen/ajustes-pendientes', async (req, res) => {
+    try {
+        const solo = String(req.query.estado || 'PENDIENTE').toUpperCase();
+        const result = await pool.query(
+            `SELECT * FROM ajustes_pendientes
+              WHERE ($1 = 'TODOS' OR estado = $1)
+              ORDER BY fecha_registro DESC, id DESC LIMIT 200`,
+            [solo === 'TODOS' ? 'TODOS' : 'PENDIENTE']
+        );
+        res.json({ success: true, pendientes: result.rows });
+    } catch (err) {
+        console.error('Error al listar ajustes pendientes:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al cargar pendientes: ' + err.message });
+    }
+});
+
+app.post('/api/almacen/ajustes-pendientes/:id/aplicar', gAlmacen, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const id = parseInt(req.params.id, 10);
+        const vinculoTipo = String((req.body && req.body.vinculo_tipo) || '').trim().toUpperCase();
+        const vinculoRef = String((req.body && req.body.vinculo_ref) || '').trim();
+        if (!id || !vinculoRef) {
+            return res.status(400).json({ success: false, mensaje: 'Pendiente y referencia del documento (n° guía o reporte) requeridos.' });
+        }
+        if (!['SOPLADO', 'GUIA', 'AJUSTE', 'MANUAL'].includes(vinculoTipo)) {
+            return res.status(400).json({ success: false, mensaje: 'Tipo de vínculo inválido (SOPLADO, GUIA, AJUSTE o MANUAL).' });
+        }
+        await client.query('BEGIN');
+        const pend = await client.query('SELECT * FROM ajustes_pendientes WHERE id = $1 FOR UPDATE', [id]);
+        if (!pend.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'El pendiente ya no existe.' });
+        }
+        const p = pend.rows[0];
+        if (p.estado !== 'PENDIENTE') {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, mensaje: 'Ese ajuste ya fue aplicado.' });
+        }
+        const debe = Number(p.cantidad_pendiente) || 0;
+        if (!(debe > 0)) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: 'El pendiente no tiene cantidad por aplicar.' });
+        }
+        // Se resuelve el artículo: por id, o por nombre si se creó después.
+        let articuloId = p.articulo_id ? parseInt(p.articulo_id, 10) : null;
+        if (!articuloId) {
+            const porNombre = await client.query(
+                'SELECT id FROM inventario WHERE LOWER(BTRIM(nombre)) = LOWER(BTRIM($1))',
+                [p.articulo_nombre]
+            );
+            if (porNombre.rows.length) articuloId = porNombre.rows[0].id;
+        }
+        if (!articuloId) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: `El artículo "${p.articulo_nombre}" aún no existe en inventario. Créalo primero y vuelve a aplicar.` });
+        }
+        const st = await client.query('SELECT nombre, stock FROM inventario WHERE id = $1 FOR UPDATE', [articuloId]);
+        if (!st.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: 'El artículo ya no existe en inventario.' });
+        }
+        const stockActual = Number(st.rows[0].stock) || 0;
+        if (stockActual < debe) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: `Aún sin stock suficiente de "${st.rows[0].nombre}" (debe ${debe}, hay ${stockActual}). Espera la guía o el reporte y reintenta.` });
+        }
+        const desc = await client.query(
+            'UPDATE inventario SET stock = stock - $1 WHERE id = $2 RETURNING stock',
+            [debe, articuloId]
+        );
+        if (desc.rowCount !== 1) {
+            await client.query('ROLLBACK');
+            return res.status(500).json({ success: false, mensaje: 'No se pudo descontar el stock.' });
+        }
+        await actualizarEstadoArticulo(client, st.rows[0].nombre, articuloId);
+        await registrarHistorial(client, {
+            tipo: 'SALIDA', origen: 'ajuste_pendiente',
+            producto: st.rows[0].nombre, articulo_id: articuloId,
+            cantidad: debe, tipo_cambio: 'RESTA',
+            stock_anterior: stockActual, stock_nuevo: Number(desc.rows[0].stock),
+            usuario: usuarioResponsable(req, req.body && req.body.usuario),
+            referencia: `Ajuste pendiente saldado con ${vinculoTipo} ${vinculoRef}`
+        });
+        await client.query(
+            `UPDATE ajustes_pendientes
+                SET estado = 'APLICADA', cantidad_aplicada = $1,
+                    vinculo_tipo = $2, vinculo_ref = $3,
+                    aplicado_por = $4, fecha_aplicacion = CURRENT_TIMESTAMP
+              WHERE id = $5`,
+            [debe, vinculoTipo, vinculoRef,
+             usuarioResponsable(req, req.body && req.body.usuario), id]
+        );
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: `Ajuste aplicado: ${debe} de "${st.rows[0].nombre}" vinculado a ${vinculoTipo} ${vinculoRef}.` });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('Error al aplicar ajuste pendiente:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al aplicar el ajuste: ' + err.message });
+    } finally {
+        client.release();
     }
 });
 

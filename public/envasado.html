@@ -686,10 +686,14 @@
                 });
                 const data = await res.json();
                 if (res.ok && data.success) {
-                    estadoEnvasadoActual = data.estado;
-                    pintarEstadoEnvasado();
+                    cargarProduccionActiva();
+                    if (data.advertencia && data.pendientes && data.pendientes.length) {
+                        alert('⚠️ ' + data.mensaje + '\n\nRevisa almacén: '
+                            + data.pendientes.map(p => `${p.articulo_nombre} (${p.cantidad})`).join(', '));
+                    }
+                    preguntarSiguiente(presentacion);
                 } else {
-                    alert('❌ ' + (data.mensaje || 'Error al cambiar el estado.'));
+                    alert('❌ ' + (data.mensaje || 'Error al cerrar.'));
                 }
             } catch (err) {
                 console.error(err);
@@ -760,7 +764,13 @@
                 });
                 const data = await res.json();
                 if (res.ok && data.success) {
-                    alert('✅ Producción registrada correctamente.');
+                    let msg = '✅ Producción registrada correctamente.';
+                    if (data.advertencia && data.pendientes && data.pendientes.length) {
+                        msg = '⚠️ ' + (data.mensaje || 'Producción registrada con pendientes.')
+                            + '\n\nRevisa almacén: '
+                            + data.pendientes.map(p => `${p.articulo_nombre} (${p.cantidad})`).join(', ');
+                    }
+                    alert(msg);
                     document.getElementById('formEnvasado').reset();
                     document.getElementById('fecha_produccion').valueAsDate = new Date();
                     document.getElementById('grupoTapaDinamica').style.display = 'none';

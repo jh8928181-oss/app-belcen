@@ -283,7 +283,7 @@ describe('C2. El reporte guarda la clave del producto que se produjo', () => {
     // Y que se rellene con la clave resuelta, no con un literal.
     const paso = fuente.slice(fuente.indexOf('INSERT INTO reportes_produccion'));
     expect(paso.slice(0, 400)).toMatch(/desglose_insumos, producto_key\)/);
-    expect(paso.slice(0, 400)).toMatch(/observaciones \|\| '', usuario \|\| 'envasado_user', desgloseJson, producto_tipo\]/);
+    expect(paso.slice(0, 470)).toMatch(/observaciones \|\| '', usuario \|\| 'envasado_user', desgloseJson, producto_tipo\]/);
   });
 
   test('la migracion que crea la columna existe y es la que la registra', () => {

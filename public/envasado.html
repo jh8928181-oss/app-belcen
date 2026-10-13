@@ -589,7 +589,7 @@
                             <td class="text-center">${row.unidad_medida || 'CAJAS'}</td>
                             <td class="text-center">${tnTxt}</td>
                             <td>${esAbierta ? 'En curso…' : (row.observaciones || '-')}</td>
-                            <td class="text-center">${esAbierta ? `<button onclick="cerrarProduccionPorId(${row.id}, '${presentacionSegura}')" class="btn-accion" style="margin-right:6px;">🔒 Cerrar</button>` : ''}<button onclick="eliminarReporte(${row.id}, '${presentacionSegura}')" class="btn-comer" title="Eliminar reporte"><span class="ico-papelera"><span class="tapa"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/></svg></span><span class="base"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></span></span><span class="texto-papelera"><span class="letra">D</span><span class="letra">e</span><span class="letra">l</span><span class="letra">e</span><span class="letra">t</span><span class="letra">e</span></span></button></td>
+                            <td class="text-center">${esAbierta ? `<button onclick="cerrarProduccionPorId(${row.id}, '${presentacionSegura}')" class="btn-accion" style="margin-right:6px;">🏁 Finalizar</button>` : ''}<button onclick="eliminarReporte(${row.id}, '${presentacionSegura}')" class="btn-comer" title="Eliminar reporte"><span class="ico-papelera"><span class="tapa"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/></svg></span><span class="base"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></span></span><span class="texto-papelera"><span class="letra">D</span><span class="letra">e</span><span class="letra">l</span><span class="letra">e</span><span class="letra">t</span><span class="letra">e</span></span></button></td>
                         </tr>
                     `;
                 });
@@ -738,7 +738,9 @@
 
         let cerrandoProduccion = false;
         // Cierra la producción en curso pidiendo la cantidad recién al final.
-        async function cerrarProduccionPorId(id, presentacion) {
+        // Si preguntarSiguiente es true (cierre por fila), al terminar pregunta
+        // qué producto sigue; el botón "Cierre de producción" es definitivo.
+        async function cerrarProduccionPorId(id, presentacion, preguntar = true) {
             if (cerrandoProduccion) return;
             const cantTxt = prompt(`Cerrar "${presentacion}".\n\nCantidad producida (cajas):`);
             if (cantTxt === null) return;
@@ -763,7 +765,8 @@
                 const data = await res.json();
                 if (res.ok && data.success) {
                     cargarProduccionActiva();
-                    preguntarSiguiente(presentacion);
+                    if (preguntar) preguntarSiguiente(presentacion);
+                    else alert('🔒 Producción cerrada definitivamente.');
                 } else {
                     alert('❌ ' + (data.mensaje || 'Error al cerrar.'));
                 }
@@ -779,7 +782,7 @@
         function cierreProduccion() {
             const abiertas = (reportesGlobal || []).filter(r => r.estado === 'EN_CURSO');
             if (!abiertas.length) { alert('No hay producción en curso.'); return; }
-            cerrarProduccionPorId(abiertas[0].id, abiertas[0].presentacion);
+            cerrarProduccionPorId(abiertas[0].id, abiertas[0].presentacion, false);
         }
 
         // Al cerrar se pregunta qué producto sigue: el siguiente de la

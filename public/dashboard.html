@@ -914,7 +914,10 @@ lista.length + ' reportes · ' + totalTn.toFixed(2) + ' TM · ' + rango;
                     }
                     document.getElementById('previoEnvasado').textContent = previo ? conCajas(previo) : '—';
                     const elActual = document.getElementById('planActualEnvasado');
-                    if (marchaNombre && !/receta no vigente/i.test(elActual.textContent)) {
+                    // La que sigue solo lleva el nombre: su cantidad sale al cerrarla.
+                    if (abierta && abierta.presentacion) {
+                        elActual.textContent = abierta.presentacion;
+                    } else if (marchaNombre && !/receta no vigente/i.test(elActual.textContent)) {
                         elActual.textContent = conCajas(marchaNombre);
                     }
                 }

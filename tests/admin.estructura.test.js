@@ -148,6 +148,17 @@ describe('admin.html datos de contacto para la OC', () => {
     expect(crear).toContain('JSON.stringify({ usuario, rol, password, nombre, cargo, celular, email })');
   });
 
+  test('los datos de OC solo se piden a roles que emiten OC/OS', () => {
+    const js = bloquesInline.join('\n');
+    // Mismos roles que ROLES_BD_GENERAL en index.js/basededatosgeneral.html:
+    // son los unicos cuyo login puede quedar como emisor de una OC.
+    expect(js).toContain("['admin', 'auditoria', 'consulta_bd']");
+    expect(html).toContain('id="bloqueDatosOC"');
+    expect(html).toContain('class="dato-oc"');
+    const fuente = vm.runInContext('abrirEditarUsuario.toString()', ejecutarScript());
+    expect(fuente).toContain('alternarDatosOC');
+  });
+
   test('abrir la edicion los rellena con lo que ya tiene el usuario', () => {
     const fuente = vm.runInContext('abrirEditarUsuario.toString()', ejecutarScript());
     for (const id of ['editNombre', 'editCargo', 'editCelular', 'editEmail']) {

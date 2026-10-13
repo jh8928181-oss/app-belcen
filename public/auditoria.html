@@ -648,6 +648,14 @@
             return `${f.getFullYear()}-${mes}-${dia} ${hora}:${min}`;
         }
 
+        // Solo día YYYY-MM-DD por texto (sin Date): '2026-10-13T00:00:00.000Z'
+        // debe mostrar 2026-10-13 aunque el huso horario reste horas.
+        function fechaSoloDia(fecha) {
+            if (!fecha) return '-';
+            const s = String(fecha).substring(0, 10);
+            return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : String(fecha);
+        }
+
         function linkGuia(url, texto) {
             if (!url) return '<span style="color:#999;">Sin foto</span>';
             return `<a class="link-guia" href="${url}" target="_blank">👁️ ${texto}</a>`;
@@ -953,7 +961,7 @@
 
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td><b>${inf.fecha_produccion}</b></td>
+                    <td><b>${fechaSoloDia(inf.fecha_produccion)}</b></td>
                     <td>${inf.presentacion || 'N/D'}</td>
                     <td class="text-center" style="color:#8a6d00; font-weight:bold;">${cant}</td>
                     <td class="text-center">${ton.toFixed(2)}</td>
@@ -1196,7 +1204,7 @@ tbody.appendChild(tr);
                     <td class="text-center" style="font-weight:bold;">${Number(it.cantidad) || 0}</td>
                     <td class="text-center">${String(it.tanque || 'TK-1').toUpperCase()}</td>
                     <td>${escaparHTML(it.proveedor) || '-'}</td>
-                    <td class="text-center">${escaparHTML(it.fecha_produccion) || '-'}</td>
+                    <td class="text-center">${fechaSoloDia(it.fecha_produccion)}</td>
                     <td class="text-center">${escaparHTML(it.hora) || '-'}</td>
                     <td class="text-center">${badgeEstadoAceite(it.estado)}</td>
                     <td class="text-center">

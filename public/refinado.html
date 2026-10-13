@@ -558,7 +558,7 @@
                 const tr = document.createElement('tr');
                 tr.setAttribute('data-lote-fila', '1');
                 tr.innerHTML = `
-                    <td>${escapeHtml(l.fecha_produccion) || '-'}</td>
+                    <td>${escapeHtml(String(l.fecha_produccion || '').substring(0, 10)) || '-'}</td>
                     <td>${escapeHtml(l.hora) || '-'}</td>
                     <td><b>${escapeHtml(l.lote)}</b></td>
                     <td class="text-center" style="font-weight:bold;">${Number(l.cantidad) || 0}</td>

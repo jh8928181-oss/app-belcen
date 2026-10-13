@@ -550,10 +550,11 @@
         }
 
         function fechaLocalISO(iso) {
+            // Por texto, no por Date: '2026-10-13' en hora local es un día
+            // antes en UTC y el Date lo corría al 12.
             if (!iso) return '';
-            const d = new Date(iso);
-            if (isNaN(d.getTime())) return String(iso).substring(0, 10);
-            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            const s = String(iso).substring(0, 10);
+            return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : String(iso);
         }
 
         function etiquetarTablas() {

@@ -420,7 +420,7 @@
                         : `<span style="color:#adb5bd;">Sin desglose</span>`;
                     tbody.innerHTML += `
                         <tr>
-                            <td>${inf.fecha_produccion}</td>
+                            <td>${String(inf.fecha_produccion || '').substring(0, 10) || '-'}</td>
                             <td><b>${inf.presentacion}</b></td>
                             <td class="text-center">${cant}</td>
                             <td class="text-center">${ton.toFixed(2)}</td>

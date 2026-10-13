@@ -279,14 +279,14 @@
                 </select>
             </div>
 
-            <div style="display:none;">
+            <div>
                 <label><b>Cantidad Producida (Cajas):</b></label>
-                <input type="number" id="cantidad_cajas" name="cantidad_cajas" min="1" placeholder="Ej. 100">
+                <input type="number" id="cantidad_cajas" name="cantidad_cajas" min="1" placeholder="Ej. 100" required>
             </div>
 
-            <div style="display:none;">
+            <div>
                 <label><b>Toneladas (TM):</b></label>
-                <input type="number" step="0.01" id="toneladas" name="toneladas" placeholder="Ej. 1.5">
+                <input type="number" step="0.01" id="toneladas" name="toneladas" placeholder="Ej. 1.5" required>
             </div>
 
             <div id="grupoTapaDinamica" class="tapa-box span-2" style="display: none;">
@@ -308,13 +308,13 @@
                 </select>
             </div>
 
-            <div class="span-2" style="display:none;">
+            <div class="span-2">
                 <label><b>Observaciones (N° de Lote / Detalles adicionales):</b></label>
                 <textarea id="observaciones" name="observaciones" rows="2" placeholder="Ej. Lote: 0885 | Observaciones de línea..."></textarea>
             </div>
 
             <div class="span-2">
-                <button type="submit" class="btn-accion">▶ INICIAR PRODUCCIÓN (solo elige el producto)</button>
+                <button type="submit" class="btn-accion">💾 REGISTRAR PRODUCCIÓN EN CURSO</button>
             </div>
             </form>
         </div>
@@ -533,8 +533,20 @@
         }
 
         function verificarSeleccionTapa() {
-            // Al iniciar solo se elige el producto: la tapa no se pide aquí.
-            document.getElementById('grupoTapaDinamica').style.display = 'none';
+            const presentacion = document.getElementById('presentacion').value;
+            const grupoTapa = document.getElementById('grupoTapaDinamica');
+
+            const requiereTapa = presentacion.includes('500 ml') || 
+                                 presentacion.includes('900 ml') || 
+                                 presentacion.includes('1 Lt') || 
+                                 presentacion.includes('800 ml') || 
+                                 presentacion.includes('3 Lt');
+
+            if (requiereTapa) {
+                grupoTapa.style.display = 'block';
+            } else {
+                grupoTapa.style.display = 'none';
+            }
         }
 
         function fechaLocalISO(iso) {
@@ -720,16 +732,45 @@
             enviandoEnvasado = true;
             const btnEnviar = e.submitter || document.querySelector('#formEnvasado button[type="submit"]');
             if (btnEnviar) btnEnviar.disabled = true;
+
+            const presentacionSeleccionada = document.getElementById('presentacion').value;
+            const observacionesTexto = document.getElementById('observaciones').value;
+            const grupoTapaVisible = document.getElementById('grupoTapaDinamica').style.display === 'block';
+
+            let observacionesFinales = observacionesTexto;
+            if (grupoTapaVisible) {
+                const tapaSeleccionada = document.getElementById('tapa_elegida').value;
+                observacionesFinales = observacionesFinales ? `${observacionesFinales} | Tapa: ${tapaSeleccionada}` : `Tapa: ${tapaSeleccionada}`;
+            }
+
+            const formData = {
+                fecha_produccion: document.getElementById('fecha_produccion').value,
+                presentacion: presentacionSeleccionada,
+                cantidad_cajas: parseInt(document.getElementById('cantidad_cajas').value),
+                toneladas: parseFloat(document.getElementById('toneladas').value),
+                observaciones: observacionesFinales,
+                usuario: localStorage.getItem('usuario_actual') || 'envasado_user'
+            };
+
             try {
-                const presentacionSeleccionada = document.getElementById('presentacion').value;
-                if (!presentacionSeleccionada) {
-                    alert('❌ Seleccione el producto a envasar.');
-                    return;
+                const res = await fetch('/api/produccion/reporte', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData)
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    alert('✅ Producción registrada correctamente.');
+                    document.getElementById('formEnvasado').reset();
+                    document.getElementById('fecha_produccion').valueAsDate = new Date();
+                    document.getElementById('grupoTapaDinamica').style.display = 'none';
+                    cargarProduccionActiva();
+                } else {
+                    alert('❌ ' + (data.mensaje || 'Error al registrar.'));
                 }
-                await iniciarProducto(
-                    presentacionSeleccionada,
-                    document.getElementById('fecha_produccion').value || null
-                );
+            } catch (err) {
+                console.error(err);
+                alert('Error de conexión con el servidor.');
             } finally {
                 enviandoEnvasado = false;
                 if (btnEnviar) btnEnviar.disabled = false;

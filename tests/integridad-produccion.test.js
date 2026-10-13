@@ -533,11 +533,12 @@ describe('Plan de produccion por linea', () => {
     mockQuery.mockImplementation((sql) => {
       const t = String(sql);
       if (t.includes('FROM recetas')) {
-        const solicitadas = mockQuery.mock.calls
-          .filter(c => String(c[0]).includes('FROM recetas'))
-          .map(c => c[1])
-          .pop() || [];
-        const vigentes = (solicitadas[0] || []).filter(k => claves.includes(k));
+        const llamadas = mockQuery.mock.calls.filter(c => String(c[0]).includes('FROM recetas'));
+        const ultimos = (llamadas.map(c => c[1]).pop() || []);
+        // ANY recibe arreglo; la igualdad exacta recibe escalar: ambos valen.
+        const primero = ultimos[0];
+        const pedidas = Array.isArray(primero) ? primero : (typeof primero === 'string' ? [primero] : []);
+        const vigentes = pedidas.filter(k => claves.includes(k));
         return Promise.resolve({
           rows: vigentes.map(k => ({ producto_key: k, nombre_producto: k + ' (receta)' }))
         });
@@ -693,6 +694,41 @@ describe('Plan de produccion por linea', () => {
       recetasVigentes(['belini_1lt']);
       await invocar('post', '/api/linea-plan', { body: { area: 'envasado', productos: ['belini_1lt'] } });
       expect(mockRelease).toHaveBeenCalled();
+    });
+
+    test('acepta el nombre visible del editor y guarda la clave', async () => {
+      recetasVigentes(['b1_1lt']);
+      const res = await invocar('post', '/api/linea-plan', {
+        body: { area: 'envasado', productos: ['Aceite de Soya B-1 1 Lt'] }
+      });
+
+      expect(res.statusCode).toBe(200);
+      const inserciones = sqlDe('INSERT INTO linea_plan');
+      expect(inserciones).toHaveLength(1);
+      expect(inserciones[0].params[2]).toBe('b1_1lt');
+    });
+
+    test('dos nombres que resuelven a la misma clave cuentan como duplicado', async () => {
+      recetasVigentes(['b1_1lt']);
+      const res = await invocar('post', '/api/linea-plan', {
+        body: { area: 'envasado', productos: ['Aceite de Soya B-1 1 Lt', 'b1_1lt'] }
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.cuerpo.mensaje).toMatch(/repetirse/);
+      expect(sqlDe('INSERT INTO linea_plan')).toHaveLength(0);
+    });
+
+    test('un fantasma entre nombres validos reporta solo al fantasma', async () => {
+      recetasVigentes(['b1_1lt']);
+      const res = await invocar('post', '/api/linea-plan', {
+        body: { area: 'envasado', productos: ['Aceite de Soya B-1 1 Lt', 'producto_fantasma'] }
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.cuerpo.detalle).toEqual(['producto_fantasma']);
+      expect(sqlDe('INSERT INTO linea_plan')).toHaveLength(0);
+      expect(sqlDe('DELETE FROM linea_plan')).toHaveLength(0);
     });
   });
 });

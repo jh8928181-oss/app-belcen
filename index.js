@@ -1649,6 +1649,35 @@ app.get('/api/linea-plan', async (req, res) => {
     }
 });
 
+// Resuelve lo que manda el editor de secuencia a una clave de receta
+// vigente: acepta la clave tal cual, el nombre de catalogo fijo
+// ("Aceite de Soya B-1 1 Lt" -> "b1_1lt") o el nombre de la receta.
+// Devuelve '' si no hay receta vigente para esa entrada.
+async function resolverClaveSecuencia(client, entrada) {
+    const txt = String(entrada || '').trim();
+    if (!txt) return '';
+    let r = await client.query(
+        `SELECT producto_key FROM recetas WHERE activa IS TRUE AND producto_key = $1 LIMIT 1`,
+        [txt]
+    );
+    if (r.rows.length) return r.rows[0].producto_key;
+    const directa = detectarProductoTipo(txt);
+    if (directa) {
+        r = await client.query(
+            `SELECT producto_key FROM recetas WHERE activa IS TRUE AND producto_key = $1 LIMIT 1`,
+            [directa]
+        );
+        if (r.rows.length) return r.rows[0].producto_key;
+    }
+    r = await client.query(
+        `SELECT producto_key FROM recetas
+          WHERE activa IS TRUE AND (nombre_producto ILIKE $1 OR producto_key ILIKE $1)
+          ORDER BY version DESC LIMIT 1`,
+        [txt]
+    );
+    return r.rows.length ? r.rows[0].producto_key : '';
+}
+
 app.post('/api/linea-plan', gEnvasado, async (req, res) => {
     const client = await pool.connect();
     try {
@@ -1676,40 +1705,46 @@ app.post('/api/linea-plan', gEnvasado, async (req, res) => {
             });
         }
 
-        // Nada se escribe antes de validar: una clave que no corresponda a una
-        // receta vigente se rechaza entera, para que la linea no se quede con
-        // media cola guardada.
-        if (claves.length) {
-            const validas = await client.query(
-                `SELECT DISTINCT producto_key FROM recetas
-                 WHERE activa IS TRUE AND producto_key = ANY($1::varchar[])`,
-                [claves]
-            );
-            const encontradas = new Set(validas.rows.map(r => r.producto_key));
-            const desconocidas = claves.filter(k => !encontradas.has(k));
-            if (desconocidas.length) {
-                return res.status(400).json({
-                    success: false,
-                    mensaje: 'Hay productos en la secuencia que no tienen receta vigente. Revísalos antes de guardar.',
-                    detalle: desconocidas
-                });
-            }
+        // El editor manda a veces el nombre visible ("Aceite de Soya B-1 1 Lt")
+        // y no la clave ("b1_1lt"): se resuelve a la clave vigente antes de
+        // validar, para no rechazar secuencias correctas. Lo que no resuelve
+        // a ninguna receta vigente se rechaza entero, para que la linea no se
+        // quede con media cola guardada.
+        const resueltas = [];
+        const desconocidas = [];
+        for (const cruda of claves) {
+            const clave = await resolverClaveSecuencia(client, cruda);
+            if (clave) resueltas.push(clave);
+            else desconocidas.push(cruda);
+        }
+        if (desconocidas.length) {
+            return res.status(400).json({
+                success: false,
+                mensaje: 'Hay productos en la secuencia que no tienen receta vigente. Revísalos antes de guardar.',
+                detalle: desconocidas
+            });
+        }
+        if (new Set(resueltas).size !== resueltas.length) {
+            return res.status(400).json({
+                success: false,
+                mensaje: 'El mismo producto no puede repetirse en la secuencia.'
+            });
         }
 
         await client.query('BEGIN');
         // Se reemplaza la cola completa en vez de editarla fila por fila: una
         // reordenacion parcial deja huecos que rompen el "orden 1 = en curso".
         await client.query('DELETE FROM linea_plan WHERE area = $1', [area]);
-        for (let i = 0; i < claves.length; i++) {
+        for (let i = 0; i < resueltas.length; i++) {
             await client.query(
                 `INSERT INTO linea_plan (area, orden, producto_key, usuario_registro, fecha_actualizacion)
                  VALUES ($1, $2, $3, $4, (now() at time zone 'utc'))`,
-                [area, i + 1, claves[i], usuario || 'operador']
+                [area, i + 1, resueltas[i], usuario || 'operador']
             );
         }
         await client.query('COMMIT');
 
-        res.json({ success: true, area, total: claves.length });
+        res.json({ success: true, area, total: resueltas.length });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         console.error('Error al guardar el plan de línea:', err);

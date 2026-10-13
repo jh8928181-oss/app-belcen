@@ -167,8 +167,8 @@
         return r.json().then(function (data) {
           if (!r.ok || !data.success) {
             var detalle = (data && Array.isArray(data.detalle) && data.detalle.length)
-              ? '\n\n' + data.detalle.join('\n') : '';
-            throw new Error((data && data.mensaje) || 'No se pudo guardar la secuencia.' + detalle);
+              ? '\n\nSin receta vigente:\n- ' + data.detalle.join('\n- ') : '';
+            throw new Error(((data && data.mensaje) || 'No se pudo guardar la secuencia.') + detalle);
           }
           return data;
         });

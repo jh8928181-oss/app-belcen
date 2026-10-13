@@ -336,3 +336,111 @@ describe('eliminarUsuario', () => {
     expect(mockQuery.mock.calls[1][0]).toMatch(/DELETE FROM usuarios_sistema/);
   });
 });
+
+describe('login con permisos', () => {
+  test('devuelve los permisos del usuario', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1, usuario: 'juan', rol: 'almacen', password: `${HASH_REAL}:${SALT}`, permisos: { almacen: { ver: true, editar: false } } }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await invocar(authController.login, {
+      body: { usuario: 'juan', password: PWD_VALIDA },
+      headers: {}
+    });
+
+    expect(res.cuerpo.success).toBe(true);
+    expect(res.cuerpo.permisos).toEqual({ almacen: { ver: true, editar: false } });
+  });
+
+  test('sin columna (migración pendiente) devuelve objeto vacío', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1, usuario: 'juan', rol: 'almacen', password: `${HASH_REAL}:${SALT}` }] });
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await invocar(authController.login, {
+      body: { usuario: 'juan', password: PWD_VALIDA },
+      headers: {}
+    });
+
+    expect(res.cuerpo.success).toBe(true);
+    expect(res.cuerpo.permisos).toEqual({});
+  });
+});
+
+describe('miAcceso', () => {
+  test('devuelve rol y permisos propios', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ usuario: 'juan', rol: 'almacen', permisos: { almacen: { ver: true, editar: false } } }] });
+
+    const res = await invocar(authController.miAcceso, { usuario: 'juan' });
+
+    expect(res.cuerpo).toEqual({ success: true, usuario: 'juan', rol: 'almacen', permisos: { almacen: { ver: true, editar: false } } });
+  });
+
+  test('responde 404 si el usuario no existe', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+
+    const res = await invocar(authController.miAcceso, { usuario: 'fantasma' });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  test('sin columna devuelve permisos vacíos sin romper', async () => {
+    mockQuery.mockRejectedValueOnce(new Error('column "permisos" does not exist'));
+
+    const res = await invocar(authController.miAcceso, { usuario: 'juan', rol: 'almacen' });
+
+    expect(res.statusCode).toBeNull();
+    expect(res.cuerpo.permisos).toEqual({});
+  });
+});
+
+describe('guardarPermisos', () => {
+  test('rechaza id inválido y usuario inexistente', async () => {
+    const malo = await invocar(authController.guardarPermisos, { params: { id: 'x' }, body: {}, usuario: 'admin1' });
+    expect(malo.statusCode).toBe(400);
+
+    mockQuery.mockResolvedValueOnce({ rows: [] });
+    const falta = await invocar(authController.guardarPermisos, { params: { id: '9' }, body: {}, usuario: 'admin1' });
+    expect(falta.statusCode).toBe(404);
+  });
+
+  test('no restringe cuentas admin ni la propia', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1, usuario: 'admin1', rol: 'admin' }] });
+    const aAdmin = await invocar(authController.guardarPermisos, { params: { id: '1' }, body: { permisos: {} }, usuario: 'admin1' });
+    expect(aAdmin.statusCode).toBe(400);
+
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 2, usuario: 'otro', rol: 'almacen' }] });
+    const aSi = await invocar(authController.guardarPermisos, { params: { id: '2' }, body: { permisos: {} }, usuario: 'otro' });
+    expect(aSi.statusCode).toBe(400);
+  });
+
+  test('rechaza cuerpo inválido y módulos desconocidos', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 5, usuario: 'juan', rol: 'almacen' }] });
+    const malo = await invocar(authController.guardarPermisos, { params: { id: '5' }, body: { permisos: [] }, usuario: 'admin1' });
+    expect(malo.statusCode).toBe(400);
+
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 5, usuario: 'juan', rol: 'almacen' }] });
+    const raro = await invocar(authController.guardarPermisos, { params: { id: '5' }, body: { permisos: { modulo_fantasma: { ver: false } } }, usuario: 'admin1' });
+    expect(raro.statusCode).toBe(400);
+  });
+
+  test('guarda solo lo restrictivo y omite acceso total', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 5, usuario: 'juan', rol: 'almacen' }] });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+    const res = await invocar(authController.guardarPermisos, {
+      params: { id: '5' },
+      body: { permisos: { almacen: { ver: true, editar: false }, soplado: { ver: true, editar: true }, dashboard: { ver: false, editar: false } } },
+      usuario: 'admin1'
+    });
+
+    expect(res.cuerpo.success).toBe(true);
+    const update = mockQuery.mock.calls.find(c => String(c[0]).includes('UPDATE usuarios_sistema SET permisos'));
+    expect(JSON.parse(update[1][0])).toEqual({
+      almacen: { ver: true, editar: false },
+      dashboard: { ver: false, editar: false }
+    });
+    expect(res.cuerpo.permisos).toEqual({
+      almacen: { ver: true, editar: false },
+      dashboard: { ver: false, editar: false }
+    });
+  });
+});

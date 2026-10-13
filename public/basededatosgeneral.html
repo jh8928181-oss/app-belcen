@@ -1230,6 +1230,7 @@
             alert('❌ Acceso no autorizado.');
             window.location.href = 'index.html';
         }
+        exigirModulo('bdgeneral');
         if (rolUsuario !== 'admin') {
             document.getElementById('linkDashboard').style.display = 'none';
         }

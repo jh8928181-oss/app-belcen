@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware, permisoPorRuta } = require('../middleware/auth');
 
 router.use(authMiddleware);
+router.use(permisoPorRuta);
 
 router.post('/check-stock', async (req, res) => {
   try {

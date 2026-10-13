@@ -98,6 +98,28 @@
             </div>
         </div>
 
+        <!-- PERMISOS POR MÓDULO -->
+        <div id="panelPermisos" class="tarjeta" style="border-top: 5px solid #0d6efd; display: none;">
+            <h3 style="border-bottom: 2px solid #0d6efd; color: #0d6efd;" id="permTitulo">🔑 Permisos</h3>
+            <p style="font-size:13px; color:#555;">Sin marcar nada, el usuario hereda todo lo de su rol. Desmarca <b>Ver</b> para cerrarle el módulo y <b>Editar</b> para dejarlo en solo lectura. Las cuentas administradoras no se restringen.</p>
+            <div class="tabla-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Módulo</th>
+                            <th class="text-center">Ver</th>
+                            <th class="text-center">Editar</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaPermisos"></tbody>
+                </table>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 14px;">
+                <button onclick="guardarPermisos()" class="btn-accion">💾 GUARDAR PERMISOS</button>
+                <button onclick="cerrarPanelPermisos()" class="btn-eliminar" style="border:none; border-radius:4px; cursor:pointer; padding:9px 16px; font-weight:bold;">✖ Cancelar</button>
+            </div>
+        </div>
+
         <!-- CREAR USUARIO -->
         <div class="tarjeta reveal" style="border-top: 5px solid #28a745;">
             <h3 class="crear">➕ CREAR NUEVO USUARIO</h3>
@@ -188,8 +210,16 @@
             alert('❌ Acceso no autorizado. Solo el administrador puede gestionar usuarios.');
             window.location.href = 'index.html';
         }
+        exigirModulo('admin');
 
         const ROLES = ['admin', 'supervisor', 'produccion', 'auditoria', 'vigilancia', 'almacen', 'soplado', 'envasado', 'refinado', 'invitado', 'consulta_bd'];
+
+        const MODULOS = [
+            ['dashboard', '🏠 Dashboard'], ['almacen', '📦 Almacén'], ['soplado', '🏭 Soplado'],
+            ['envasado', '🧴 Envasado'], ['refinado', '🛢️ Refinado'], ['auditoria', '📋 Auditoría'],
+            ['vigilancia', '🛡️ Vigilancia'], ['recetas', '🧪 Recetas'], ['bdgeneral', '🗃️ BD General'],
+            ['bdplanta', '🧮 BD Planta'], ['flujo', '🗺️ Flujo'], ['admin', '👮 Usuarios']
+        ];
 
         // Solo admin1 ve el acceso al mapa de flujo (ver flujo.html).
         if (localStorage.getItem('usuario_actual') === 'admin1') {
@@ -296,6 +326,7 @@
                     <td class="text-center">
                         <div class="botones-accion">
                             <button onclick="abrirEditarUsuario(${u.id})" style="background:#ffc107; color:#000;" title="Editar">✏️</button>
+                            ${u.rol === 'admin' ? '' : `<button onclick="abrirPermisos(${u.id})" style="background:#0d6efd; color:#fff; border:none; border-radius:4px; cursor:pointer; padding:8px 10px; font-weight:bold;" title="Permisos por módulo">🔑</button>`}
                             <button onclick="eliminarUsuario(${u.id}, '${String(u.usuario).replace(/'/g, "\\'")}')" class="btn-comer" title="Eliminar"><span class="ico-papelera"><span class="tapa"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/></svg></span><span class="base"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></span></span><span class="texto-papelera"><span class="letra">D</span><span class="letra">e</span><span class="letra">l</span><span class="letra">e</span><span class="letra">t</span><span class="letra">e</span></span></button>
                         </div>
                     </td>
@@ -425,6 +456,72 @@
             } finally {
                 enviandoEditar = false;
                 if (btn) btn.disabled = false;
+            }
+        }
+
+        let permisosEditandoId = null;
+
+        function abrirPermisos(id) {
+            const u = usuariosGlobal.find(x => x.id === id);
+            if (!u || u.rol === 'admin') return;
+            permisosEditandoId = id;
+            const perms = (u.permisos && typeof u.permisos === 'object') ? u.permisos : {};
+            document.getElementById('permTitulo').textContent = '🔑 Permisos de ' + u.usuario + ' (rol: ' + u.rol + ')';
+            const tb = document.getElementById('tablaPermisos');
+            tb.innerHTML = '';
+            MODULOS.forEach(([mod, etiqueta]) => {
+                const p = perms[mod] || {};
+                const ver = p.ver !== false;
+                const editar = p.editar !== false;
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td><b>${etiqueta}</b></td>`
+                    + `<td class="text-center"><input type="checkbox" data-mod="${mod}" data-nivel="ver"${ver ? ' checked' : ''}></td>`
+                    + `<td class="text-center"><input type="checkbox" data-mod="${mod}" data-nivel="editar"${editar ? ' checked' : ''}></td>`;
+                tb.appendChild(tr);
+            });
+            tb.querySelectorAll('input[type=checkbox]').forEach(ch => {
+                ch.addEventListener('change', () => {
+                    const mod = ch.dataset.mod;
+                    const verBox = tb.querySelector(`input[data-mod="${mod}"][data-nivel="ver"]`);
+                    const edBox = tb.querySelector(`input[data-mod="${mod}"][data-nivel="editar"]`);
+                    if (ch.dataset.nivel === 'ver' && !ch.checked) edBox.checked = false;
+                    if (ch.dataset.nivel === 'editar' && ch.checked) verBox.checked = true;
+                });
+            });
+            document.getElementById('panelPermisos').style.display = 'block';
+            document.getElementById('panelPermisos').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function cerrarPanelPermisos() {
+            permisosEditandoId = null;
+            document.getElementById('panelPermisos').style.display = 'none';
+        }
+
+        async function guardarPermisos() {
+            if (permisosEditandoId === null) return;
+            const perms = {};
+            document.querySelectorAll('#tablaPermisos input[type=checkbox]').forEach(ch => {
+                const mod = ch.dataset.mod;
+                perms[mod] = perms[mod] || {};
+                perms[mod][ch.dataset.nivel] = ch.checked;
+            });
+            try {
+                const res = await fetch('/api/usuarios/' + permisosEditandoId + '/permisos', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ permisos: perms })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    alert('✅ ' + data.mensaje);
+                    cerrarPanelPermisos();
+                    cargarUsuarios();
+                } else {
+                    alert('❌ ' + (data.mensaje || 'Error al guardar permisos.'));
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Error de conexión.');
             }
         }
 

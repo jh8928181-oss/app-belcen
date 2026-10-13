@@ -456,6 +456,7 @@
             alert('❌ Acceso no autorizado. El mapa de flujo es exclusivo del usuario admin1.');
             window.location.href = 'index.html';
         }
+        exigirModulo('flujo');
 
         const svg = document.getElementById('lienzo');
         const marco = document.getElementById('marco');

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const recipeService = require('../services/recipeService');
 const db = require('../db');
-const { authMiddleware, crearGuardRoles } = require('../middleware/auth');
+const { authMiddleware, crearGuardRoles, permisoPorRuta } = require('../middleware/auth');
 
 const TAPA_DEFECTO_RECETA = 'Tapa dosif. N° 26 blanco / Dorado';
 
@@ -15,6 +15,7 @@ const soloAdmin = crearGuardRoles(['admin'], {
 });
 
 router.use(authMiddleware);
+router.use(permisoPorRuta);
 
 // Catálogo (compatibilidad con el simulador) + lista de recetas para el módulo de gestión
 router.get('/', async (req, res) => {

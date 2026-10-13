@@ -553,6 +553,22 @@
             document.getElementById('btnModuloFlujo').classList.remove('hidden');
         }
 
+        // Oculta los módulos que el admin cerró explícitamente para esta cuenta.
+        (function ocultarModulosSinAcceso() {
+            try {
+                const mapa = {
+                    'vigilancia.html': 'vigilancia', 'almacen.html': 'almacen', 'soplado.html': 'soplado',
+                    'envasado.html': 'envasado', 'refinado.html': 'refinado', 'auditoria.html': 'auditoria',
+                    'basededatosdeplanta.html': 'bdplanta', 'basededatosgeneral.html': 'bdgeneral',
+                    'admin.html': 'admin', 'recetas.html': 'recetas', 'flujo.html': 'flujo'
+                };
+                document.querySelectorAll('.modulos-grid a.mod').forEach(a => {
+                    const mod = mapa[(a.getAttribute('href') || '').split('?')[0]];
+                    if (mod && window.puede && !window.puede(mod, 'ver')) a.style.display = 'none';
+                });
+            } catch (e) { console.error(e); }
+        })();
+
 
         // Reloj en vivo
         function actualizarReloj() {

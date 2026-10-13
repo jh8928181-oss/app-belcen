@@ -134,7 +134,9 @@ function ejecutarScript() {
     console,
     // Los aporta auth-client.js en el navegador, no esta pagina.
     registrarAutoRefresco: () => {},
-    limpiarSesion: () => {}
+    limpiarSesion: () => {},
+    exigirModulo: () => true,
+    puede: () => true
   };
   vm.createContext(contexto);
   for (const bloque of bloquesInline) vm.runInContext(bloque, contexto, { timeout: 5000 });

@@ -232,6 +232,7 @@
             alert('❌ Acceso no autorizado. Solo el administrador puede gestionar recetas.');
             window.location.href = 'index.html';
         }
+        exigirModulo('recetas');
 
         let recetasGlobal = [];
         let inventarioGlobal = [];

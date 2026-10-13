@@ -163,7 +163,81 @@ function validarUsuarioBody(req, res, next) {
   next();
 }
 
+/** Módulos que admin1 puede abrir o cerrar por usuario en el panel Usuarios. */
+const MODULOS_PERMISO = [
+  'dashboard', 'almacen', 'soplado', 'envasado', 'refinado', 'auditoria',
+  'vigilancia', 'recetas', 'bdgeneral', 'bdplanta', 'flujo', 'admin'
+];
+
+/**
+ * Prefijo de ruta -> módulo. Solo se usa para ESCRITURA (POST/PUT/DELETE):
+ * las lecturas siguen abiertas como hoy para no romper tableros que mezclan
+ * módulos. Solo actúa si el usuario trae un permiso explícito; sin override
+ * todo sigue igual que antes (rol).
+ */
+const REGLAS_MODULO = [
+  [/^\/api\/recetas/, 'recetas'],
+  [/^\/api\/inventory/, 'recetas'],
+  [/^\/api\/flujo/, 'flujo'],
+  [/^\/api\/vigilancia/, 'vigilancia'],
+  [/^\/api\/almacen/, 'almacen'],
+  [/^\/api\/inventario/, 'almacen'],
+  [/^\/api\/servicios/, 'almacen'],
+  [/^\/api\/producto-terminado/, 'almacen'],
+  [/^\/api\/salidas/, 'almacen'],
+  [/^\/api\/soplado/, 'soplado'],
+  [/^\/api\/produccion\/(reporte|iniciar|cerrar|eliminar)/, 'envasado'],
+  [/^\/api\/produccion\/cierre/, 'auditoria'],
+  [/^\/api\/linea-plan/, 'envasado'],
+  [/^\/api\/refinado/, 'refinado'],
+  [/^\/api\/bd/, 'bdgeneral']
+];
+
+/**
+ * Bloquea la escritura cuando el usuario trae override explícito sin editar.
+ * Carga los permisos una vez por request (si la columna no existe aún por
+ * falta de migración, sigue como si no hubiera override). Sin override (o
+ * sin sesión) deja pasar: aplican los guards por rol de cada ruta, como
+ * siempre. Nunca toca a cuentas admin.
+ */
+function permisoPorRuta(req, res, next) {
+  const metodo = String((req && req.method) || 'GET').toUpperCase();
+  if (metodo === 'GET' || metodo === 'HEAD' || metodo === 'OPTIONS') return next();
+  if (!req || req.rol === 'admin' || !req.usuario) return next();
+  const listo = () => {
+    try {
+      const perms = req.permisos && typeof req.permisos === 'object' ? req.permisos : null;
+      if (!perms || Object.keys(perms).length === 0) return next();
+      const ruta = String((req.originalUrl || req.url || '').split('?')[0]);
+      const regla = REGLAS_MODULO.find(([re]) => re.test(ruta));
+      if (!regla) return next();
+      const p = perms[regla[1]];
+      if (!p || typeof p !== 'object') return next();
+      if (p.editar === false) {
+        return res.status(403).json({ success: false, mensaje: 'No tienes permiso de edición en este módulo.' });
+      }
+      return next();
+    } catch (e) {
+      return next();
+    }
+  };
+  if (req.permisos !== undefined) return listo();
+  try {
+    const pool = require('../db');
+    pool.query('SELECT permisos FROM usuarios_sistema WHERE usuario = $1', [req.usuario])
+      .then(r => {
+        req.permisos = (r.rows[0] && r.rows[0].permisos) || {};
+        listo();
+      })
+      .catch(() => next());
+  } catch (e) {
+    return next();
+  }
+}
+
 module.exports = {
+  MODULOS_PERMISO,
+  permisoPorRuta,
   hashPassword,
   esPasswordHasheada,
   generarToken,

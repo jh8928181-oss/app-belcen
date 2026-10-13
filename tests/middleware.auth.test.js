@@ -1,3 +1,10 @@
+const mockDbQuery = jest.fn();
+
+jest.mock('../db', () => ({
+  query: (...args) => mockDbQuery(...args),
+  connect: () => Promise.resolve({ query: (...args) => mockDbQuery(...args), release: () => {} })
+}));
+
 const {
   hashPassword,
   esPasswordHasheada,
@@ -8,6 +15,8 @@ const {
   validarUsuarioBody,
   crearGuardRoles,
   crearGuardUsuarios,
+  permisoPorRuta,
+  MODULOS_PERMISO,
   ROLES_MODULO,
   ENFORCE_ROLES,
   ROLES_PERMITIDOS
@@ -455,8 +464,9 @@ describe('mapa de flujo montado en la app', () => {
 
   test('el mapa autentica antes de decidir por cuenta', () => {
     const capas = subCapasFlujo();
-    expect(capas).toHaveLength(2);
-    expect(capas[0].name).toBe('authMiddleware');
+    const nombres = capas.map(c => c.name);
+    expect(nombres[0]).toBe('authMiddleware');
+    expect(nombres.indexOf('authMiddleware')).toBeLessThan(nombres.length - 1);
   });
 
   test('admin2 recibe 403 antes de tocar la base', () => {
@@ -535,5 +545,85 @@ describe('guard de Refinado', () => {
         .handle({ rol, method: 'GET', originalUrl: '/api/refinado/reporte', usuario: 'u' }, resFalso(), next);
       expect(next).toHaveBeenCalled();
     });
+  });
+});
+
+describe('permisoPorRuta', () => {
+  beforeEach(() => {
+    mockDbQuery.mockReset();
+    mockDbQuery.mockResolvedValue({ rows: [{}] });
+  });
+
+  test('deja pasar lecturas aunque no tenga edicion', () => {
+    const next = jest.fn();
+    permisoPorRuta({ rol: 'almacen', usuario: 'a1', method: 'GET', originalUrl: '/api/inventario', permisos: { almacen: { ver: true, editar: false } } }, resFalso(), next);
+    expect(next).toHaveBeenCalled();
+  });
+
+  test('deja pasar al admin aunque tenga override', () => {
+    const next = jest.fn();
+    permisoPorRuta({ rol: 'admin', usuario: 'admin1', method: 'POST', originalUrl: '/api/almacen/ajustar-stock', permisos: { almacen: { ver: false, editar: false } } }, resFalso(), next);
+    expect(next).toHaveBeenCalled();
+  });
+
+  test('deja pasar sin sesion, sin permisos o sin override del modulo', async () => {
+    for (const req of [
+      { method: 'POST', originalUrl: '/api/almacen/x' },
+      { rol: 'almacen', usuario: 'a1', method: 'POST', originalUrl: '/api/almacen/x' },
+      { rol: 'almacen', usuario: 'a1', method: 'POST', originalUrl: '/api/almacen/x', permisos: {} },
+      { rol: 'almacen', usuario: 'a1', method: 'POST', originalUrl: '/api/almacen/x', permisos: { soplado: { ver: true, editar: false } } }
+    ]) {
+      const next = jest.fn();
+      await new Promise(resolve => {
+        permisoPorRuta(req, resFalso(), () => { next(); resolve(); });
+      });
+      expect(next).toHaveBeenCalled();
+    }
+  });
+
+  test('bloquea con 403 la escritura sin editar en el modulo', () => {
+    const res = resFalso();
+    const next = jest.fn();
+    permisoPorRuta({ rol: 'almacen', usuario: 'a1', method: 'POST', originalUrl: '/api/almacen/ajustar-stock', permisos: { almacen: { ver: true, editar: false } } }, res, next);
+    expect(res.statusCode).toBe(403);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test('deja pasar la escritura con editar en true y la ruta no mapeada', () => {
+    const next = jest.fn();
+    permisoPorRuta({ rol: 'almacen', usuario: 'a1', method: 'POST', originalUrl: '/api/almacen/x', permisos: { almacen: { ver: true, editar: true } } }, resFalso(), next);
+    expect(next).toHaveBeenCalled();
+    const next2 = jest.fn();
+    permisoPorRuta({ rol: 'x', usuario: 'u', method: 'DELETE', originalUrl: '/api/otra-cosa/1', permisos: { almacen: { ver: false, editar: false } } }, resFalso(), next2);
+    expect(next2).toHaveBeenCalled();
+  });
+
+  test('ver=false no bloquea la escritura (solo manda editar)', () => {
+    const next = jest.fn();
+    permisoPorRuta({ rol: 'almacen', usuario: 'a1', method: 'POST', originalUrl: '/api/soplado/registrar', permisos: { soplado: { ver: false, editar: true } } }, resFalso(), next);
+    expect(next).toHaveBeenCalled();
+  });
+
+  test('MODULOS_PERMISO cubre los doce modulos', () => {
+    expect(MODULOS_PERMISO.slice().sort()).toEqual(['admin', 'almacen', 'auditoria', 'bdgeneral', 'bdplanta', 'dashboard', 'envasado', 'flujo', 'recetas', 'refinado', 'soplado', 'vigilancia'].sort());
+  });
+
+  test('carga los permisos de la base cuando no vienen en cache', async () => {
+    mockDbQuery.mockResolvedValue({ rows: [{ permisos: { almacen: { ver: true, editar: false } } }] });
+    const res = resFalso();
+    const next = jest.fn();
+    permisoPorRuta({ rol: 'almacen', usuario: 'a1', method: 'POST', originalUrl: '/api/almacen/x' }, res, next);
+    await new Promise(resolve => setImmediate(resolve));
+    expect(res.statusCode).toBe(403);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test('sin columna (migracion pendiente) deja pasar', async () => {
+    mockDbQuery.mockRejectedValue(new Error('column "permisos" does not exist'));
+    const next = jest.fn();
+    await new Promise(resolve => {
+      permisoPorRuta({ rol: 'almacen', usuario: 'a1', method: 'POST', originalUrl: '/api/almacen/x' }, resFalso(), () => { next(); resolve(); });
+    });
+    expect(next).toHaveBeenCalled();
   });
 });

@@ -18,7 +18,8 @@ jest.mock('../db', () => ({
 
 jest.mock('../middleware/auth', () => ({
   authMiddleware: (req, res, next) => next(),
-  crearGuardRoles: () => (req, res, next) => next()
+  crearGuardRoles: () => (req, res, next) => next(),
+  permisoPorRuta: (req, res, next) => next()
 }));
 
 // El service se ejerce de verdad: lo que se prueba aqui es la politica de las

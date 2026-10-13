@@ -180,6 +180,7 @@
             alert('❌ Acceso no autorizado para este módulo.');
             window.location.href = 'index.html';
         }
+        exigirModulo('bdplanta');
         if (rolUsuario !== 'admin' && rolUsuario !== 'supervisor' && rolUsuario !== 'produccion') {
             document.getElementById('linkDashboard').style.display = 'none'; // Solo roles con permiso de dashboard
         }

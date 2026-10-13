@@ -56,7 +56,9 @@ function ejecutarScript() {
     crypto: stub,
     console,
     registrarAutoRefresco: () => {},
-    limpiarSesion: () => {}
+    limpiarSesion: () => {},
+    exigirModulo: () => true,
+    puede: () => true
   };
   vm.createContext(contexto);
   for (const bloque of bloquesInline) {

@@ -14,7 +14,7 @@ const os = require('os');
 const tesseract = require('tesseract.js');
 const { analizarDocumentoConGemini } = require('./services/geminiService');
 const { initRedis } = require('./services/rateLimiter');
-const { authMiddleware, crearGuardRoles, ROLES_MODULO, requerirRolAdmin } = require('./middleware/auth');
+const { authMiddleware, crearGuardRoles, ROLES_MODULO, requerirRolAdmin, permisoPorRuta } = require('./middleware/auth');
 const { calcularInsumosProduccion } = require('./services/recipeService');
 const { datosParaOrdenPDF, datosFormularioOC } = require('./services/ocPdfDatos');
 const { generarPDFOrdenCompra, nombreArchivoSeguro } = require('./services/pdfOrdenCompra');
@@ -67,6 +67,8 @@ app.use('/api', (req, res, next) => {
   if (req.path === '/login') return next();
   authMiddleware(req, res, next);
 });
+// Permisos explícitos por usuario y módulo (solo escritura; sin override todo sigue por rol).
+app.use('/api', permisoPorRuta);
 
 // --- GUARDS DE ROL ---
 // Los guards marcados con { enforce: true } ya existían antes y siempre bloquearon.

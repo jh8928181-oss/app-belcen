@@ -14,7 +14,7 @@
 
 const express = require('express');
 const db = require('../db');
-const { authMiddleware, crearGuardUsuarios } = require('../middleware/auth');
+const { authMiddleware, crearGuardUsuarios, permisoPorRuta } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -60,6 +60,7 @@ const METRICAS = [
 const CLAVES_METRICAS = new Set(METRICAS.map((m) => m.clave));
 
 router.use(authMiddleware);
+router.use(permisoPorRuta);
 router.use(soloAdmin1);
 
 // ---------- VALIDACION ----------

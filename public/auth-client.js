@@ -37,6 +37,33 @@
         localStorage.removeItem('usuario_actual');
         localStorage.removeItem('rol_actual');
         localStorage.removeItem('rol_usuario');
+        localStorage.removeItem('permisos_actual');
+    };
+
+    function leerPermisos() {
+        try {
+            return JSON.parse(localStorage.getItem('permisos_actual') || '{}') || {};
+        } catch (e) { return {}; }
+    }
+
+    // Override explícito por usuario y módulo. Sin override (o admin) no
+    // bloquea nada: cada página aplica su control por rol como siempre.
+    window.puede = function (modulo, nivel) {
+        if (localStorage.getItem('rol_actual') === 'admin') return true;
+        var p = leerPermisos()[modulo];
+        if (!p || typeof p !== 'object') return true;
+        if (nivel === 'editar') return p.editar !== false;
+        return p.ver !== false;
+    };
+
+    // Bloquea la entrada al módulo si el admin le quitó la vista.
+    window.exigirModulo = function (modulo) {
+        if (!window.puede(modulo, 'ver')) {
+            alert('❌ No tienes acceso a este módulo.');
+            window.location.href = 'dashboard.html';
+            return false;
+        }
+        return true;
     };
 
     // Auto-refresco único: evita que setInterval y visibilitychange disparen

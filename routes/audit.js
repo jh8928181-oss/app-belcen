@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
-const { authMiddleware, crearGuardRoles } = require('../middleware/auth');
+const { authMiddleware, crearGuardRoles, permisoPorRuta } = require('../middleware/auth');
 
 const gAuditoria = crearGuardRoles(['admin', 'supervisor', 'auditoria', 'produccion'], { enforce: true });
 router.use(authMiddleware);
+router.use(permisoPorRuta);
 router.use(gAuditoria);
 
 router.get('/accesos', async (req, res) => {

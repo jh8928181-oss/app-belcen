@@ -87,7 +87,8 @@ function ejecutarScript() {
     URLSearchParams,
     setTimeout: () => 0, setInterval: () => 0, clearTimeout: () => 0, clearInterval: () => 0,
     getComputedStyle: () => stub, requestAnimationFrame: () => 0, crypto: stub, console,
-    registrarAutoRefresco: () => {}, limpiarSesion: () => {}
+    registrarAutoRefresco: () => {}, limpiarSesion: () => {},
+    exigirModulo: () => true, puede: () => true
   };
   vm.createContext(contexto);
   for (const bloque of bloquesInline) vm.runInContext(bloque, contexto, { timeout: 5000 });

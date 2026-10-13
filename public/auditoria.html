@@ -625,6 +625,7 @@
             alert('❌ Acceso no autorizado.');
             window.location.href = 'index.html';
         }
+        exigirModulo('auditoria');
         if (rolUsuario !== 'admin' && rolUsuario !== 'supervisor' && rolUsuario !== 'produccion') {
             document.getElementById('linkDashboard').style.display = 'none';
             document.querySelectorAll('.atajo-dash').forEach(el => { el.style.display = 'none'; });

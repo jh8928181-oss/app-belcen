@@ -784,6 +784,7 @@
                     localStorage.setItem('usuario_actual', data.usuario);
                     localStorage.setItem('rol_actual', data.rol);
                     localStorage.setItem('token_actual', data.token);
+                    try { localStorage.setItem('permisos_actual', JSON.stringify(data.permisos || {})); } catch (e) { }
 
                     switch (String(data.rol || '').trim()) {
                         case 'auditoria':

@@ -12,5 +12,7 @@ router.get('/usuarios', requerirRolAdmin, authController.listarUsuarios);
 router.post('/usuarios', requerirRolAdmin, validarUsuarioBody, authController.crearUsuario);
 router.post('/usuarios/:id/editar', requerirRolAdmin, authController.editarUsuario);
 router.post('/usuarios/:id/eliminar', requerirRolAdmin, authController.eliminarUsuario);
+router.put('/usuarios/:id/permisos', requerirRolAdmin, authController.guardarPermisos);
+router.get('/usuarios/mi-acceso', authController.miAcceso);
 
 module.exports = router;

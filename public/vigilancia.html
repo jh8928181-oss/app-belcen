@@ -685,6 +685,7 @@
             alert('❌ Acceso no autorizado.');
             window.location.href = 'index.html';
         }
+        exigirModulo('vigilancia');
         if (rolUsuario !== 'admin' && rolUsuario !== 'supervisor' && rolUsuario !== 'produccion') {
             document.getElementById('linkDashboard').style.display = 'none';
         }

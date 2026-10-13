@@ -4,7 +4,8 @@ const {
   hashPassword,
   esPasswordHasheada,
   generarToken,
-  ROLES_PERMITIDOS
+  ROLES_PERMITIDOS,
+  MODULOS_PERMISO
 } = require('../middleware/auth');
 const { checkRateLimit } = require('../services/rateLimiter');
 
@@ -70,7 +71,7 @@ async function login(req, res) {
 
     await pool.query('INSERT INTO historial_accesos (usuario, accion, ip, user_agent, exito) VALUES ($1, \'LOGIN\', $2, $3, true)', [user.usuario, ipCliente(req), req.headers['user-agent'] || '']);
 
-    res.json({ success: true, rol: user.rol, usuario: user.usuario, token });
+    res.json({ success: true, rol: user.rol, usuario: user.usuario, token, permisos: user.permisos || {} });
   } catch (err) {
     console.error('Error en login:', err);
     res.status(500).json({ success: false, mensaje: 'Error en el servidor: ' + err.message });
@@ -81,9 +82,18 @@ async function listarUsuarios(req, res) {
   try {
     // nombre/cargo/celular son los datos que salen firmados en la OC, asi que
     // la lista tambien los trae para que el admin los complete sin adivinar.
-    const result = await pool.query(
-      'SELECT id, usuario, rol, nombre, cargo, celular, email FROM usuarios_sistema ORDER BY usuario ASC'
-    );
+    // permisos viaja para la matriz de accesos por modulo. Si la migracion
+    // aun no corrio (sin columna), se cae al listado sin permisos.
+    let result;
+    try {
+      result = await pool.query(
+        'SELECT id, usuario, rol, nombre, cargo, celular, email, permisos FROM usuarios_sistema ORDER BY usuario ASC'
+      );
+    } catch (e) {
+      result = await pool.query(
+        'SELECT id, usuario, rol, nombre, cargo, celular, email FROM usuarios_sistema ORDER BY usuario ASC'
+      );
+    }
     res.json(result.rows);
   } catch (err) {
     console.error('Error al listar usuarios:', err);
@@ -268,11 +278,81 @@ async function logout(req, res) {
   } catch (err) { res.status(500).json({ success: false, mensaje: err.message }); }
 }
 
+// Acceso propio (rol + override) para que el frontend aplique permisos.
+async function miAcceso(req, res) {
+  try {
+    const r = await pool.query(
+      'SELECT usuario, rol, permisos FROM usuarios_sistema WHERE usuario = $1',
+      [req.usuario]
+    );
+    if (!r.rows.length) {
+      return res.status(404).json({ success: false, mensaje: 'Usuario no encontrado.' });
+    }
+    res.json({
+      success: true,
+      usuario: r.rows[0].usuario,
+      rol: r.rows[0].rol,
+      permisos: r.rows[0].permisos || {}
+    });
+  } catch (err) {
+    // Sin columna (migración pendiente): como si no tuviera override.
+    res.json({ success: true, usuario: req.usuario, rol: req.rol, permisos: {} });
+  }
+}
+
+// Guarda la matriz de permisos de un usuario (solo admin, nunca a otro
+// admin ni a uno mismo: las cuentas administradoras no se restringen).
+async function guardarPermisos(req, res) {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ success: false, mensaje: 'ID de usuario no válido.' });
+    }
+    const target = await pool.query('SELECT id, usuario, rol FROM usuarios_sistema WHERE id = $1', [id]);
+    if (!target.rows.length) {
+      return res.status(404).json({ success: false, mensaje: 'El usuario no existe.' });
+    }
+    if (target.rows[0].rol === 'admin') {
+      return res.status(400).json({ success: false, mensaje: 'Las cuentas administradoras no se restringen.' });
+    }
+    if (target.rows[0].usuario === req.usuario) {
+      return res.status(400).json({ success: false, mensaje: 'No puedes cambiar tus propios permisos.' });
+    }
+    const entrada = (req.body && req.body.permisos) || {};
+    if (typeof entrada !== 'object' || Array.isArray(entrada)) {
+      return res.status(400).json({ success: false, mensaje: 'Permisos inválidos.' });
+    }
+    for (const mod of Object.keys(entrada)) {
+      if (!MODULOS_PERMISO.includes(mod)) {
+        return res.status(400).json({ success: false, mensaje: `Módulo desconocido: ${mod}.` });
+      }
+    }
+    const limpios = {};
+    for (const mod of MODULOS_PERMISO) {
+      const p = entrada[mod];
+      if (p === undefined || p === null) continue;
+      if (typeof p !== 'object') {
+        return res.status(400).json({ success: false, mensaje: `Permiso inválido para ${mod}.` });
+      }
+      const ver = p.ver === undefined ? true : !!p.ver;
+      const editar = p.editar === undefined ? true : !!p.editar;
+      if (!ver || !editar) limpios[mod] = { ver, editar };
+    }
+    await pool.query('UPDATE usuarios_sistema SET permisos = $1 WHERE id = $2', [JSON.stringify(limpios), id]);
+    res.json({ success: true, mensaje: 'Permisos actualizados.', permisos: limpios });
+  } catch (err) {
+    console.error('Error al guardar permisos:', err);
+    res.status(500).json({ success: false, mensaje: 'Error al guardar permisos: ' + err.message });
+  }
+}
+
 module.exports = {
   login,
   listarUsuarios,
   crearUsuario,
   editarUsuario,
   eliminarUsuario,
-  logout
+  logout,
+  miAcceso,
+  guardarPermisos
 };

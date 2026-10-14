@@ -217,6 +217,20 @@
             </div>
 
             <div>
+                <label><b>Línea de soplado:</b></label>
+                <select id="linea_soplado" name="linea_soplado" required onchange="actualizarMoldeLinea()">
+                    <option value="AUTOMATICA">Línea automática</option>
+                    <option value="MANUAL">Línea manual</option>
+                </select>
+                <div id="moldeActualLinea" style="font-size:12px; color:#555; margin-top:4px;"></div>
+            </div>
+
+            <div>
+                <label><b>Molde en la línea:</b></label>
+                <input type="text" id="molde_linea" name="molde_linea" placeholder="Ej. Molde 1 Lt" maxlength="100">
+            </div>
+
+            <div>
                 <label><b>Cantidad de Botellas Fabricadas:</b></label>
                 <input type="number" id="cantidad_producida" name="cantidad_producida" min="1" placeholder="Ej. 3000" required>
             </div>
@@ -287,6 +301,30 @@
         }
         cargarPreformas();
 
+        // Molde actual de cada línea: al cambiar de línea se propone su
+        // molde; si se escribe otro, queda guardado en la línea al registrar.
+        let moldesLinea = {};
+
+        async function cargarLineasSoplado() {
+            try {
+                const res = await fetch('/api/soplado/lineas');
+                if (!res.ok) return;
+                const data = await res.json();
+                moldesLinea = {};
+                (data.lineas || []).forEach(l => { moldesLinea[l.linea] = l.molde_actual || ''; });
+                actualizarMoldeLinea();
+            } catch (e) { console.error(e); }
+        }
+
+        function actualizarMoldeLinea() {
+            const lin = document.getElementById('linea_soplado').value;
+            const actual = moldesLinea[lin] || '';
+            document.getElementById('moldeActualLinea').textContent = actual
+                ? 'Molde actual en línea: ' + actual
+                : 'Esta línea aún no tiene molde registrado.';
+            document.getElementById('molde_linea').value = actual;
+        }
+
         let enviandoSoplado = false;
         document.getElementById('formSoplado').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -297,6 +335,8 @@
             const preforma_nombre = document.getElementById('preforma_nombre').value;
             const botella_tipo = document.getElementById('botella_tipo').value;
             const cantidad_producida = parseInt(document.getElementById('cantidad_producida').value);
+            const linea_soplado = document.getElementById('linea_soplado').value;
+            const molde_linea = document.getElementById('molde_linea').value.trim();
 
             if (!preforma_nombre || !botella_tipo || isNaN(cantidad_producida) || cantidad_producida <= 0) {
                 alert('❌ Seleccione la preforma, el tipo de botella y una cantidad válida.');
@@ -313,6 +353,8 @@
                         preforma_nombre,
                         botella_tipo,
                         cantidad_producida,
+                        linea: linea_soplado,
+                        molde: molde_linea,
                         usuario: localStorage.getItem('usuario_actual') || 'soplado_user'
                     })
                 });
@@ -321,6 +363,7 @@
                 if (res.ok && data.success) {
                     alert('✅ ' + data.mensaje);
                     document.getElementById('formSoplado').reset();
+                    cargarLineasSoplado();
                 } else {
                     alert('❌ ' + (data.mensaje || 'Error al registrar producción.'));
                 }
@@ -369,12 +412,17 @@
                 const reportes = Array.isArray(datos) ? datos : [];
                 const hoy = fechaHoyLocal();
                 let totalBotellas = 0;
+                let autoBotellas = 0;
+                let manualBotellas = 0;
                 reportes.forEach(r => {
                     if (fechaCorta(r.fecha_reporte) === hoy) {
-                        totalBotellas += parseInt(r.cantidad_botellas || 0, 10);
+                        const c = parseInt(r.cantidad_botellas || 0, 10);
+                        totalBotellas += c;
+                        if (String(r.linea || 'AUTOMATICA').toUpperCase() === 'MANUAL') manualBotellas += c;
+                        else autoBotellas += c;
                     }
                 });
-                document.getElementById('totalesEstadoSoplado').textContent = 'Hoy: ' + totalBotellas + ' botellas';
+                document.getElementById('totalesEstadoSoplado').textContent = 'Hoy: ' + totalBotellas + ' botellas (Auto: ' + autoBotellas + ' · Manual: ' + manualBotellas + ')';
             } catch (e) {
                 console.error(e);
             }
@@ -428,6 +476,7 @@
 
         cargarEstadoSoplado();
         cargarTotalesSoplado();
+        cargarLineasSoplado();
         registrarAutoRefresco(() => { cargarEstadoSoplado(); cargarTotalesSoplado(); }, 15000);
     </script>
 </body>

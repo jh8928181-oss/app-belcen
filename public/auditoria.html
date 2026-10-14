@@ -532,14 +532,16 @@
                             <thead>
                                 <tr>
                                     <th style="background-color:#8a6d00;">Fecha</th>
+                                    <th style="background-color:#8a6d00;">Línea</th>
                                     <th style="background-color:#8a6d00;">Botella</th>
                                     <th class="text-center" style="background-color:#8a6d00;">Cantidad</th>
+                                    <th style="background-color:#8a6d00;">Molde</th>
                                     <th style="background-color:#8a6d00;">Preforma usada</th>
                                     <th style="background-color:#8a6d00;">Registró</th>
                                 </tr>
                             </thead>
                             <tbody id="tablaSoplado">
-                                <tr><td colspan="5" class="text-center">Cargando soplado...</td></tr>
+                                <tr><td colspan="7" class="text-center">Cargando soplado...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1031,15 +1033,20 @@
             const filtrados = sopladoGlobal.filter(it =>
                 (it.botella_nombre || '').toLowerCase().includes(q) ||
                 (it.preforma_nombre || '').toLowerCase().includes(q) ||
+                (it.molde || '').toLowerCase().includes(q) ||
+                (it.linea || '').toLowerCase().includes(q) ||
                 (it.fecha_reporte || '').toLowerCase().includes(q)
             );
             const tbody = document.getElementById('tablaSoplado');
-            tbody.innerHTML = filtrados.length === 0 ? '<tr><td colspan="5" class="text-center sin-registros">No hay reportes de soplado.</td></tr>' : '';
+            tbody.innerHTML = filtrados.length === 0 ? '<tr><td colspan="7" class="text-center sin-registros">No hay reportes de soplado.</td></tr>' : '';
             filtrados.forEach(r => {
+                const esManual = String(r.linea || 'AUTOMATICA').toUpperCase() === 'MANUAL';
                 const tr = document.createElement('tr');
                 tr.innerHTML = `<td><b>${fechaSoloDia(r.fecha_reporte)}</b></td>`
+                    + `<td>${esManual ? '🔧 Manual' : '⚙️ Automática'}</td>`
                     + `<td><b>${r.botella_nombre || 'N/D'}</b>${r.botella_tipo ? `<div style="font-size:12px; color:#888;">${r.botella_tipo}</div>` : ''}</td>`
                     + `<td class="text-center" style="color:#8a6d00; font-weight:bold;">${r.cantidad_botellas || 0}</td>`
+                    + `<td>${r.molde || '-'}</td>`
                     + `<td>${r.preforma_nombre || '-'}</td>`
                     + `<td>${r.usuario_registro || '-'}</td>`;
                 tbody.appendChild(tr);

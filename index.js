@@ -1388,7 +1388,7 @@ app.get('/api/inventario', async (req, res) => {
 app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
     const client = await pool.connect();
     try {
-        const { preforma_nombre, botella_tipo, cantidad_producida, usuario } = req.body;
+        const { preforma_nombre, botella_tipo, cantidad_producida, usuario, linea, molde } = req.body;
         const cantidadBotellas = parseInt(cantidad_producida, 10);
         if (!cantidadBotellas || cantidadBotellas <= 0 || cantidadBotellas > 1000000) {
             return res.status(400).json({ success: false, mensaje: 'Cantidad producida inválida. Debe ser un número entero mayor a 0.' });
@@ -1396,6 +1396,21 @@ app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
         if (!preforma_nombre || !String(preforma_nombre).trim()) {
             return res.status(400).json({ success: false, mensaje: 'Debe seleccionar cuál preforma se usó.' });
         }
+        // Dos líneas: automática y manual. Cada una trabaja con su molde.
+        const lineaVal = String(linea || 'AUTOMATICA').trim().toUpperCase();
+        if (!['AUTOMATICA', 'MANUAL'].includes(lineaVal)) {
+            return res.status(400).json({ success: false, mensaje: 'Línea inválida (AUTOMATICA o MANUAL).' });
+        }
+        const moldeVal = String(molde || '').trim().slice(0, 100);
+
+        // Sin la migración de líneas, el reporte se guarda como antes.
+        let conLinea = true;
+        try {
+            const cols = await client.query(
+                `SELECT column_name FROM information_schema.columns WHERE table_name = 'reportes_soplado'`
+            );
+            conLinea = cols.rows.some(r => r.column_name === 'linea');
+        } catch (e) { conLinea = false; }
 
         await client.query('BEGIN');
         await exigirLineaEnMarcha(client, 'soplado');
@@ -1529,14 +1544,37 @@ app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
         });
 
         // Guardar el reporte del día para la barra de estado y estadísticas
-        await client.query(
-            `INSERT INTO reportes_soplado (preforma_nombre, botella_tipo, botella_nombre, cantidad_botellas, usuario_registro)
-             VALUES ($1, $2, $3, $4, $5)`,
-            [preforma_nombre, botella_tipo, botellaNombre, cantidadBotellas, usuario || 'soplado_user']
-        );
+        if (conLinea) {
+            await client.query(
+                `INSERT INTO reportes_soplado (preforma_nombre, botella_tipo, botella_nombre, cantidad_botellas, usuario_registro, linea, molde)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [preforma_nombre, botella_tipo, botellaNombre, cantidadBotellas, usuario || 'soplado_user', lineaVal, moldeVal || null]
+            );
+        } else {
+            await client.query(
+                `INSERT INTO reportes_soplado (preforma_nombre, botella_tipo, botella_nombre, cantidad_botellas, usuario_registro)
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [preforma_nombre, botella_tipo, botellaNombre, cantidadBotellas, usuario || 'soplado_user']
+            );
+        }
 
         await client.query('COMMIT');
-        res.json({ success: true, mensaje: `Producción de ${cantidadBotellas} unidades de ${botellaNombre} registrada. Se descontó la preforma "${preforma_nombre}" y su etiqueta.` });
+        // La línea conserva el último molde con el que produjo. Fuera de la
+        // transacción y tolerante: si la tabla aún no existe por migración
+        // pendiente, el reporte igual quedó guardado.
+        if (moldeVal) {
+            try {
+                await pool.query(
+                    `UPDATE soplado_lineas SET molde_actual = $1, fecha_actualizacion = CURRENT_TIMESTAMP WHERE linea = $2`,
+                    [moldeVal, lineaVal]
+                );
+            } catch (e) {
+                if (!e || e.code !== '42P01') console.error('No se pudo guardar el molde de la línea:', e);
+                else console.warn('soplado_lineas pendiente de migración: molde no memorizado.');
+            }
+        }
+        const lineaTxt = lineaVal === 'AUTOMATICA' ? 'línea automática' : 'línea manual';
+        res.json({ success: true, mensaje: `Producción de ${cantidadBotellas} unidades de ${botellaNombre} registrada en ${lineaTxt}${moldeVal ? ` (molde ${moldeVal})` : ''}. Se descontó la preforma "${preforma_nombre}" y su etiqueta.` });
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Error al registrar soplado:', error);
@@ -1551,6 +1589,19 @@ app.get('/api/soplado/reportes', async (req, res) => {
         const result = await pool.query('SELECT * FROM reportes_soplado ORDER BY id DESC LIMIT 500');
         res.json(result.rows);
     } catch (err) {
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+// Molde actual de cada línea de soplado (automática y manual).
+app.get('/api/soplado/lineas', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT linea, nombre, molde_actual FROM soplado_lineas ORDER BY linea ASC');
+        res.json({ success: true, lineas: result.rows });
+    } catch (err) {
+        if (err && err.code === '42P01') {
+            return res.json({ success: true, migracionPendiente: true, lineas: [] });
+        }
         res.status(500).json({ success: false, mensaje: err.message });
     }
 });

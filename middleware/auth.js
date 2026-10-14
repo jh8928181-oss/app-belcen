@@ -190,6 +190,7 @@ const REGLAS_MODULO = [
   [/^\/api\/produccion\/cierre/, 'auditoria'],
   [/^\/api\/linea-plan/, 'envasado'],
   [/^\/api\/refinado/, 'refinado'],
+  [/^\/api\/terceros/, 'almacen'],
   [/^\/api\/bd/, 'bdgeneral']
 ];
 

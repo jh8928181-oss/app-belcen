@@ -921,6 +921,45 @@
         </div>
     </div>
 
+    <!-- 6C. PRE-INGRESOS DE TERCEROS (botellas jaladas sin guía oficial) -->
+    <div class="table-container sec-teal reveal">
+        <h3 class="h3-teal">🚚 PRE-INGRESOS DE TERCEROS <span id="badgePreingresos"></span></h3>
+        <p style="font-size:13px; color:#555;">Cuando el tercero avisa lotes listos y se jalan a la línea <b>antes de su guía oficial</b>, regístralos aquí. El pre-ingreso <b>no mueve stock</b>: producción ya puede consumir y lo que falte quedará en ajustes pendientes. Cuando llegue la guía, vincúlala: ingresan las botellas, se saldan los pendientes y queda la conciliación.</p>
+        <div class="caja-items">
+            <h4>📝 Registrar pre-ingreso</h4>
+            <form id="formPreingresoTercero">
+                <div class="fila-agregar">
+                    <input type="text" id="preTercero" placeholder="Tercero (Ej. Soplados del Norte)" required style="min-width:200px;">
+                    <select id="preArticulo" required>
+                        <option value="">-- Botella --</option>
+                    </select>
+                    <input type="number" id="preCantidad" step="any" min="0" placeholder="Cantidad estimada" required style="max-width:160px;">
+                    <input type="text" id="preObs" placeholder="Observaciones (opcional)" style="min-width:200px;">
+                </div>
+                <div><button type="submit" class="btn-agregar-item">Registrar pre-ingreso</button></div>
+            </form>
+        </div>
+        <h4>Pre-ingresos registrados</h4>
+        <div class="tabla-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>CÓDIGO</th>
+                        <th>FECHA</th>
+                        <th>TERCERO</th>
+                        <th>BOTELLA</th>
+                        <th class="text-center">ESTIMADA</th>
+                        <th class="text-center">ESTADO</th>
+                        <th>VINCULAR GUÍA OFICIAL</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaPreingresos">
+                    <tr><td colspan="7" class="text-center">Cargando…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <!-- 7. INVENTARIO (STOCK) DE INSUMOS DE REFINADO -->
     <section class="modulo" id="modulo-refinado">
     <div class="modulo-dos-col modulo-stock-pila">
@@ -2933,6 +2972,122 @@
             } catch (err) { console.error(err); alert('Error de conexión.'); }
         }
 
+        // ---- PRE-INGRESOS DE TERCEROS (botellas jaladas sin guía oficial) ----
+        async function cargarBotellasTercero() {
+            try {
+                const res = await fetch('/api/inventario');
+                if (!res.ok) throw new Error('Error del servidor.');
+                const items = await res.json();
+                const arr = Array.isArray(items) ? items : [];
+                const html = arr
+                    .filter(it => {
+                        const c = String(it.categoria || '').toUpperCase();
+                        return c.includes('BOTELLA') || c.includes('GALONERA');
+                    })
+                    .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)))
+                    .map(it => `<option value="${it.id}">${escOpServ(it.nombre)} (stock: ${fmtStock(it.stock)} ${escOpServ(it.unidad_medida || 'UN')})</option>`)
+                    .join('');
+                document.getElementById('preArticulo').innerHTML = '<option value="">-- Botella --</option>' + html;
+            } catch (e) { console.error(e); }
+        }
+
+        async function cargarPreingresos() {
+            const tbody = document.getElementById('tablaPreingresos');
+            const badge = document.getElementById('badgePreingresos');
+            try {
+                const res = await fetch('/api/terceros/preingresos');
+                const data = await res.json();
+                if (data.migracionPendiente) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center">Falta la tabla de pre-ingresos: corre <b>npm run migrate</b> en el servidor.</td></tr>';
+                    return;
+                }
+                const lista = data.preingresos || [];
+                const n = lista.filter(p => p.estado === 'PREINGRESO').length;
+                badge.textContent = n ? `(${n} sin guía)` : '';
+                if (!lista.length) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center">Sin pre-ingresos. 🎉</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = '';
+                lista.forEach(p => {
+                    const esPre = p.estado === 'PREINGRESO';
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `<td><b>${p.codigo || ('#' + p.id)}</b></td>`
+                        + `<td>${String(p.fecha || '').substring(0, 10)}</td>`
+                        + `<td>${p.tercero || ''}</td>`
+                        + `<td><b>${p.articulo_nombre || ''}</b></td>`
+                        + `<td class="text-center"><b>${fmtStock(p.cantidad_estimada)}</b></td>`
+                        + `<td class="text-center">${esPre
+                            ? '<span class="badge-stock-bajo">SIN GUÍA</span>'
+                            : `<span class="badge-stock-ok">VINCULADO</span><div style="font-size:12px;">${p.numero_guia || ''} · ${fmtStock(p.cantidad_guia)}</div>`}</td>`
+                        + `<td>${esPre
+                            ? `<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+                                <input type="text" id="guiaTerc-${p.id}" placeholder="N° guía oficial" style="max-width:140px;">
+                                <input type="number" id="cantTerc-${p.id}" step="any" min="0" placeholder="Cantidad guía" style="max-width:130px;">
+                                <button onclick="vincularGuiaTercero(${p.id})" class="btn-accion btn-ajustar">Vincular</button>
+                               </div>`
+                            : '<span style="font-size:12px; color:#555;">Círculo cerrado ✔</span>'}</td>`;
+                    tbody.appendChild(tr);
+                });
+            } catch (e) {
+                console.error(e);
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center">Error al cargar.</td></tr>';
+            }
+        }
+
+        async function vincularGuiaTercero(id) {
+            const numero = (document.getElementById('guiaTerc-' + id).value || '').trim();
+            const cantidad = parseFloat(document.getElementById('cantTerc-' + id).value);
+            if (!numero) { alert('❌ Escribe el número de la guía oficial.'); return; }
+            if (!(cantidad > 0)) { alert('❌ Escribe la cantidad que trae la guía.'); return; }
+            if (!confirm(`¿Vincular la guía ${numero} (${cantidad} botellas)? Ingresarán al stock y se saldarán los pendientes de ese artículo.`)) return;
+            try {
+                const res = await fetch(`/api/terceros/preingresos/${id}/vincular`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        numero_guia: numero,
+                        cantidad_guia: cantidad,
+                        usuario: localStorage.getItem('usuario_actual') || 'almacen_user'
+                    })
+                });
+                const data = await res.json();
+                alert((res.ok && data.success ? '✅ ' : '❌ ') + (data.mensaje || 'Respuesta del servidor.'));
+                if (res.ok && data.success) {
+                    cargarPreingresos();
+                    cargarAjustesPendientes();
+                    cargarInventarioAlmacen();
+                }
+            } catch (err) { console.error(err); alert('Error de conexión.'); }
+        }
+
+        document.getElementById('formPreingresoTercero').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const tercero = document.getElementById('preTercero').value.trim();
+            const articulo_id = parseInt(document.getElementById('preArticulo').value, 10);
+            const cantidad_estimada = parseFloat(document.getElementById('preCantidad').value);
+            const observaciones = document.getElementById('preObs').value.trim();
+            if (!tercero) { alert('❌ Indica el nombre del tercero.'); return; }
+            if (!articulo_id) { alert('❌ Selecciona la botella.'); return; }
+            if (!(cantidad_estimada > 0)) { alert('❌ Escribe la cantidad estimada.'); return; }
+            try {
+                const res = await fetch('/api/terceros/preingresos', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        tercero, articulo_id, cantidad_estimada, observaciones,
+                        usuario: localStorage.getItem('usuario_actual') || 'almacen_user'
+                    })
+                });
+                const data = await res.json();
+                alert((res.ok && data.success ? '✅ ' : '❌ ') + (data.mensaje || 'Respuesta del servidor.'));
+                if (res.ok && data.success) {
+                    document.getElementById('formPreingresoTercero').reset();
+                    cargarPreingresos();
+                }
+            } catch (err) { console.error(err); alert('Error de conexión.'); }
+        });
+
         // ---- SERVICIOS EXTERNOS DE SOPLADO ----
         function fmtMill(n) {
             const v = Number(n) || 0;
@@ -3172,6 +3327,8 @@
         cargarInsumosServicio();
         cargarGuiasServicio();
         cargarAjustesPendientes();
+        cargarBotellasTercero();
+        cargarPreingresos();
 
         cargarInvRef();
 
@@ -3180,6 +3337,7 @@
             cargarRegistroIngresos();
             cargarInventarioAlmacen();
             cargarAjustesPendientes();
+            cargarPreingresos();
         }, 15000);
     </script>
 </body>

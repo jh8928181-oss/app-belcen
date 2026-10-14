@@ -348,7 +348,7 @@
                     <td class="text-center"><b>v${escHTML(r.version)}</b></td>
                     <td>${badgeEstado(!!r.activa)}</td>
                     <td class="text-center">${escHTML(r.num_insumos)}${sub}</td>
-                    <td>${escHTML(r.vigente_desde)}</td>
+                    <td>${escHTML(String(r.vigente_desde || '').substring(0, 10))}</td>
                     <td>${escHTML(r.created_by)}</td>
                     <td class="text-center">
                         <div class="botones-accion">
@@ -614,7 +614,7 @@
                 document.getElementById('detId').textContent = r.id;
                 document.getElementById('detProducto').textContent = (r.nombre_producto ? r.nombre_producto + ' (' + r.producto_key + ')' : r.producto_key);
                 document.getElementById('detVersion').innerHTML = `v${escHTML(r.version)} · ${badgeEstado(!!r.activa)} · Creado por ${escHTML(r.created_by)}`;
-                document.getElementById('detVigencia').textContent = `Desde ${r.vigente_desde || '—'} hasta ${r.vigente_hasta || 'vigente'}`;
+                document.getElementById('detVigencia').textContent = `Desde ${String(r.vigente_desde || '').substring(0, 10) || '—'} hasta ${String(r.vigente_hasta || '').substring(0, 10) || 'vigente'}`;
                 document.getElementById('detObservaciones').value = r.observaciones || '';
 
                 const aviso = document.getElementById('avisoEditor');

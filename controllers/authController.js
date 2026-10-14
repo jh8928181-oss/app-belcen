@@ -342,6 +342,10 @@ async function guardarPermisos(req, res) {
     res.json({ success: true, mensaje: 'Permisos actualizados.', permisos: limpios });
   } catch (err) {
     console.error('Error al guardar permisos:', err);
+    // 42703 = columna inexistente: la migración de permisos no se aplicó.
+    if (err && (err.code === '42703' || /permisos.*does not exist/i.test(err.message || ''))) {
+      return res.status(500).json({ success: false, mensaje: 'Falta aplicar la migración de permisos en la base de datos: ejecuta "npm run migrate" en el servidor y reintenta.' });
+    }
     res.status(500).json({ success: false, mensaje: 'Error al guardar permisos: ' + err.message });
   }
 }

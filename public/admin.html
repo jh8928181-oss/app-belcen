@@ -527,13 +527,15 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ permisos: perms })
                 });
-                const data = await res.json();
-                if (res.ok && data.success) {
+                // Un 404 sin JSON = el servidor corre código viejo sin esta ruta.
+                let data = null;
+                try { data = await res.json(); } catch (e) { data = null; }
+                if (res.ok && data && data.success) {
                     alert('✅ ' + data.mensaje);
                     cerrarPanelPermisos();
                     cargarUsuarios();
                 } else {
-                    alert('❌ ' + (data.mensaje || 'Error al guardar permisos.'));
+                    alert('❌ ' + ((data && data.mensaje) || ('Error del servidor (HTTP ' + res.status + '). Reinicia el servidor con el código actualizado y reintenta.')));
                 }
             } catch (err) {
                 console.error(err);

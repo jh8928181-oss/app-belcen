@@ -422,6 +422,20 @@ describe('guardarPermisos', () => {
     expect(raro.statusCode).toBe(400);
   });
 
+  test('si falta la migración avisa que hay que correr npm run migrate', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 5, usuario: 'juan', rol: 'almacen' }] });
+    mockQuery.mockRejectedValueOnce(Object.assign(new Error('column "permisos" of relation "usuarios_sistema" does not exist'), { code: '42703' }));
+
+    const res = await invocar(authController.guardarPermisos, {
+      params: { id: '5' },
+      body: { permisos: { almacen: { ver: true, editar: false } } },
+      usuario: 'admin1'
+    });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.cuerpo.mensaje).toMatch(/npm run migrate/);
+  });
+
   test('guarda solo lo restrictivo y omite acceso total', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [{ id: 5, usuario: 'juan', rol: 'almacen' }] });
     mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });

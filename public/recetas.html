@@ -273,6 +273,36 @@
             return Number.isFinite(n) ? String(Math.round(n * 1e6) / 1e6) : '';
         }
 
+        // Los insumos en millares (tapas, etiquetas, preformas) se descuentan
+        // por caja en UNIDADES (12 tapas) pero el inventario sigue en MILLARES:
+        // la cantidad se divide entre 1000 al guardar y se multiplica al mostrar.
+        function esUnidadMillar(u) {
+            const t = String(u || '').trim().toUpperCase();
+            return t === 'MILL' || t === 'MILLARES';
+        }
+
+        function invDeFila(fila) {
+            if (!fila || fila.dataset.tipo === 'componente') return null;
+            return inventarioGlobal.find(i => String(i.id) === String(fila.querySelector('.f-linea-item').value)) || null;
+        }
+
+        function factorCantFila(fila) {
+            const inv = invDeFila(fila);
+            return (inv && esUnidadMillar(inv.unidad_medida)) ? 1000 : 1;
+        }
+
+        function actualizarHintCant(fila) {
+            if (!fila) return;
+            const hint = fila.querySelector('.f-cant-u');
+            if (hint) hint.textContent = factorCantFila(fila) === 1000 ? '(en UNIDADES)' : '';
+        }
+
+        // Muestra una cantidad guardada en millares como unidades legibles.
+        function fmtCantReceta(valor, unidad) {
+            if (esUnidadMillar(unidad)) return `${num(Number(valor) * 1000)} UNIDADES`;
+            return `${num(valor)} ${escHTML(unidad || '')}`;
+        }
+
         function badgeEstado(activa) {
             return activa
                 ? '<span class="badge badge-activa">✅ ACTIVA</span>'
@@ -406,6 +436,7 @@
                 unidad.value = 'UNIDADES';
                 unidad.disabled = true;
                 stockWrap.style.display = 'none';
+                actualizarHintCant(fila);
             } else {
                 item.innerHTML = opcionesInventario('');
                 unidad.disabled = false;
@@ -421,13 +452,15 @@
             if (!inv) return;
             fila.querySelector('.f-unidad').value = inv.unidad_medida || 'UNIDADES';
             actualizarChipStock(fila, inv);
+            actualizarHintCant(fila);
         }
 
         function actualizarChipStock(fila, inv) {
             const chip = fila.querySelector('.f-stock-chip');
             if (!chip) return;
             const stock = Number(inv.stock) || 0;
-            const pedido = Number(fila.querySelector('.f-cant').value || 0) || 0;
+            // El pedido se escribe en unidades si el insumo va en millares.
+            const pedido = (Number(fila.querySelector('.f-cant').value || 0) || 0) / factorCantFila(fila);
             chip.className = 'stock-chip' + (stock <= 0 ? ' bajo' : (pedido > 0 && stock < pedido ? ' bajo' : ' ok'));
             chip.textContent = `Stock: ${num(stock)} ${inv.unidad_medida || 'UN'}`;
         }
@@ -435,6 +468,10 @@
         function filaHTML(linea) {
             const l = linea || {};
             const esSub = l.componente_receta_id != null;
+            const inv0 = (!esSub && l.insumo_id != null)
+                ? inventarioGlobal.find(i => String(i.id) === String(l.insumo_id))
+                : null;
+            const mult0 = (inv0 && esUnidadMillar(inv0.unidad_medida)) ? 1000 : 1;
             return `
             <div class="fila-insumo" data-tipo="${esSub ? 'componente' : 'insumo'}">
                 <div class="g-fila">
@@ -453,8 +490,8 @@
                         <span class="stock-chip f-stock-chip ${esSub ? '' : 'ok'}" style="${esSub ? 'display:none;' : ''}"></span>
                     </div>
                     <div>
-                        <span class="etiqueta-mini">Cant. por caja</span>
-                        <input type="number" step="any" min="0" class="f-cant" value="${num(l.cantidad_por_caja)}" oninput="actualizarStockChipFila(this)">
+                        <span class="etiqueta-mini">Cant. por caja <span class="f-cant-u">${mult0 === 1000 ? '(en UNIDADES)' : ''}</span></span>
+                        <input type="number" step="any" min="0" class="f-cant" value="${num((Number(l.cantidad_por_caja) || 0) * mult0)}" oninput="actualizarStockChipFila(this)">
                     </div>
                     <div>
                         <span class="etiqueta-mini">Merma %</span>
@@ -501,7 +538,8 @@
             return Array.from(document.querySelectorAll('#' + contenedorId + ' .fila-insumo')).map(fila => {
                 const item = fila.querySelector('.f-linea-item').value;
                 const base = {
-                    cantidad_por_caja: parseFloat(fila.querySelector('.f-cant').value),
+                    // En millares se escribe en unidades y se guarda en millares.
+                    cantidad_por_caja: parseFloat(fila.querySelector('.f-cant').value) / factorCantFila(fila),
                     merma_pct: parseFloat(fila.querySelector('.f-merma').value || '0') || 0,
                     stock_minimo: fila.querySelector('.f-seguridad').value === ''
                         ? null
@@ -759,8 +797,8 @@
                     <tr>
                         <td>${escHTML(c.nombre)}</td>
                         <td class="text-center">${c.obligatorio ? 'Sí' : 'No'}</td>
-                        <td class="text-center">${num(c.solicitado)} ${escHTML(c.unidad || '')}</td>
-                        <td class="text-center">${num(c.por_caja)} ${escHTML(c.unidad || '')}</td>
+                        <td class="text-center">${fmtCantReceta(c.solicitado, c.unidad)}</td>
+                        <td class="text-center">${fmtCantReceta(c.por_caja, c.unidad)}</td>
                         <td class="text-center">${num(c.disponible)}</td>
                         <td class="text-center">${c.stock_minimo === null ? '—' : num(c.stock_minimo)}</td>
                         <td class="text-center">${Number.isFinite(c.cajas_posibles) ? num(c.cajas_posibles) : '∞'}</td>
@@ -803,12 +841,15 @@
                     cont.innerHTML = `<div class="aviso-info">ℹ️ Esta versión es idéntica a la vigente${d.vigente ? ` (v${d.vigente.version})` : ''}.</div>`;
                     return;
                 }
-                const fmt = l => `${escHTML(l.nombre || '')}${l.insumo_id ? ` <span class="chip-info">(insumo #${l.insumo_id})</span>` : ''} — ${num(l.cantidad_por_caja)} ${escHTML(l.unidad || '')}${Number(l.merma_pct) ? ` · merma ${num(l.merma_pct)}%` : ''}`;
+                const fmt = l => `${escHTML(l.nombre || '')}${l.insumo_id ? ` <span class="chip-info">(insumo #${l.insumo_id})</span>` : ''} — ${fmtCantReceta(l.cantidad_por_caja, l.unidad)}${Number(l.merma_pct) ? ` · merma ${num(l.merma_pct)}%` : ''}`;
+                const fmtCampo = (m, c) => (c.campo === 'cantidad_por_caja' && esUnidadMillar(m.unidad))
+                    ? `${escHTML(c.campo)}: ${num(Number(c.antes) * 1000)} → ${num(Number(c.despues) * 1000)} UNIDADES`
+                    : `${escHTML(c.campo)}: ${escHTML(num(c.antes))} → ${escHTML(num(c.despues))}`;
                 cont.innerHTML = `
                     <h4>🧾 Diferencias frente a la versión vigente${d.vigente ? ` (v${d.vigente.version})` : ''}</h4>
                     ${d.cambios.agregados.length ? `<div class="diff-fila"><b class="badge badge-ok">+ ${d.cambios.agregados.length} agregado(s)</b><ul class="lista-faltantes">${d.cambios.agregados.map(fmt).map(x => `<li>${x}</li>`).join('')}</ul></div>` : ''}
                     ${d.cambios.quitados.length ? `<div class="diff-fila"><b class="badge badge-falta">− ${d.cambios.quitados.length} quitado(s)</b><ul class="lista-faltantes">${d.cambios.quitados.map(fmt).map(x => `<li>${x}</li>`).join('')}</ul></div>` : ''}
-                    ${d.cambios.modificados.length ? `<div class="diff-fila"><b class="badge badge-aviso">✎ ${d.cambios.modificados.length} modificado(s)</b><ul class="lista-faltantes">${d.cambios.modificados.map(m => `<li>${fmt(m)} → ${m.campos.map(c => `${escHTML(c.campo)}: ${escHTML(num(c.antes))} → ${escHTML(num(c.despues))}`).join(', ')}</li>`).join('')}</ul></div>` : ''}`;
+                    ${d.cambios.modificados.length ? `<div class="diff-fila"><b class="badge badge-aviso">✎ ${d.cambios.modificados.length} modificado(s)</b><ul class="lista-faltantes">${d.cambios.modificados.map(m => `<li>${fmt(m)} → ${m.campos.map(c => fmtCampo(m, c)).join(', ')}</li>`).join('')}</ul></div>` : ''}`;
             } catch (err) {
                 console.error(err);
             }

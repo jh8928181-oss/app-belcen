@@ -485,11 +485,11 @@
                             <thead>
                                 <tr>
                                     <th style="background-color:#8a6d00;">Fecha</th>
-                                    <th style="background-color:#8a6d00;">Producto</th>
-                                    <th class="text-center" style="background-color:#8a6d00;">Cantidad (CAJAS)</th>
-                                    <th class="text-center" style="background-color:#8a6d00;">Toneladas</th>
-                                    <th style="background-color:#8a6d00;">Quién Reportó</th>
-                                    <th style="background-color:#8a6d00;">Insumos Usados</th>
+                                    <th style="background-color:#8a6d00;">Presentación</th>
+                                    <th class="text-center" style="background-color:#8a6d00;">Cant</th>
+                                    <th class="text-center" style="background-color:#8a6d00;">UM</th>
+                                    <th class="text-center" style="background-color:#8a6d00;">TN</th>
+                                    <th style="background-color:#8a6d00;">Obs</th>
                                 </tr>
                             </thead>
                             <tbody id="tablaProduccion">
@@ -936,12 +936,14 @@
             }
         }
 
-        // 🏭 PRODUCCIÓN (ENVASADO)
+        // 🏭 PRODUCCIÓN (ENVASADO): mismo registro que el cierre de
+        // producción (fecha, presentación, cant, UM, TN, obs). Solo entran
+        // producciones cerradas: al cerrar en envasado, pasan a auditoría.
         function renderProduccion() {
             const q = (document.getElementById('filtroProduccion').value || '').toLowerCase();
             const filtradas = informesGlobal.filter(it =>
                 (it.presentacion || '').toLowerCase().includes(q) ||
-                (it.usuario_registro || '').toLowerCase().includes(q) ||
+                (it.observaciones || '').toLowerCase().includes(q) ||
                 (it.fecha_produccion || '').toLowerCase().includes(q)
             );
             const tbody = document.getElementById('tablaProduccion');
@@ -949,25 +951,14 @@
             filtradas.forEach(inf => {
                 const cant = parseInt(inf.cantidad_cajas, 10) || 0;
                 const ton = parseFloat(inf.toneladas || 0);
-                const desglose = inf.desglose || [];
-
-                let insumosHtml = '<span style="color:#adb5bd;">Sin desglose</span>';
-                if (desglose.length) {
-                    insumosHtml = '<ul style="margin:0; padding-left:18px;">' + desglose.map(d => {
-                        const val = Number(d.cantidad) || 0;
-                        const mostrar = d.unidad_medida === 'MILL' ? val.toFixed(2) : (Number.isInteger(val) ? val : val.toFixed(2));
-                        return `<li>${d.nombre}: <b>${mostrar} ${d.unidad_medida || ''}</b></li>`;
-                    }).join('') + '</ul>';
-                }
-
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td><b>${fechaSoloDia(inf.fecha_produccion)}</b></td>
                     <td>${inf.presentacion || 'N/D'}</td>
                     <td class="text-center" style="color:#8a6d00; font-weight:bold;">${cant}</td>
+                    <td class="text-center">${inf.unidad_medida || 'CAJAS'}</td>
                     <td class="text-center">${ton.toFixed(2)}</td>
-                    <td>${inf.usuario_registro || '-'}</td>
-                    <td>${insumosHtml}</td>
+                    <td>${inf.observaciones || '-'}</td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -979,7 +970,9 @@
                 const res = await fetch('/api/produccion/informes');
                 if (!res.ok) throw new Error('Error del servidor.');
                 const datos = await res.json();
-                informesGlobal = Array.isArray(datos) ? datos : [];
+                // Solo producciones cerradas: las EN_CURSO aún no tienen
+                // cantidad y entran a auditoría al cerrarse en envasado.
+                informesGlobal = (Array.isArray(datos) ? datos : []).filter(r => r.estado !== 'EN_CURSO');
                 renderProduccion();
                 actualizarContadores();
             } catch (err) {

@@ -3364,7 +3364,9 @@ app.get('/api/produccion/informes', async (req, res) => {
             fecha_produccion: r.fecha_produccion,
             presentacion: r.presentacion,
             cantidad_cajas: r.cantidad_cajas,
+            unidad_medida: r.unidad_medida || 'CAJAS',
             toneladas: r.toneladas,
+            estado: r.estado || null,
             usuario_registro: r.usuario_registro,
             observaciones: r.observaciones,
             desglose: r.desglose_insumos ? safeParseJson(r.desglose_insumos) : null
@@ -3898,14 +3900,16 @@ app.post('/api/produccion/cierre', gProduccion, async (req, res) => {
         }
         await client.query('BEGIN');
 
+        // Solo producciones cerradas (o directas anteriores al abrir/cerrar):
+        // las EN_CURSO no tienen cantidad y no se tocan ni se consolidan.
         const reportesRes = await client.query(
-            `SELECT * FROM reportes_produccion WHERE fecha_produccion::text LIKE $1`, 
+            `SELECT * FROM reportes_produccion WHERE fecha_produccion::text LIKE $1 AND COALESCE(estado, '') <> 'EN_CURSO'`,
             [`${fecha_cierre}%`]
         );
 
         if (reportesRes.rows.length === 0) {
             await client.query('ROLLBACK');
-            return res.status(400).json({ success: false, mensaje: 'No hay producciones activas para cerrar en esta fecha.' });
+            return res.status(400).json({ success: false, mensaje: 'No hay producciones cerradas para consolidar en esta fecha. Las que siguen en curso no se tocan.' });
         }
 
         let totalCajas = 0;
@@ -3929,7 +3933,7 @@ app.post('/api/produccion/cierre', gProduccion, async (req, res) => {
             [fecha_cierre, totalCajas, totalTn, usuario || 'envasado_user', JSON.stringify(itemsDetalle)]
         );
 
-        await client.query(`DELETE FROM reportes_produccion WHERE fecha_produccion::text LIKE $1`, [`${fecha_cierre}%`]);
+        await client.query(`DELETE FROM reportes_produccion WHERE fecha_produccion::text LIKE $1 AND COALESCE(estado, '') <> 'EN_CURSO'`, [`${fecha_cierre}%`]);
 
         await client.query('COMMIT');
         res.json({ success: true, mensaje: 'Cierre de producción realizado con éxito.' });

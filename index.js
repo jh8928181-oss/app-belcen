@@ -4032,7 +4032,7 @@ function sanitizarInsumoLote(it) {
     return { nombre, cantidad, um };
 }
 
-function sanitizarLote(o) {
+function sanitizarLote(o, usuario) {
     o = o || {};
     const tanque = String(o.tanque || 'TK-1').trim().toUpperCase();
     let cantidad = (o.cantidad === null || o.cantidad === undefined || o.cantidad === '') ? null : Number(o.cantidad);
@@ -4046,6 +4046,8 @@ function sanitizarLote(o) {
         proveedor: (o.proveedor === null || o.proveedor === undefined) ? '' : String(o.proveedor).trim(),
         fecha_produccion: String(o.fecha_produccion || '').trim(),
         estado: String(o.estado || 'DISPONIBLE').trim(),
+        // Quién registró el lote. Al editar se conserva el original.
+        usuario: String(o.usuario || usuario || '').trim().slice(0, 50),
         insumos: Array.isArray(o.insumos)
             ? o.insumos.map(sanitizarInsumoLote).filter(it => it.nombre && it.cantidad !== null && !isNaN(Number(it.cantidad)) && Number(it.cantidad) > 0)
             : []
@@ -4138,7 +4140,7 @@ app.post('/api/refinado/guardar', requerirRolRefinado, async (req, res) => {
             obs = sel.rows[0].observaciones || '';
         }
         if (lote && typeof lote === 'object') {
-            const limpio = sanitizarLote(lote);
+            const limpio = sanitizarLote(lote, req.usuario);
             if (!limpio.lote) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ success: false, mensaje: 'Ingrese el número de lote para registrarlo.' });

@@ -353,11 +353,12 @@
                             <th class="azul">Proveedor</th>
                             <th class="azul text-center">Insumos</th>
                             <th class="azul">Estado</th>
+                            <th class="azul">Registró</th>
                             <th class="azul text-center">Eliminar</th>
                         </tr>
                     </thead>
                     <tbody id="tbodyLotesReg">
-                        <tr><td colspan="9" class="text-center sin-registros" id="sinLotesRegMsg">Sin lotes registrados para este turno.</td></tr>
+                        <tr><td colspan="10" class="text-center sin-registros" id="sinLotesRegMsg">Sin lotes registrados para este turno.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -565,6 +566,7 @@
                     <td>${escapeHtml(l.proveedor) || '-'}</td>
                     <td class="text-center">${ins.length}</td>
                     <td class="text-center">${badgeEstadoAceite(l.estado)}</td>
+                    <td>${escapeHtml(l.usuario) || '-'}</td>
                     <td class="text-center">
                         <button type="button" class="btn btn-rojo btn-mini" data-lote="${escapeHtml(l.lote)}" title="Eliminar lote ${escapeHtml(l.lote)}">✕</button>
                     </td>

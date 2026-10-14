@@ -825,11 +825,21 @@ function escDash(texto) {
                 const res = await fetch('/api/estado-lineas');
                 if (!res.ok) throw new Error('Error del servidor.');
                 const estados = await res.json();
-const lista = Array.isArray(estados) ? estados : [];
-                const mapa = { envasado: null, soplado: null };
+                const lista = Array.isArray(estados) ? estados : [];
+                const mapa = { envasado: null, soplado: null, soplado_automatica: null, soplado_manual: null };
                 lista.forEach(f => {
                     if (mapa[f.area] !== undefined) mapa[f.area] = f;
                 });
+                // Soplado marcha si ALGUNA de sus dos líneas está en marcha
+                // (cae a la fila única vieja si las líneas aún no se marcaron).
+                if (!mapa.soplado_automatica && !mapa.soplado_manual && mapa.soplado) {
+                    mapa.soplado_automatica = mapa.soplado;
+                }
+                const sopMarcha = [mapa.soplado_automatica, mapa.soplado_manual].some(f => f && f.estado === 'EN MARCHA');
+                if (mapa.soplado_automatica || mapa.soplado_manual) {
+                    const ref = [mapa.soplado_automatica, mapa.soplado_manual].find(f => f && f.estado === (sopMarcha ? 'EN MARCHA' : 'PARADO'));
+                    mapa.soplado = { estado: sopMarcha ? 'EN MARCHA' : 'PARADO', fecha_actualizacion: ref ? ref.fecha_actualizacion : null };
+                }
 
                 const ids = {
                     envasado: { badge: 'badgeEnvasado', hora: 'horaEnvasado' },
@@ -948,13 +958,18 @@ lista.length + ' reportes · ' + totalTn.toFixed(2) + ' TM · ' + rango;
                     const lista = Array.isArray(reportes) ? reportes : [];
                     const hoy = fechaHoyEstado();
                     let totalBotellas = 0;
+                    let autoBotellas = 0;
+                    let manualBotellas = 0;
                     lista.forEach(r => {
                         if (fechaCortaEstado(r.fecha_reporte) === hoy) {
-                            totalBotellas += parseInt(r.cantidad_botellas || 0, 10);
+                            const c = parseInt(r.cantidad_botellas || 0, 10);
+                            totalBotellas += c;
+                            if (String(r.linea || 'AUTOMATICA').toUpperCase() === 'MANUAL') manualBotellas += c;
+                            else autoBotellas += c;
                         }
                     });
                     document.getElementById('resumenSoplado').textContent =
-                        totalBotellas + ' botellas producidas hoy';
+                        totalBotellas + ' botellas producidas hoy (Auto: ' + autoBotellas + ' · Manual: ' + manualBotellas + ')';
                 }
 } catch (err) {
                 console.error(err);

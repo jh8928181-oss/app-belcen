@@ -1413,7 +1413,9 @@ app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
         } catch (e) { conLinea = false; }
 
         await client.query('BEGIN');
-        await exigirLineaEnMarcha(client, 'soplado');
+        // Cada línea marcha por su cuenta: registrar en una línea exige que
+        // ESA línea esté en marcha (sin fila registrada se permite, como antes).
+        await exigirLineaEnMarcha(client, 'soplado_' + lineaVal.toLowerCase());
 
         let etiquetaNombre = null;
         let botellaNombre = '';
@@ -1618,7 +1620,8 @@ app.get('/api/estado-lineas', async (req, res) => {
 app.post('/api/estado-linea', gEnvasado, async (req, res) => {
     try {
         const { area, estado, usuario, proximo_producto } = req.body;
-        const areaValida = area === 'envasado' || area === 'soplado';
+        // Soplado tiene dos líneas independientes que marchan a la vez.
+        const areaValida = area === 'envasado' || area === 'soplado' || area === 'soplado_automatica' || area === 'soplado_manual';
         const estadoValido = estado === 'EN MARCHA' || estado === 'PARADO';
         if (!areaValida || !estadoValido) {
             return res.status(400).json({ success: false, mensaje: 'Área o estado inválido.' });
@@ -1838,8 +1841,11 @@ async function exigirLineaEnMarcha(client, area) {
     if (!r.rows.length) return;
     const estado = String(r.rows[0].estado || '').trim().toUpperCase();
     if (estado === 'EN MARCHA') return;
+    const nombre = area === 'soplado_automatica' ? 'línea automática de soplado'
+      : area === 'soplado_manual' ? 'línea manual de soplado'
+      : 'línea de ' + area;
     const err = new Error(
-        `La línea de ${area} está ${estado || 'sin estado registrado'}. Ponla en marcha antes de registrar producción.`
+        `La ${nombre} está ${estado || 'sin estado registrado'}. Ponla en marcha antes de registrar producción.`
     );
     err.status = 409;
     throw err;

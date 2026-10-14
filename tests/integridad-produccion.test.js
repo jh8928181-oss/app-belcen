@@ -216,7 +216,7 @@ describe('A1. Registrar produccion exige la linea en marcha', () => {
     expect(sqlDe('FROM recetas').length + sqlDe('lower(nombre)').length).toBeGreaterThan(0);
   });
 
-  test('soplado tambien exige su linea en marcha', async () => {
+  test('soplado tambien exige su linea en marcha (la automática por defecto)', async () => {
     mockQuery.mockImplementation(async (sql) => {
       if (/FROM estado_lineas/.test(sql)) return { rows: [{ estado: 'PARADO' }], rowCount: 1 };
       return { rows: [], rowCount: 0 };
@@ -231,7 +231,7 @@ describe('A1. Registrar produccion exige la linea en marcha', () => {
     });
 
     expect(res.statusCode).toBe(409);
-    expect(res.cuerpo.mensaje).toMatch(/línea de soplado está PARADO/i);
+    expect(res.cuerpo.mensaje).toMatch(/línea automática de soplado está PARADO/i);
     expect(sqlDe('INSERT INTO reportes_soplado')).toHaveLength(0);
   });
 });

@@ -80,10 +80,10 @@ async function invocar(method, ruta, req = {}) {
   return res;
 }
 
-// Mundo programable: columnas, marcha, stocks y líneas.
+// Mundo programable: columnas, marcha por área, stocks y líneas.
 const mundo = {
   columnas: ['linea'],
-  enMarcha: true,
+  marcha: { soplado_automatica: true, soplado_manual: true },
   preforma: 10,
   etiqueta: 10,
   botella: 0,
@@ -97,7 +97,9 @@ function usarMundo() {
       return { rows: mundo.columnas.map(c => ({ column_name: c })) };
     }
     if (/FROM estado_lineas WHERE area/.test(q)) {
-      return { rows: mundo.enMarcha ? [{ estado: 'EN MARCHA' }] : [] };
+      const area = String(params[0] || '');
+      if (mundo.marcha[area] === undefined) return { rows: [] };
+      return { rows: [{ estado: mundo.marcha[area] ? 'EN MARCHA' : 'PARADO' }] };
     }
     if (/FROM inventario WHERE LOWER\(nombre\) = LOWER\(\$1\)/.test(q)) {
       const nombre = String(params[0] || '').toLowerCase();
@@ -122,7 +124,7 @@ function usarMundo() {
 beforeEach(() => {
   mockQuery.mockReset();
   mundo.columnas = ['linea'];
-  mundo.enMarcha = true;
+  mundo.marcha = { soplado_automatica: true, soplado_manual: true };
   mundo.preforma = 10;
   mundo.etiqueta = 10;
   mundo.botella = 0;
@@ -156,6 +158,19 @@ describe('POST /api/soplado/registrar', () => {
     expect(mem[1]).toEqual(['Molde 1 Lt', 'MANUAL']);
   });
 
+  test('cada línea exige su propia marcha: manual parada no frena a la automática', async () => {
+    mundo.marcha = { soplado_automatica: true, soplado_manual: false };
+
+    const manual = await invocar('post', '/api/soplado/registrar', { body: cuerpoBase() });
+    expect(manual.statusCode).toBe(409);
+    expect(manual.cuerpo.mensaje).toMatch(/línea manual de soplado está PARADO/i);
+
+    const auto = await invocar('post', '/api/soplado/registrar', {
+      body: { ...cuerpoBase(), linea: 'AUTOMATICA' }
+    });
+    expect(auto.statusCode).toBe(200);
+  });
+
   test('línea inválida se rechaza sin mover nada', async () => {
     const res = await invocar('post', '/api/soplado/registrar', {
       body: { ...cuerpoBase(), linea: 'TURBO' }
@@ -174,6 +189,22 @@ describe('POST /api/soplado/registrar', () => {
     expect(res.statusCode).toBe(200);
     const ins = mockQuery.mock.calls.find(c => /INSERT INTO reportes_soplado/.test(String(c[0])));
     expect(String(ins[0])).not.toMatch(/linea/);
+  });
+});
+
+describe('POST /api/estado-linea', () => {
+  test('acepta las dos líneas de soplado por separado', async () => {
+    for (const area of ['soplado_automatica', 'soplado_manual']) {
+      const res = await invocar('post', '/api/estado-linea', {
+        body: { area, estado: 'EN MARCHA', usuario: 'soplado1' }
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.cuerpo).toMatchObject({ success: true, area, estado: 'EN MARCHA' });
+    }
+    const mala = await invocar('post', '/api/estado-linea', {
+      body: { area: 'soplado_turbo', estado: 'EN MARCHA' }
+    });
+    expect(mala.statusCode).toBe(400);
   });
 });
 

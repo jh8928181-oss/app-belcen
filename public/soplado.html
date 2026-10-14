@@ -168,32 +168,31 @@
 <body>
     <div class="card estado-bar reveal">
         <div class="estado-info">
-            <span id="pillEstadoSoplado" class="estado-pill parado">🔴 PARADO</span>
-            <span id="totalesEstadoSoplado" class="estado-totales">Hoy: — botellas</span>
+            <span style="font-weight:800;">⚙️ AUTOMÁTICA</span>
+            <span id="pillEstadoSoplado_A" class="estado-pill parado">🔴 PARADO</span>
+            <span id="totalesEstadoSoplado_A" class="estado-totales">Hoy: — botellas</span>
         </div>
-        <button id="btnCambiarEstadoSoplado" class="btn-estado" onclick="cambiarEstadoSoplado()">🟢 MARCAR EN MARCHA</button>
+        <button id="btnCambiarEstadoSoplado_A" class="btn-estado" onclick="cambiarEstadoSoplado('A')">🟢 MARCAR EN MARCHA</button>
     </div>
 
     <div class="card reveal">
-        <h3>REPORTE DE TURNO - SOPLADO</h3>
-        
+        <h3>REPORTE DE TURNO - LÍNEA AUTOMÁTICA</h3>
+
         <div class="info-receta">
-            ℹ️ Seleccione la preforma específica utilizada, el tipo de botella a producir y la cantidad. La etiqueta y el stock de botellas se actualizarán automáticamente.
+            ℹ️ Seleccione la preforma utilizada, el molde en la línea, la botella a producir y la cantidad. La etiqueta y el stock de botellas se actualizarán automáticamente.
         </div>
 
-        <form id="formSoplado">
+        <form id="formSoplado_A">
             <div>
                 <label><b>Seleccionar Preforma Utilizada:</b></label>
-                <select id="preforma_nombre" name="preforma_nombre" required>
+                <select id="preforma_nombre_A" name="preforma_nombre" required>
                     <option value="">-- Seleccione la preforma exacta --</option>
                 </select>
-                <!-- Las opciones se cargan del inventario (solo preformas
-                     fisicas, sin servicios) con cargarPreformas(). -->
             </div>
 
             <div>
                 <label><b>Seleccionar Botella a Producir:</b></label>
-                <select id="botella_tipo" name="botella_tipo" required>
+                <select id="botella_tipo_A" name="botella_tipo" required>
                     <option value="">-- Seleccione tipo de botella --</option>
                     <optgroup label="Línea Belini">
                         <option value="soplado_belini_200ml">Botella Belini x 200 ml</option>
@@ -217,26 +216,84 @@
             </div>
 
             <div>
-                <label><b>Línea de soplado:</b></label>
-                <select id="linea_soplado" name="linea_soplado" required onchange="actualizarMoldeLinea()">
-                    <option value="AUTOMATICA">Línea automática</option>
-                    <option value="MANUAL">Línea manual</option>
-                </select>
-                <div id="moldeActualLinea" style="font-size:12px; color:#555; margin-top:4px;"></div>
-            </div>
-
-            <div>
-                <label><b>Molde en la línea:</b></label>
-                <input type="text" id="molde_linea" name="molde_linea" placeholder="Ej. Molde 1 Lt" maxlength="100">
+                <label><b>Molde en la línea automática:</b></label>
+                <input type="text" id="molde_linea_A" name="molde_linea" placeholder="Ej. Molde 1 Lt" maxlength="100">
+                <div id="moldeActualLinea_A" style="font-size:12px; color:#555; margin-top:4px;"></div>
             </div>
 
             <div>
                 <label><b>Cantidad de Botellas Fabricadas:</b></label>
-                <input type="number" id="cantidad_producida" name="cantidad_producida" min="1" placeholder="Ej. 3000" required>
+                <input type="number" id="cantidad_producida_A" name="cantidad_producida" min="1" placeholder="Ej. 3000" required>
             </div>
 
             <div>
-                <button type="submit" class="btn-accion">🚀 Registrar Producción y Actualizar Insumos</button>
+                <button type="submit" class="btn-accion">🚀 Registrar Producción Automática</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="card estado-bar reveal">
+        <div class="estado-info">
+            <span style="font-weight:800;">🔧 MANUAL</span>
+            <span id="pillEstadoSoplado_M" class="estado-pill parado">🔴 PARADO</span>
+            <span id="totalesEstadoSoplado_M" class="estado-totales">Hoy: — botellas</span>
+        </div>
+        <button id="btnCambiarEstadoSoplado_M" class="btn-estado" onclick="cambiarEstadoSoplado('M')">🟢 MARCAR EN MARCHA</button>
+    </div>
+
+    <div class="card reveal">
+        <h3>REPORTE DE TURNO - LÍNEA MANUAL</h3>
+
+        <div class="info-receta">
+            ℹ️ Seleccione la preforma utilizada, el molde en la línea, la botella a producir y la cantidad. La etiqueta y el stock de botellas se actualizarán automáticamente.
+        </div>
+
+        <form id="formSoplado_M">
+            <div>
+                <label><b>Seleccionar Preforma Utilizada:</b></label>
+                <select id="preforma_nombre_M" name="preforma_nombre" required>
+                    <option value="">-- Seleccione la preforma exacta --</option>
+                </select>
+            </div>
+
+            <div>
+                <label><b>Seleccionar Botella a Producir:</b></label>
+                <select id="botella_tipo_M" name="botella_tipo" required>
+                    <option value="">-- Seleccione tipo de botella --</option>
+                    <optgroup label="Línea Belini">
+                        <option value="soplado_belini_200ml">Botella Belini x 200 ml</option>
+                        <option value="soplado_belini_500ml">Botella Belini x 500 ml</option>
+                        <option value="soplado_belini_900ml">Botella Belini x 900 ml</option>
+                        <option value="soplado_belini_1lt">Botella Belini x 1 Lt</option>
+                        <option value="soplado_belini_3lt">Botella Belini x 3 Lt</option>
+                    </optgroup>
+                    <optgroup label="Línea B-1">
+                        <option value="soplado_b1_200ml">Botella de 200 ml - B-1</option>
+                        <option value="soplado_b1_500ml">Botella de 500 ml - B-1</option>
+                        <option value="soplado_b1_900ml">Botella de 900 ml - B-1</option>
+                        <option value="soplado_b1_1lt">Botella de 1 Lt - B-1</option>
+                        <option value="soplado_b1_2lt">Botella de 2 Lt - B-1</option>
+                    </optgroup>
+                    <optgroup label="Otras Marcas">
+                        <option value="soplado_donlalo_800ml">Botella de 800ml - Don Lalo</option>
+                        <option value="soplado_vega_900ml">Botella VEGA x 900 ml</option>
+                    </optgroup>
+                </select>
+            </div>
+
+            <div>
+                <label><b>Molde en la línea manual:</b></label>
+                <input type="text" id="molde_linea_M" name="molde_linea" placeholder="Ej. Molde 800 ml" maxlength="100">
+                <div id="moldeActualLinea_M" style="font-size:12px; color:#555; margin-top:4px;"></div>
+            </div>
+
+            <div>
+                <label><b>Cantidad de Botellas Fabricadas:</b></label>
+                <input type="number" id="cantidad_producida_M" name="cantidad_producida" min="1" placeholder="Ej. 3000" required>
+            </div>
+
+            <div>
+                <button type="submit" class="btn-accion">🚀 Registrar Producción Manual</button>
             </div>
         </form>
 
@@ -275,28 +332,34 @@
             return !String(item.nombre || '').trim().toUpperCase().startsWith('SERVICIO');
         }
 
+        // Cada tarjeta (A = automática, M = manual) opera por su cuenta: las
+        // dos líneas trabajan al mismo tiempo.
+        const LINEA_DE_SUF = { A: 'AUTOMATICA', M: 'MANUAL' };
+
         async function cargarPreformas() {
-            const sel = document.getElementById('preforma_nombre');
-            try {
-                const res = await fetch('/api/inventario');
-                if (!res.ok) throw new Error('Error del servidor.');
-                const items = await res.json();
-                const preformas = (Array.isArray(items) ? items : []).filter(esPreformaFisica);
-                sel.innerHTML = '<option value="">-- Seleccione la preforma exacta --</option>';
-                preformas.forEach(p => {
-                    const n = Number(p.stock);
-                    const stockTxt = Number.isInteger(n) ? String(n) : n.toFixed(2);
-                    const opt = document.createElement('option');
-                    opt.value = p.nombre;
-                    opt.textContent = `${p.nombre} (Stock: ${stockTxt} MILLARES)`;
-                    sel.appendChild(opt);
-                });
-                if (preformas.length === 0) {
-                    sel.innerHTML = '<option value="">-- Sin preformas en inventario --</option>';
+            for (const suf of ['A', 'M']) {
+                const sel = document.getElementById('preforma_nombre_' + suf);
+                try {
+                    const res = await fetch('/api/inventario');
+                    if (!res.ok) throw new Error('Error del servidor.');
+                    const items = await res.json();
+                    const preformas = (Array.isArray(items) ? items : []).filter(esPreformaFisica);
+                    sel.innerHTML = '<option value="">-- Seleccione la preforma exacta --</option>';
+                    preformas.forEach(p => {
+                        const n = Number(p.stock);
+                        const stockTxt = Number.isInteger(n) ? String(n) : n.toFixed(2);
+                        const opt = document.createElement('option');
+                        opt.value = p.nombre;
+                        opt.textContent = `${p.nombre} (Stock: ${stockTxt} MILLARES)`;
+                        sel.appendChild(opt);
+                    });
+                    if (preformas.length === 0) {
+                        sel.innerHTML = '<option value="">-- Sin preformas en inventario --</option>';
+                    }
+                } catch (e) {
+                    console.error(e);
+                    sel.innerHTML = '<option value="">-- No se pudo cargar preformas --</option>';
                 }
-            } catch (e) {
-                console.error(e);
-                sel.innerHTML = '<option value="">-- No se pudo cargar preformas --</option>';
             }
         }
         cargarPreformas();
@@ -312,76 +375,81 @@
                 const data = await res.json();
                 moldesLinea = {};
                 (data.lineas || []).forEach(l => { moldesLinea[l.linea] = l.molde_actual || ''; });
-                actualizarMoldeLinea();
+                actualizarMoldeLinea('A');
+                actualizarMoldeLinea('M');
             } catch (e) { console.error(e); }
         }
 
-        function actualizarMoldeLinea() {
-            const lin = document.getElementById('linea_soplado').value;
+        function actualizarMoldeLinea(suf) {
+            const lin = LINEA_DE_SUF[suf];
             const actual = moldesLinea[lin] || '';
-            document.getElementById('moldeActualLinea').textContent = actual
+            document.getElementById('moldeActualLinea_' + suf).textContent = actual
                 ? 'Molde actual en línea: ' + actual
                 : 'Esta línea aún no tiene molde registrado.';
-            document.getElementById('molde_linea').value = actual;
+            document.getElementById('molde_linea_' + suf).value = actual;
         }
 
-        let enviandoSoplado = false;
-        document.getElementById('formSoplado').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            if (enviandoSoplado) return;
-            enviandoSoplado = true;
-            const btnEnviar = e.submitter || document.querySelector('#formSoplado button[type="submit"]');
-            if (btnEnviar) btnEnviar.disabled = true;
-            const preforma_nombre = document.getElementById('preforma_nombre').value;
-            const botella_tipo = document.getElementById('botella_tipo').value;
-            const cantidad_producida = parseInt(document.getElementById('cantidad_producida').value);
-            const linea_soplado = document.getElementById('linea_soplado').value;
-            const molde_linea = document.getElementById('molde_linea').value.trim();
+        const enviandoSoplado = {};
+        function registrarEnLinea(suf) {
+            const form = document.getElementById(suf === 'A' ? 'formSoplado_A' : 'formSoplado_M');
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                if (enviandoSoplado[suf]) return;
+                enviandoSoplado[suf] = true;
+                const btnEnviar = e.submitter || form.querySelector('button[type="submit"]');
+                if (btnEnviar) btnEnviar.disabled = true;
+                const preforma_nombre = document.getElementById('preforma_nombre_' + suf).value;
+                const botella_tipo = document.getElementById('botella_tipo_' + suf).value;
+                const cantidad_producida = parseInt(document.getElementById('cantidad_producida_' + suf).value);
+                const molde_linea = document.getElementById('molde_linea_' + suf).value.trim();
 
-            if (!preforma_nombre || !botella_tipo || isNaN(cantidad_producida) || cantidad_producida <= 0) {
-                alert('❌ Seleccione la preforma, el tipo de botella y una cantidad válida.');
-                enviandoSoplado = false;
-                if (btnEnviar) btnEnviar.disabled = false;
-                return;
-            }
-
-            try {
-                const res = await fetch('/api/soplado/registrar', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        preforma_nombre,
-                        botella_tipo,
-                        cantidad_producida,
-                        linea: linea_soplado,
-                        molde: molde_linea,
-                        usuario: localStorage.getItem('usuario_actual') || 'soplado_user'
-                    })
-                });
-
-                const data = await res.json();
-                if (res.ok && data.success) {
-                    alert('✅ ' + data.mensaje);
-                    document.getElementById('formSoplado').reset();
-                    cargarLineasSoplado();
-                } else {
-                    alert('❌ ' + (data.mensaje || 'Error al registrar producción.'));
+                if (!preforma_nombre || !botella_tipo || isNaN(cantidad_producida) || cantidad_producida <= 0) {
+                    alert('❌ Seleccione la preforma, el tipo de botella y una cantidad válida.');
+                    enviandoSoplado[suf] = false;
+                    if (btnEnviar) btnEnviar.disabled = false;
+                    return;
                 }
-            } catch (err) {
-                console.error(err);
-                alert('Error de conexión con el servidor.');
-            } finally {
-                enviandoSoplado = false;
-                if (btnEnviar) btnEnviar.disabled = false;
-            }
-        });
 
-        let estadoSopladoActual = 'PARADO';
+                try {
+                    const res = await fetch('/api/soplado/registrar', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            preforma_nombre,
+                            botella_tipo,
+                            cantidad_producida,
+                            linea: LINEA_DE_SUF[suf],
+                            molde: molde_linea,
+                            usuario: localStorage.getItem('usuario_actual') || 'soplado_user'
+                        })
+                    });
 
-        function pintarEstadoSoplado() {
-            const pill = document.getElementById('pillEstadoSoplado');
-            const btn = document.getElementById('btnCambiarEstadoSoplado');
-            if (estadoSopladoActual === 'EN MARCHA') {
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        alert('✅ ' + data.mensaje);
+                        form.reset();
+                        cargarLineasSoplado();
+                    } else {
+                        alert('❌ ' + (data.mensaje || 'Error al registrar producción.'));
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert('Error de conexión con el servidor.');
+                } finally {
+                    enviandoSoplado[suf] = false;
+                    if (btnEnviar) btnEnviar.disabled = false;
+                }
+            });
+        }
+        registrarEnLinea('A');
+        registrarEnLinea('M');
+
+        const estadoSoplado = { A: 'PARADO', M: 'PARADO' };
+
+        function pintarEstadoSoplado(suf) {
+            const pill = document.getElementById('pillEstadoSoplado_' + suf);
+            const btn = document.getElementById('btnCambiarEstadoSoplado_' + suf);
+            if (estadoSoplado[suf] === 'EN MARCHA') {
                 pill.className = 'estado-pill marcha';
                 pill.textContent = '🟢 EN MARCHA';
                 btn.textContent = '🛑 MARCAR PARADO';
@@ -411,18 +479,16 @@
                 const datos = await res.json();
                 const reportes = Array.isArray(datos) ? datos : [];
                 const hoy = fechaHoyLocal();
-                let totalBotellas = 0;
-                let autoBotellas = 0;
-                let manualBotellas = 0;
+                const tot = { A: 0, M: 0 };
                 reportes.forEach(r => {
                     if (fechaCorta(r.fecha_reporte) === hoy) {
                         const c = parseInt(r.cantidad_botellas || 0, 10);
-                        totalBotellas += c;
-                        if (String(r.linea || 'AUTOMATICA').toUpperCase() === 'MANUAL') manualBotellas += c;
-                        else autoBotellas += c;
+                        const suf = String(r.linea || 'AUTOMATICA').toUpperCase() === 'MANUAL' ? 'M' : 'A';
+                        tot[suf] += c;
                     }
                 });
-                document.getElementById('totalesEstadoSoplado').textContent = 'Hoy: ' + totalBotellas + ' botellas (Auto: ' + autoBotellas + ' · Manual: ' + manualBotellas + ')';
+                document.getElementById('totalesEstadoSoplado_A').textContent = 'Hoy: ' + tot.A + ' botellas';
+                document.getElementById('totalesEstadoSoplado_M').textContent = 'Hoy: ' + tot.M + ' botellas';
             } catch (e) {
                 console.error(e);
             }
@@ -433,35 +499,38 @@
                 const res = await fetch('/api/estado-lineas');
                 if (!res.ok) throw new Error('Error del servidor.');
                 const estados = await res.json();
-                const fila = (Array.isArray(estados) ? estados : []).find(e => e.area === 'soplado');
-                estadoSopladoActual = fila && fila.estado ? fila.estado : 'PARADO';
-                pintarEstadoSoplado();
+                const porArea = {};
+                (Array.isArray(estados) ? estados : []).forEach(e => { porArea[e.area] = e.estado; });
+                estadoSoplado.A = porArea['soplado_automatica'] || 'PARADO';
+                estadoSoplado.M = porArea['soplado_manual'] || 'PARADO';
+                pintarEstadoSoplado('A');
+                pintarEstadoSoplado('M');
             } catch (e) {
                 console.error(e);
             }
         }
 
-        let cambiandoEstadoSoplado = false;
-        async function cambiarEstadoSoplado() {
-            if (cambiandoEstadoSoplado) return;
-            cambiandoEstadoSoplado = true;
-            const btn = document.getElementById('btnCambiarEstadoSoplado');
+        const cambiandoEstadoSoplado = {};
+        async function cambiarEstadoSoplado(suf) {
+            if (cambiandoEstadoSoplado[suf]) return;
+            cambiandoEstadoSoplado[suf] = true;
+            const btn = document.getElementById('btnCambiarEstadoSoplado_' + suf);
             if (btn) btn.disabled = true;
-            const nuevo = estadoSopladoActual === 'EN MARCHA' ? 'PARADO' : 'EN MARCHA';
+            const nuevo = estadoSoplado[suf] === 'EN MARCHA' ? 'PARADO' : 'EN MARCHA';
             try {
                 const res = await fetch('/api/estado-linea', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        area: 'soplado',
+                        area: 'soplado_' + LINEA_DE_SUF[suf].toLowerCase(),
                         estado: nuevo,
                         usuario: localStorage.getItem('usuario_actual') || 'soplado_user'
                     })
                 });
                 const data = await res.json();
                 if (res.ok && data.success) {
-                    estadoSopladoActual = data.estado;
-                    pintarEstadoSoplado();
+                    estadoSoplado[suf] = data.estado;
+                    pintarEstadoSoplado(suf);
                 } else {
                     alert('❌ ' + (data.mensaje || 'Error al cambiar el estado.'));
                 }
@@ -469,7 +538,7 @@
                 console.error(err);
                 alert('Error de conexión con el servidor.');
             } finally {
-                cambiandoEstadoSoplado = false;
+                cambiandoEstadoSoplado[suf] = false;
                 if (btn) btn.disabled = false;
             }
         }

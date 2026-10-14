@@ -217,7 +217,9 @@
 
             <div>
                 <label><b>Molde en la línea automática:</b></label>
-                <input type="text" id="molde_linea_A" name="molde_linea" placeholder="Ej. Molde 1 Lt" maxlength="100">
+                <select id="molde_linea_A" name="molde_linea" required>
+                    <option value="">-- Seleccionar molde --</option>
+                </select>
                 <div id="moldeActualLinea_A" style="font-size:12px; color:#555; margin-top:4px;"></div>
             </div>
 
@@ -283,7 +285,9 @@
 
             <div>
                 <label><b>Molde en la línea manual:</b></label>
-                <input type="text" id="molde_linea_M" name="molde_linea" placeholder="Ej. Molde 800 ml" maxlength="100">
+                <select id="molde_linea_M" name="molde_linea" required>
+                    <option value="">-- Seleccionar molde --</option>
+                </select>
                 <div id="moldeActualLinea_M" style="font-size:12px; color:#555; margin-top:4px;"></div>
             </div>
 
@@ -364,8 +368,22 @@
         }
         cargarPreformas();
 
+        // Moldes fijos de planta: el molde se elige de la lista, no se escribe.
+        const MOLDES_SOPLADO = [
+            'Molde de 1 Lt', 'Molde de 900 ml', 'Molde de 800 ml', 'Molde de 500 ml',
+            'Molde de 200 ml', 'Molde de 2 Lt', 'Molde de 3 Lt'
+        ];
+
+        function poblarMoldes() {
+            for (const suf of ['A', 'M']) {
+                const sel = document.getElementById('molde_linea_' + suf);
+                sel.innerHTML = '<option value="">-- Seleccionar molde --</option>'
+                    + MOLDES_SOPLADO.map(m => `<option value="${m}">${m}</option>`).join('');
+            }
+        }
+
         // Molde actual de cada línea: al cambiar de línea se propone su
-        // molde; si se escribe otro, queda guardado en la línea al registrar.
+        // molde; si se elige otro, queda guardado en la línea al registrar.
         let moldesLinea = {};
 
         async function cargarLineasSoplado() {
@@ -383,10 +401,18 @@
         function actualizarMoldeLinea(suf) {
             const lin = LINEA_DE_SUF[suf];
             const actual = moldesLinea[lin] || '';
+            const sel = document.getElementById('molde_linea_' + suf);
+            // Un molde viejo escrito a mano se conserva visible una vez.
+            if (actual && !MOLDES_SOPLADO.includes(actual) && ![...sel.options].some(o => o.value === actual)) {
+                const opt = document.createElement('option');
+                opt.value = actual;
+                opt.textContent = actual + ' (anterior)';
+                sel.appendChild(opt);
+            }
+            sel.value = actual;
             document.getElementById('moldeActualLinea_' + suf).textContent = actual
                 ? 'Molde actual en línea: ' + actual
                 : 'Esta línea aún no tiene molde registrado.';
-            document.getElementById('molde_linea_' + suf).value = actual;
         }
 
         const enviandoSoplado = {};
@@ -405,6 +431,12 @@
 
                 if (!preforma_nombre || !botella_tipo || isNaN(cantidad_producida) || cantidad_producida <= 0) {
                     alert('❌ Seleccione la preforma, el tipo de botella y una cantidad válida.');
+                    enviandoSoplado[suf] = false;
+                    if (btnEnviar) btnEnviar.disabled = false;
+                    return;
+                }
+                if (!molde_linea) {
+                    alert('❌ Seleccione el molde que lleva la línea.');
                     enviandoSoplado[suf] = false;
                     if (btnEnviar) btnEnviar.disabled = false;
                     return;
@@ -545,6 +577,7 @@
 
         cargarEstadoSoplado();
         cargarTotalesSoplado();
+        poblarMoldes();
         cargarLineasSoplado();
         registrarAutoRefresco(() => { cargarEstadoSoplado(); cargarTotalesSoplado(); }, 15000);
     </script>

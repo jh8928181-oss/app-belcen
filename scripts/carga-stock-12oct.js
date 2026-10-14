@@ -1,4 +1,7 @@
-require('dotenv').config();
+const path = require('path');
+const dotenv = require('dotenv');
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
+dotenv.config({ path: path.join(__dirname, '..', '.env.local'), override: true });
 
 /**
  * Carga al inventario las cantidades del Excel de stock del 12-Oct.
@@ -33,7 +36,6 @@ const FILAS = [
   ['Botella Belini x 900 ml', 15279, 'UNIDADES', 'BOTELLAS Y GALONERAS'],
   ['Botella Belini x 1 Lt', 3558, 'UNIDADES', 'BOTELLAS Y GALONERAS'],
   ['Lata Belini 18lt', 699, 'UNIDADES', 'BOTELLAS Y GALONERAS'],
-  ['Galonera Belini x 2lt', 0, 'UNIDADES', 'BOTELLAS Y GALONERAS'],
   ['Galonera Belini x 5lt', 0, 'UNIDADES', 'BOTELLAS Y GALONERAS'],
   ['Balde Belini x 18 lt', 0, 'UNIDADES', 'BOTELLAS Y GALONERAS'],
   ['Balde Don Lalo x 20lt', 290, 'BALDE', 'BOTELLAS Y GALONERAS'],
@@ -74,7 +76,6 @@ const FILAS = [
   ['Tapa Dosif. N.° 26 blanco / Dorado', 3.48, 'MILL', 'TAPAS Y ACCESORIOS'],
   // ---- Preformas físicas ----
   ['Preforma cristal 21 gr. (PICO 26MM)', 0, 'MILL', 'PREFORMAS Y SERVICIOS'],
-  ['Preforma cristal de 19 gr. (500ML)', 0, 'MILL', 'PREFORMAS Y SERVICIOS'],
   ['Preforma cristal de 09 gr (200ML)', 50.00, 'MILL', 'PREFORMAS Y SERVICIOS'],
   ['Preforma cristal 23.5 gr (PICO 26MM)', 61.68, 'MILL', 'PREFORMAS Y SERVICIOS'],
   ['Preforma 45 GR (2 LT)', 7.10, 'MILL', 'PREFORMAS Y SERVICIOS'],
@@ -102,19 +103,31 @@ const FILAS = [
   ['Etiqueta polipropileno blanco x 5 lt Belini', 22.00, 'MILL', 'ETIQUETAS'],
   ['Etiqueta couche 90 gr x 900ml TIMONEL', 11.00, 'MILL', 'ETIQUETAS'],
   ['Etiqueta couche 90 gr x 900 ml VEGA', 0.10, 'MILL', 'ETIQUETAS'],
-  ['Etiqueta couche 90 gr x 1 Lt FERNANDEZ', 0, 'MILL', 'ETIQUETAS'],
-  ['Etiqueta couche 90 gr x 900 ml FAISAN', 0, 'MILL', 'ETIQUETAS']
+  ['Etiqueta couche 90 gr x 1 Lt FERNANDEZ', 0, 'MILL', 'ETIQUETAS']
 ];
+
+const TILDES = new RegExp('[\\u0300-\\u036f]', 'g');
 
 function norm(s) {
   return String(s || '')
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[º°]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+    .replace(TILDES, '')
+    .replace(/[^a-z0-9]/g, '');
 }
+
+// Equivalencias confirmadas a mano (typos): norma del Excel -> id en base.
+const ALIAS_EXCEL_A_ID = {};
+function aliasDe(excelNombre, id) {
+  ALIAS_EXCEL_A_ID[norm(excelNombre)] = id;
+}
+// 'TAAAAPA...' (id 47) y '26 MLL' (id 53) están así escritos en la base.
+// '45 GR' es el mismo que '44 GR' (id 52) y el servicio 1LT de Sauñe es el
+// id 48: el usuario confirmó ambas equivalencias.
+aliasDe('TAPA BALDE DON LALO', 47);
+aliasDe('Preforma cristal 15 GR (26 MLF - 500ML)', 53);
+aliasDe('Preforma 45 GR (2 LT)', 52);
+aliasDe('SERVICIO SOPLADO 1LT-900 ML PREF-23GR (SAUÑE)', 48);
 
 async function main() {
   const args = process.argv.slice(2);
@@ -126,8 +139,10 @@ async function main() {
   const inv = await pool.query('SELECT id, nombre, categoria, stock, unidad_medida FROM inventario');
   const porExacto = new Map();
   const porNorm = new Map();
+  const porId = new Map();
   for (const r of inv.rows) {
     porExacto.set(String(r.nombre).trim(), r);
+    porId.set(r.id, r);
     if (!porNorm.has(norm(r.nombre))) porNorm.set(norm(r.nombre), r);
   }
 
@@ -136,7 +151,10 @@ async function main() {
   const idsVistos = new Map();
   for (const [nombre, cantidad, unidad, categoria] of FILAS) {
     const exacto = porExacto.get(String(nombre).trim());
-    const aprox = exacto || porNorm.get(norm(nombre));
+    const aliasId = ALIAS_EXCEL_A_ID[norm(nombre)];
+    const porAlias = aliasId !== undefined ? porId.get(aliasId) : null;
+    const aprox = exacto || porAlias || porNorm.get(norm(nombre));
+    const como = exacto ? 'exacto' : (porAlias ? `alias id ${aliasId}` : `parecido (Excel: "${nombre}")`);
     if (!aprox) {
       faltantes.push({ nombre, cantidad, unidad, categoria });
       continue;
@@ -150,7 +168,7 @@ async function main() {
     plan.push({
       id: aprox.id,
       nombre: aprox.nombre,
-      como: exacto ? 'exacto' : `parecido (Excel: "${nombre}")`,
+      como,
       anterior,
       nuevo: Number(cantidad),
       unidad,

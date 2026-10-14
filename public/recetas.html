@@ -450,7 +450,11 @@
             if (!fila || fila.dataset.tipo === 'componente') return;
             const inv = inventarioGlobal.find(i => String(i.id) === String(itemSel.value));
             if (!inv) return;
-            fila.querySelector('.f-unidad').value = inv.unidad_medida || 'UNIDADES';
+            // En millares la unidad es la del stock y no se puede cambiar:
+            // la cantidad por caja se escribe en unidades y se guarda en millares.
+            const unidadInput = fila.querySelector('.f-unidad');
+            unidadInput.value = inv.unidad_medida || 'UNIDADES';
+            unidadInput.disabled = esUnidadMillar(inv.unidad_medida);
             actualizarChipStock(fila, inv);
             actualizarHintCant(fila);
         }
@@ -472,6 +476,7 @@
                 ? inventarioGlobal.find(i => String(i.id) === String(l.insumo_id))
                 : null;
             const mult0 = (inv0 && esUnidadMillar(inv0.unidad_medida)) ? 1000 : 1;
+            const unidad0 = mult0 === 1000 ? inv0.unidad_medida : (l.unidad || 'UNIDADES');
             return `
             <div class="fila-insumo" data-tipo="${esSub ? 'componente' : 'insumo'}">
                 <div class="g-fila">
@@ -504,7 +509,7 @@
                     <div>
                         <span class="etiqueta-mini">Unidad / Notas</span>
                         <div style="display:flex; gap:6px;">
-                            <input class="f-unidad" value="${escHTML(l.unidad || 'UNIDADES')}" placeholder="UNIDADES" ${esSub ? 'disabled' : ''} style="max-width:110px;">
+                            <input class="f-unidad" value="${escHTML(unidad0)}" placeholder="UNIDADES" ${(esSub || mult0 === 1000) ? 'disabled' : ''} style="max-width:110px;" title="Unidad del stock en inventario">
                             <input class="f-notas" value="${escHTML(l.notas || '')}" placeholder="Notas">
                         </div>
                         <label class="etiqueta-check"><input type="checkbox" class="f-oblig" ${l.obligatorio !== false ? 'checked' : ''}> Obligatorio</label>
@@ -537,14 +542,19 @@
         function leerFilas(contenedorId) {
             return Array.from(document.querySelectorAll('#' + contenedorId + ' .fila-insumo')).map(fila => {
                 const item = fila.querySelector('.f-linea-item').value;
+                const esComp = fila.dataset.tipo === 'componente';
+                const invL = !esComp
+                    ? inventarioGlobal.find(i => String(i.id) === String(item))
+                    : null;
+                const esM = !!invL && esUnidadMillar(invL.unidad_medida);
                 const base = {
                     // En millares se escribe en unidades y se guarda en millares.
-                    cantidad_por_caja: parseFloat(fila.querySelector('.f-cant').value) / factorCantFila(fila),
+                    cantidad_por_caja: parseFloat(fila.querySelector('.f-cant').value) / (esM ? 1000 : 1),
                     merma_pct: parseFloat(fila.querySelector('.f-merma').value || '0') || 0,
                     stock_minimo: fila.querySelector('.f-seguridad').value === ''
                         ? null
                         : parseFloat(fila.querySelector('.f-seguridad').value),
-                    unidad: (fila.querySelector('.f-unidad').value || 'UNIDADES').trim(),
+                    unidad: esM ? invL.unidad_medida : (fila.querySelector('.f-unidad').value || 'UNIDADES').trim(),
                     obligatorio: fila.querySelector('.f-oblig').checked,
                     notas: (fila.querySelector('.f-notas').value || '').trim()
                 };

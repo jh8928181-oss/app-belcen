@@ -255,8 +255,6 @@
                     <button type="button" id="turnoNOCHE" class="turno-btn turno-noche" onclick="seleccionarTurno('NOCHE')">🌙 NOCHE</button>
                 </div>
 
-                <button class="btn btn-gris" onclick="nuevoDia()">➕ Nuevo Día</button>
-
                 <span style="flex:1;"></span>
                 <a href="auditoria.html" class="link-aux">🔍 Ver Auditoría</a>
                 <a href="dashboard.html" id="linkDashboard" class="link-aux">🏠 Dashboard</a>
@@ -635,16 +633,6 @@
             turnoSeleccionado = t;
             setTurnoUI();
             cargarReporte();
-        }
-
-        function nuevoDia() {
-            if (!confirm('¿Empezar una plantilla nueva para el día y turno seleccionados?')) return;
-            lotesActuales = [];
-            renderListaLotes();
-            document.getElementById('produccionManana').value = '';
-            document.getElementById('observaciones').value = '';
-            limpiarFormLote(false);
-            mostrarMensaje('✅ Nueva plantilla lista. Guarda el primer lote para crear el reporte del turno.', true);
         }
 
         // --- GUARDAR UN LOTE ---

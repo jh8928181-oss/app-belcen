@@ -259,9 +259,29 @@ describe('activar sin stock pide confirmación en vez de activar', () => {
   });
 });
 
-describe('POST / — siempre borrador', () => {
-  test('crea la receta sin activarla aunque el cliente pida activar', async () => {
+describe('POST / — borrador salvo activar: true', () => {
+  test('sin pedir activar nace borrador y no llama a activarReceta', async () => {
     mockService.crearReceta.mockResolvedValue(recetaActiva({ id: 12, version: 1, activa: false }));
+
+    const res = await invocar('post', '/', reqFalso({}, {
+      producto_key: 'PT-NUEVO',
+      nombre_producto: 'Producto nuevo',
+      insumos: [{ insumo_id: 1, cantidad_por_caja: 3 }]
+    }));
+
+    expect(res.statusCode).toBe(201);
+    expect(mockService.activarReceta).not.toHaveBeenCalled();
+    expect(mockService.crearReceta.mock.calls[0][0]).not.toHaveProperty('activar');
+    expect(res.cuerpo.receta.activa).toBe(false);
+  });
+
+  test('con activar: true y stock suficiente crea y activa de inmediato', async () => {
+    mockService.crearReceta.mockResolvedValue(recetaActiva({ id: 13, version: 1, activa: false }));
+    mockService.activarReceta.mockResolvedValue({
+      success: true, requiere_confirmacion: false,
+      receta: recetaActiva({ id: 13, version: 1, activa: true }),
+      mensaje: 'Receta activada correctamente.'
+    });
 
     const res = await invocar('post', '/', reqFalso({}, {
       producto_key: 'PT-NUEVO',
@@ -271,9 +291,32 @@ describe('POST / — siempre borrador', () => {
     }));
 
     expect(res.statusCode).toBe(201);
-    expect(mockService.activarReceta).not.toHaveBeenCalled();
-    expect(mockService.crearReceta.mock.calls[0][0]).not.toHaveProperty('activar');
+    expect(mockService.activarReceta).toHaveBeenCalledWith(13, 'admin', { forzar: false });
+    expect(res.cuerpo.activa).toBe(true);
+    expect(res.cuerpo.receta.activa).toBe(true);
+  });
+
+  test('con activar: true pero sin stock queda borrador y pide confirmacion', async () => {
+    mockService.crearReceta.mockResolvedValue(recetaActiva({ id: 14, version: 1, activa: false }));
+    mockService.activarReceta.mockResolvedValue({
+      success: false, requiere_confirmacion: true,
+      receta: recetaActiva({ id: 14, version: 1, activa: false }),
+      advertencia: 'Con el stock actual no alcanza para 1 caja(s)',
+      faltantes: ['Resina: requiere 5 | stock: 0'],
+      mensaje: 'No se activo: falta stock'
+    });
+
+    const res = await invocar('post', '/', reqFalso({}, {
+      producto_key: 'PT-NUEVO',
+      activar: true,
+      insumos: [{ insumo_id: 1, cantidad_por_caja: 3 }]
+    }));
+
+    expect(res.statusCode).toBe(201);
+    expect(res.cuerpo.activa).toBe(false);
+    expect(res.cuerpo.requiere_confirmacion).toBe(true);
     expect(res.cuerpo.receta.activa).toBe(false);
+    expect(res.cuerpo.advertencia).toMatch(/no alcanza/);
   });
 
   test('rechaza un insumo que no existe en inventario', async () => {

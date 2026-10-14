@@ -167,8 +167,10 @@ async function prepararLineas(bruto, db_ = db) {
 
 // Crear receta. Acepta productos que aun no estan en el catalogo de terminados:
 // se registra la receta igual, y el nombre legible vive en recetas.nombre_producto.
-// Nace siempre como borrador: activar es otro paso (PUT /:id/activar) porque es
-// el que revisa el stock antes de dejar que una receta gobierne produccion.
+// Nace como borrador, salvo `activar: true`: en ese caso se intenta activar de
+// inmediato con las mismas reglas de PUT /:id/activar (sin forzar). Si falta
+// stock queda en borrador y se devuelve la confirmacion pendiente; nunca se
+// activa a ciegas.
 router.post('/', soloAdmin, async (req, res) => {
   try {
     const { producto_key, nombre_producto, insumos, observaciones } = req.body;
@@ -187,6 +189,35 @@ router.post('/', soloAdmin, async (req, res) => {
       observaciones,
       created_by: req.usuario
     });
+    if (req.body && req.body.activar === true) {
+      try {
+        const act = await recipeService.activarReceta(receta.id, req.usuario, { forzar: false });
+        if (act.success) {
+          return res.status(201).json({
+            success: true,
+            activa: true,
+            mensaje: 'Receta creada y activada: ya gobierna producción y aparece en Envasado.',
+            receta: act.receta
+          });
+        }
+        return res.status(201).json({
+          success: true,
+          activa: false,
+          requiere_confirmacion: true,
+          receta,
+          advertencia: act.advertencia,
+          faltantes: act.faltantes,
+          mensaje: 'Receta creada como borrador: ' + act.mensaje
+        });
+      } catch (err) {
+        return res.status(201).json({
+          success: true,
+          activa: false,
+          receta,
+          mensaje: 'Receta creada como borrador. No se pudo activar: ' + err.message
+        });
+      }
+    }
     res.status(201).json({
       success: true,
       mensaje: 'Receta creada como borrador. Activala cuando quieras que gobierne produccion.',

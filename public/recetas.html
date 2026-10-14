@@ -98,7 +98,7 @@
         <!-- PANEL NUEVA RECETA -->
         <div id="panelNueva" class="tarjeta" style="border-top: 5px solid #28a745; display: none;">
             <div class="acciones-superior">
-                <h3 class="crear" style="border-bottom:none; padding-bottom:0; margin-bottom:0;">➕ NUEVA RECETA (BORRADOR)</h3>
+                <h3 class="crear" style="border-bottom:none; padding-bottom:0; margin-bottom:0;">➕ NUEVA RECETA</h3>
                 <button onclick="cerrarPanelNueva()" class="btn-eliminar" style="border:none; border-radius:4px; cursor:pointer; padding:8px 14px; font-weight:bold;">✖ Cancelar</button>
             </div>
             <div class="grid-3cols">
@@ -130,8 +130,9 @@
                 </div>
                 <div class="chip-info" style="margin-top:8px;">Una sub-receta se produce con su propia receta: sus insumos se suman al total y no se descuentan por separado.</div>
             </div>
-            <div style="margin-top: 18px;">
+            <div style="margin-top: 18px; display:flex; gap:14px; align-items:center; flex-wrap:wrap;">
                 <button onclick="guardarNuevaReceta()" id="btnGuardarNueva" class="btn-accion">💾 CREAR RECETA</button>
+                <label class="etiqueta-check" title="Si el producto ya tiene receta activa, esta la reemplaza"><input type="checkbox" id="nuevaActivar" checked> ✅ Activar de inmediato para producción (Envasado)</label>
             </div>
         </div>
 
@@ -597,6 +598,7 @@
             const nombreProducto = document.getElementById('nuevoNombreProducto').value.trim();
             const observaciones = document.getElementById('nuevasObservaciones').value.trim();
             const insumos = leerFilas('filasNueva');
+            const activar = document.getElementById('nuevaActivar').checked;
 
             let producto_key = delCatalogo;
             if (!producto_key && textoNuevo) {
@@ -617,11 +619,24 @@
                         producto_key,
                         nombre_producto: nombreProducto || (delCatalogo ? '' : textoNuevo),
                         insumos,
-                        observaciones
+                        observaciones,
+                        activar
                     })
                 });
                 const data = await res.json();
-                if (res.ok && data.success) {
+                if (res.ok && data.success && data.requiere_confirmacion && data.receta && data.receta.id) {
+                    // Se creo pero el servidor no activo por falta de stock.
+                    alert('💾 ' + data.mensaje);
+                    cerrarPanelNueva();
+                    await cargarRecetas();
+                    await cargarDatosIniciales();
+                    const nid = data.receta.id;
+                    if (confirm('⚠️ ' + data.advertencia + '\n\n¿Activar de todas formas para usarla en producción?')) {
+                        await forzarActivacion(nid);
+                        await cargarRecetas();
+                    }
+                    await abrirDetalle(nid);
+                } else if (res.ok && data.success) {
                     alert('✅ ' + data.mensaje);
                     cerrarPanelNueva();
                     await cargarRecetas();

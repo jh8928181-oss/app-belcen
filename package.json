@@ -18,6 +18,7 @@
     "migrate:create": "node-pg-migrate create",
     "migrate:status": "node scripts/migrate.js status",
     "seed:dev": "node scripts/seed-dev.js",
+    "carga:stock-12oct": "node scripts/carga-stock-12oct.js",
     "create:users": "node scripts/create-users.js"
   },
   "keywords": [],

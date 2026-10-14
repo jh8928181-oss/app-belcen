@@ -350,6 +350,13 @@
             <span id="totalTmActivo">0.00</span>
         </div>
 
+        <div class="total-bar" style="margin-top:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <span><b>🔒 Cierre del día:</b></span>
+            <input type="date" id="fechaCierreDia" style="max-width:180px;">
+            <button onclick="realizarCierreDia()" id="btnCierreDia" class="btn-accion">Archivar cerradas de esta fecha en Auditoría</button>
+        </div>
+        <p style="font-size:12px; color:#555;">Archiva en Auditoría las producciones cerradas de la fecha (fecha, presentación, cant, UM, TN y obs). Las que siguen en curso no se tocan.</p>
+
         </div>
 
         <!-- PIE COMÚN -->
@@ -861,6 +868,38 @@
             }
         }
 
+        // 🔒 Cierre del día: lo hace Envasado (no Auditoría). Archiva las
+        // producciones cerradas de la fecha en el historial de Auditoría.
+        let guardCierreDia = false;
+        async function realizarCierreDia() {
+            if (guardCierreDia) return;
+            const fechaCierre = document.getElementById('fechaCierreDia').value;
+            if (!fechaCierre) { alert('❌ Selecciona la fecha del cierre.'); return; }
+            if (!confirm(`¿Archivar en Auditoría las producciones cerradas del ${fechaCierre}? Saldrán de esta tabla y quedarán en el historial de cierres.`)) return;
+            guardCierreDia = true;
+            const btn = document.getElementById('btnCierreDia');
+            if (btn) btn.disabled = true;
+            try {
+                const res = await fetch('/api/produccion/cierre', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        fecha_cierre: fechaCierre,
+                        usuario: localStorage.getItem('usuario_actual') || 'envasado_user'
+                    })
+                });
+                const data = await res.json();
+                alert((res.ok && data.success ? '✅ ' : '❌ ') + (data.mensaje || 'Respuesta del servidor.'));
+                if (res.ok && data.success) cargarProduccionActiva();
+            } catch (err) {
+                console.error(err);
+                alert('Error de conexión con el servidor.');
+            } finally {
+                guardCierreDia = false;
+                if (btn) btn.disabled = false;
+            }
+        }
+
         async function eliminarReporte(id, presentacion) {
             if (!confirm(`¿Eliminar el reporte de "${presentacion}"?\n\nSe devolverán los insumos al inventario y se quitarán las cajas de producto terminado. Podrás volver a reportarlo.`)) return;
             try {
@@ -888,6 +927,11 @@
         cargarProduccionActiva();
         cargarEstadoEnvasado();
         poblarSelectsEnvasado();
+        try {
+            const hoy = new Date();
+            document.getElementById('fechaCierreDia').value =
+                hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
+        } catch (e) { console.error(e); }
         registrarAutoRefresco(() => { cargarEstadoEnvasado(); cargarProduccionActiva(); }, 15000);
     </script>
 </body>

@@ -499,12 +499,7 @@
                     </div>
                 </div>
                 <div class="sub-bloque">
-                    <h3 style="border-bottom: 2px solid #6c757d; color: #495057;">🔒 CIERRE Y REPORTES DE PRODUCCIÓN</h3>
-                    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px;">
-                        <label><b>Fecha de Cierre:</b></label>
-                        <input type="date" id="fechaCierreAud" class="filtro" style="max-width: 220px;" title="Selecciona la fecha de producción que se cerrará">
-                        <button onclick="realizarCierreProd()" id="btnCierreProd" style="background: #ffc107; color: #000; border: none; padding: 9px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px;">🔒 REALIZAR CIERRE DE PRODUCCIÓN DE ESTA FECHA</button>
-                    </div>
+                    <h3 style="border-bottom: 2px solid #6c757d; color: #495057;">🔒 CIERRES DE PRODUCCIÓN (los archiva Envasado)</h3>
                     <h4 style="margin:18px 0 4px 0; color:#495057;">HISTORIAL DE CIERRES DE PRODUCCIÓN</h4>
                     <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
                         <label><b>Filtrar por Fecha de Cierre:</b></label>
@@ -1133,41 +1128,6 @@ tbody.appendChild(tr);
             etiquetarTablas();
         }
 
-        let guardCierreProdAud = false;
-        async function realizarCierreProd() {
-            if (guardCierreProdAud) return;
-            const fechaCierre = document.getElementById('fechaCierreAud').value;
-            if (!fechaCierre) { alert('❌ Selecciona una fecha de cierre.'); return; }
-            if (!confirm(`¿Está seguro de realizar el cierre de producción para la fecha ${fechaCierre}? Esta acción consolidará los registros en el historial.`)) return;
-            guardCierreProdAud = true;
-            const btn = document.getElementById('btnCierreProd');
-            if (btn) btn.disabled = true;
-            try {
-                const res = await fetch('/api/produccion/cierre', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        fecha_cierre: fechaCierre,
-                        usuario: localStorage.getItem('usuario_actual') || 'auditoria_user'
-                    })
-                });
-                const data = await res.json();
-                if (res.ok && data.success) {
-                    alert('✅ ' + data.mensaje);
-                    cargarHistorialCierresAud();
-                    cargarProduccion();
-                } else {
-                    alert('❌ ' + (data.mensaje || 'Error al cerrar producción.'));
-                }
-            } catch (err) {
-                console.error(err);
-                alert('Error de conexión con el servidor.');
-            } finally {
-                guardCierreProdAud = false;
-                if (btn) btn.disabled = false;
-            }
-        }
-
         // 🛢️ REFINERÍA
         function renderRefinado() {
             const reporte = refinadoActual;
@@ -1456,9 +1416,6 @@ tbody.appendChild(tr);
             cuerpoVigilancia.classList.add('abierto');
             cuerpoVigilancia.style.maxHeight = cuerpoVigilancia.scrollHeight + 'px';
         }
-
-        const fHoy = new Date();
-        document.getElementById('fechaCierreAud').value = fHoy.getFullYear() + '-' + String(fHoy.getMonth() + 1).padStart(2, '0') + '-' + String(fHoy.getDate()).padStart(2, '0');
 
         cargarEntradas();
         cargarSalidas();

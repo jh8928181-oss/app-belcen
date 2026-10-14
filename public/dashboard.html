@@ -108,6 +108,11 @@
             gap: 7px;
         }
         .chip b { color: var(--accent); }
+        .chip-stock { cursor: pointer; font-family: inherit; color: inherit; }
+        .chip-stock b { color: #f87171; font-size: 14px; }
+        .chip-stock .chip-hint { font-size: 11px; opacity: .75; }
+        .chip-stock.on { background: rgba(248, 113, 113, 0.18); box-shadow: 0 0 0 2px #f87171; }
+        .chip-stock:focus-visible { outline: 2px solid #f87171; outline-offset: 2px; }
         .btn-salir {
             background: rgba(220, 53, 69, 0.85);
             color: #fff;
@@ -315,6 +320,7 @@
             </div>
             <div class="top-actions">
                 <span class="chip" id="chipUsuario">👤 <span id="chipNombre">—</span></span>
+                <button class="chip chip-stock" id="kpiBajoStockCard" title="Mostrar solo artículos con bajo stock" onclick="toggleFiltroBajoStock()" aria-pressed="false">⚠️ Bajo stock: <b id="kpiBajoStock">—</b><span class="chip-hint" id="kpiBajoStockHint">ver</span></button>
                 <button class="btn-ghost btn-anim" onclick="cargarInventario()" title="Actualizar inventario">🔄</button>
                 <button class="btn-salir btn-anim" onclick="cerrarSesion()">Salir</button>
             </div>
@@ -327,15 +333,6 @@
                 <p id="fechaHora">Cargando fecha y hora…</p>
             </div>
             <span class="rol-badge" id="rolBadge">ROL</span>
-        </section>
-
-<!-- KPIS -->
-        <section class="kpis">
-            <div class="glass kpi warn kpi-btn" id="kpiBajoStockCard" role="button" tabindex="0" aria-pressed="false" title="Mostrar solo artículos con bajo stock" onclick="toggleFiltroBajoStock()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleFiltroBajoStock();}">
-                <div class="kpi-label">Bajo Stock</div>
-                <div class="kpi-val" id="kpiBajoStock">—</div>
-                <div class="kpi-hint" id="kpiBajoStockHint">Toca para ver bajos</div>
-            </div>
         </section>
 
         <!-- ESTADO DE PRODUCCIÓN -->
@@ -380,6 +377,34 @@
                 </div>
             </div>
 </section>
+
+        <!-- ESTADOS DE SERVICIO DE SOPLADO -->
+        <section class="glass inv" id="seccionServiciosSoplado">
+            <div class="seccion-head">
+                <h2>Estados de servicio de soplado</h2>
+                <div class="inv-actions">
+                    <button class="btn-actualizar btn-anim" onclick="renderServiciosSoplado()">🔄 Actualizar</button>
+                    <span id="totalServicios"></span>
+                </div>
+            </div>
+            <div class="tabla-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Servicio</th>
+                            <th>Insumo</th>
+                            <th>Enviado</th>
+                            <th>Consumido</th>
+                            <th>Saldo en servicio</th>
+                            <th>Stock actual</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaServiciosSoplado">
+                        <tr><td colspan="6" class="text-center">Cargando servicios…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
 
         <!-- PRODUCTO TERMINADO -->
         <section class="glass inv" id="seccionProductoTerminado">
@@ -462,35 +487,7 @@
             </div>
         </section>
 
-        <!-- ESTADOS DE SERVICIO DE SOPLADO -->
-        <section class="glass inv" id="seccionServiciosSoplado">
-            <div class="seccion-head">
-                <h2>Estados de servicio de soplado</h2>
-                <div class="inv-actions">
-                    <button class="btn-actualizar btn-anim" onclick="renderServiciosSoplado()">🔄 Actualizar</button>
-                    <span id="totalServicios"></span>
-                </div>
-            </div>
-            <div class="tabla-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Servicio</th>
-                            <th>Insumo</th>
-                            <th>Enviado</th>
-                            <th>Consumido</th>
-                            <th>Saldo en servicio</th>
-                            <th>Stock actual</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tablaServiciosSoplado">
-                        <tr><td colspan="6" class="text-center">Cargando servicios…</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </section>
-
-        <!-- PIE -->
+<!-- PIE -->
         <footer class="pie">
             <span>Corporación Belcen S.A.C. · ERP Interno · Inventario en tiempo real</span>
             <button class="btn-salir btn-anim" onclick="cerrarSesion()">🔒 Cerrar Sesión</button>

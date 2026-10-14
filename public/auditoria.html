@@ -348,7 +348,7 @@
 
         <header class="page-head">
             <h1 class="page-titulo">Auditoría</h1>
-            <p class="page-sub">Ingresos, producción y refinería — Corporación Belcen</p>
+            <p class="page-sub">Ingresos, soplado, producción y refinería — Corporación Belcen</p>
         </header>
 
         <!-- BARRA DE ATAJOS DINÁMICA -->
@@ -361,6 +361,9 @@
             </button>
             <button class="atajo" data-panel="produccion" onclick="irAPanel('produccion')">
                 <span>🏭</span><span>Producción</span><span class="atajo-contador" id="contAjoProd">0</span>
+            </button>
+            <button class="atajo" data-panel="soplado" onclick="irAPanel('soplado')">
+                <span>💨</span><span>Soplado</span><span class="atajo-contador" id="contAjoSop">0</span>
             </button>
             <button class="atajo" data-panel="refineria" onclick="irAPanel('refineria')">
                 <span>🛢️</span><span>Refinería</span><span class="atajo-contador" id="contAjoRef">0</span>
@@ -513,7 +516,38 @@
             </div>
         </div>
 
-        <!-- PANEL 4: REFINERÍA -->
+        <!-- PANEL 4: SOPLADO -->
+        <div class="tarjeta tarjeta-panel g3" id="panel-soplado">
+            <button class="panel-cabecera" id="btn-soplado" onclick="togglePanel('soplado')" aria-expanded="false" aria-controls="cuerpo-soplado">
+                <span class="panel-titulo">💨 SOPLADO — Botellas producidas</span>
+                <span class="panel-contador" id="contadorSoplado">0 reportes</span>
+                <span class="panel-flecha">▼</span>
+            </button>
+            <div class="panel-cuerpo" id="cuerpo-soplado">
+                <div class="sub-bloque">
+                    <h3 style="border-bottom: 2px solid #ffc107; color: #8a6d00;">💨 SOPLADO — Botellas sopladas en planta</h3>
+                    <input id="filtroSoplado" class="filtro" placeholder="🔍 Buscar por botella, preforma o fecha..." oninput="renderSoplado()">
+                    <div class="tabla-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="background-color:#8a6d00;">Fecha</th>
+                                    <th style="background-color:#8a6d00;">Botella</th>
+                                    <th class="text-center" style="background-color:#8a6d00;">Cantidad</th>
+                                    <th style="background-color:#8a6d00;">Preforma usada</th>
+                                    <th style="background-color:#8a6d00;">Registró</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tablaSoplado">
+                                <tr><td colspan="5" class="text-center">Cargando soplado...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PANEL 5: REFINERÍA -->
         <div class="tarjeta tarjeta-panel g4" id="panel-refineria">
             <button class="panel-cabecera" id="btn-refineria" onclick="togglePanel('refineria')" aria-expanded="false" aria-controls="cuerpo-refineria">
                 <span class="panel-titulo">🛢️ REFINERÍA — Reporte Diario</span>
@@ -976,6 +1010,43 @@
             }
         }
 
+        // 💨 SOPLADO (botellas sopladas en planta)
+        let sopladoGlobal = [];
+        async function cargarSoplado() {
+            try {
+                const res = await fetch('/api/soplado/reportes');
+                if (!res.ok) throw new Error('Error del servidor.');
+                const datos = await res.json();
+                sopladoGlobal = Array.isArray(datos) ? datos : [];
+                renderSoplado();
+                actualizarContadores();
+            } catch (err) {
+                console.error(err);
+                document.getElementById('tablaSoplado').innerHTML = '<tr><td colspan="5" class="text-center" style="color:red;">Error al cargar soplado.</td></tr>';
+            }
+        }
+
+        function renderSoplado() {
+            const q = (document.getElementById('filtroSoplado').value || '').toLowerCase();
+            const filtrados = sopladoGlobal.filter(it =>
+                (it.botella_nombre || '').toLowerCase().includes(q) ||
+                (it.preforma_nombre || '').toLowerCase().includes(q) ||
+                (it.fecha_reporte || '').toLowerCase().includes(q)
+            );
+            const tbody = document.getElementById('tablaSoplado');
+            tbody.innerHTML = filtrados.length === 0 ? '<tr><td colspan="5" class="text-center sin-registros">No hay reportes de soplado.</td></tr>' : '';
+            filtrados.forEach(r => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td><b>${fechaSoloDia(r.fecha_reporte)}</b></td>`
+                    + `<td><b>${r.botella_nombre || 'N/D'}</b>${r.botella_tipo ? `<div style="font-size:12px; color:#888;">${r.botella_tipo}</div>` : ''}</td>`
+                    + `<td class="text-center" style="color:#8a6d00; font-weight:bold;">${r.cantidad_botellas || 0}</td>`
+                    + `<td>${r.preforma_nombre || '-'}</td>`
+                    + `<td>${r.usuario_registro || '-'}</td>`;
+                tbody.appendChild(tr);
+            });
+            etiquetarTablas();
+        }
+
         // 🔒 CIERRE Y REPORTES DE PRODUCCIÓN
         function fechaLocalISOAud(iso) {
             if (!iso) return '';
@@ -1310,6 +1381,8 @@ tbody.appendChild(tr);
             if (c2) c2.textContent = entradasAlmGlobal.length + ' conformidades · ' + salidasGlobal.length + ' salidas';
             const c3 = document.getElementById('contadorProduccionCierre');
             if (c3) c3.textContent = informesGlobal.length + ' producciones · ' + historialCierresGlobal.length + ' cierres';
+            const cSop = document.getElementById('contadorSoplado');
+            if (cSop) cSop.textContent = sopladoGlobal.length + (sopladoGlobal.length === 1 ? ' reporte' : ' reportes');
             const c4 = document.getElementById('contadorRefineria');
             if (c4) {
                 const rep = refinadoActual;
@@ -1325,6 +1398,8 @@ tbody.appendChild(tr);
             if (a2) a2.textContent = entradasAlmGlobal.length + salidasGlobal.length;
             const a3 = document.getElementById('contAjoProd');
             if (a3) a3.textContent = informesGlobal.length + historialCierresGlobal.length;
+            const aSop = document.getElementById('contAjoSop');
+            if (aSop) aSop.textContent = sopladoGlobal.length;
             const a4 = document.getElementById('contAjoRef');
             if (a4) {
                 const rep = refinadoActual;
@@ -1371,6 +1446,7 @@ tbody.appendChild(tr);
                     cargarEntradas(),
                     cargarSalidas(),
                     cargarProduccion(),
+                    cargarSoplado(),
                     cargarRefinado(),
                     cargarHistorialCierresAud(),
                     cargarHistorialInventario()
@@ -1385,7 +1461,7 @@ tbody.appendChild(tr);
             cerrarPopover();
             const umbral = window.innerHeight * 0.4;
             let activo = 'vigilancia';
-            ['vigilancia', 'almacen', 'produccion', 'refineria'].forEach(n => {
+                ['vigilancia', 'almacen', 'produccion', 'soplado', 'refineria'].forEach(n => {
                 const p = document.getElementById('panel-' + n);
                 if (p && p.getBoundingClientRect().top <= umbral) activo = n;
             });
@@ -1420,6 +1496,7 @@ tbody.appendChild(tr);
         cargarEntradas();
         cargarSalidas();
         cargarProduccion();
+        cargarSoplado();
         cargarRefinado();
         cargarHistorialCierresAud();
         cargarHistorialInventario();

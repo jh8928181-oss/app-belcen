@@ -87,6 +87,9 @@ const mundo = {
   preforma: 10,
   etiqueta: 10,
   botella: 0,
+  blanco: null,
+  terminada: null,
+  etiquetaArt: null,
   lineas: []
 };
 
@@ -108,6 +111,16 @@ function usarMundo() {
       if (nombre.includes('botella')) return { rows: [{ stock: mundo.botella }] };
       return { rows: [] };
     }
+    if (/FROM inventario WHERE LOWER\(BTRIM\(nombre\)\)/.test(q)) {
+      const nm = String(params[0] || '').toLowerCase();
+      if (nm.includes('(blanco)')) return mundo.blanco ? { rows: [{ ...mundo.blanco }] } : { rows: [] };
+      if (nm.includes('etiqueta')) return mundo.etiquetaArt ? { rows: [{ ...mundo.etiquetaArt }] } : { rows: [] };
+      return mundo.terminada ? { rows: [{ ...mundo.terminada }] } : { rows: [] };
+    }
+    if (/INSERT INTO inventario \(nombre, categoria, stock/.test(q)) {
+      mundo.blanco = { id: 99, stock: 0 };
+      return { rows: [{ id: 99, stock: 0 }], rowCount: 1 };
+    }
     if (/UPDATE inventario SET stock = stock - \$1 WHERE LOWER\(nombre\)/.test(q)) {
       return { rowCount: 1 };
     }
@@ -128,6 +141,9 @@ beforeEach(() => {
   mundo.preforma = 10;
   mundo.etiqueta = 10;
   mundo.botella = 0;
+  mundo.blanco = null;
+  mundo.terminada = null;
+  mundo.etiquetaArt = null;
   mundo.lineas = [
     { linea: 'AUTOMATICA', nombre: 'Línea automática', molde_actual: 'Molde 1 Lt' },
     { linea: 'MANUAL', nombre: 'Línea manual', molde_actual: null }
@@ -156,6 +172,20 @@ describe('POST /api/soplado/registrar', () => {
     expect(ins[1][6]).toBe('Molde 1 Lt');
     const mem = mockQuery.mock.calls.find(c => /UPDATE soplado_lineas SET molde_actual/.test(String(c[0])));
     expect(mem[1]).toEqual(['Molde 1 Lt', 'MANUAL']);
+  });
+
+  test('al soplar no se descuenta etiqueta ni terminada: van en blanco', async () => {
+    const res = await invocar('post', '/api/soplado/registrar', { body: cuerpoBase() });
+
+    expect(res.statusCode).toBe(200);
+    const insBlanco = mockQuery.mock.calls.find(c => /INSERT INTO inventario \(nombre, categoria, stock/.test(String(c[0])));
+    expect(insBlanco).toBeDefined();
+    expect(insBlanco[1][0]).toMatch(/\(blanco\)/);
+    expect(insBlanco[1][1]).toBe('BOTELLAS EN BLANCO');
+    const movsEtiqueta = mockQuery.mock.calls.filter(c =>
+      /UPDATE inventario SET stock = stock -/.test(String(c[0])) &&
+      String(c[1][1] || '').toLowerCase().includes('etiqueta'));
+    expect(movsEtiqueta).toHaveLength(0);
   });
 
   test('cada línea exige su propia marcha: manual parada no frena a la automática', async () => {
@@ -205,6 +235,67 @@ describe('POST /api/estado-linea', () => {
       body: { area: 'soplado_turbo', estado: 'EN MARCHA' }
     });
     expect(mala.statusCode).toBe(400);
+  });
+});
+
+describe('POST /api/soplado/etiquetar', () => {
+  const baseEtq = () => ({ botella_tipo: 'soplado_belini_1lt', cantidad: 2000, linea: 'MANUAL', usuario: 'soplado1' });
+
+  test('valida cantidad, línea y tipo', async () => {
+    for (const body of [
+      { botella_tipo: 'soplado_belini_1lt', cantidad: 0, linea: 'MANUAL' },
+      { botella_tipo: 'soplado_belini_1lt', cantidad: 100, linea: 'TURBO' },
+      { botella_tipo: 'soplado_inexistente', cantidad: 100, linea: 'MANUAL' }
+    ]) {
+      const res = await invocar('post', '/api/soplado/etiquetar', { body });
+      expect(res.statusCode).toBe(400);
+    }
+    const movs = mockQuery.mock.calls.filter(c => /UPDATE inventario SET stock/.test(String(c[0])));
+    expect(movs).toHaveLength(0);
+  });
+
+  test('sin blanco registrado avisa que sople primero', async () => {
+    mundo.blanco = null;
+    mundo.terminada = { id: 3, stock: 100 };
+    const res = await invocar('post', '/api/soplado/etiquetar', { body: baseEtq() });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.cuerpo.mensaje).toMatch(/Registra primero/);
+  });
+
+  test('sin stock en blanco suficiente se rechaza', async () => {
+    mundo.blanco = { id: 9, stock: 100 };
+    mundo.terminada = { id: 3, stock: 0 };
+    mundo.etiquetaArt = { id: 5, stock: 10 };
+    const res = await invocar('post', '/api/soplado/etiquetar', { body: baseEtq() });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.cuerpo.mensaje).toMatch(/Solo hay 100 en blanco/);
+  });
+
+  test('descuenta blanco y etiqueta en MILL, suma terminada', async () => {
+    mundo.blanco = { id: 9, stock: 5000 };
+    mundo.terminada = { id: 3, stock: 100 };
+    mundo.etiquetaArt = { id: 5, stock: 10 };
+    const res = await invocar('post', '/api/soplado/etiquetar', { body: baseEtq() });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.cuerpo.mensaje).toMatch(/Etiquetadas 2000/);
+    const menos = mockQuery.mock.calls.filter(c => /UPDATE inventario SET stock = stock - \$1 WHERE id/.test(String(c[0])));
+    expect(menos.map(c => c[1])).toEqual([[2000, 9], [2, 5]]);
+    const mas = mockQuery.mock.calls.find(c => /UPDATE inventario SET stock = stock \+ \$1 WHERE id/.test(String(c[0])));
+    expect(mas[1]).toEqual([2000, 3]);
+  });
+
+  test('sin etiqueta (VEGA) solo mueve blanco y terminada', async () => {
+    mundo.blanco = { id: 9, stock: 5000 };
+    mundo.terminada = { id: 3, stock: 0 };
+    const res = await invocar('post', '/api/soplado/etiquetar', {
+      body: { ...baseEtq(), botella_tipo: 'soplado_vega_900ml' }
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.cuerpo.mensaje).toMatch(/sin etiqueta/);
   });
 });
 

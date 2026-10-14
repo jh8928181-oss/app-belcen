@@ -179,7 +179,7 @@
         <h3>REPORTE DE TURNO - LÍNEA AUTOMÁTICA</h3>
 
         <div class="info-receta">
-            ℹ️ Seleccione la preforma utilizada, el molde en la línea, la botella a producir y la cantidad. La etiqueta y el stock de botellas se actualizarán automáticamente.
+            ℹ️ Seleccione la preforma utilizada, el molde en la línea, la botella a producir y la cantidad. Salen <b>en blanco</b> (sin etiqueta) a su inventario; la etiqueta se descuenta al etiquetar.
         </div>
 
         <form id="formSoplado_A">
@@ -247,7 +247,7 @@
         <h3>REPORTE DE TURNO - LÍNEA MANUAL</h3>
 
         <div class="info-receta">
-            ℹ️ Seleccione la preforma utilizada, el molde en la línea, la botella a producir y la cantidad. La etiqueta y el stock de botellas se actualizarán automáticamente.
+            ℹ️ Seleccione la preforma utilizada, el molde en la línea, la botella a producir y la cantidad. Salen <b>en blanco</b> (sin etiqueta) a su inventario; la etiqueta se descuenta al etiquetar.
         </div>
 
         <form id="formSoplado_M">
@@ -301,7 +301,53 @@
             </div>
         </form>
 
-        <div class="pie-foot">
+        <div class="card reveal">
+        <h3>BOTELLAS EN BLANCO Y ETIQUETADO</h3>
+
+        <div class="info-receta">
+            ℹ️ Lo soplado queda aquí <b>en blanco</b>. Para pasarlo a producción, elija la botella terminada y la cantidad de etiquetas: se descuentan las botellas en blanco y sus etiquetas, y suben las botellas terminadas.
+        </div>
+
+        <h4 style="margin:6px 0 8px; font-size:14px;">Inventario en blanco</h4>
+        <div class="tabla-wrap">
+            <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                <thead>
+                    <tr>
+                        <th style="text-align:left;">Botella en blanco</th>
+                        <th class="text-center">Stock</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaBlancos">
+                    <tr><td colspan="2" class="text-center">Cargando…</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <form id="formEtiquetar" style="margin-top:14px;">
+            <div>
+                <label><b>Botella terminada:</b></label>
+                <select id="etqBotella" required>
+                    <option value="">-- Seleccione botella terminada --</option>
+                </select>
+            </div>
+            <div>
+                <label><b>Cantidad de etiquetas usadas:</b></label>
+                <input type="number" id="etqCantidad" min="1" placeholder="Ej. 3000" required>
+            </div>
+            <div>
+                <label><b>Línea que etiqueta:</b></label>
+                <select id="etqLinea" required>
+                    <option value="AUTOMATICA">Línea automática</option>
+                    <option value="MANUAL">Línea manual</option>
+                </select>
+            </div>
+            <div>
+                <button type="submit" class="btn-accion">🏷️ Etiquetar y pasar a producción</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="pie-foot">
             <a href="dashboard.html" class="logout" id="linkDashboard">Volver al Dashboard General</a>
             <br>
             <button onclick="cerrarSesion()" class="btn-logout-custom">🔒 Cerrar Sesión (Salir)</button>
@@ -457,27 +503,105 @@
                     });
 
                     const data = await res.json();
-                    if (res.ok && data.success) {
-                        alert('✅ ' + data.mensaje);
-                        form.reset();
-                        cargarLineasSoplado();
-                    } else {
-                        alert('❌ ' + (data.mensaje || 'Error al registrar producción.'));
-                    }
-                } catch (err) {
-                    console.error(err);
-                    alert('Error de conexión con el servidor.');
-                } finally {
-                    enviandoSoplado[suf] = false;
-                    if (btnEnviar) btnEnviar.disabled = false;
+                if (res.ok && data.success) {
+                    alert('✅ ' + data.mensaje);
+                    form.reset();
+                    cargarLineasSoplado();
+                    cargarBlancos();
+                    cargarTotalesSoplado();
+                } else {
+                    alert('❌ ' + (data.mensaje || 'Error al registrar producción.'));
                 }
+            } catch (err) {
+                console.error(err);
+                alert('Error de conexión con el servidor.');
+            } finally {
+                enviandoSoplado[suf] = false;
+                if (btnEnviar) btnEnviar.disabled = false;
+            }
             });
         }
         registrarEnLinea('A');
         registrarEnLinea('M');
 
-        const estadoSoplado = { A: 'PARADO', M: 'PARADO' };
+        // ---- BOTELLAS EN BLANCO + ETIQUETADO ----
+        function clonarOpcionesBotella() {
+            const origen = document.getElementById('botella_tipo_A');
+            const dest = document.getElementById('etqBotella');
+            if (!origen || !dest) return;
+            dest.innerHTML = '<option value="">-- Seleccione botella terminada --</option>';
+            origen.querySelectorAll('optgroup').forEach(g => dest.appendChild(g.cloneNode(true)));
+        }
 
+        async function cargarBlancos() {
+            const tbody = document.getElementById('tablaBlancos');
+            if (!tbody) return;
+            try {
+                const res = await fetch('/api/inventario');
+                if (!res.ok) throw new Error('Error del servidor.');
+                const items = await res.json();
+                const blancos = (Array.isArray(items) ? items : [])
+                    .filter(it => /\(blanco\)\s*$/i.test(String(it.nombre || '')))
+                    .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)));
+                if (!blancos.length) {
+                    tbody.innerHTML = '<tr><td colspan="2" class="text-center">Sin botellas en blanco.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = '';
+                blancos.forEach(it => {
+                    const stock = Number(it.stock) || 0;
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `<td><b>${it.nombre}</b></td>`
+                        + `<td class="text-center"><b>${stock}</b> ${it.unidad_medida || 'UNIDADES'}</td>`;
+                    tbody.appendChild(tr);
+                });
+            } catch (e) {
+                console.error(e);
+                tbody.innerHTML = '<tr><td colspan="2" class="text-center">Error al cargar.</td></tr>';
+            }
+        }
+
+        let enviandoEtiquetado = false;
+        document.getElementById('formEtiquetar').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (enviandoEtiquetado) return;
+            enviandoEtiquetado = true;
+            const btnEnviar = e.submitter || document.querySelector('#formEtiquetar button[type="submit"]');
+            if (btnEnviar) btnEnviar.disabled = true;
+            const botella_tipo = document.getElementById('etqBotella').value;
+            const cantidad = parseInt(document.getElementById('etqCantidad').value);
+            const linea = document.getElementById('etqLinea').value;
+            if (!botella_tipo) { alert('❌ Seleccione la botella terminada.'); enviandoEtiquetado = false; if (btnEnviar) btnEnviar.disabled = false; return; }
+            if (isNaN(cantidad) || cantidad <= 0) { alert('❌ Escriba la cantidad de etiquetas usadas.'); enviandoEtiquetado = false; if (btnEnviar) btnEnviar.disabled = false; return; }
+            if (!confirm(`¿Etiquetar ${cantidad} botellas? Se descuentan las botellas en blanco y sus etiquetas.`)) { enviandoEtiquetado = false; if (btnEnviar) btnEnviar.disabled = false; return; }
+            try {
+                const res = await fetch('/api/soplado/etiquetar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        botella_tipo,
+                        cantidad,
+                        linea,
+                        usuario: localStorage.getItem('usuario_actual') || 'soplado_user'
+                    })
+                });
+                const data = await res.json();
+                alert((res.ok && data.success ? '✅ ' : '❌ ') + (data.mensaje || 'Respuesta del servidor.'));
+                if (res.ok && data.success) {
+                    document.getElementById('formEtiquetar').reset();
+                    cargarBlancos();
+                    cargarTotalesSoplado();
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Error de conexión con el servidor.');
+            } finally {
+                enviandoEtiquetado = false;
+                if (btnEnviar) btnEnviar.disabled = false;
+            }
+        });
+
+        const estadoSoplado = { A: 'PARADO', M: 'PARADO' };
         function pintarEstadoSoplado(suf) {
             const pill = document.getElementById('pillEstadoSoplado_' + suf);
             const btn = document.getElementById('btnCambiarEstadoSoplado_' + suf);
@@ -579,6 +703,8 @@
         cargarTotalesSoplado();
         poblarMoldes();
         cargarLineasSoplado();
+        clonarOpcionesBotella();
+        cargarBlancos();
         registrarAutoRefresco(() => { cargarEstadoSoplado(); cargarTotalesSoplado(); }, 15000);
     </script>
 </body>

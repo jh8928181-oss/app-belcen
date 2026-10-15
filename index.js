@@ -3882,6 +3882,20 @@ app.post('/api/produccion/eliminar', gProduccion, async (req, res) => {
         }
         const reporte = repRes.rows[0];
 
+        // Un reporte cerrado sin stock dejó pendientes atados por FK: los que
+        // siguen PENDIENTE se van con el reporte (nunca movieron stock); si
+        // alguno ya fue APLICADO contra guía o reporte, el borrado se bloquea
+        // para no corromper lo ya saldado.
+        const vinc = await client.query(
+            `SELECT id, estado FROM ajustes_pendientes WHERE reporte_id = $1`,
+            [reporte_id]
+        );
+        const aplicadas = vinc.rows.filter(v => v.estado !== 'PENDIENTE');
+        if (aplicadas.length) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, mensaje: `No se puede eliminar: tiene ${aplicadas.length} ajuste(s) ya saldados. Regularízalos en Almacén antes de borrar el reporte.` });
+        }
+
         // Una producción abierta nunca movió stock: se borra directo, sin
         // devoluciones ni avisos de cajas despachadas.
         if (reporte.estado === 'EN_CURSO') {
@@ -4036,6 +4050,8 @@ app.post('/api/produccion/eliminar', gProduccion, async (req, res) => {
             }
         }
 
+        const delPend = await client.query(`DELETE FROM ajustes_pendientes WHERE reporte_id = $1 AND estado = 'PENDIENTE'`, [reporte_id]);
+        const pendientesBorrados = delPend.rowCount || 0;
         const del = await client.query('DELETE FROM reportes_produccion WHERE id = $1', [reporte_id]);
         if (del.rowCount !== 1) {
             throw new Error('El reporte cambio mientras se procesaba el borrado. Revisa el inventario y reintenta.');
@@ -4044,7 +4060,8 @@ app.post('/api/produccion/eliminar', gProduccion, async (req, res) => {
         await client.query('COMMIT');
         res.json({
             success: true,
-            mensaje: 'Reporte de producción eliminado. Insumos devueltos al inventario; ya puedes volver a reportarlo.',
+            mensaje: 'Reporte de producción eliminado. Insumos devueltos al inventario; ya puedes volver a reportarlo.' +
+                (pendientesBorrados ? ` Se eliminaron ${pendientesBorrados} pendiente(s) sin saldar.` : ''),
             aviso: avisoCajas
         });
     } catch (err) {
@@ -4098,10 +4115,22 @@ app.post('/api/produccion/cierre', gProduccion, async (req, res) => {
             [fecha_cierre, totalCajas, totalTn, usuario || 'envasado_user', JSON.stringify(itemsDetalle)]
         );
 
+        // Los pendientes de esos reportes siguen debiéndose: primero se
+        // desvinculan (se conservan y se saldan por artículo contra la guía
+        // o reporte que traiga el insumo) y recién después se borra.
+        const huerf = await client.query(
+            `UPDATE ajustes_pendientes SET reporte_id = NULL
+              WHERE reporte_id IN (SELECT id FROM reportes_produccion WHERE fecha_produccion::text LIKE $1 AND COALESCE(estado, '') <> 'EN_CURSO')`,
+            [`${fecha_cierre}%`]
+        );
         await client.query(`DELETE FROM reportes_produccion WHERE fecha_produccion::text LIKE $1 AND COALESCE(estado, '') <> 'EN_CURSO'`, [`${fecha_cierre}%`]);
 
         await client.query('COMMIT');
-        res.json({ success: true, mensaje: 'Cierre de producción realizado con éxito.' });
+        res.json({
+            success: true,
+            mensaje: 'Cierre de producción realizado con éxito.' +
+                ((huerf.rowCount || 0) ? ` Se conservaron ${huerf.rowCount} pendiente(s) sin saldar para seguir saldándolos en Almacén.` : '')
+        });
     } catch (err) {
         await client.query('ROLLBACK');
         console.error("Error en cierre:", err);

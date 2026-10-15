@@ -155,4 +155,18 @@ describe('POST /api/produccion/cierre', () => {
     expect(ins).toHaveLength(0);
     expect(del).toHaveLength(0);
   });
+
+  test('los pendientes atados se conservan desvinculados, no tumban el cierre', async () => {
+    mundo.reportes = [cerr];
+    const res = await invocar('post', '/api/produccion/cierre', {
+      body: { fecha_cierre: '2026-10-13', usuario: 'admin1' }
+    });
+    expect(res.statusCode).toBe(200);
+    const desvincula = mockQuery.mock.calls.find(c => /UPDATE ajustes_pendientes SET reporte_id = NULL/.test(String(c[0])));
+    expect(desvincula).toBeDefined();
+    // Primero se desvincula y después se borra (si no, revienta la FK).
+    const orden = mockQuery.mock.calls.map(c => String(c[0]));
+    expect(orden.findIndex(s => /UPDATE ajustes_pendientes SET reporte_id = NULL/.test(s)))
+      .toBeLessThan(orden.findIndex(s => /DELETE FROM reportes_produccion/.test(s)));
+  });
 });

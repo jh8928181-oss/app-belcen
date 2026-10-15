@@ -273,3 +273,55 @@ describe('POST /api/produccion/eliminar con fila abierta', () => {
     expect(sqlDe('INSERT INTO historial_inventario')).toHaveLength(0);
   });
 });
+
+describe('POST /api/produccion/eliminar con ajustes pendientes atados', () => {
+  const reporteCerrado = {
+    id: 11, presentacion: 'Aceite de Soya Belini 1 Lt', estado: 'CERRADO',
+    cantidad_cajas: 500, producto_key: 'belini_1lt', observaciones: '',
+    desglose_insumos: JSON.stringify([{ nombre: 'Preforma 1 Lt', articulo_id: 3, cantidad: 500 }])
+  };
+
+  function mockEliminar(vinculos) {
+    mockQuery.mockImplementation(async (sql) => {
+      const texto = String(sql);
+      if (/^(BEGIN|COMMIT|ROLLBACK)$/i.test(texto.trim())) return { rows: [], rowCount: 0 };
+      if (/FROM reportes_produccion WHERE id/.test(texto)) return { rows: [{ ...reporteCerrado }], rowCount: 1 };
+      if (/FROM ajustes_pendientes WHERE reporte_id/.test(texto)) return { rows: vinculos.map(v => ({ ...v })), rowCount: vinculos.length };
+      if (/SELECT id, nombre FROM inventario WHERE id = ANY/.test(texto)) {
+        return { rows: [{ id: 3, nombre: 'Preforma 1 Lt' }], rowCount: 1 };
+      }
+      if (/SELECT id, nombre, stock FROM inventario WHERE id = ANY/.test(texto)) {
+        return { rows: [{ id: 3, nombre: 'Preforma 1 Lt', stock: 10000 }], rowCount: 1 };
+      }
+      if (/SELECT id, nombre_producto, stock_cajas FROM producto_terminado/.test(texto)) {
+        return { rows: [{ id: 1, nombre_producto: 'Belini 1 Lt', stock_cajas: 900 }], rowCount: 1 };
+      }
+      if (/DELETE FROM ajustes_pendientes/.test(texto)) return { rows: [], rowCount: vinculos.filter(v => v.estado === 'PENDIENTE').length };
+      if (/DELETE FROM reportes_produccion/.test(texto)) return { rows: [], rowCount: 1 };
+      return { rows: [{ stock: 10000 }], rowCount: 1 };
+    });
+  }
+
+  test('los pendientes sin saldar se van con el reporte', async () => {
+    mockEliminar([{ id: 21, estado: 'PENDIENTE' }, { id: 22, estado: 'PENDIENTE' }]);
+
+    const res = await invocar('post', '/api/produccion/eliminar', { body: { reporte_id: 11 } });
+
+    expect(res.statusCode).toBe(200);
+    expect(sqlDe('DELETE FROM ajustes_pendientes')).toHaveLength(1);
+    expect(sqlDe('DELETE FROM reportes_produccion')).toHaveLength(1);
+    expect(res.cuerpo.mensaje).toMatch(/2 pendiente\(s\) sin saldar/);
+  });
+
+  test('con ajustes ya saldados se bloquea con 409 y no borra nada', async () => {
+    mockEliminar([{ id: 21, estado: 'PENDIENTE' }, { id: 22, estado: 'APLICADA' }]);
+
+    const res = await invocar('post', '/api/produccion/eliminar', { body: { reporte_id: 11 } });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.cuerpo.mensaje).toMatch(/ya saldados/);
+    expect(sqlDe('DELETE FROM ajustes_pendientes')).toHaveLength(0);
+    expect(sqlDe('DELETE FROM reportes_produccion')).toHaveLength(0);
+    expect(sqlDe('UPDATE inventario SET stock')).toHaveLength(0);
+  });
+});

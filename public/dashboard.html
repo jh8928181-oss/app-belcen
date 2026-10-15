@@ -108,13 +108,6 @@
             gap: 7px;
         }
         .chip b { color: var(--accent); }
-        .chip-stock { cursor: pointer; font-family: inherit; color: #fff; font-weight: 700; background: rgba(220, 53, 69, 0.35); border: 1px solid #f87171; }
-        .chip-stock:hover { background: rgba(220, 53, 69, 0.55); transform: translateY(-1px); }
-        .chip-stock:active { transform: scale(0.97); }
-        .chip-stock b { color: #fff; font-size: 14px; }
-        .chip-stock .chip-hint { font-size: 11px; opacity: .85; font-weight: 400; }
-        .chip-stock.on { background: rgba(220, 53, 69, 0.7); box-shadow: 0 0 0 2px #f87171; }
-        .chip-stock:focus-visible { outline: 2px solid #f87171; outline-offset: 2px; }
         .btn-salir {
             background: rgba(220, 53, 69, 0.85);
             color: #fff;
@@ -333,7 +326,11 @@
                 <h1 id="saludo">Bienvenido</h1>
                 <p id="fechaHora">Cargando fecha y hora…</p>
             </div>
-            <button class="chip chip-stock" id="kpiBajoStockCard" title="Mostrar solo artículos con bajo stock" onclick="toggleFiltroBajoStock()" aria-pressed="false">⚠️ Bajo stock: <b id="kpiBajoStock">—</b><span class="chip-hint" id="kpiBajoStockHint">ver</span></button>
+            <div class="glass kpi warn kpi-btn" id="kpiBajoStockCard" role="button" tabindex="0" aria-pressed="false" title="Mostrar solo artículos con bajo stock" onclick="toggleFiltroBajoStock()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleFiltroBajoStock();}">
+                <div class="kpi-label">Bajo Stock</div>
+                <div class="kpi-val" id="kpiBajoStock">—</div>
+                <div class="kpi-hint" id="kpiBajoStockHint">Toca para ver bajos</div>
+            </div>
             <span class="rol-badge" id="rolBadge">ROL</span>
         </section>
 
@@ -939,11 +936,13 @@ lista.length + ' reportes · ' + totalTn.toFixed(2) + ' TM · ' + rango;
                     }
                     document.getElementById('previoEnvasado').textContent = previo ? conCajas(previo) : '—';
                     const elActual = document.getElementById('planActualEnvasado');
-                    // La que sigue solo lleva el nombre: su cantidad sale al cerrarla.
+                    // Solo hay algo envasándose si existe producción en curso
+                    // de verdad: en parado (o sin abierta) se muestra guion
+                    // aunque la secuencia tenga un siguiente armado.
                     if (abierta && abierta.presentacion) {
                         elActual.textContent = abierta.presentacion;
-                    } else if (marchaNombre && !/receta no vigente/i.test(elActual.textContent)) {
-                        elActual.textContent = conCajas(marchaNombre);
+                    } else {
+                        elActual.textContent = '—';
                     }
                 }
             } catch (err) {

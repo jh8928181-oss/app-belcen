@@ -377,6 +377,19 @@
         </div>
     </div>
 
+        <!-- MODAL SIGUIENTE OBLIGATORIO -->
+        <div id="modalSiguiente" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:9999; align-items:center; justify-content:center;">
+            <div style="background:#fff; border-radius:14px; padding:22px; max-width:430px; width:92%; text-align:center;">
+                <h3 id="modalSiguienteTitulo" style="margin-top:0;">✅ Registrado</h3>
+                <p style="font-weight:bold;">¿Qué producto sigue?</p>
+                <select id="siguienteObligatorio" style="width:100%; padding:10px; border-radius:8px;"></select>
+                <div style="display:flex; gap:10px; margin-top:14px;">
+                    <button onclick="confirmarSiguiente(true)" class="btn-accion" style="flex:1;">Continuar con este</button>
+                    <button onclick="confirmarSiguiente(false)" style="flex:1; background:#dc3545; color:#fff; border:none; border-radius:8px; cursor:pointer; padding:10px; font-weight:bold;">Terminar</button>
+                </div>
+            </div>
+        </div>
+
     <script src="/motion.js" defer></script>
     <script src="/auth-client.js"></script>
     <script src="/plan-linea.js"></script>
@@ -483,12 +496,17 @@
             montarPlanEnvasado();
         }
 
+        // Cadena de producción: lo último cerrado es "En producción" y lo
+        // anterior distinto es "Anterior". Solo una EN_CURSO real se muestra
+        // como en curso: en parado (o sin abierta) no se inventa producción.
+        function cerradasConCantidad() {
+            return (Array.isArray(reportesGlobal) ? reportesGlobal : [])
+                .filter(r => r.estado !== 'EN_CURSO' && r.cantidad_cajas !== null && r.cantidad_cajas !== undefined);
+        }
+
         function pintarSiguienteEnvasado() {
             const el = document.getElementById('siguienteEnvasado');
             if (!el) return;
-            // "Anterior" es el ultimo reporte y "En produccion" es el primero de
-            // la secuencia: son cosas distintas y el operador las ve separadas.
-            // Si hay una produccion abierta, esa es la que se esta envasando.
             const abierta = Array.isArray(reportesGlobal)
                 ? reportesGlobal.find(r => r.estado === 'EN_CURSO')
                 : null;
@@ -496,8 +514,13 @@
                 el.innerHTML = `⏭️ En producción: <b>${escEnvasado(abierta.presentacion)}</b> <span class="plan-vacio-inline">en curso</span>`;
                 return;
             }
+            const ult = cerradasConCantidad()[0];
+            if (ult) {
+                el.innerHTML = `⏭️ En producción: <b>${escEnvasado(ult.presentacion)}</b> <span class="plan-vacio-inline">registrado</span>`;
+                return;
+            }
             if (planEnvasado && planEnvasado.cola.length) {
-                el.innerHTML = `⏭️ En producción: <b>${escEnvasado(planEnvasado.cola[0].nombre_producto || planEnvasado.cola[0].producto_key)}</b>`
+                el.innerHTML = `⏭️ Siguiente en secuencia: <b>${escEnvasado(planEnvasado.cola[0].nombre_producto || planEnvasado.cola[0].producto_key)}</b>`
                     + (planEnvasado.cola.length > 1 ? ` · luego: <b>${escEnvasado(planEnvasado.cola.length - 1)}</b> más` : '');
             } else {
                 el.innerHTML = '⏭️ En producción: <span class="plan-vacio-inline">sin secuencia</span>';
@@ -507,13 +530,12 @@
         function pintarAnteriorEnvasado() {
             const el = document.getElementById('anteriorEnvasado');
             if (!el) return;
-            // Solo reportes cerrados con cantidad: la produccion abierta aun
-            // no tiene cantidad (sale al cerrarla).
-            const ult = Array.isArray(reportesGlobal)
-                ? reportesGlobal.find(r => r.estado !== 'EN_CURSO' && r.cantidad_cajas !== null && r.cantidad_cajas !== undefined)
-                : null;
-            el.innerHTML = ult
-                ? `⬅️ Anterior: <b>${ult.presentacion}</b> · <b>${ult.cantidad_cajas}</b> cajas`
+            const lista = cerradasConCantidad();
+            // El anterior es el último distinto al que está en producción.
+            const actual = lista.length ? lista[0].presentacion : null;
+            const ant = lista.find(r => r.presentacion !== actual);
+            el.innerHTML = ant
+                ? `⬅️ Anterior: <b>${ant.presentacion}</b> · <b>${ant.cantidad_cajas}</b> cajas`
                 : '⬅️ Anterior: —';
         }
 
@@ -842,6 +864,14 @@
             };
 
             try {
+                // Si hay una producción en curso, registrar directo crearía un
+                // segundo registro de lo mismo: se avisa para finalizarla antes.
+                const abierta = Array.isArray(reportesGlobal)
+                    ? reportesGlobal.find(r => r.estado === 'EN_CURSO')
+                    : null;
+                if (abierta && !confirm(`Hay una producción en curso de "${abierta.presentacion}". Si es la misma, finalízala en vez de registrar de nuevo.\n\n¿Registrar de todas formas como registro aparte?`)) {
+                    return;
+                }
                 const res = await fetch('/api/produccion/reporte', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -859,7 +889,8 @@
                     document.getElementById('formEnvasado').reset();
                     document.getElementById('fecha_produccion').valueAsDate = new Date();
                     document.getElementById('grupoTapaDinamica').style.display = 'none';
-                    cargarProduccionActiva();
+                    await cargarProduccionActiva();
+                    pedirSiguienteObligatorio(presentacionSeleccionada);
                 } else {
                     alert('❌ ' + (data.mensaje || 'Error al registrar.'));
                 }
@@ -871,6 +902,32 @@
                 if (btnEnviar) btnEnviar.disabled = false;
             }
         });
+
+        // Tras cada registro directo es obligatorio elegir qué sigue (o
+        // terminar): así la cadena no se corta hasta el cierre del día.
+        function pedirSiguienteObligatorio(nombreRegistrado) {
+            const base = document.getElementById('presentacion');
+            const sel = document.getElementById('siguienteObligatorio');
+            sel.innerHTML = '<option value="">-- Elige el siguiente --</option>'
+                + [...base.options].filter(o => o.value).map(o => `<option value="${escEnvasado(o.value)}">${escEnvasado(o.text)}</option>`).join('');
+            document.getElementById('modalSiguienteTitulo').textContent = '✅ ' + nombreRegistrado + ' registrado';
+            document.getElementById('modalSiguiente').style.display = 'flex';
+            sel.value = '';
+            setTimeout(() => sel.focus(), 60);
+        }
+
+        function confirmarSiguiente(continua) {
+            const m = document.getElementById('modalSiguiente');
+            if (!continua) { m.style.display = 'none'; return; }
+            const v = document.getElementById('siguienteObligatorio').value;
+            if (!v) {
+                alert('❌ Elige el producto que sigue o pulsa Terminar.');
+                return;
+            }
+            m.style.display = 'none';
+            document.getElementById('presentacion').value = v;
+            setTimeout(() => document.getElementById('cantidad_cajas').focus(), 80);
+        }
 
         let cerrandoProduccion = false;
         // Cierra la producción en curso pidiendo la cantidad recién al final.

@@ -2091,7 +2091,9 @@ const PRODUCTOS_PDF_KEYWORDS = [
     { product_key: 'belini_3lt', nombres: ['BELINI X 3 LT', 'BELINI 3 LT', 'BELINI X 3 L'] },
     { product_key: 'belini_5lt', nombres: ['BELINI X 5 LT', 'BELINI 5 LT', 'BELINI X 5 L'] },
     { product_key: 'belini_lata18lt', nombres: ['BELINI LATA 18 LT', 'BELINI 18 LT', 'BELINI LATA X 18 L'] },
-    { product_key: 'belini_balde18lt', nombres: ['BELINI BALDE 18 LT', 'BELINI BALDE X 18 L', 'BELINI BALDE X 18 LT'] }
+    { product_key: 'belini_balde18lt', nombres: ['BELINI BALDE 18 LT', 'BELINI BALDE X 18 L', 'BELINI BALDE X 18 LT'] },
+    { product_key: 'vega_900ml', nombres: ['VEGA X 900 ML', 'VEGA 900ML', 'VEGA 900 ML'] },
+    { product_key: 'timonel_900ml', nombres: ['TIMONEL X 900 ML', 'TIMONEL 900ML', 'TIMONEL 900 ML'] }
 ];
 
 // Lee la tabla "Bienes por transportar" de la guía SUNAT (una fila por producto, cantidad al final)

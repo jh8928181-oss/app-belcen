@@ -242,6 +242,17 @@ describe('detectarItemsTabla', () => {
     expect(res.items[0].nombre).toBe('Aceite de Soya B-1 200 ml');
   });
 
+  test('reconoce VEGA y TIMONEL 900 ml con su cantidad', () => {
+    const res = detectarItemsTabla(
+      'Bienes por Transportar\nVEGA X 900 ML ACEITE DE SOYA 120\nTIMONEL X 900 ML ACEITE DE SOYA 80\nIndicador de traslado'
+    );
+    expect(res.items).toHaveLength(2);
+    expect(res.items[0]).toMatchObject({ product_key: 'vega_900ml', cantidad: 120, cantidad_auto: true });
+    expect(res.items[0].nombre).toBe('Aceite de Soya VEGA 900 ml');
+    expect(res.items[1]).toMatchObject({ product_key: 'timonel_900ml', cantidad: 80, cantidad_auto: true });
+    expect(res.items[1].nombre).toBe('Aceite de Soya TIMONEL 900 ml');
+  });
+
   test('no confunde la medida del producto con la cantidad', () => {
     // La presentación ("200 ML") forma parte del alias del producto. Antes se
     // leía el último número de la línea y devolvía 200, que es el tamaño del

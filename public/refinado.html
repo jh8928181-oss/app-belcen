@@ -360,10 +360,6 @@
 
             <div class="total-box">
                 <div class="total-item">
-                    <label>Producción para Mañana (TM)</label>
-                    <input type="number" id="produccionManana" step="0.10" min="0" style="font-size:20px; font-weight:bold; margin-top:6px;">
-                </div>
-                <div class="total-item">
                     <label>Total de Lotes en Planta</label>
                     <div class="valor" id="totalLotes">0</div>
                 </div>
@@ -384,7 +380,7 @@
         </div>
 
         <div class="footer-acciones">
-            <button class="btn btn-verde" onclick="guardarTurno()">💾 Guardar datos del turno (observaciones / producción mañana)</button>
+            <button class="btn btn-verde" onclick="guardarTurno()">💾 Guardar observaciones del turno</button>
             <br><br>
             <span class="nota-legal">Cada lote se guarda por separado al presionar "💾 Guardar Lote"; se reúne por día y turno (DÍA / NOCHE). Si el Nº de lote ya existe se actualiza, no se duplica.</span>
         </div>
@@ -620,16 +616,12 @@
                 if (rep) {
                     lotesActuales = Array.isArray(rep.lotes) ? rep.lotes : [];
                     renderListaLotes();
-                    let pm = rep.totales && rep.totales.produccion_manana;
-                    if (pm === null || pm === undefined || pm === '') pm = '';
-                    document.getElementById('produccionManana').value = pm;
                     document.getElementById('observaciones').value = rep.observaciones || '';
                     document.getElementById('fechaRef').textContent = formatearFechaReporte(rep.fecha_reporte) || fecha;
                     mostrarMensaje('✅ Reporte cargado — Turno ' + (rep.turno || turno) + ' (' + lotesActuales.length + ' lote(s), registrado por ' + (rep.usuario_registro || '-') + ').', true);
                 } else {
                     lotesActuales = [];
                     renderListaLotes();
-                    document.getElementById('produccionManana').value = '';
                     document.getElementById('observaciones').value = '';
                     document.getElementById('fechaRef').textContent = fecha;
                     mostrarMensaje('ℹ️ Sin reporte para ' + turno + '. El lote que guardes creará el reporte.', false);
@@ -667,13 +659,11 @@
             if (!lote.lote) { mostrarMensaje('❌ Ingresa el número de lote.', false); return; }
             if (!lote.cantidad || Number(lote.cantidad) <= 0) { mostrarMensaje('❌ Ingresa la cantidad del lote (TM).', false); return; }
             if (!lote.hora) { mostrarMensaje('❌ Ingresa la hora del lote.', false); return; }
-            const pm = document.getElementById('produccionManana').value;
             const payload = {
                 fecha_reporte: fecha,
                 turno: getTurno(),
                 lote,
-                observaciones: document.getElementById('observaciones').value,
-                produccion_manana: pm === '' ? null : Number(pm)
+                observaciones: document.getElementById('observaciones').value
             };
             guardandoRefinado = true;
             try {
@@ -708,13 +698,11 @@
             if (guardandoRefinado) return;
             const fecha = document.getElementById('fechaReporte').value;
             if (!fecha) { mostrarMensaje('❌ Selecciona una fecha.', false); return; }
-            const pm = document.getElementById('produccionManana').value;
             const payload = {
                 fecha_reporte: fecha,
                 turno: getTurno(),
                 lote: null,
-                observaciones: document.getElementById('observaciones').value,
-                produccion_manana: pm === '' ? null : Number(pm)
+                observaciones: document.getElementById('observaciones').value
             };
             guardandoRefinado = true;
             try {

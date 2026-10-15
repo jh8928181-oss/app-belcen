@@ -1288,13 +1288,11 @@ tbody.appendChild(tr);
             const totalTM = lotes.reduce((s, a) => s + (Number(a.cantidad) || 0), 0);
             const totalLotes = lotes.length;
             const totalInsumos = lotes.reduce((s, a) => s + (Array.isArray(a.insumos) ? a.insumos.length : 0), 0);
-            const pm = reporte.totales && reporte.totales.produccion_manana;
             document.getElementById('totalesRefinado').innerHTML =
                 `<span class="total-refinado">🕐 Turno: <b>${reporte.turno || '-'}</b></span>` +
                 `<span class="total-refinado">🧊 <b>${totalLotes}</b> lotes en planta</span>` +
                 `<span class="total-refinado">🧪 <b>${totalInsumos}</b> insumos usados</span>` +
                 `<span class="total-refinado">🛢️ Aceite refinado: <b>${totalTM.toFixed(2)} TM</b></span>` +
-                (pm != null ? `<span class="total-refinado">📦 Producción para mañana: <b>${Number(pm) || 0} TM</b></span>` : '') +
                 `<span class="total-refinado">👤 Registrado por: <b>${reporte.usuario_registro || '-'}</b></span>`;
             etiquetarTablas();
             actualizarContadores();

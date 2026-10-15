@@ -55,7 +55,9 @@ const PRODUCTOS_TERMINADOS_MAP = {
     'belini_3lt': 'Aceite de Soya Belini 3 Lt',
     'belini_5lt': 'Aceite de Soya Belini 5 Lt (Galonera)',
     'belini_lata18lt': 'Aceite de Soya Belini Lata 18 Lt',
-    'belini_balde18lt': 'Aceite de Soya Belini Balde 18 Lt'
+    'belini_balde18lt': 'Aceite de Soya Belini Balde 18 Lt',
+    'vega_900ml': 'Aceite de Soya VEGA 900 ml',
+    'timonel_900ml': 'Aceite de Soya TIMONEL 900 ml'
 };
 
 // --- RUTAS MODULARES ---

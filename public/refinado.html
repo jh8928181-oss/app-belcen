@@ -270,7 +270,7 @@
         <div class="tarjeta borde-ambar reveal">
             <h3 class="aceite">🛢️ REGISTRO DE LOTE — ACEITE REFINADO DE SOYA</h3>
             <p class="sub" style="text-align:left; margin-bottom:0; margin-top:-8px;">
-                Registra un lote a la vez: fecha, hora, número de lote, cantidad (TM), tanque de origen, proveedor del aceite crudo y las cantidades de <b>todos los insumos usados</b>. Al guardar, el lote queda registrado y el formulario se limpia para el siguiente.
+                Registra un lote a la vez: fecha, hora, número de lote, cantidad (TM), tanque de origen y las cantidades de <b>todos los insumos usados</b>. Al guardar, el lote queda registrado y el formulario se limpia para el siguiente.
             </p>
 
             <div class="lote-form">
@@ -296,10 +296,6 @@
                         <option value="TK-1">TANQUE 1 (TK-1)</option>
                         <option value="TK-2">TANQUE 2 (TK-2)</option>
                     </select>
-                </div>
-                <div class="lote-campo" style="flex:1; min-width:180px;">
-                    <label>Proveedor del aceite crudo</label>
-                    <input type="text" id="loteProveedor" placeholder="Nombre del proveedor">
                 </div>
                 <div class="lote-campo" style="width:170px;">
                     <label>Estado</label>
@@ -649,7 +645,6 @@
                 fecha_produccion: document.getElementById('loteFecha').value,
                 cantidad: document.getElementById('loteCantidad').value,
                 tanque: document.getElementById('loteTanque').value,
-                proveedor: document.getElementById('loteProveedor').value,
                 estado: document.getElementById('loteEstado').value,
                 producto: 'ACEITE REFINADO DE SOYA',
                 insumos: leerInsumosFormulario()

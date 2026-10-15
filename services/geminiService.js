@@ -3,6 +3,8 @@
  * Maneja reintentos, circuit breaker y selección de modelo de forma encapsulada
  */
 
+const { PRODUCTOS_PT } = require('./catalogoPt');
+
 const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
 /**
@@ -179,6 +181,14 @@ async function analizarDocumentoConGemini(dataBuffer, mimetype, textoExtraido) {
 }
 
 // Prompt para Gemini (extraído del index.js original)
+//
+// Los items piden el nombre COMPLETO (marca + presentación) porque la app
+// vincula el producto comparando ese texto con sus alias: si la IA devuelve
+// solo "ACEITE DE SOYA B-1" sin la presentación, no se puede saber si es
+// 200 ml o 1 Lt y el item queda sin producto. Se le pasa además el catálogo
+// de claves para que devuelva el product_key directo cuando lo reconozca.
+const clavesPt = PRODUCTOS_PT.map(p => p.product_key).join(', ');
+
 const PROMPT_GEMINI = `Eres un extractor de datos para una empresa de aceites. Analiza el documento (guía de remisión, factura, orden de compra, etc.) y devuelve SOLO un JSON con esta estructura exacta:
 
 {
@@ -193,17 +203,21 @@ const PROMPT_GEMINI = `Eres un extractor de datos para una empresa de aceites. A
   "observaciones": "string o null",
   "items": [
     {
-      "producto": "nombre exacto del producto",
+      "product_key": "una clave del catálogo de abajo o null",
+      "producto": "nombre completo del producto tal como aparece en el documento, INCLUYENDO la presentación (ej: ACEITE DE SOYA B-1 X 1LT)",
+      "presentacion": "presentación escrita en el documento (ej: X 1LT, X 500ML X 12 UND) o null",
       "cantidad": numero,
-      "unidad": "unidad de medida",
-      "presentacion": "presentación si aplica"
+      "unidad": "unidad de medida tal como aparece (CAJA, UNIDAD, MILL, etc.) o null"
     }
   ],
   "texto_completo": "texto completo extraído del documento"
 }
 
+Catálogo de productos terminados (usa exactamente una de estas claves en product_key, o null si no coincide): ${clavesPt}
+
 Reglas:
 - Si no encuentras un dato, pon null.
+- En "producto" escribe el nombre COMPLETO con su presentación: sin la presentación el sistema no puede saber de qué tamaño se trata.
 - Los items son obligatorios si hay productos en el documento.
 - No inventes datos, solo extrae lo que ves.
 - Devuelve SOLO el JSON, sin texto adicional, sin markdown.`;

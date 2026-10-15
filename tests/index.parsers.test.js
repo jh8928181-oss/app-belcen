@@ -3,7 +3,8 @@ const {
   detectarItemsTabla,
   extraerDireccionSUNAT,
   resolverItemGuia,
-  normalizarRespuestaIA
+  normalizarRespuestaIA,
+  fusionarItemsSalidas
 } = require('../index');
 
 // Fixture con la estructura real que emite SUNAT. La cantidad va al final de la
@@ -255,6 +256,18 @@ describe('detectarItemsTabla', () => {
     expect(res.items[1].nombre).toBe('Aceite de Soya TIMONEL 900 ml');
   });
 
+  test('reconoce FERNANDEZ y FAISAN con su cantidad', () => {
+    // Estaban en el catálogo de la BD pero sin alias en el lector: la guía
+    // salía con la fila marcada "sin reconocer" y el producto no se despachaba.
+    const res = detectarItemsTabla(
+      'Bienes por Transportar\nACEITE DE SOYA FERNANDEZ X 1LT X 12 UND CAJA 240\nFAISAN X 900 ML ACEITE DE SOYA 150\nIndicador de traslado'
+    );
+    expect(res.items.map(i => i.product_key)).toEqual(['fernandez_1lt', 'faisan_900ml']);
+    expect(res.items[0].cantidad).toBe(240);
+    expect(res.items[1].cantidad).toBe(150);
+    expect(res.advertencias.filter(a => a.includes('sin reconocer'))).toEqual([]);
+  });
+
   test('no confunde la medida del producto con la cantidad', () => {
     // La presentación ("200 ML") forma parte del alias del producto. Antes se
     // leía el último número de la línea y devolvía 200, que es el tamaño del
@@ -360,5 +373,89 @@ describe('normalizarRespuestaIA', () => {
   test('tolera nulo y formas raras sin reventar', () => {
     expect(normalizarRespuestaIA(null)).toBeNull();
     expect(normalizarRespuestaIA({})).toEqual({ campos: { partida: '', destino: '' }, items: [] });
+  });
+
+  test('lee los campos en la raíz, como los devuelve el prompt real', () => {
+    // El prompt le pide a Gemini un JSON plano (numero_guia, lugar_partida...),
+    // sin bloque "campos": antes la cabecera de la IA entera se tiraba porque
+    // se leía del sitio que el modelo nunca llena.
+    const ia = {
+      numero_guia: 'T009-00001234',
+      lugar_partida: 'CAL. LOS CIPRESES 105 - LURIGANCHO - LIMA',
+      punto_llegada: 'HUACHO - HUACHO - HUAURA - LIMA',
+      placa: 'AAS936',
+      chofer: 'LOMOTE ACUÑA HUGO ROLANDO',
+      items: [{ producto: 'ACEITE DE SOYA B-1', presentacion: 'X 1LT', cantidad: 600, unidad: 'CAJA' }]
+    };
+    const r = normalizarRespuestaIA(ia);
+    expect(r.campos.numero_guia).toBe('T009-00001234');
+    expect(r.campos.partida).toMatch(/LOS CIPRESES/);
+    expect(r.campos.destino).toMatch(/HUACHO/);
+    expect(r.campos.placa).toBe('AAS936');
+    expect(r.items[0].nombre).toBe('ACEITE DE SOYA B-1');
+    expect(r.items[0].presentacion).toBe('X 1LT');
+    expect(r.items[0].cantidad).toBe(600);
+  });
+});
+
+describe('fusionarItemsSalidas', () => {
+  const PTS = [
+    { producto_key: 'b1_1lt', nombre_producto: 'Aceite de Soya B-1 1 Lt' },
+    { producto_key: 'fernandez_1lt', nombre_producto: 'Aceite de Soya Fernandez 1 Lt' }
+  ];
+  const INV = [{ id: 12, nombre: 'Botella Belini x 1 Lt' }];
+
+  test('el lector local manda y la IA no duplica lo ya detectado', () => {
+    const local = detectarItemsTabla('Bienes por Transportar\nB-1 X 1 LT ACEITE DE SOYA 600\nIndicador de traslado');
+    const ia = [{ nombre: 'ACEITE DE SOYA B-1', presentacion: 'X 1LT', cantidad: 600 }];
+    const r = fusionarItemsSalidas({ itemsTabla: local.items, itemsIA: ia, pts: PTS, invs: INV });
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0]).toMatchObject({ product_key: 'b1_1lt', cantidad: 600 });
+    expect(r.advertencias).toEqual([]);
+  });
+
+  test('la IA aporta el renglón que el local no reconoció', () => {
+    // El local no detecta FERNANDEZ si la fila viene en un formato raro; la IA
+    // sí lo ve y ahora se fusiona en vez de tirar el trabajo del parser.
+    const ia = [
+      { nombre: 'ACEITE DE SOYA B-1', presentacion: 'X 1LT', cantidad: 600 },
+      { nombre: 'ACEITE DE SOYA FERNANDEZ', presentacion: 'X 1LT', cantidad: 240 }
+    ];
+    const r = fusionarItemsSalidas({ itemsTabla: [], itemsIA: ia, pts: PTS, invs: INV });
+    expect(r.items.map(i => i.product_key)).toEqual(['b1_1lt', 'fernandez_1lt']);
+    expect(r.items[1].cantidad).toBe(240);
+    expect(r.advertencias).toEqual([]);
+  });
+
+  test('un nombre sin presentación no se adivina y queda para revisión', () => {
+    const ia = [{ nombre: 'ACEITE DE SOYA B-1', presentacion: '', cantidad: 10 }];
+    const r = fusionarItemsSalidas({ itemsTabla: [], itemsIA: ia, pts: PTS, invs: INV });
+    expect(r.items[0].product_key).toBe('');
+    expect(r.advertencias.join(' ')).toMatch(/Sin producto asociado/);
+  });
+
+  test('una clave inventada por la IA se descarta', () => {
+    const ia = [{ nombre: 'ACEITE DE SOYA B-1 X 1LT', presentacion: '', product_key: 'clave_inventada', cantidad: 5 }];
+    const r = fusionarItemsSalidas({ itemsTabla: [], itemsIA: ia, pts: PTS, invs: INV });
+    expect(r.items[0].product_key).toBe('b1_1lt');
+  });
+
+  test('avisa cuando la cantidad de la IA no coincide con la del PDF', () => {
+    const local = detectarItemsTabla('Bienes por Transportar\nB-1 X 1 LT ACEITE DE SOYA 600\nIndicador de traslado');
+    const ia = [{ nombre: 'ACEITE DE SOYA B-1', presentacion: 'X 1LT', cantidad: 500 }];
+    const r = fusionarItemsSalidas({ itemsTabla: local.items, itemsIA: ia, pts: PTS, invs: INV });
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0].cantidad).toBe(600);
+    expect(r.advertencias.join(' ')).toMatch(/leyó 600 y la IA 500/);
+  });
+
+  test('reconoce insumos de la IA por nombre exacto de inventario', () => {
+    // Las tapas y demás insumos no pasan por el catálogo de PT: se enlazan
+    // contra inventario por igualdad exacta del nombre.
+    const invs = [{ id: 41, nombre: 'Tapa color Rojo 2lt' }];
+    const ia = [{ nombre: 'Tapa color Rojo 2lt', presentacion: '', cantidad: 120 }];
+    const r = fusionarItemsSalidas({ itemsTabla: [], itemsIA: ia, pts: PTS, invs });
+    expect(r.items[0].articulo_id).toBe(41);
+    expect(r.items[0].product_key).toBe('');
   });
 });

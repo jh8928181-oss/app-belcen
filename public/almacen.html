@@ -2482,7 +2482,18 @@
             try {
                 const res = await fetch('/api/salidas/leer-pdf', { method: 'POST', body: formData, signal: ctrl.signal });
                 clearTimeout(temporizador);
-                const data = await res.json();
+                // El cuerpo puede no ser JSON cuando el servidor contesta un
+                // error de Express/multer en HTML: en ese caso hay que avisar
+                // el estado real, no decir "sin conexión" (la conexión sí
+                // funcionó y por eso no se veían los productos).
+                let data = null;
+                try { data = await res.json(); } catch (eJson) { data = null; }
+                if (!data) {
+                    if (estadoGuia) estadoGuia.textContent = '';
+                    alert('⚠️ El servidor respondió con error HTTP ' + res.status + ' y sin datos legibles. Reintenta; si sigue, revisa la consola del servidor.');
+                    input.value = '';
+                    return;
+                }
                 if (estadoGuia) estadoGuia.textContent = '';
 
                 if (!res.ok || !data.success) {

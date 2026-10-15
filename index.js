@@ -13,6 +13,7 @@ const fs = require('fs');
 const os = require('os');
 const tesseract = require('tesseract.js');
 const { analizarDocumentoConGemini } = require('./services/geminiService');
+const { esClavePt } = require('./services/catalogoPt');
 const { initRedis } = require('./services/rateLimiter');
 const { authMiddleware, crearGuardRoles, ROLES_MODULO, requerirRolAdmin, permisoPorRuta } = require('./middleware/auth');
 const { calcularInsumosProduccion } = require('./services/recipeService');
@@ -26,7 +27,11 @@ process.on('unhandledRejection', (reason) => {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const upload = multer({ dest: 'public/uploads/' });
+// Límite explícito de subida: sin él una foto pesada revienta el proceso con
+// un error que Express contesta en HTML, y el front (que espera JSON) lo
+// termina mostrando como "sin conexión con el servidor".
+const LIMITE_SUBIDA_BYTES = 20 * 1024 * 1024;
+const upload = multer({ dest: 'public/uploads/', limits: { fileSize: LIMITE_SUBIDA_BYTES, files: 1 } });
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public'), {
@@ -58,7 +63,8 @@ const PRODUCTOS_TERMINADOS_MAP = {
     'belini_balde18lt': 'Aceite de Soya Belini Balde 18 Lt',
     'vega_900ml': 'Aceite de Soya VEGA 900 ml',
     'timonel_900ml': 'Aceite de Soya TIMONEL 900 ml',
-    'fernandez_1lt': 'Aceite de Soya Fernandez 1 Lt'
+    'fernandez_1lt': 'Aceite de Soya Fernandez 1 Lt',
+    'faisan_900ml': 'Aceite de Soya Faisan 900 ml'
 };
 
 // --- RUTAS MODULARES ---
@@ -2093,7 +2099,9 @@ const PRODUCTOS_PDF_KEYWORDS = [
     { product_key: 'belini_lata18lt', nombres: ['BELINI LATA 18 LT', 'BELINI 18 LT', 'BELINI LATA X 18 L'] },
     { product_key: 'belini_balde18lt', nombres: ['BELINI BALDE 18 LT', 'BELINI BALDE X 18 L', 'BELINI BALDE X 18 LT'] },
     { product_key: 'vega_900ml', nombres: ['VEGA X 900 ML', 'VEGA 900ML', 'VEGA 900 ML'] },
-    { product_key: 'timonel_900ml', nombres: ['TIMONEL X 900 ML', 'TIMONEL 900ML', 'TIMONEL 900 ML'] }
+    { product_key: 'timonel_900ml', nombres: ['TIMONEL X 900 ML', 'TIMONEL 900ML', 'TIMONEL 900 ML'] },
+    { product_key: 'fernandez_1lt', nombres: ['FERNANDEZ X 1 LT', 'FERNANDEZ 1 LT', 'FERNANDEZ 1L', 'FERNANDEZ X 1 L'] },
+    { product_key: 'faisan_900ml', nombres: ['FAISAN X 900 ML', 'FAISAN 900ML', 'FAISAN 900 ML'] }
 ];
 
 // Lee la tabla "Bienes por transportar" de la guía SUNAT (una fila por producto, cantidad al final)
@@ -2153,6 +2161,10 @@ function detectarItemsTabla(textoPdf) {
 // lector local, luego catálogo de producto terminado y luego inventario.
 // Solo igualdad normalizada: un parecido no vincula (para eso está el
 // selector manual de la lista). Devuelve { product_key } o { articulo_id }.
+//
+// El nombre debe venir COMPLETO (marca + presentación, p. ej. "ACEITE DE SOYA
+// B-1 X 1LT"): sin la presentación no hay con qué decidir entre tamaños y se
+// devuelve null, en vez de adivinar y descontar el envase equivocado.
 function resolverItemGuia(nombre, pts, invs) {
     const texto = normalizarGuia(nombre || '');
     if (!texto) return null;
@@ -2174,6 +2186,78 @@ function resolverItemGuia(nombre, pts, invs) {
         }
     }
     return null;
+}
+
+// Une lo que encontró el lector local con lo que vio la IA. El local manda:
+// sus claves salen de los alias del PDF y su cantidad de la columna real de
+// la guía. La IA solo aporta los renglones que el local no reconoció (un
+// producto cuyo nombre cambió, por ejemplo) y nunca duplica uno ya detectado.
+function fusionarItemsSalidas({ itemsTabla = [], itemsIA = [], pts = [], invs = [] }) {
+    const advertencias = [];
+    const items = [];
+    const porClave = new Map();
+
+    const claveDe = (item) => {
+        if (item.product_key) return 'PT:' + item.product_key;
+        if (item.articulo_id) return 'INS:' + item.articulo_id;
+        return 'TXT:' + normalizarGuia(item.nombre || '');
+    };
+
+    const empujar = (item) => {
+        const clave = claveDe(item);
+        const previo = porClave.get(clave);
+        if (previo) {
+            previo.cantidad += Number(item.cantidad) || 0;
+            return previo;
+        }
+        porClave.set(clave, item);
+        items.push(item);
+        return item;
+    };
+
+    for (const it of itemsTabla) {
+        empujar({
+            product_key: it.product_key || '',
+            articulo_id: it.articulo_id || null,
+            nombre: it.nombre || '',
+            cantidad: Number(it.cantidad) || 0,
+            cantidad_auto: it.cantidad_auto !== false
+        });
+    }
+
+    for (const it of itemsIA) {
+        const nombre = it.nombre || '';
+        const nombreCompleto = [nombre, it.presentacion].filter(Boolean).join(' ');
+        // La clave que manda la IA solo se acepta si existe en el catálogo:
+        // una clave inventada no puede descuadrar el inventario.
+        let product_key = esClavePt(it.product_key) ? it.product_key : '';
+        let articulo_id = it.articulo_id || null;
+        if (!product_key && !articulo_id) {
+            const r = resolverItemGuia(nombreCompleto, pts, invs) || resolverItemGuia(nombre, pts, invs);
+            if (r && r.product_key) product_key = r.product_key;
+            else if (r && r.articulo_id) articulo_id = r.articulo_id;
+        }
+        const cantidad = Number(it.cantidad ?? it.cantidad_guia) || 0;
+        const existente = porClave.get(claveDe({ product_key, articulo_id, nombre: nombreCompleto || nombre }));
+        if (existente) {
+            if (cantidad > 0 && Number(existente.cantidad) > 0 && Math.abs(cantidad - existente.cantidad) > 0.001) {
+                advertencias.push(`"${nombreCompleto || nombre}": el lector del PDF leyó ${existente.cantidad} y la IA ${cantidad}; se conserva la del PDF.`);
+            }
+            continue;
+        }
+        empujar({
+            product_key,
+            articulo_id,
+            nombre: nombreCompleto || nombre,
+            cantidad,
+            cantidad_auto: cantidad > 0
+        });
+        if (!product_key && !articulo_id) {
+            advertencias.push(`Sin producto asociado (revísalo en la lista): "${nombreCompleto || nombre}".`);
+        }
+    }
+
+    return { items, advertencias };
 }
 
 // Extrae las direcciones de partida y llegada de la guía SUNAT (bloque antes de "Punto de ...")
@@ -2405,14 +2489,37 @@ function primeroNoVacio(...valores) {
 // la app habla partida, destino, nombre (igual que componerCamposDesdeTexto
 // y que los dos formularios que rellenan). Se traduce una vez aquí para que
 // todo lo que sigue funcione igual venga de IA o del lector local.
+//
+// El prompt real devuelve los campos EN LA RAÍZ del JSON (no dentro de
+// "campos"), así que se leen de ahí y se completan solo los que falten:
+// antes la cabecera de la IA entera se tiraba por leerla del sitio equivocado.
+const IA_RAIZ_A_CAMPOS = [
+    ['numero_guia', 'numero_guia'],
+    ['ruc', 'ruc'],
+    ['proveedor', 'proveedor'],
+    ['empresa', 'empresa'],
+    ['chofer', 'chofer'],
+    ['dni_chofer', 'dni_chofer'],
+    ['placa', 'placa'],
+    ['observaciones', 'observaciones'],
+    ['partida', 'lugar_partida'],
+    ['destino', 'punto_llegada']
+];
+
 function normalizarRespuestaIA(ia) {
     if (!ia || typeof ia !== 'object') return ia;
     const c = { ...(ia.campos || {}) };
+    for (const [claveCampo, claveRaiz] of IA_RAIZ_A_CAMPOS) {
+        if (String(c[claveCampo] ?? '').trim()) continue;
+        const valor = ia[claveRaiz];
+        if (valor != null && String(valor).trim()) c[claveCampo] = String(valor).trim();
+    }
     if (c.partida == null || c.partida === '') c.partida = c.lugar_partida ?? '';
     if (c.destino == null || c.destino === '') c.destino = c.punto_llegada ?? '';
     const items = (Array.isArray(ia.items) ? ia.items : []).map(it => ({
         ...it,
         nombre: it.nombre ?? it.producto ?? '',
+        presentacion: it.presentacion ?? '',
         cantidad_guia: it.cantidad_guia ?? it.cantidad ?? 0,
         cantidad: it.cantidad ?? it.cantidad_guia ?? 0
     }));
@@ -2584,52 +2691,35 @@ app.post('/api/salidas/leer-pdf', gIA, upload.single('archivo_guia'), async (req
             cabecera.ruc = '';
         }
 
+        // El lector local es la base: sus claves salen de los alias del PDF y
+        // su cantidad de la columna real de la guía. La IA solo completa los
+        // renglones que el local no reconoció (antes lo descartaba por
+        // completo, y con él se perdían también sus avisos).
         const { items: itemsTabla, advertencias: advertenciasTabla } = detectarItemsTabla(textoPdf);
+        advertencias.push(...advertenciasTabla);
         let itemsDetectados;
         if (itemsIA && itemsIA.length > 0) {
-            itemsDetectados = itemsIA.map(it => ({
-                product_key: it.product_key || '',
-                articulo_id: it.articulo_id || null,
-                nombre: it.nombre || '',
-                cantidad: Number(it.cantidad ?? it.cantidad_guia) || 0,
-                cantidad_auto: true
-            }));
-            // La IA no conoce las claves: se resuelven las que falten.
-            const sinClave = itemsDetectados.filter(i => !i.product_key && !i.articulo_id);
-            if (sinClave.length) {
-                const pts = await pool.query('SELECT producto_key, nombre_producto FROM producto_terminado');
-                const inv = await pool.query('SELECT id, nombre FROM inventario');
-                for (const it of sinClave) {
-                    const r = resolverItemGuia(it.nombre, pts.rows, inv.rows);
-                    if (r) {
-                        if (r.product_key) it.product_key = r.product_key;
-                        if (r.articulo_id) it.articulo_id = r.articulo_id;
-                    }
-                }
-                const aun = itemsDetectados.filter(i => !i.product_key && !i.articulo_id);
-                if (aun.length) {
-                    advertencias.push(`Sin producto asociado (vincúlalos en la lista): ${aun.map(i => i.nombre).join('; ')}.`);
-                }
-            }
+            const pts = await pool.query('SELECT producto_key, nombre_producto FROM producto_terminado');
+            const inv = await pool.query('SELECT id, nombre FROM inventario');
+            const fusion = fusionarItemsSalidas({ itemsTabla, itemsIA, pts: pts.rows, invs: inv.rows });
+            itemsDetectados = fusion.items;
+            advertencias.push(...fusion.advertencias);
         } else {
-            const porProd = new Map();
-            for (const it of itemsTabla) {
-                const clave = it.product_key || it.nombre;
-                const prev = porProd.get(clave);
-                if (prev) prev.cantidad += Number(it.cantidad) || 0;
-                else porProd.set(clave, { ...it, cantidad: Number(it.cantidad) || 0 });
-            }
-            itemsDetectados = Array.from(porProd.values());
-            advertencias.push(...advertenciasTabla);
+            itemsDetectados = fusionarItemsSalidas({ itemsTabla, itemsIA: [] }).items;
         }
 
         if (itemsDetectados.length === 0) {
+            // Último recurso: buscar cada producto del catálogo en el texto
+            // completo con sus propios alias ("B-1 X 1 LT"), no con el nombre
+            // literal de la BD ("b-1 1 lt"), que la guía casi nunca escribe
+            // igual y dejaba la lista vacía.
             const ptRes = await pool.query('SELECT * FROM producto_terminado');
             for (const pt of ptRes.rows) {
-                const nombreBusq = pt.nombre_producto.toLowerCase().replace('aceite de soya', '').trim();
-                if (!nombreBusq) continue;
-                if (!textoPdf.toLowerCase().includes(nombreBusq)) continue;
-                const cantidadDetectada = extraerCantidadPdf(textoPdf, [pt.nombre_producto, pt.nombre_producto.toLowerCase(), nombreBusq]);
+                const alias = PRODUCTOS_PDF_KEYWORDS.find(p => p.product_key === pt.producto_key);
+                const formas = [...(alias ? alias.nombres : []), pt.nombre_producto];
+                const coincide = formas.map(regexDesdeAlias).find(r => r && r.test(textoPdf));
+                if (!coincide) continue;
+                const cantidadDetectada = extraerCantidadPdf(textoPdf, [...formas, pt.nombre_producto.toLowerCase()]);
                 itemsDetectados.push({
                     product_key: pt.producto_key,
                     nombre: pt.nombre_producto,
@@ -6501,6 +6591,21 @@ app.get('/api/refinado/historial', requerirRolRefinado, async (req, res) => {
     }
 });
 
+// Los errores que llegan acá (multer con archivo muy pesado, un fallo fuera
+// de los try de cada ruta) se contestan SIEMPRE en JSON: el lector de salidas
+// sube PDFs desde el navegador y una página HTML de error lo hacía mostrar
+// "sin conexión con el servidor" en vez del motivo real.
+app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+    const esLimite = err.name === 'MulterError' && err.code === 'LIMIT_FILE_SIZE';
+    const estado = esLimite ? 413 : 500;
+    const mensaje = esLimite
+        ? `El archivo supera el máximo de ${Math.round(LIMITE_SUBIDA_BYTES / (1024 * 1024))} MB. Comprime la foto o usa el PDF original.`
+        : 'Error del servidor: ' + err.message;
+    console.error('Error no manejado en una ruta:', err);
+    res.status(estado).json({ success: false, mensaje });
+});
+
 // Solo arranca el servidor cuando este archivo es el punto de entrada.
 // Si otro módulo lo importa (por ejemplo un test), no se ocupa el puerto.
 if (require.main === module) {
@@ -6516,7 +6621,7 @@ if (require.main === module) {
 // servidor: son las reglas que definen los totales de orden y de factura.
 module.exports = {
     app, parsearCabeceraSUNAT, detectarItemsTabla, extraerDireccionSUNAT,
-    resolverItemGuia, normalizarRespuestaIA,
+    resolverItemGuia, normalizarRespuestaIA, fusionarItemsSalidas,
     IGV_POR_DEFECTO, normalizarMoneda, redondear2, normalizarItemsOrden,
     camposEntregaDe, normalizarCuentasBancarias
 };

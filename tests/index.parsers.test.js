@@ -1,7 +1,8 @@
 const {
   parsearCabeceraSUNAT,
   detectarItemsTabla,
-  extraerDireccionSUNAT
+  extraerDireccionSUNAT,
+  resolverItemGuia
 } = require('../index');
 
 // Fixture con la estructura real que emite SUNAT. La cantidad va al final de la
@@ -304,5 +305,28 @@ describe('detectarItemsTabla', () => {
     const res = detectarItemsTabla(PDF_SIMPLIFICADO);
     const claves = res.items.map((i) => i.product_key);
     expect(claves).not.toContain('b1_1lt');
+  });
+});
+
+describe('resolverItemGuia', () => {
+  const PTS = [{ producto_key: 'vega_900ml', nombre_producto: 'Aceite de Soya VEGA 900 ml' }];
+  const INV = [{ id: 7, nombre: 'Tapa Dosif. N° 26 blanco / ROJO' }];
+
+  test('resuelve por alias aunque la IA no mande clave', () => {
+    expect(resolverItemGuia('VEGA X 900 ML ACEITE DE SOYA', PTS, INV)).toEqual({ product_key: 'vega_900ml' });
+    expect(resolverItemGuia('TIMONEL 900ML', PTS, INV)).toEqual({ product_key: 'timonel_900ml' });
+  });
+
+  test('resuelve por nombre de catálogo sin marca', () => {
+    expect(resolverItemGuia('VEGA 900 ml', PTS, INV)).toEqual({ product_key: 'vega_900ml' });
+  });
+
+  test('resuelve insumos por id cuando no es producto', () => {
+    expect(resolverItemGuia('Tapa Dosif. N° 26 blanco / ROJO', PTS, INV)).toEqual({ articulo_id: 7 });
+  });
+
+  test('un parecido no vincula: devuelve null', () => {
+    expect(resolverItemGuia('VEGA 500 ml', PTS, INV)).toBeNull();
+    expect(resolverItemGuia('', PTS, INV)).toBeNull();
   });
 });

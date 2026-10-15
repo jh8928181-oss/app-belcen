@@ -2148,6 +2148,34 @@ function detectarItemsTabla(textoPdf) {
     return { items, advertencias };
 }
 
+// La IA devuelve nombres y cantidades pero no conoce nuestras claves
+// internas (product_key) ni ids: se resuelven aquí con los mismos alias del
+// lector local, luego catálogo de producto terminado y luego inventario.
+// Solo igualdad normalizada: un parecido no vincula (para eso está el
+// selector manual de la lista). Devuelve { product_key } o { articulo_id }.
+function resolverItemGuia(nombre, pts, invs) {
+    const texto = normalizarGuia(nombre || '');
+    if (!texto) return null;
+    for (const p of PRODUCTOS_PDF_KEYWORDS) {
+        if ((p.nombres || []).some(n => texto.includes(normalizarGuia(n)))) {
+            return { product_key: p.product_key };
+        }
+    }
+    const sinMarca = texto.replace(/aceitedesoya/g, '');
+    for (const p of (pts || [])) {
+        const plena = normalizarGuia(p.nombre_producto || '');
+        if (plena && (plena === texto || sinMarca === plena.replace(/aceitedesoya/g, ''))) {
+            return { product_key: p.producto_key };
+        }
+    }
+    for (const a of (invs || [])) {
+        if (normalizarGuia(a.nombre || '') === texto) {
+            return { articulo_id: a.id };
+        }
+    }
+    return null;
+}
+
 // Extrae las direcciones de partida y llegada de la guía SUNAT (bloque antes de "Punto de ...")
 // Una dirección queda terminada cuando su último segmento con guion es una
 // palabra suelta: la localidad ("JR. LAS BEGONIAS 123 - SAN MARTIN - LIMA") o
@@ -2542,10 +2570,28 @@ app.post('/api/salidas/leer-pdf', gIA, upload.single('archivo_guia'), async (req
         if (itemsIA && itemsIA.length > 0) {
             itemsDetectados = itemsIA.map(it => ({
                 product_key: it.product_key || '',
+                articulo_id: it.articulo_id || null,
                 nombre: it.nombre || '',
                 cantidad: Number(it.cantidad ?? it.cantidad_guia) || 0,
                 cantidad_auto: true
             }));
+            // La IA no conoce las claves: se resuelven las que falten.
+            const sinClave = itemsDetectados.filter(i => !i.product_key && !i.articulo_id);
+            if (sinClave.length) {
+                const pts = await pool.query('SELECT producto_key, nombre_producto FROM producto_terminado');
+                const inv = await pool.query('SELECT id, nombre FROM inventario');
+                for (const it of sinClave) {
+                    const r = resolverItemGuia(it.nombre, pts.rows, inv.rows);
+                    if (r) {
+                        if (r.product_key) it.product_key = r.product_key;
+                        if (r.articulo_id) it.articulo_id = r.articulo_id;
+                    }
+                }
+                const aun = itemsDetectados.filter(i => !i.product_key && !i.articulo_id);
+                if (aun.length) {
+                    advertencias.push(`Sin producto asociado (vincúlalos en la lista): ${aun.map(i => i.nombre).join('; ')}.`);
+                }
+            }
         } else {
             const porProd = new Map();
             for (const it of itemsTabla) {
@@ -6451,6 +6497,7 @@ if (require.main === module) {
 // servidor: son las reglas que definen los totales de orden y de factura.
 module.exports = {
     app, parsearCabeceraSUNAT, detectarItemsTabla, extraerDireccionSUNAT,
+    resolverItemGuia,
     IGV_POR_DEFECTO, normalizarMoneda, redondear2, normalizarItemsOrden,
     camposEntregaDe, normalizarCuentasBancarias
 };

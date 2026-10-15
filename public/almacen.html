@@ -2512,8 +2512,8 @@
                     itemsDespachoArray = d.items.map(i => ({
                         nombre: i.nombre,
                         cantidad: i.cantidad,
-                        producto_key: i.producto_key,
-                        articulo_id: null,
+                        producto_key: i.producto_key || null,
+                        articulo_id: i.articulo_id || null,
                         cantidad_auto: i.cantidad_auto
                     }));
                     renderTablaItems();

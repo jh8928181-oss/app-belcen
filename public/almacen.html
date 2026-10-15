@@ -2587,13 +2587,38 @@
             itemsDespachoArray[index].cantidad = isNaN(cant) ? null : cant;
         }
 
+        function vincularItem(index, valor) {
+            const item = itemsDespachoArray[index];
+            if (!item) return;
+            item.producto_key = null;
+            item.articulo_id = null;
+            if (valor && valor.startsWith('PT:')) item.producto_key = valor.replace('PT:', '');
+            else if (valor && valor.startsWith('INS:')) item.articulo_id = valor.replace('INS:', '');
+            renderTablaItems();
+        }
+
+        function opcionesVinculoItem() {
+            const base = document.getElementById('selectProductoSalida');
+            if (!base) return '<option value="">-- Vincular producto --</option>';
+            let html = '<option value="">-- Vincular producto --</option>';
+            base.querySelectorAll('optgroup').forEach(g => {
+                html += `<optgroup label="${escOpServ(g.label)}">`
+                    + [...g.options].map(o => `<option value="${escOpServ(o.value)}">${escOpServ(o.textContent)}</option>`).join('')
+                    + '</optgroup>';
+            });
+            return html;
+        }
+
         function renderTablaItems() {
             const tbody = document.getElementById('tablaItemsDespacho');
             tbody.innerHTML = itemsDespachoArray.length === 0 ? `<tr><td colspan="3" class="text-center sin-registros">No hay ítems en la lista.</td></tr>` : '';
             itemsDespachoArray.forEach((item, idx) => {
                 const marcaRevisar = (item.cantidad === null || item.cantidad === undefined || isNaN(parseFloat(item.cantidad))) ? ' <span class="diff-alerta">⚠️ indicar cantidad</span>' : '';
                 const valCant = (item.cantidad !== null && item.cantidad !== undefined && !isNaN(parseFloat(item.cantidad))) ? item.cantidad : '';
-                    tbody.innerHTML += `<tr><td><b>${item.nombre}</b>${marcaRevisar}</td><td class="text-center"><input type="number" min="0.01" step="any" class="input-cant-item" value="${valCant}" oninput="cambiarCantidadItem(${idx}, this.value)"></td><td class="text-center"><button type="button" onclick="quitarItem(${idx})" class="btn-x">X</button></td></tr>`;
+                const sinVinculo = (!item.producto_key && !item.articulo_id)
+                    ? `<div style="margin-top:6px;"><span class="diff-alerta">⚠️ sin producto</span> <select onchange="vincularItem(${idx}, this.value)" style="max-width:230px;">${opcionesVinculoItem()}</select></div>`
+                    : '';
+                tbody.innerHTML += `<tr><td><b>${item.nombre}</b>${marcaRevisar}${sinVinculo}</td><td class="text-center"><input type="number" min="0.01" step="any" class="input-cant-item" value="${valCant}" oninput="cambiarCantidadItem(${idx}, this.value)"></td><td class="text-center"><button type="button" onclick="quitarItem(${idx})" class="btn-x">X</button></td></tr>`;
                 });
                 etiquetarTablas();
             }

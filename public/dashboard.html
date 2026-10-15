@@ -774,6 +774,36 @@ function escDash(texto) {
                 .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
+        // El "Envasando" lo pinta UNA sola función, la llamen en el orden que
+        // la llamen los dos fetch (secuencia y reportes): solo hay algo
+        // envasándose si existe producción en curso de verdad.
+        let abiertaEnvasadoDash = null;
+
+        function normDash(s) {
+            return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        }
+
+        function pintarEnvasandoDash() {
+            const el = document.getElementById('planActualEnvasado');
+            if (el) {
+                el.textContent = (abiertaEnvasadoDash && abiertaEnvasadoDash.presentacion)
+                    ? abiertaEnvasadoDash.presentacion
+                    : '—';
+            }
+            const abiertaKey = abiertaEnvasadoDash
+                ? normDash(abiertaEnvasadoDash.producto_key || abiertaEnvasadoDash.presentacion)
+                : '';
+            document.querySelectorAll('#planColaEnvasado .plan-item').forEach((li, idx) => {
+                const pos = li.querySelector('.plan-pos');
+                const nom = li.querySelector('.plan-nombre');
+                if (!pos) return;
+                const n = nom ? normDash(nom.textContent) : '';
+                const esAbierta = !!(abiertaKey && n && (n.includes(abiertaKey) || abiertaKey.includes(n)));
+                pos.textContent = esAbierta ? 'Envasando' : (idx === 0 && !abiertaEnvasadoDash ? 'Siguiente' : 'Luego');
+                li.classList.toggle('plan-actual', esAbierta);
+            });
+        }
+
         // El dashboard es de solo lectura: aqui no se cambia ni estado ni
         // secuencia. La secuencia la arma el operario en la pantalla de su linea.
         function pintarPlanEnvasado(cola) {
@@ -784,13 +814,13 @@ function escDash(texto) {
             const toggle = document.getElementById('planToggleEnvasado');
 
             if (!items.length) {
-                actual.textContent = 'Sin secuencia en la línea';
                 actual.className = 'plan-sin-producto';
                 productoEnMarchaEnvasado = '';
                 document.getElementById('previoEnvasado').textContent = '—';
                 mas.textContent = '';
                 toggle.disabled = true;
                 contenedor.innerHTML = '<p class="plan-vacio">El operario de envasado aún no ha armado la secuencia.</p>';
+                pintarEnvasandoDash();
                 return;
             }
 
@@ -798,9 +828,6 @@ function escDash(texto) {
             actual.className = 'plan-producto-actual';
             const primero = items[0];
             productoEnMarchaEnvasado = primero.nombre_producto || primero.producto_key || '';
-            actual.textContent = primero.receta_huerfana
-                ? primero.producto_key + ' — receta no vigente'
-                : (primero.nombre_producto || primero.producto_key);
             mas.textContent = items.length > 1 ? 'Ver secuencia ▾' : '';
 
             contenedor.innerHTML = '<ol class="plan-lista">'
@@ -814,6 +841,7 @@ function escDash(texto) {
                         + '</li>';
                 }).join('')
                 + '</ol>';
+            pintarEnvasandoDash();
         }
 
         async function cargarEstadoProduccion() {
@@ -924,6 +952,8 @@ lista.length + ' reportes · ' + totalTn.toFixed(2) + ' TM · ' + rango;
                     // Abierta manda: si hay producción en curso, esa es la que se
                     // está envasando (por encima de la secuencia armada).
                     const abierta = lista.find(r => r.estado === 'EN_CURSO');
+                    abiertaEnvasadoDash = abierta || null;
+                    pintarEnvasandoDash();
                     const marchaNombre = (abierta && abierta.presentacion) ? abierta.presentacion : productoEnMarchaEnvasado;
                     const marcha = norm(marchaNombre);
                     let previo = '';
@@ -935,15 +965,7 @@ lista.length + ' reportes · ' + totalTn.toFixed(2) + ' TM · ' + rango;
                         if (!marcha || (!n.includes(marcha) && !marcha.includes(n))) { previo = nom; break; }
                     }
                     document.getElementById('previoEnvasado').textContent = previo ? conCajas(previo) : '—';
-                    const elActual = document.getElementById('planActualEnvasado');
-                    // Solo hay algo envasándose si existe producción en curso
-                    // de verdad: en parado (o sin abierta) se muestra guion
-                    // aunque la secuencia tenga un siguiente armado.
-                    if (abierta && abierta.presentacion) {
-                        elActual.textContent = abierta.presentacion;
-                    } else {
-                        elActual.textContent = '—';
-                    }
+                    // El texto "Envasando" lo decide pintarEnvasandoDash (ya llamado arriba).
                 }
             } catch (err) {
                 console.error(err);

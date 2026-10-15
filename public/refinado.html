@@ -696,10 +696,24 @@
                     body: JSON.stringify(payload)
                 });
                 const data = await res.json();
-                mostrarMensaje(data.mensaje || 'Respuesta del servidor.', !!data.success);
                 if (data.success) {
-                    await cargarReporte();
+                    mostrarMensaje('✅ ' + (data.mensaje || 'Lote guardado.'), true);
+                    // Limpieza inmediata para el siguiente lote: no depende de
+                    // que la recarga salga bien.
+                    const numActual = document.getElementById('loteNumero').value;
                     limpiarFormLote(true);
+                    const hora = document.getElementById('loteHora');
+                    if (hora) hora.focus();
+                    try {
+                        await cargarReporte();
+                    } catch (e) {
+                        console.error(e);
+                        // Sin recarga, se avanza el número a mano para no repetirlo.
+                        const n = parseInt(String(numActual).replace(/\D/g, ''), 10);
+                        if (!isNaN(n)) document.getElementById('loteNumero').value = String(n + 1).padStart(4, '0');
+                    }
+                } else {
+                    mostrarMensaje('❌ ' + (data.mensaje || 'Error al guardar el lote.'), false);
                 }
             } catch (err) {
                 console.error(err);

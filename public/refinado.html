@@ -327,7 +327,7 @@
 
             <div class="lote-acciones">
                 <button class="btn btn-verde" onclick="guardarLote()" type="button">💾 Guardar Lote</button>
-                <button class="btn btn-gris" onclick="limpiarFormLote(false)" type="button">🗑️ Limpiar Formulario</button>
+                <button class="btn btn-gris" onclick="limpiarFormLote()" type="button">🗑️ Limpiar Formulario</button>
             </div>
 
             <div class="aviso aviso-info" style="margin-top:14px;">ℹ️ El stock (inventario) de insumos de refinado se lleva ahora en el módulo <b>Almacén</b> en la pestaña <b>🛢️ Refinado</b>.</div>
@@ -547,23 +547,12 @@
         }
 
         // --- FORMULARIO DE LOTE ---
-        function sugerirNumeroLote() {
-            let max = 0;
-            lotesActuales.forEach(l => {
-                const n = parseInt(String(l.lote || '').replace(/\D/g, ''), 10) || 0;
-                if (n > max) max = n;
-            });
-            return String(max + 1).padStart(4, '0');
-        }
-
-        function limpiarFormLote(trasGuardar) {
+        function limpiarFormLote() {
+            document.getElementById('loteNumero').value = '';
             document.getElementById('loteHora').value = '';
             document.getElementById('loteCantidad').value = '';
             document.getElementById('loteFecha').value = hoyLocal();
             document.querySelectorAll('#tbodyInsumosLote input[data-k="cantidad"]').forEach(i => i.value = '');
-            if (trasGuardar) {
-                document.getElementById('loteNumero').value = sugerirNumeroLote();
-            }
         }
 
         // --- LOTES REGISTRADOS ---
@@ -646,8 +635,7 @@
                     document.getElementById('fechaRef').textContent = fecha;
                     mostrarMensaje('ℹ️ Sin reporte para ' + turno + '. El lote que guardes creará el reporte.', false);
                 }
-                limpiarFormLote(false);
-                document.getElementById('loteNumero').value = sugerirNumeroLote();
+            limpiarFormLote();
                 actualizarTotales();
             } catch (err) {
                 console.error(err);
@@ -698,20 +686,14 @@
                 const data = await res.json();
                 if (data.success) {
                     mostrarMensaje('✅ ' + (data.mensaje || 'Lote guardado.'), true);
-                    // Limpieza inmediata para el siguiente lote: no depende de
-                    // que la recarga salga bien.
-                    const numActual = document.getElementById('loteNumero').value;
-                    limpiarFormLote(true);
-                    const hora = document.getElementById('loteHora');
-                    if (hora) hora.focus();
+                    // Limpieza inmediata para el siguiente lote (el número lo
+                    // digita el operario): no depende de que salga la recarga.
+                    limpiarFormLote();
+                    const numero = document.getElementById('loteNumero');
+                    if (numero) numero.focus();
                     try {
                         await cargarReporte();
-                    } catch (e) {
-                        console.error(e);
-                        // Sin recarga, se avanza el número a mano para no repetirlo.
-                        const n = parseInt(String(numActual).replace(/\D/g, ''), 10);
-                        if (!isNaN(n)) document.getElementById('loteNumero').value = String(n + 1).padStart(4, '0');
-                    }
+                    } catch (e) { console.error(e); }
                 } else {
                     mostrarMensaje('❌ ' + (data.mensaje || 'Error al guardar el lote.'), false);
                 }

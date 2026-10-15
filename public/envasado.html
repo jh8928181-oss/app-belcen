@@ -240,6 +240,11 @@
                 <span id="totalesEstadoEnvasado" class="estado-totales">Hoy: — cajas · — TM · — reportes</span>
             </div>
             <button id="btnCambiarEstadoEnvasado" class="btn-estado" onclick="cambiarEstadoEnvasado()">🟢 MARCAR EN MARCHA</button>
+            <div id="marchaProductoWrap" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; width:100%;">
+                <select id="marchaProducto" style="flex:1; min-width:200px;">
+                    <option value="">-- ¿Qué producción va a iniciar? --</option>
+                </select>
+            </div>
             <div class="estado-detalle">
                 <span id="anteriorEnvasado" class="mini-hit">⬅️ Anterior: —</span>
                 <span id="siguienteEnvasado" class="mini-hit">⏭️ Siguiente: —</span>
@@ -348,6 +353,11 @@
         <div class="total-bar">
             <span>TOTAL TM ACUMULADO:</span>
             <span id="totalTmActivo">0.00</span>
+        </div>
+
+        <div class="total-bar" style="margin-top:12px; display:block;">
+            <span><b>📊 TOTAL POR PRODUCTO:</b></span>
+            <div id="totalesPorProducto" style="margin-top:8px; font-size:13px;">—</div>
         </div>
 
         <div class="total-bar" style="margin-top:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
@@ -461,6 +471,12 @@
                 .join('');
             if (selForm) {
                 selForm.innerHTML = '<option value="">-- Seleccionar Presentación --</option>' + opciones;
+            }
+            const selMarcha = document.getElementById('marchaProducto');
+            if (selMarcha) {
+                const actual = selMarcha.value;
+                selMarcha.innerHTML = '<option value="">-- ¿Qué producción va a iniciar? --</option>' + opciones;
+                if (actual && PRESENTACIONES_ENVASADO.some(p => p.v === actual)) selMarcha.value = actual;
             }
             // El editor de secuencia se monta despues de poblar las
             // presentaciones: sus opciones salen de la misma lista de recetas.
@@ -578,6 +594,25 @@
             });
         }
 
+        // Total producido por producto en lo mostrado: si el mismo producto
+        // se cerró dos veces en el día, aquí sale una sola vez con su total.
+        function pintarTotalesPorProducto(reportes) {
+            const el = document.getElementById('totalesPorProducto');
+            if (!el) return;
+            const mapa = new Map();
+            (Array.isArray(reportes) ? reportes : []).forEach(r => {
+                const nombre = r.presentacion || '—';
+                const g = mapa.get(nombre) || { cajas: 0, tm: 0 };
+                g.cajas += parseInt(r.cantidad_cajas || 0, 10) || 0;
+                g.tm += parseFloat(r.toneladas || 0) || 0;
+                mapa.set(nombre, g);
+            });
+            if (!mapa.size) { el.textContent = '—'; return; }
+            el.innerHTML = [...mapa.entries()]
+                .map(([nombre, g]) => `<div>▪️ <b>${escEnvasado(nombre)}</b>: <b>${g.cajas}</b> cajas · ${g.tm.toFixed(2)} TM</div>`)
+                .join('');
+        }
+
         async function cargarProduccionActiva() {
             try {
                 const res = await fetch('/api/produccion/reportes');
@@ -589,6 +624,7 @@
                 if (reportesGlobal.length === 0) {
                     tbody.innerHTML = `<tr><td colspan="7" class="text-center">No hay registros activos para el día en curso.</td></tr>`;
                     document.getElementById('totalTmActivo').textContent = '0.00';
+                    pintarTotalesPorProducto([]);
                     resumenEstadoEnvasado();
                     return;
                 }
@@ -615,6 +651,7 @@
                     `;
                 });
                 document.getElementById('totalTmActivo').textContent = sumaTn.toFixed(2);
+                pintarTotalesPorProducto(reportesGlobal);
                 resumenEstadoEnvasado();
                 etiquetarTablas();
             } catch (e) {
@@ -627,14 +664,17 @@
         function pintarEstadoEnvasado() {
             const pill = document.getElementById('pillEstadoEnvasado');
             const btn = document.getElementById('btnCambiarEstadoEnvasado');
+            const wrap = document.getElementById('marchaProductoWrap');
             if (estadoEnvasadoActual === 'EN MARCHA') {
                 pill.className = 'estado-pill marcha';
                 pill.textContent = '🟢 EN MARCHA';
                 btn.textContent = '🛑 MARCAR PARADO';
+                if (wrap) wrap.style.display = 'none';
             } else {
                 pill.className = 'estado-pill parado';
                 pill.textContent = '🔴 PARADO';
-                btn.textContent = '🟢 MARCAR EN MARCHA';
+                btn.textContent = '🟢 MARCAR EN MARCHA e iniciar';
+                if (wrap) wrap.style.display = 'flex';
             }
         }
 
@@ -677,39 +717,75 @@
         }
 
         let cambiandoEstadoEnvasado = false;
+        // Marcha con producto: en PARADO se elige qué producción va a iniciar
+        // y el botón la crea en curso de una vez; en marcha solo marca parado.
+        // La marcha es muestreo en pantalla: no bloquea ningún registro.
         async function cambiarEstadoEnvasado() {
             if (cambiandoEstadoEnvasado) return;
+            if (estadoEnvasadoActual === 'EN MARCHA') {
+                if (!confirm('¿Marcar la línea como PARADA?')) return;
+                cambiandoEstadoEnvasado = true;
+                const btn = document.getElementById('btnCambiarEstadoEnvasado');
+                if (btn) btn.disabled = true;
+                try {
+                    const res = await fetch('/api/estado-linea', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            area: 'envasado',
+                            estado: 'PARADO',
+                            usuario: localStorage.getItem('usuario_actual') || 'envasado_user'
+                        })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        estadoEnvasadoActual = 'PARADO';
+                        pintarEstadoEnvasado();
+                        cargarEstadoEnvasado();
+                    } else {
+                        alert('❌ ' + (data.mensaje || 'Error al marcar parado.'));
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert('Error de conexión con el servidor.');
+                } finally {
+                    cambiandoEstadoEnvasado = false;
+                    if (btn) btn.disabled = false;
+                }
+                return;
+            }
+            const prod = (document.getElementById('marchaProducto') || {}).value || '';
+            if (!prod) { alert('❌ Elige qué producción va a iniciar.'); return; }
             cambiandoEstadoEnvasado = true;
-            const btn = document.getElementById('btnCambiarEstadoEnvasado');
-            if (btn) btn.disabled = true;
-            const nuevo = estadoEnvasadoActual === 'EN MARCHA' ? 'PARADO' : 'EN MARCHA';
+            const btn2 = document.getElementById('btnCambiarEstadoEnvasado');
+            if (btn2) btn2.disabled = true;
             try {
+                const ok = await iniciarProducto(prod, null);
+                if (!ok) return;
                 const res = await fetch('/api/estado-linea', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         area: 'envasado',
-                        estado: nuevo,
+                        estado: 'EN MARCHA',
+                        proximo_producto: prod,
                         usuario: localStorage.getItem('usuario_actual') || 'envasado_user'
                     })
                 });
                 const data = await res.json();
                 if (res.ok && data.success) {
-                    cargarProduccionActiva();
-                    if (data.advertencia && data.pendientes && data.pendientes.length) {
-                        alert('⚠️ ' + data.mensaje + '\n\nRevisa almacén: '
-                            + data.pendientes.map(p => `${p.articulo_nombre} (${p.cantidad})`).join(', '));
-                    }
-                    preguntarSiguiente(presentacion);
+                    estadoEnvasadoActual = 'EN MARCHA';
+                    pintarEstadoEnvasado();
+                    cargarEstadoEnvasado();
                 } else {
-                    alert('❌ ' + (data.mensaje || 'Error al cerrar.'));
+                    alert('❌ Producción iniciada, pero no se pudo marcar en marcha: ' + (data.mensaje || ''));
                 }
             } catch (err) {
                 console.error(err);
                 alert('Error de conexión con el servidor.');
             } finally {
                 cambiandoEstadoEnvasado = false;
-                if (btn) btn.disabled = false;
+                if (btn2) btn2.disabled = false;
             }
         }
 
@@ -890,7 +966,22 @@
                 });
                 const data = await res.json();
                 alert((res.ok && data.success ? '✅ ' : '❌ ') + (data.mensaje || 'Respuesta del servidor.'));
-                if (res.ok && data.success) cargarProduccionActiva();
+                if (res.ok && data.success) {
+                    cargarProduccionActiva();
+                    // Todo a cero al archivar: la marcha vuelve a PARADO.
+                    try {
+                        await fetch('/api/estado-linea', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                area: 'envasado',
+                                estado: 'PARADO',
+                                usuario: localStorage.getItem('usuario_actual') || 'envasado_user'
+                            })
+                        });
+                    } catch (e) { console.error(e); }
+                    cargarEstadoEnvasado();
+                }
             } catch (err) {
                 console.error(err);
                 alert('Error de conexión con el servidor.');

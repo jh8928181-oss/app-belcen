@@ -3214,6 +3214,46 @@ function safeParseJson(str) {
 // Si falta stock de un insumo, NO se bloquea: se descuenta lo que hay, el
 // producto terminado igual se registra y lo que falto queda PENDIENTE para
 // que almacén lo revise y lo salde contra un reporte (soplado) o una guía.
+// Si hoy ya se cerró el mismo producto, el cierre se SUMA a esa fila
+// (cantidad, toneladas y desglose) en vez de crear otra: en el registro del
+// día cada producto sale una sola vez con su total.
+async function buscarCierreDelDia(client, productoKey, excluirId) {
+    const r = await client.query(
+        `SELECT id, cantidad_cajas, toneladas, observaciones, desglose_insumos
+           FROM reportes_produccion
+          WHERE COALESCE(producto_key, '') = $1
+            AND fecha_produccion::date = CURRENT_DATE
+            AND COALESCE(estado, '') <> 'EN_CURSO'
+            AND id <> $2
+          ORDER BY id ASC LIMIT 1 FOR UPDATE`,
+        [productoKey, excluirId]
+    );
+    return r.rows[0] || null;
+}
+
+function sumarDesglose(base, nuevo) {
+    const mapa = new Map();
+    for (const l of (Array.isArray(base) ? base : [])) {
+        const k = l.articulo_id != null ? 'i' + l.articulo_id : 'n' + (l.nombre || '');
+        mapa.set(k, { ...l, cantidad: Number(l.cantidad) || 0 });
+    }
+    for (const l of (Array.isArray(nuevo) ? nuevo : [])) {
+        const k = l.articulo_id != null ? 'i' + l.articulo_id : 'n' + (l.nombre || '');
+        if (mapa.has(k)) mapa.get(k).cantidad = Number(mapa.get(k).cantidad) + (Number(l.cantidad) || 0);
+        else mapa.set(k, { ...l, cantidad: Number(l.cantidad) || 0 });
+    }
+    return [...mapa.values()];
+}
+
+function unirObs(base, nueva) {
+    const a = String(base || '').trim();
+    const b = String(nueva || '').trim();
+    if (!b) return a;
+    if (!a) return b;
+    if (a.includes(b)) return a;
+    return a + ' | ' + b;
+}
+
 async function aplicarMovimientosProduccion(client, req, { producto_tipo, presentacion, cajas, usuario }) {
     // El motor devuelve hojas de inventario ya aplanadas (insumo_id) con
     // merma y stock de seguridad aplicados: no hay segunda búsqueda por
@@ -3334,10 +3374,42 @@ app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
 
         const client = await pool.connect();
         try {
-            await client.query('BEGIN');
-            await client.query(`SELECT set_config('app.current_user', $1, true)`, [usuarioResponsable(req, usuario) || 'produccion']);
-            await exigirLineaEnMarcha(client, 'envasado');
-            const mov = await aplicarMovimientosProduccion(client, req, { producto_tipo, presentacion, cajas, usuario });
+        await client.query('BEGIN');
+        await client.query(`SELECT set_config('app.current_user', $1, true)`, [usuarioResponsable(req, usuario) || 'produccion']);
+        // La marcha de envasado es solo muestreo en pantalla: no bloquea el
+        // registro (igual que el cierre, que nunca la exigió).
+        const mov = await aplicarMovimientosProduccion(client, req, { producto_tipo, presentacion, cajas, usuario });
+            const tmRep = toneladas === undefined || toneladas === null || toneladas === '' ? 0 : Number(toneladas);
+            // Mismo producto dos veces en el día: se suma al registro
+            // existente en vez de crear otra fila.
+            const destinoRep = await buscarCierreDelDia(client, producto_tipo, -1);
+            if (destinoRep) {
+                const desgloseF = sumarDesglose(safeParseJson(destinoRep.desglose_insumos), mov.desglose);
+                const totalRep = (Number(destinoRep.cantidad_cajas) || 0) + cajas;
+                await client.query(
+                    `UPDATE reportes_produccion SET cantidad_cajas = $1, toneladas = COALESCE(toneladas,0) + $2, desglose_insumos = $3, observaciones = $4 WHERE id = $5`,
+                    [totalRep, tmRep, JSON.stringify(desgloseF), unirObs(destinoRep.observaciones, observaciones), destinoRep.id]
+                );
+                for (const p of mov.pendientes) {
+                    await client.query(
+                        `INSERT INTO ajustes_pendientes (origen, reporte_id, articulo_id, articulo_nombre, cantidad_pendiente, usuario)
+                         VALUES ('ENVASADO', $1, $2, $3, $4, $5)`,
+                        [destinoRep.id, p.articulo_id, p.articulo_nombre, p.cantidad, usuarioResponsable(req, usuario)]
+                    );
+                }
+                await client.query('COMMIT');
+                if (mov.pendientes.length) {
+                    const detallePend = mov.pendientes.map(p => `${p.articulo_nombre}: ${p.cantidad} pendiente(s)`).join('; ');
+                    return res.json({
+                        success: true,
+                        mensaje: `Producción registrada y sumada al registro del día ("${presentacion}": total ${totalRep} cajas), con ${mov.pendientes.length} insumo(s) pendiente(s): ${detallePend}.`,
+                        advertencia: true,
+                        pendientes: mov.pendientes,
+                        reporte_id: destinoRep.id
+                    });
+                }
+                return res.json({ success: true, mensaje: `Producción registrada y sumada al registro del día ("${presentacion}": total ${totalRep} cajas).`, reporte_id: destinoRep.id });
+            }
             const desgloseJson = JSON.stringify(mov.desglose);
 
             // producto_key queda guardado en el reporte: al borrarlo, las cajas
@@ -3402,7 +3474,7 @@ app.post('/api/produccion/iniciar', gProduccion, async (req, res) => {
         }
         await client.query('BEGIN');
         await client.query(`SELECT set_config('app.current_user', $1, true)`, [usuarioResponsable(req, usuario) || 'produccion']);
-        await exigirLineaEnMarcha(client, 'envasado');
+        // La marcha es solo muestreo: iniciar tampoco la exige.
         const abierta = await client.query(
             `SELECT id, presentacion FROM reportes_produccion WHERE estado = 'EN_CURSO' ORDER BY id DESC LIMIT 1`
         );
@@ -3463,6 +3535,36 @@ app.post('/api/produccion/cerrar', gProduccion, async (req, res) => {
         const mov = await aplicarMovimientosProduccion(client, req, {
             producto_tipo, presentacion: reporte.presentacion, cajas, usuario
         });
+        // Mismo producto dos veces en el día: se suma al registro existente.
+        const destino = await buscarCierreDelDia(client, producto_tipo, reporte_id);
+        if (destino) {
+            const desgloseF = sumarDesglose(safeParseJson(destino.desglose_insumos), mov.desglose);
+            const totalCajas = (Number(destino.cantidad_cajas) || 0) + cajas;
+            await client.query(
+                `UPDATE reportes_produccion SET cantidad_cajas = $1, toneladas = COALESCE(toneladas,0) + $2, desglose_insumos = $3, observaciones = $4 WHERE id = $5`,
+                [totalCajas, tm, JSON.stringify(desgloseF), unirObs(destino.observaciones, reporte.observaciones), destino.id]
+            );
+            for (const p of mov.pendientes) {
+                await client.query(
+                    `INSERT INTO ajustes_pendientes (origen, reporte_id, articulo_id, articulo_nombre, cantidad_pendiente, usuario)
+                     VALUES ('ENVASADO', $1, $2, $3, $4, $5)`,
+                    [destino.id, p.articulo_id, p.articulo_nombre, p.cantidad, usuarioResponsable(req, usuario)]
+                );
+            }
+            await client.query(`DELETE FROM reportes_produccion WHERE id = $1`, [reporte_id]);
+            await client.query('COMMIT');
+            if (mov.pendientes.length) {
+                const detallePend = mov.pendientes.map(p => `${p.articulo_nombre}: ${p.cantidad} pendiente(s)`).join('; ');
+                return res.json({
+                    success: true,
+                    mensaje: `Producción de "${reporte.presentacion}" cerrada y sumada al registro del día (total ${totalCajas} cajas), con ${mov.pendientes.length} insumo(s) pendiente(s): ${detallePend}.`,
+                    advertencia: true,
+                    pendientes: mov.pendientes,
+                    reporte_id: destino.id
+                });
+            }
+            return res.json({ success: true, mensaje: `Producción de "${reporte.presentacion}" cerrada y sumada al registro del día (total ${totalCajas} cajas).`, reporte_id: destino.id });
+        }
         for (const p of mov.pendientes) {
             await client.query(
                 `INSERT INTO ajustes_pendientes (origen, reporte_id, articulo_id, articulo_nombre, cantidad_pendiente, usuario)

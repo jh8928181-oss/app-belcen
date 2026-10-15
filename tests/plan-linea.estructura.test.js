@@ -128,7 +128,11 @@ describe('Envasado: el operario arma la secuencia', () => {
   test('ya no queda el select unico de "siguiente"', () => {
     expect(envasado).not.toContain('siguienteSelect');
     expect(envasado).not.toContain('senalarSiguiente');
-    expect(envasado).not.toContain('proximo_producto');
+    // proximo_producto solo viaja como dato al marcar marcha con producto
+    // (qué producción se inició): la secuencia la sigue armando el operario
+    // en planEnvasado, no hay selector único que la reemplace.
+    expect(envasado).toContain('proximo_producto: prod');
+    expect(envasado).toContain('id="planEnvasado"');
   });
 
   test('el resumen distingue el producto en curso de la cola', () => {

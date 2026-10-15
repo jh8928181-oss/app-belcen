@@ -135,16 +135,19 @@ describe('POST /api/produccion/iniciar', () => {
     expect(sqlDe('INSERT INTO reportes_produccion')).toHaveLength(0);
   });
 
-  test('con linea en PARADO responde 409 y no crea nada', async () => {
+  test('con linea en PARADO igual inicia (la marcha es solo muestreo)', async () => {
     mockQuery.mockImplementation(async (sql) => {
       if (/FROM estado_lineas/.test(sql)) return { rows: [{ estado: 'PARADO' }], rowCount: 1 };
+      if (/WHERE estado = 'EN_CURSO'/.test(sql)) return { rows: [], rowCount: 0 };
+      if (/INSERT INTO reportes_produccion/.test(sql)) return { rows: [{ id: 7 }], rowCount: 1 };
       return { rows: [], rowCount: 0 };
     });
     const res = await invocar('post', '/api/produccion/iniciar', {
       body: { presentacion: 'Aceite de Soya Belini 1 Lt' }
     });
-    expect(res.statusCode).toBe(409);
-    expect(sqlDe('INSERT INTO reportes_produccion')).toHaveLength(0);
+    expect(res.statusCode).toBe(200);
+    expect(res.cuerpo.reporte_id).toBe(7);
+    expect(sqlDe('INSERT INTO reportes_produccion')).toHaveLength(1);
   });
 
   test('si ya hay una abierta responde 409', async () => {
@@ -250,6 +253,57 @@ describe('POST /api/produccion/cerrar', () => {
     expect(upd[1]).toEqual([500, 2.5, 9]);
     expect(sqlDe('UPDATE inventario SET stock = stock -').length).toBeGreaterThan(0);
     expect(sqlDe('COMMIT').length).toBeGreaterThan(0);
+  });
+});
+
+describe('POST /api/produccion/cerrar fusiona el mismo producto del día', () => {
+  function mockCerrarFusion() {
+    mockQuery.mockImplementation(async (sql) => {
+      const texto = String(sql);
+      if (/^(BEGIN|COMMIT|ROLLBACK)$/i.test(texto.trim())) return { rows: [], rowCount: 0 };
+      if (/FROM reportes_produccion WHERE id/.test(texto)) {
+        return { rows: [{ id: 9, presentacion: 'Aceite de Soya Belini 1 Lt', producto_key: 'belini_1lt', estado: 'EN_CURSO', observaciones: 'obs2' }], rowCount: 1 };
+      }
+      if (/COALESCE\(producto_key/.test(texto)) {
+        return { rows: [{ id: 4, cantidad_cajas: 300, toneladas: 1, observaciones: 'obs1', desglose_insumos: JSON.stringify([{ nombre: 'Preforma 1 Lt', articulo_id: 3, cantidad: 300 }]) }], rowCount: 1 };
+      }
+      if (/FROM inventario WHERE id = ANY/.test(texto)) {
+        return { rows: [{ id: 3, nombre: 'Preforma 1 Lt', stock: '9999' }], rowCount: 1 };
+      }
+      if (/UPDATE inventario SET stock = stock -/.test(texto)) return { rows: [{ stock: '9499' }], rowCount: 1 };
+      if (/UPDATE inventario SET estado/.test(texto)) return { rows: [], rowCount: 1 };
+      if (/INSERT INTO historial_inventario/.test(texto)) return { rows: [], rowCount: 1 };
+      if (/FROM producto_terminado WHERE producto_key/.test(texto)) return { rows: [], rowCount: 0 };
+      if (/INSERT INTO producto_terminado/.test(texto)) return { rows: [], rowCount: 1 };
+      if (/SELECT set_config/.test(texto)) return { rows: [], rowCount: 1 };
+      if (/DELETE FROM reportes_produccion/.test(texto)) return { rows: [], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    });
+  }
+
+  test('el segundo cierre del día suma al registro existente', async () => {
+    mockCerrarFusion();
+    const res = await invocar('post', '/api/produccion/cerrar', {
+      body: { reporte_id: 9, cantidad_cajas: 500, toneladas: 2.5 }
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.cuerpo.mensaje).toMatch(/sumada al registro del día/);
+    expect(res.cuerpo.mensaje).toMatch(/total 800 cajas/);
+    expect(res.cuerpo.reporte_id).toBe(4);
+    // Suma en vez de cerrar aparte: sin UPDATE con estado CERRADO...
+    expect(sqlDe("estado = 'CERRADO'")).toHaveLength(0);
+    // ...y la cáscara EN_CURSO se borra.
+    expect(sqlDe('DELETE FROM reportes_produccion')).toHaveLength(1);
+    // El UPDATE lleva el total y el desglose fusionado (300 + lo de este cierre).
+    const up = mockQuery.mock.calls.find(c => /toneladas = COALESCE\(toneladas,0\) \+/.test(String(c[0])));
+    expect(up).toBeDefined();
+    expect(up[1][0]).toBe(800);
+    const fusionado = JSON.parse(up[1][2]);
+    const linea3 = fusionado.find(l => l.articulo_id === 3);
+    expect(linea3).toBeDefined();
+    expect(linea3.cantidad).toBeGreaterThan(300);
+    expect(up[1][3]).toMatch(/obs1/);
   });
 });
 

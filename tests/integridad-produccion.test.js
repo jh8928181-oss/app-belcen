@@ -4,9 +4,8 @@
  *
  * Cada caso de aqui protege un fallo concreto que antes dejaba el inventario mal:
  *
- *   A1. `estado_lineas` se escribia y se pintaba, pero ninguna ruta de produccion la
- *       consultaba. Una linea en PARADO followed sumando producto terminado, y el
- *       indicador no describia nada real. Ahora bloquea con 409.
+ *   A1. La marcha de envasado es solo muestreo en pantalla: PARADO, EN MARCHA
+ *       o sin fila, el registro sigue igual y nunca bloquea con 409.
  *
  *   C1. El reporte se bloqueaba con SELECT normal y luego se borraba sin mirar
  *       rowCount. Dos borrados simultaneos devolvian los insumos dos veces.
@@ -146,9 +145,9 @@ afterEach(() => {
 
 // ---------------------------------------------------------------------------
 
-describe('A1. Registrar produccion exige la linea en marcha', () => {
+describe('A1. La marcha de envasado es solo muestreo: no bloquea el registro', () => {
 
-  test('una linea en PARADO responde 409 y no escribe el reporte', async () => {
+  test('en PARADO registra igual (la pastilla no frena nada)', async () => {
     mockQuery.mockImplementation(async (sql) => {
       if (/FROM estado_lineas/.test(sql)) return { rows: [{ estado: 'PARADO' }], rowCount: 1 };
       return { rows: [], rowCount: 0 };
@@ -158,35 +157,15 @@ describe('A1. Registrar produccion exige la linea en marcha', () => {
       body: { fecha_produccion: '2026-10-05', presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: 500 }
     });
 
-    expect(res.statusCode).toBe(409);
-    expect(res.cuerpo.mensaje).toMatch(/línea de envasado está PARADO/i);
-    // Lo importante: no se registró nada.
-    expect(sqlDe('INSERT INTO reportes_produccion')).toHaveLength(0);
-    expect(sqlDe('INSERT INTO producto_terminado')).toHaveLength(0);
-    expect(sqlDe('COMMIT')).toHaveLength(0);
-    expect(sqlDe('ROLLBACK').length).toBeGreaterThan(0);
+    expect(res.statusCode).not.toBe(409);
+    expect(res.cuerpo.mensaje || '').not.toMatch(/marcha/i);
+    // Siguió hasta resolver la receta (sin receta en el mock, cae por eso).
+    expect(res.cuerpo.mensaje).toMatch(/receta/);
   });
 
-  test('el mensaje de 409 dice qué línea está parada y qué hacer', async () => {
-    mockQuery.mockImplementation(async (sql) => {
-      if (/FROM estado_lineas/.test(sql)) return { rows: [{ estado: 'PARADO' }], rowCount: 1 };
-      return { rows: [], rowCount: 0 };
-    });
-
-    const res = await invocar('post', '/api/produccion/reporte', {
-      body: { presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: 500 }
-    });
-
-    expect(res.cuerpo.mensaje).toMatch(/envasado/);
-    expect(res.cuerpo.mensaje).toMatch(/marcha/i);
-  });
-
-  test('una linea EN MARCHA si pasa el control y sigue registering', async () => {
+  test('en MARCHA registra igual que en PARADO', async () => {
     mockQuery.mockImplementation(async (sql) => {
       if (/FROM estado_lineas/.test(sql)) return { rows: [{ estado: 'EN MARCHA' }], rowCount: 1 };
-      if (/FROM recetas|receta_insumos|FROM inventario WHERE lower\(nombre\)/i.test(sql)) {
-        return { rows: [], rowCount: 0 };
-      }
       return { rows: [], rowCount: 0 };
     });
 
@@ -194,14 +173,11 @@ describe('A1. Registrar produccion exige la linea en marcha', () => {
       body: { presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: 500 }
     });
 
-    // No debe ser el 409 de la linea: si la dejo pasar, el fallo posterior (receta)
-    // es otro y asi se distingue.
-    expect(res.cuerpo.mensaje || '').not.toMatch(/línea de envasado está PARADO/i);
-    // Y si llego a leer la receta, la consulta se hizo.
-    expect(mockQuery.mock.calls.length).toBeGreaterThan(2);
+    expect(res.statusCode).not.toBe(409);
+    expect(res.cuerpo.mensaje).toMatch(/receta/);
   });
 
-  test('un area sin fila en estado_lineas no bloquea (faltante, no PARADO)', async () => {
+  test('un area sin fila en estado_lineas tampoco bloquea', async () => {
     mockQuery.mockImplementation(async (sql) => {
       if (/FROM estado_lineas/.test(sql)) return { rows: [], rowCount: 0 };
       return { rows: [], rowCount: 0 };
@@ -211,8 +187,7 @@ describe('A1. Registrar produccion exige la linea en marcha', () => {
       body: { presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: 500 }
     });
 
-    expect(res.cuerpo.mensaje || '').not.toMatch(/línea de envasado está PARADO/i);
-    // Y no se quedo en el control de linea: following con la receta.
+    expect(res.cuerpo.mensaje).toMatch(/receta/);
     expect(sqlDe('FROM recetas').length + sqlDe('lower(nombre)').length).toBeGreaterThan(0);
   });
 

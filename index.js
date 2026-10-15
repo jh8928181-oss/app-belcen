@@ -2401,6 +2401,24 @@ function primeroNoVacio(...valores) {
     return '';
 }
 
+// La IA responde con sus nombres (lugar_partida, punto_llegada, producto);
+// la app habla partida, destino, nombre (igual que componerCamposDesdeTexto
+// y que los dos formularios que rellenan). Se traduce una vez aquí para que
+// todo lo que sigue funcione igual venga de IA o del lector local.
+function normalizarRespuestaIA(ia) {
+    if (!ia || typeof ia !== 'object') return ia;
+    const c = { ...(ia.campos || {}) };
+    if (c.partida == null || c.partida === '') c.partida = c.lugar_partida ?? '';
+    if (c.destino == null || c.destino === '') c.destino = c.punto_llegada ?? '';
+    const items = (Array.isArray(ia.items) ? ia.items : []).map(it => ({
+        ...it,
+        nombre: it.nombre ?? it.producto ?? '',
+        cantidad_guia: it.cantidad_guia ?? it.cantidad ?? 0,
+        cantidad: it.cantidad ?? it.cantidad_guia ?? 0
+    }));
+    return { ...ia, campos: c, items };
+}
+
 // Extrae el texto de un documento (imagen o PDF): texto nativo → OCR local → Gemini.
 async function extraerTextoDocumento(dataBuffer, mimetype) {
     const advertencias = [];
@@ -2536,7 +2554,8 @@ app.post('/api/salidas/leer-pdf', gIA, upload.single('archivo_guia'), async (req
         let itemsIA = null;
         let usadoGemini = false;
         try {
-            const ia = await analizarDocumentoConGemini(dataBuffer, mimetype, textoPdf);
+            const iaCruda = await analizarDocumentoConGemini(dataBuffer, mimetype, textoPdf);
+            const ia = normalizarRespuestaIA(iaCruda);
             if (ia && (Object.values(ia.campos || {}).some(v => String(v).trim()) || (Array.isArray(ia.items) && ia.items.length))) {
                 const c = ia.campos || {};
                 cabecera.numero_guia = primeroNoVacio(c.numero_guia, cabecera.numero_guia);
@@ -2674,7 +2693,7 @@ app.post('/api/documento/leer', gIA, upload.single('archivo_documento'), async (
 
         if (texto && texto.trim().length >= 15) {
             let ia = null;
-            try { ia = await analizarDocumentoConGemini(dataBuffer, mimetype, texto); }
+            try { ia = normalizarRespuestaIA(await analizarDocumentoConGemini(dataBuffer, mimetype, texto)); }
             catch (err) { advertencias.push('La IA falló: ' + err.message); }
 
             const hayCamposIA = ia && ia.campos && Object.values(ia.campos).some(v => String(v).trim());
@@ -2697,7 +2716,7 @@ app.post('/api/documento/leer', gIA, upload.single('archivo_documento'), async (
         if (!Object.keys(campos).length) {
             // Último intento con IA incluso si el texto local fue pobre.
             try {
-                const ia = await analizarDocumentoConGemini(dataBuffer, mimetype, texto);
+                const ia = normalizarRespuestaIA(await analizarDocumentoConGemini(dataBuffer, mimetype, texto));
                 if (ia && ia.campos) {
                     campos = ia.campos;
                     items = (Array.isArray(ia.items) ? ia.items : []).map(it => ({
@@ -6497,7 +6516,7 @@ if (require.main === module) {
 // servidor: son las reglas que definen los totales de orden y de factura.
 module.exports = {
     app, parsearCabeceraSUNAT, detectarItemsTabla, extraerDireccionSUNAT,
-    resolverItemGuia,
+    resolverItemGuia, normalizarRespuestaIA,
     IGV_POR_DEFECTO, normalizarMoneda, redondear2, normalizarItemsOrden,
     camposEntregaDe, normalizarCuentasBancarias
 };

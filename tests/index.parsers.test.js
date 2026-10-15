@@ -2,7 +2,8 @@ const {
   parsearCabeceraSUNAT,
   detectarItemsTabla,
   extraerDireccionSUNAT,
-  resolverItemGuia
+  resolverItemGuia,
+  normalizarRespuestaIA
 } = require('../index');
 
 // Fixture con la estructura real que emite SUNAT. La cantidad va al final de la
@@ -328,5 +329,36 @@ describe('resolverItemGuia', () => {
   test('un parecido no vincula: devuelve null', () => {
     expect(resolverItemGuia('VEGA 500 ml', PTS, INV)).toBeNull();
     expect(resolverItemGuia('', PTS, INV)).toBeNull();
+  });
+});
+
+describe('normalizarRespuestaIA', () => {
+  test('traduce los nombres del prompt a la convención interna', () => {
+    const ia = {
+      campos: { numero_guia: 'T001-1', lugar_partida: 'Lima', punto_llegada: 'Ica', chofer: 'Juan' },
+      items: [{ producto: 'VEGA X 900 ML', cantidad: 120 }]
+    };
+    const r = normalizarRespuestaIA(ia);
+    expect(r.campos.partida).toBe('Lima');
+    expect(r.campos.destino).toBe('Ica');
+    expect(r.items[0].nombre).toBe('VEGA X 900 ML');
+    expect(r.items[0].cantidad_guia).toBe(120);
+  });
+
+  test('no pisa lo que ya viene en convención interna', () => {
+    const ia = {
+      campos: { partida: 'A', lugar_partida: 'B', destino: 'C', punto_llegada: 'D' },
+      items: [{ nombre: 'X', cantidad_guia: 5, producto: 'Y', cantidad: 9 }]
+    };
+    const r = normalizarRespuestaIA(ia);
+    expect(r.campos.partida).toBe('A');
+    expect(r.campos.destino).toBe('C');
+    expect(r.items[0].nombre).toBe('X');
+    expect(r.items[0].cantidad_guia).toBe(5);
+  });
+
+  test('tolera nulo y formas raras sin reventar', () => {
+    expect(normalizarRespuestaIA(null)).toBeNull();
+    expect(normalizarRespuestaIA({})).toEqual({ campos: { partida: '', destino: '' }, items: [] });
   });
 });

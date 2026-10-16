@@ -32,8 +32,8 @@ describe('parsearCabeceraSUNAT', () => {
     const res = parsearCabeceraSUNAT('');
     expect(res).toEqual({
       numero_guia: '', ruc: '', empresa: '', destino: '',
-      punto_partida: '', placa: '', chofer: '', licencia: '',
-      emisor_ruc: '', es_destinatario_externo: false
+      punto_partida: '', placa: '', chofer: '', dni_chofer: '', licencia: '',
+      orden_compra: '', emisor_ruc: '', es_destinatario_externo: false
     });
   });
 

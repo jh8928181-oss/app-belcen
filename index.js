@@ -16,7 +16,7 @@ const { analizarDocumentoConGemini } = require('./services/geminiService');
 const { esClavePt } = require('./services/catalogoPt');
 const { initRedis } = require('./services/rateLimiter');
 const { authMiddleware, crearGuardRoles, ROLES_MODULO, requerirRolAdmin, permisoPorRuta } = require('./middleware/auth');
-const { calcularInsumosProduccion } = require('./services/recipeService');
+const { calcularInsumosProduccion, calcularInsumosDeReceta, obtenerRecetaVigente, eleccionesDesdeTapa } = require('./services/recipeService');
 const { datosParaOrdenPDF, datosFormularioOC } = require('./services/ocPdfDatos');
 const { generarPDFOrdenCompra, nombreArchivoSeguro } = require('./services/pdfOrdenCompra');
 const { normalizar } = require('./utils/helpers');
@@ -2014,6 +2014,39 @@ function usuarioResponsable(req, bodyUsuario) {
 // --- ENVASADO: la producción de envasado se registra por /api/produccion/reporte ---
 
 // --- FUNCIÓN AUXILIAR: EXTRAER CANTIDAD DE UN PDF CERCANA A UNA CLAVE DE PRODUCTO ---
+// Miles y decimales estilo guía SUNAT/OCR: "9,775.000" → 9775,
+// "150.00" → 150, "150,00" → 150. Un punto con exactamente 3 decimales
+// suelto ("9.775") se lee como miles: las cantidades de guía en toneladas
+// traen su unidad (TM/KG) y se resuelven aparte.
+function parseNumeroGuia(s) {
+    let t = String(s || '').trim();
+    if (!/^\d[\d.,]*$/.test(t)) return null;
+    const tieneComa = t.includes(',');
+    const tienePunto = t.includes('.');
+    if (tieneComa && tienePunto) {
+        if (t.lastIndexOf('.') > t.lastIndexOf(',')) t = t.replace(/,/g, '');
+        else t = t.replace(/\./g, '').replace(',', '.');
+    } else if (tieneComa) {
+        t = /,\d{3}$/.test(t) ? t.replace(/,/g, '') : t.replace(',', '.');
+    } else if (/^\d+\.\d{3}$/.test(t)) {
+        t = t.replace(/\./g, '');
+    }
+    const v = Number(t);
+    if (!Number.isFinite(v) || v <= 0 || v >= 100000) return null;
+    return Math.round(v * 100) / 100;
+}
+
+// Orden de compra declarada en la guía ("ORDEN DE COMPRA : 0374-2026",
+// "Orden de Compra : 434-2026", "OC:60-2026"). Sirve para prellenar y
+// validar la OC en el ingreso a almacén.
+function extraerOrdenCompra(textoPdf) {
+    let m = textoPdf.match(/Orden de Compra\s*:?\s*([A-Z0-9][A-Z0-9-]{1,19})/i);
+    if (m) return m[1].trim();
+    m = textoPdf.match(/(?:^|\n)\s*OC\s*:\s*([A-Z0-9][A-Z0-9-]{1,19})/im);
+    if (m) return m[1].trim();
+    return '';
+}
+
 function extraerCantidadPdf(textoPdf, claves) {
     const lineas = textoPdf.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
     const regexU = /(\d{1,6}(?:[.,]\d{1,3})?)\s*(?:UNIDADES?|UNID|UNI|UND|UN|U\.|UA|U|CAJAS?|CJ|PAQUETES?|PACKS?|BULTOS?|BALDES?)\b/i;
@@ -2063,20 +2096,26 @@ function regexDesdeAlias(alias) {
 // toma el último número que queda, que es la columna Cantidad. Si tras borrar
 // el alias no queda ninguna cifra se devuelve null (y el item queda para
 // revisión manual) en vez de inventar un número.
-function extraerCantidadFila(linea, alias) {
+//
+// Si la tabla trae columna PESO después de CANTIDAD ("MLL 150.00 100.00"),
+// se toma el penúltimo: el último es el peso, no lo pedido.
+function extraerCantidadFila(linea, alias, tomaPenultimo) {
     const reAlias = regexDesdeAlias(alias);
     const resto = reAlias ? linea.replace(reAlias, ' ') : linea;
+    const tm = /\b(TM|TON(?:ELADAS?)?|KG|KGM)\b/i.test(resto);
     const numeros = (resto.match(/\d[\d.,]*/g) || [])
-        .map(n => n.replace(/,/g, ''))
-        .filter(n => /^\d+(\.\d+)?$/.test(n))
-        .map(Number)
-        .filter(v => v > 0 && v < 100000);
+        .map(n => tm && /^\d+\.\d{3}$/.test(n) ? Number(n) : parseNumeroGuia(n))
+        .filter(v => v !== null && v > 0 && v < 100000);
     if (numeros.length === 0) return { valor: null, avisos: [] };
     const avisos = [];
-    if (numeros.length > 1) {
+    let valor = numeros[numeros.length - 1];
+    if (tomaPenultimo && numeros.length > 1) {
+        valor = numeros[numeros.length - 2];
+        avisos.push(`La fila "${linea.slice(0, 60)}" trae columna PESO: se tomó ${valor} (cantidad) y no ${numeros[numeros.length - 1]} (peso). Revísala.`);
+    } else if (numeros.length > 1) {
         avisos.push(`La fila "${linea.slice(0, 60)}" tiene varias cifras (${numeros.join(', ')}); se tomó la última como cantidad. Revísala.`);
     }
-    return { valor: numeros[numeros.length - 1], avisos };
+    return { valor, avisos };
 }
 
 // Claques de productos tal como aparecen en la guía de remisión electrónica SUNAT
@@ -2115,6 +2154,8 @@ function detectarItemsTabla(textoPdf) {
     const advertencias = [];
     const contadorKeys = {};
     let noReconocidas = 0;
+    // Si la tabla trae columna PESO tras CANTIDAD, la última cifra es el peso.
+    const tablaConPeso = region.some(l => /cant/i.test(l) && /peso/i.test(l));
 
     for (const linea of region) {
         if (linea.length < 10) continue;
@@ -2146,7 +2187,7 @@ function detectarItemsTabla(textoPdf) {
 
         contadorKeys[prod.product_key] = (contadorKeys[prod.product_key] || 0) + 1;
         const nombre = PRODUCTOS_TERMINADOS_MAP[prod.product_key] || prod.product_key;
-        const { valor: cantidad, avisos } = extraerCantidadFila(linea, alias);
+        const { valor: cantidad, avisos } = extraerCantidadFila(linea, alias, tablaConPeso);
         items.push({ product_key: prod.product_key, nombre, cantidad, cantidad_auto: cantidad !== null });
         if (cantidad === null) {
             advertencias.push(`Se detectó "${nombre}" en el PDF sin una cantidad clara. Revísala en la lista.`);
@@ -2330,23 +2371,73 @@ function extraerDireccionSUNAT(lineas) {
     return { partida, llegada };
 }
 
+// Tablas con la etiqueta sola en su línea ("Punto de Partida" / "Punto de
+// Llegada") y los valores debajo (formato North Graphic y similares). Si
+// ambas etiquetas vienen en la misma línea, los valores vienen mezclados y
+// se parten por el ancla de nuestra planta (la llegada es la nuestra).
+function direccionesTabla(lineas) {
+    const res = { partida: '', llegada: '' };
+    const esAlto = l => /^(Dist|Prov|Dep|N[°º]|Fecha|RUC|N[uú]\.?mero|Conductor|Licencia|DNI|Principal|Secundario|Bienes|Indicador|Datos|Veh|Transport|Motivo|Tipo|Observaciones|Orden|Pedido|Condiciones|Factura|Comprob|Marca|Placa|Razon|Direcci[oó]n|Firma|Recib|V°B|DESPACHADO|Representaci)/i.test(l)
+        || /^\d{1,2}\s+(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SET|SEP|OCT|NOV|DIC)\b/i.test(l)
+        || /^\s*Punto de (Partida|Llegada)\b/i.test(l);
+    const esDist = l => /^(Dist|Prov|Dep)\b/i.test(l);
+    const ancla = /(AV\.?\s*LOS ANDES|CAJAMARQUILLA|CHOSICA|STA\.?\s*ANITA|SANTA ANITA|LOS CIPRESES)/i;
+    for (let i = 0; i < lineas.length; i++) {
+        const m = lineas[i].match(/^\s*Punto de (Partida|Llegada)\b(.*)$/i);
+        if (!m) continue;
+        // Ambas etiquetas en la misma línea: los valores vienen mezclados.
+        if (/Punto de (Partida|Llegada)/i.test(m[2])) {
+            const partes = [];
+            for (let j = i + 1; j < Math.min(i + 7, lineas.length); j++) {
+                const s = lineas[j].trim();
+                if (!s || esAlto(s)) break;
+                partes.push(s);
+            }
+            const blob = partes.join(' ').replace(/\s+/g, ' ').trim();
+            const corte = blob.search(ancla);
+            if (corte > 0) {
+                if (!res.partida) res.partida = blob.slice(0, corte).replace(/[-–\s,.]+$/, '').trim();
+                if (!res.llegada) res.llegada = blob.slice(corte).trim();
+            } else if (blob && !res.partida) {
+                res.partida = blob;
+            }
+            continue;
+        }
+        if (m[2] && m[2].trim()) continue;
+        const clave = /^partida/i.test(m[1]) ? 'partida' : 'llegada';
+        if (res[clave]) continue;
+        const partes = [];
+        for (let j = i + 1; j < Math.min(i + 6, lineas.length); j++) {
+            const s = lineas[j].trim();
+            if (!s) continue;
+            if (esDist(s)) continue;
+            if (esAlto(s)) break;
+            partes.push(s);
+        }
+        if (partes.length) res[clave] = partes.join(' ').replace(/\s+/g, ' ').trim();
+    }
+    return res;
+}
+
 // Cabecera y transporte de la guía de remisión (emisión SUNAT o formato anterior)
 function parsearCabeceraSUNAT(textoPdf) {
     const lineas = textoPdf.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    const res = { numero_guia: '', ruc: '', empresa: '', destino: '', punto_partida: '', placa: '', chofer: '', licencia: '', emisor_ruc: '', es_destinatario_externo: false };
+    const res = { numero_guia: '', ruc: '', empresa: '', destino: '', punto_partida: '', placa: '', chofer: '', dni_chofer: '', licencia: '', orden_compra: '', emisor_ruc: '', es_destinatario_externo: false };
 
     let m = textoPdf.match(/N[°º.]?\s*([A-Z0-9]{2,8})\s*[-–]\s*(\d{4,8})/i);
     if (m) {
         res.numero_guia = (m[1] + '-' + m[2]).toUpperCase();
     } else {
-        m = textoPdf.match(/([T|F|B]\s*0\d{2}\s*[-]\s*\d{1,8})/i);
-        if (m) res.numero_guia = m[1].replace(/\s+/g, '').toUpperCase();
+        // Series como TV01, T001, EG07 o F001, con o sin "N°" delante.
+        m = textoPdf.match(/\b([A-Z]{1,4}\s*0?\d{2,3})\s*[-–]\s*(\d{4,8})/i);
+        if (m) res.numero_guia = (m[1] + '-' + m[2]).replace(/\s+/g, '').toUpperCase();
     }
 
-    // RUC del emisor: el primero del documento (cabecera). Sirve para saber
+    // RUC del emisor: el primero del documento (cabecera). Acepta "RUC",
+    // "RUC N°" y "R.U.C." con o sin dos puntos. Sirve para saber
     // si el destinatario es un cliente real o la propia empresa (traslado
     // interno, donde NO debe autorrellenarse cliente ni RUC).
-    const emis = textoPdf.match(/RUC\s*N[°º]?\s*(\d{11})/i) || textoPdf.match(/RUC:?\s*(\d{11})/i);
+    const emis = textoPdf.match(/(?:R\.?\s*U\.?\s*C\.?|RUC)\s*:?\s*N?[°º.]?\s*(\d{11})/i);
     if (emis) res.emisor_ruc = emis[1];
 
     let rucDestinatario = '';
@@ -2356,14 +2447,29 @@ function parsearCabeceraSUNAT(textoPdf) {
         res.ruc = m[2];
         rucDestinatario = m[2];
     }
+    if (!res.empresa || !res.ruc) {
+        // Destinatario en líneas sueltas ("Destinatario : X" + "RUC : Y" en
+        // las 2 líneas siguientes), formato de varios proveedores.
+        for (let li = 0; li < lineas.length; li++) {
+            const md = lineas[li].match(/destinatario\s*:?\s*(.+)$/i);
+            if (md && md[1] && !/registro|único|contribuyentes|datos del/i.test(md[1]) && !res.empresa) {
+                res.empresa = md[1].replace(/\s*-\s*$/, '').trim();
+            }
+            const mr = lineas[li].match(/(\d{11})/);
+            if (mr && !res.ruc) {
+                const ctx = lineas.slice(Math.max(0, li - 2), li + 1).join(' ');
+                if (/destinatario/i.test(ctx)) {
+                    res.ruc = mr[1];
+                    rucDestinatario = mr[1];
+                }
+            }
+            if (res.empresa && res.ruc) break;
+        }
+    }
     res.es_destinatario_externo = !!(rucDestinatario && res.emisor_ruc && rucDestinatario !== res.emisor_ruc);
 
     if (!res.ruc) {
-        m = textoPdf.match(/RUC\s*N[°º]?\s*(\d{11})/i);
-        if (m) res.ruc = m[1];
-    }
-    if (!res.ruc) {
-        m = textoPdf.match(/RUC:?\s*(\d{11})/i);
+        m = textoPdf.match(/(?:R\.?\s*U\.?\s*C\.?|RUC)\s*:?\s*N?[°º.]?\s*(\d{11})/i);
         if (m) res.ruc = m[1];
     }
     if (!res.empresa) {
@@ -2379,11 +2485,17 @@ function parsearCabeceraSUNAT(textoPdf) {
         if (m) res.empresa = m[1].trim();
     }
 
+    // 1. Tabla con etiquetas solas (North y similares): valores debajo.
+    const tab = direccionesTabla(lineas);
+    if (tab.partida) res.punto_partida = tab.partida;
+    if (tab.llegada) res.destino = tab.llegada;
+    // 2. Escáner general solo si trae direcciones limpias (sin cabecera).
     const dirs = extraerDireccionSUNAT(lineas);
-    res.punto_partida = dirs.partida;
-    res.destino = dirs.llegada;
+    const limpia = s => s && !/R\.?\s*U\.?\s*C\.?|GU[IÍ]A/i.test(s);
+    if (!res.punto_partida && limpia(dirs.partida)) res.punto_partida = dirs.partida;
+    if (!res.destino && limpia(dirs.llegada)) res.destino = dirs.llegada;
     if (!res.punto_partida) {
-        const pp = textoPdf.match(/(?:Punto de\s+|P\.?\s*)Partida:?\s*(?:\d{6}\s*-\s*)?([A-ZÁÉÍÓÚÑÜ].*)/i);
+        const pp = textoPdf.match(/(?:Punto de\s+|Punto\s+|P\.?\s*)Partida\s*:?\s*(?:\d{6}\s*-\s*)?([A-ZÁÉÍÓÚÑÜ].*)/i);
         if (pp) {
             let dir = pp[1].trim();
             // La dirección puede continuar en las líneas siguientes
@@ -2404,11 +2516,11 @@ function parsearCabeceraSUNAT(textoPdf) {
         }
     }
     if (!res.destino) {
-        const ll = textoPdf.match(/(?:Punto de\s+|P\.?\s*)Llegada:?\s*(?:\d{6}\s*-\s*)?([A-ZÁÉÍÓÚÑÜ].*)/i);
+        const ll = textoPdf.match(/(?:Punto de\s+|Punto\s+|P\.?\s*)Llegada\s*:?\s*(?:\d{6}\s*-\s*)?([A-ZÁÉÍÓÚÑÜ].*)/i);
         if (ll) res.destino = ll[1].trim();
     }
     if (!res.destino) {
-        const lleg = textoPdf.match(/(?:Punto de\s+|P\.?\s*)Llegada[:\s]*[\d\s-]+(.*)/i);
+        const lleg = textoPdf.match(/(?:Punto de\s+|Punto\s+|P\.?\s*)Llegada\s*:?\s*[\d\s-]+(.*)/i);
         if (lleg) res.destino = lleg[1].trim();
         else {
             const dir = textoPdf.match(/Direcci[oó]n[:\s]*(.*)/i);
@@ -2421,23 +2533,37 @@ function parsearCabeceraSUNAT(textoPdf) {
     if (!pm) pm = textoPdf.match(/veh[ií]culo[^\w]*:?\s*([A-Z]{2,3}[-–\s]?\d{3,4})/i);
     if (!pm) pm = textoPdf.match(/Principal[:\s]+([A-Z]{2,3}[-–\s]?\d{3,4})/i);
     if (!pm) pm = textoPdf.match(/\b([A-Z]{2,3}[-–]\d{3,4})\b/i);
+    if (!pm) pm = textoPdf.match(/\b([A-Z]\d[A-Z]\d{3})\b/i);
     if (pm) res.placa = pm[1].trim().replace(/\s+/g, '').toUpperCase();
 
-    let cm = textoPdf.match(/Principal[:\s]+([A-ZÁÉÍÓÚÑÜ .]{3,}?)\s*-\s*DOCUMENTO NACIONAL/i);
+    // Conductor en varias líneas ("Conductor : YAPUCHURI\nJUSCAMAITA,\nCARLOS
+    // ALBERTO"): se juntan hasta la siguiente etiqueta.
+    let cm = textoPdf.match(/Conductor\b[:\s]*([A-ZÁÉÍÓÚÑÜ][A-ZÁÉÍÓÚÑÜ .,\n]{1,100}?)(?=\n\s*(?:D[.\s]?N[.\s]?I|DNI|Licencia|Certificado|Tipo|Observaciones|Marca|Placa|RUC|Item\b|C[oó]digo|Bienes|Datos del)\b|\s*$)/i);
+    if (cm) cm = [cm[0], cm[1].replace(/[\n\r]+/g, ' ').replace(/\s+/g, ' ').replace(/[,\s-]+$/, '').trim()];
+    if (!cm) cm = textoPdf.match(/Principal[:\s]+([A-ZÁÉÍÓÚÑÜ .]{3,}?)\s*-\s*DOCUMENTO NACIONAL/i);
     if (!cm) cm = textoPdf.match(/Conductor[:\s]*([A-ZÁÉÍÓÚÑÜ .]{3,}?)(?=\s*\r?\n|$|\s*(?:D[.\s]?N[.\s]?I|DNI|Licencia|LIC|Brevete|Placa|Veh[ií]culo|RUC)[:\s])/i);
     if (!cm) cm = textoPdf.match(/Conductor[:\s]*(\d{8})/i);
     if (cm) res.chofer = cm[1].trim().replace(/\s+/g, ' ');
 
+    const dni = textoPdf.match(/DNI[^:\d]{0,25}:?\s*(\d{8})/i)
+        || textoPdf.match(/DOCUMENTO NACIONAL DE IDENTIDAD N[°º]?\s*(\d{8})/i)
+        || textoPdf.match(/D[.\s]?N[.\s]?I[:\s]*[N°º]?\s*(\d{8})/i);
+    if (dni) res.dni_chofer = dni[1];
+
     const lm = textoPdf.match(/Número de licencia de conducir[:\s]*([A-Z0-9][A-Z0-9-]*[0-9])/i)
         || textoPdf.match(/Número de lincencia de conducir[:\s]*([A-Z0-9][A-Z0-9-]*[0-9])/i)
         || textoPdf.match(/Licencia del conductor[:\s]*([A-Z0-9][A-Z0-9-]*[0-9])/i)
-        || textoPdf.match(/Licencia[:\s]*([A-Z0-9][A-Z0-9-]*[0-9])/i);
-    if (lm) res.licencia = lm[1].trim().toUpperCase();
+        || textoPdf.match(/Licencia(?:\s+Conducir|\s+del\s+conductor)?[:\s]*([A-Z]?\s*\d{6,9})/i);
+    if (lm) res.licencia = lm[1].trim().toUpperCase().replace(/\s+/g, '');
+
+    res.orden_compra = extraerOrdenCompra(textoPdf);
+
+    res.orden_compra = extraerOrdenCompra(textoPdf);
 
     return res;
 }
 
-// OCR de guías escaneadas (worker único de tesseract.js en español)
+ // OCR de guías escaneadas (worker único de tesseract.js en español)
 let workerTesseractPromise = null;
 function obtenerWorkerOCR() {
     if (!workerTesseractPromise) {
@@ -2587,7 +2713,8 @@ function componerCamposDesdeTexto(texto) {
             placa: cabecera.placa,
             partida: cabecera.punto_partida,
             destino: cabecera.destino,
-            licencia: cabecera.licencia
+            licencia: cabecera.licencia,
+            orden_compra: extraerOrdenCompra(texto)
         },
         items: []
     };
@@ -2603,6 +2730,41 @@ function componerCamposDesdeTexto(texto) {
     else if (t.includes('guia') || t.includes('guía') || t.includes('remisi')) res.campos.tipo_documento = 'GUIA DE REMISION';
     else res.campos.tipo_documento = 'OTRO';
 
+    // Ítem suelto de una fila de guía de proveedor ("04 15731 ETIQ. BELINI
+    // 1 LITRO ... MLL 150.00 100.00", "1 16408 9,775.000 UND Caja de
+    // aceite..."). Se quitan los códigos de inicio (n° ítem + código) y la
+    // cantidad se busca junto a su unidad (antes o después); si no hay
+    // unidad, la última cifra. Devuelve null si no hay nada rescatable.
+    const UNID_FILA = 'MLL|MILL|MILLARES|UND|UNI|UNIDADES?|UN|CAJAS?|CJ';
+    function extraerItemFila(fila) {
+        const f = fila.replace(/^\d{1,3}\s+(?:\d{3,}\s+)?/, '');
+        if (!f) return null;
+        let m = f.match(new RegExp('(' + UNID_FILA + ')\\s*(\\d[\\d.,]*)', 'i'));
+        if (m) {
+            const v = parseNumeroGuia(m[2]);
+            // Solo se recorta la cola si es una cifra completa (el peso):
+            // "…C/U: 1X7" debe quedar intacto.
+            if (v !== null) return { nombre: (f.slice(0, m.index) + ' ' + f.slice(m.index + m[0].length)).trim().replace(/\s+/g, ' ').replace(/(?:^|\s)\d[\d.,]*$/, '').trim(), cantidad_guia: v };
+        }
+        // "9,775.000 UND ...": la cifra pega a la unidad. Pero "12 UND CAJA
+        // 600.00" es presentación + total: si después queda otra cifra con
+        // decimales, no es cantidad y se sigue buscando al final.
+        m = f.match(new RegExp('(\\d[\\d.,]*)\\s*(' + UNID_FILA + ')\\b', 'i'));
+        if (m) {
+            const despues = f.slice(m.index + m[0].length);
+            if (!/\d+[.,]\d+/.test(despues)) {
+                const v = parseNumeroGuia(m[1]);
+                if (v !== null) return { nombre: (f.slice(0, m.index) + ' ' + despues).trim().replace(/\s+/g, ' '), cantidad_guia: v };
+            }
+        }
+        m = f.match(/^(.{3,120}?)[\s]+([\d][\d.,]{1,10})$/);
+        if (m) {
+            const v = parseNumeroGuia(m[2]);
+            if (v !== null) return { nombre: m[1].trim().replace(/\s+/g, ' '), cantidad_guia: v };
+        }
+        return null;
+    }
+
     // ítems en bruto de la sección "Bienes por transportar" (insumos, no catálogo de salidas)
     const rechazar = /^(?:BIENES\s+POR\s+TRANSPORTAR|Datos del|N[°º]\.?\s|Fecha|RUC|N[Uu]mero de|P\.?Partida|P\.?Llegada|Conductor|Licencia|D\.?N\.?I|Principal|Secundario|Raz[oó]n|Direcci[oó]n|Unidad de medida|Cantidad|Descripci|C[oó]digo|^Item\b|^TOTAL|^Peso|^T\d{3})/i;
     const filas = texto.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
@@ -2610,20 +2772,18 @@ function componerCamposDesdeTexto(texto) {
     let enBienes = false;
     for (const fila of filas) {
         if (/bienes por transportar/i.test(fila)) { enBienes = true; continue; }
-            const m = fila.match(/^(.{3,120}?)[\s]+([\d][\d.,]{1,10})$/);
-        if (!m) continue;
-        const nombre = m[1].trim().replace(/\s+/g, ' ');
-        if (enBienes && !rechazar.test(nombre) && !/^[A-Z]{2,3}-?\d{3,4}$/i.test(nombre)) {
-            candidatos.push({ nombre, cantidad_guia: Number(m[2].replace(/\./g, '').replace(',', '.')) || 0 });
+        const it = extraerItemFila(fila);
+        if (!it) continue;
+        if (enBienes && !rechazar.test(it.nombre) && !/^[A-Z]{2,3}-?\d{3,4}$/i.test(it.nombre)) {
+            candidatos.push(it);
         }
     }
     if (candidatos.length === 0) {
         for (const fila of filas) {
-        const m = fila.match(/^(.{3,120}?)[\s]+([\d][\d.,]{1,10})$/);
-            if (!m) continue;
-            const nombre = m[1].trim().replace(/\s+/g, ' ');
-            if (/^(?:botella|etiqueta|tapa|ca[ja]s?|preforma|paleta|insumo|aceite|don lalo|belini|corporacion)/i.test(nombre) && !rechazar.test(nombre)) {
-                candidatos.push({ nombre, cantidad_guia: Number(m[2].replace(/\./g, '').replace(',', '.')) || 0 });
+            const it = extraerItemFila(fila);
+            if (!it) continue;
+            if (/^(?:botella|etiqueta|etiq|tapa|balde|ca[ja]s?|preforma|paleta|insumo|aceite|don lalo|belini|corporacion)/i.test(it.nombre) && !rechazar.test(it.nombre)) {
+                candidatos.push(it);
             }
         }
     }
@@ -3414,11 +3574,13 @@ function unirObs(base, nueva) {
     return a + ' | ' + b;
 }
 
-async function aplicarMovimientosProduccion(client, req, { producto_tipo, presentacion, cajas, usuario }) {
+async function aplicarMovimientosProduccion(client, req, { producto_tipo, presentacion, cajas, usuario, tapaInsumoId = null }) {
     // El motor devuelve hojas de inventario ya aplanadas (insumo_id) con
     // merma y stock de seguridad aplicados: no hay segunda búsqueda por
     // texto que pueda fallar o golpear otro artículo con nombre parecido.
-    const insumosADescontar = await calcularInsumosProduccion(producto_tipo, cajas, client);
+    // `tapaInsumoId` es la tapa que el operario eligio (receta seleccionable,
+    // ej. Faisan): sin eleccion se usa la de defecto de la receta.
+    const insumosADescontar = await calcularInsumosProduccion(producto_tipo, cajas, client, tapaInsumoId);
     if (!insumosADescontar || insumosADescontar.length === 0) {
         const e = new Error(`No existe receta vigente para "${presentacion}". Contacte a producción para registrar la receta desde el módulo de Recetas.`);
         e.status = 400;
@@ -3518,6 +3680,8 @@ app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
     try {
         const { fecha_produccion, presentacion, cantidad_cajas, toneladas, observaciones, usuario } = req.body;
         const cajas = Number(cantidad_cajas);
+        // Tapa elegida por el operario en productos con linea seleccionable.
+        const tapa_insumo_id = req.body.tapa_insumo_id ? Number(req.body.tapa_insumo_id) : null;
 
         if (!presentacion || !String(presentacion).trim()) {
             return res.status(400).json({ success: false, mensaje: 'Debe seleccionar la presentación de la producción.' });
@@ -3538,7 +3702,7 @@ app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
         await client.query(`SELECT set_config('app.current_user', $1, true)`, [usuarioResponsable(req, usuario) || 'produccion']);
         // La marcha de envasado es solo muestreo en pantalla: no bloquea el
         // registro (igual que el cierre, que nunca la exigió).
-        const mov = await aplicarMovimientosProduccion(client, req, { producto_tipo, presentacion, cajas, usuario });
+        const mov = await aplicarMovimientosProduccion(client, req, { producto_tipo, presentacion, cajas, usuario, tapaInsumoId: tapa_insumo_id });
             const tmRep = toneladas === undefined || toneladas === null || toneladas === '' ? 0 : Number(toneladas);
             // Mismo producto dos veces en el día: se suma al registro
             // existente en vez de crear otra fila.
@@ -3578,9 +3742,9 @@ app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
             // o renombró entre la producción y el borrado, los insumos volvían
             // (van por snapshot) pero las cajas no.
             const repIns = await client.query(
-                `INSERT INTO reportes_produccion (fecha_produccion, presentacion, cantidad_cajas, unidad_medida, toneladas, observaciones, usuario_registro, desglose_insumos, producto_key)
-                 VALUES ($1, $2, $3, 'CAJAS', $4, $5, $6, $7, $8) RETURNING id`,
-                [fecha_produccion || new Date(), presentacion, cajas, toneladas, observaciones || '', usuario || 'envasado_user', desgloseJson, producto_tipo]
+                `INSERT INTO reportes_produccion (fecha_produccion, presentacion, cantidad_cajas, unidad_medida, toneladas, observaciones, usuario_registro, desglose_insumos, producto_key, tapa_insumo_id)
+                 VALUES ($1, $2, $3, 'CAJAS', $4, $5, $6, $7, $8, $9) RETURNING id`,
+                [fecha_produccion || new Date(), presentacion, cajas, toneladas, observaciones || '', usuario || 'envasado_user', desgloseJson, producto_tipo, tapa_insumo_id]
             );
             const reporteId = repIns.rows[0].id;
             for (const p of mov.pendientes) {
@@ -3625,12 +3789,22 @@ app.post('/api/produccion/iniciar', gProduccion, async (req, res) => {
     const client = await pool.connect();
     try {
         const { fecha_produccion, presentacion, observaciones, usuario } = req.body;
+        const tapa_insumo_id = req.body.tapa_insumo_id ? Number(req.body.tapa_insumo_id) : null;
         if (!presentacion || !String(presentacion).trim()) {
             return res.status(400).json({ success: false, mensaje: 'Debe seleccionar el producto a envasar.' });
         }
         const producto_tipo = await resolverProductoKey(presentacion);
         if (!producto_tipo) {
             return res.status(400).json({ success: false, mensaje: `La presentación "${presentacion}" no tiene receta registrada.` });
+        }
+        // La tapa elegida se valida contra la receta vigente ANTES de abrir la
+        // produccion: un id que no es opcion del producto no puede viajar hasta
+        // el cierre, donde ya no hay forma de preguntarle al operario.
+        if (tapa_insumo_id) {
+            const receta = await obtenerRecetaVigente(producto_tipo, client);
+            if (!receta || !eleccionesDesdeTapa(receta, tapa_insumo_id).size) {
+                return res.status(400).json({ success: false, mensaje: `La tapa elegida no es una opción válida para "${presentacion}".` });
+            }
         }
         await client.query('BEGIN');
         await client.query(`SELECT set_config('app.current_user', $1, true)`, [usuarioResponsable(req, usuario) || 'produccion']);
@@ -3643,9 +3817,9 @@ app.post('/api/produccion/iniciar', gProduccion, async (req, res) => {
             return res.status(409).json({ success: false, mensaje: `Ya hay una producción en curso ("${abierta.rows[0].presentacion}"). Ciérrala primero.` });
         }
         const ins = await client.query(
-            `INSERT INTO reportes_produccion (fecha_produccion, presentacion, cantidad_cajas, unidad_medida, toneladas, observaciones, usuario_registro, producto_key, estado)
-             VALUES ($1, $2, NULL, 'CAJAS', NULL, $3, $4, $5, 'EN_CURSO') RETURNING id`,
-            [fecha_produccion || new Date(), presentacion, observaciones || '', usuario || 'envasado_user', producto_tipo]
+            `INSERT INTO reportes_produccion (fecha_produccion, presentacion, cantidad_cajas, unidad_medida, toneladas, observaciones, usuario_registro, producto_key, estado, tapa_insumo_id)
+             VALUES ($1, $2, NULL, 'CAJAS', NULL, $3, $4, $5, 'EN_CURSO', $6) RETURNING id`,
+            [fecha_produccion || new Date(), presentacion, observaciones || '', usuario || 'envasado_user', producto_tipo, tapa_insumo_id]
         );
         await client.query('COMMIT');
         res.json({ success: true, mensaje: `Producción de "${presentacion}" iniciada.`, reporte_id: ins.rows[0].id });
@@ -3665,6 +3839,10 @@ app.post('/api/produccion/cerrar', gProduccion, async (req, res) => {
     const client = await pool.connect();
     try {
         const { reporte_id, cantidad_cajas, toneladas, usuario } = req.body;
+        // La tapa puede llegar en el cierre (producciones abiertas por la
+        // marcha, donde el formulario no estuvo a la vista): si viene, manda
+        // sobre la que se guardo al iniciar y se persiste en el reporte.
+        const tapaDelCierre = req.body.tapa_insumo_id ? Number(req.body.tapa_insumo_id) : null;
         const cajas = Number(cantidad_cajas);
         const tm = toneladas === undefined || toneladas === null || toneladas === '' ? 0 : Number(toneladas);
         if (!Number.isInteger(cajas) || cajas <= 0 || cajas > 1000000) {
@@ -3692,9 +3870,13 @@ app.post('/api/produccion/cerrar', gProduccion, async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, mensaje: `La presentación "${reporte.presentacion}" no tiene receta registrada.` });
         }
+        const tapaEfectiva = tapaDelCierre || reporte.tapa_insumo_id || null;
         const mov = await aplicarMovimientosProduccion(client, req, {
-            producto_tipo, presentacion: reporte.presentacion, cajas, usuario
+            producto_tipo, presentacion: reporte.presentacion, cajas, usuario, tapaInsumoId: tapaEfectiva
         });
+        if (tapaDelCierre && tapaDelCierre !== reporte.tapa_insumo_id) {
+            await client.query('UPDATE reportes_produccion SET tapa_insumo_id = $1 WHERE id = $2', [tapaDelCierre, reporte_id]);
+        }
         // Mismo producto dos veces en el día: se suma al registro existente.
         const destino = await buscarCierreDelDia(client, producto_tipo, reporte_id);
         if (destino) {
@@ -3796,6 +3978,7 @@ app.get('/api/produccion/informes', async (req, res) => {
             estado: r.estado || null,
             usuario_registro: r.usuario_registro,
             observaciones: r.observaciones,
+            tapa_insumo_id: r.tapa_insumo_id || null,
             desglose: r.desglose_insumos ? safeParseJson(r.desglose_insumos) : null
         }));
 
@@ -3803,7 +3986,13 @@ app.get('/api/produccion/informes', async (req, res) => {
             if (!inf.desglose) {
                 const tipo = await resolverProductoKey(inf.presentacion);
                 if (tipo) {
-                    const insumos = await calcularInsumosProduccion(tipo, parseInt(inf.cantidad_cajas, 10) || 0);
+                    // Sin desglose guardado se recalcula con la MISMA tapa que
+                    // se desconto: el reporte la guarda desde su apertura.
+                    const receta = await obtenerRecetaVigente(tipo);
+                    const elecciones = inf.tapa_insumo_id ? eleccionesDesdeTapa(receta, inf.tapa_insumo_id) : new Map();
+                    const insumos = receta
+                        ? await calcularInsumosDeReceta(receta, parseInt(inf.cantidad_cajas, 10) || 0, pool, elecciones)
+                        : [];
                     inf.desglose = insumos.filter(i => i.obligatorio !== false).map(i => ({
                         nombre: i.nombre,
                         articulo_id: i.insumo_id,
@@ -3818,6 +4007,42 @@ app.get('/api/produccion/informes', async (req, res) => {
         }
 
         res.json(informes);
+    } catch (err) {
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+// --- ENVASADO: tapas que el operario puede elegir para un producto. Sale de
+// la receta vigente con linea seleccionable (ej. Faisan 900 ml: dorado, rojo
+// o verde). El formulario la usa al registrar; el cierre, cuando la produccion
+// se abrio por la marcha sin pasar por el formulario.
+app.get('/api/produccion/opciones-tapa', async (req, res) => {
+    try {
+        const producto = String(req.query.producto || '').trim();
+        if (!producto) {
+            return res.status(400).json({ success: false, mensaje: 'producto requerido' });
+        }
+        const key = await resolverProductoKey(producto);
+        const receta = key ? await obtenerRecetaVigente(key) : null;
+        const linea = receta
+            ? (receta.insumos || []).find(l => l.seleccionable === true && Array.isArray(l.opciones) && l.opciones.length)
+            : null;
+        if (!linea) {
+            return res.json({ success: true, requiere_tapa: false, opciones: [] });
+        }
+        res.json({
+            success: true,
+            requiere_tapa: true,
+            producto_key: key,
+            receta_insumo_id: linea.id,
+            defecto: Number(linea.insumo_id),
+            opciones: linea.opciones.map(o => ({
+                insumo_id: Number(o.insumo_id),
+                nombre: o.nombre,
+                unidad: o.unidad_medida || 'UNIDADES',
+                stock: o.stock === null || o.stock === undefined ? null : Number(o.stock)
+            }))
+        });
     } catch (err) {
         res.status(500).json({ success: false, mensaje: err.message });
     }
@@ -4230,7 +4455,9 @@ app.post('/api/produccion/eliminar', gProduccion, async (req, res) => {
                 });
             }
         } else if (producto_tipo) {
-            insumosADevolver = (await calcularInsumosProduccion(producto_tipo, cantidad_cajas, client))
+            // Reportes sin desglose guardado: se recalcula con la tapa que el
+            // reporte registro, para devolver exactamente lo que se desconto.
+            insumosADevolver = (await calcularInsumosProduccion(producto_tipo, cantidad_cajas, client, reporte.tapa_insumo_id || null))
                 .filter(i => i.obligatorio !== false);
         } else {
             await client.query('ROLLBACK');
@@ -6621,7 +6848,7 @@ if (require.main === module) {
 // servidor: son las reglas que definen los totales de orden y de factura.
 module.exports = {
     app, parsearCabeceraSUNAT, detectarItemsTabla, extraerDireccionSUNAT,
-    resolverItemGuia, normalizarRespuestaIA, fusionarItemsSalidas,
+    resolverItemGuia, normalizarRespuestaIA, parseNumeroGuia, componerCamposDesdeTexto, fusionarItemsSalidas,
     IGV_POR_DEFECTO, normalizarMoneda, redondear2, normalizarItemsOrden,
     camposEntregaDe, normalizarCuentasBancarias
 };

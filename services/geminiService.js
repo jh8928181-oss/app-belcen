@@ -198,6 +198,7 @@ const PROMPT_GEMINI = `Eres un extractor de datos para una empresa de aceites. A
   "chofer": "string o null",
   "dni_chofer": "string o null",
   "placa": "string o null",
+  "orden_compra": "número de orden de compra tal como figura en el documento o null",
   "lugar_partida": "string o null",
   "punto_llegada": "string o null",
   "observaciones": "string o null",

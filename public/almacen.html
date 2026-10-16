@@ -1571,6 +1571,7 @@
                 document.getElementById('almTipoDocumento').value = c.tipo_documento
                     ? wizardAlmMapearTipo(c.tipo_documento) : document.getElementById('almTipoDocumento').value;
                 if (c.numero_guia) document.getElementById('almNumeroGuia').value = c.numero_guia;
+                if (c.orden_compra && !document.getElementById('almNumeroOC').value.trim()) document.getElementById('almNumeroOC').value = c.orden_compra;
                 if (c.proveedor) document.getElementById('almProveedor').value = c.proveedor;
                 if (c.chofer) document.getElementById('almChofer').value = c.chofer;
                 if (c.dni_chofer) document.getElementById('almDniChofer').value = c.dni_chofer;

@@ -513,14 +513,6 @@
                             <small id="almNumeroOCEstado" style="display:block; color:#555; font-size:11px; line-height:1.3;"></small>
                         </div>
                         <div>
-                            <label class="etiqueta-mini">👤 Nombre del Conductor (opcional)</label>
-                            <input type="text" id="almChofer" name="chofer" placeholder="Apellidos y nombres del chofer">
-                        </div>
-                        <div>
-                            <label class="etiqueta-mini">🪪 Documento de Identidad (opcional)</label>
-                            <input type="text" id="almDniChofer" name="dni_chofer" placeholder="N° de DNI / Pasaporte">
-                        </div>
-                        <div>
                             <label class="etiqueta-mini">🚛 Placa del Vehículo (opcional)</label>
                             <input type="text" id="almPlaca" name="placa" placeholder="Ej. ABC-123">
                         </div>
@@ -1447,7 +1439,6 @@
                 { label: 'Tipo', value: document.getElementById('almTipoDocumento').options[document.getElementById('almTipoDocumento').selectedIndex].text },
                 { label: 'Proveedor', value: wizardAlmVal('almProveedor') },
                 { label: 'OC', value: wizardAlmVal('almNumeroOC') },
-                { label: 'Conductor', value: [wizardAlmVal('almChofer'), wizardAlmVal('almDniChofer')].filter(Boolean).join(' · ') },
                 { label: 'Placa', value: wizardAlmVal('almPlaca') },
                 { label: 'Ruta', value: wizardAlmVal('almLugarPartida') }
             ].filter(d => d.value);
@@ -1586,8 +1577,6 @@
                 if (c.numero_guia) document.getElementById('almNumeroGuia').value = c.numero_guia;
                 if (c.orden_compra && !document.getElementById('almNumeroOC').value.trim()) document.getElementById('almNumeroOC').value = c.orden_compra;
                 if (c.proveedor) document.getElementById('almProveedor').value = limpiarEmpresaIA(c.proveedor);
-                if (c.chofer) document.getElementById('almChofer').value = c.chofer;
-                if (c.dni_chofer) document.getElementById('almDniChofer').value = c.dni_chofer;
                 if (c.placa) document.getElementById('almPlaca').value = String(c.placa).replace(/\s+Principal$/i, '');
                 if (c.partida) document.getElementById('almLugarPartida').value = c.partida;
                 // El documento rellenado cambia proveedor y número de guía: una OC
@@ -1648,8 +1637,6 @@
             formData.append('numero_guia', wizardAlmVal('almNumeroGuia'));
             formData.append('proveedor', wizardAlmVal('almProveedor'));
             formData.append('numero_oc', wizardAlmVal('almNumeroOC'));
-            formData.append('chofer', wizardAlmVal('almChofer'));
-            formData.append('dni_chofer', wizardAlmVal('almDniChofer'));
             formData.append('placa', wizardAlmVal('almPlaca'));
             formData.append('lugar_partida', wizardAlmVal('almLugarPartida'));
             formData.append('observaciones', wizardAlmVal('almObservaciones'));

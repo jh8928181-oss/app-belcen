@@ -248,9 +248,6 @@
             <div class="estado-detalle">
                 <span id="anteriorEnvasado" class="mini-hit">⬅️ Anterior: —</span>
                 <span id="siguienteEnvasado" class="mini-hit">⏭️ Siguiente: —</span>
-                <div class="siguiente-control">
-                    <div id="planEnvasado" class="plan-caja"></div>
-                </div>
             </div>
         </div>
 
@@ -392,7 +389,6 @@
 
     <script src="/motion.js" defer></script>
     <script src="/auth-client.js"></script>
-    <script src="/plan-linea.js"></script>
     <script>
         const rolUsuario = localStorage.getItem('rol_actual');
         if (!rolUsuario || (rolUsuario !== 'admin' && rolUsuario !== 'envasado' && rolUsuario !== 'supervisor' && rolUsuario !== 'produccion')) {
@@ -491,9 +487,6 @@
                 selMarcha.innerHTML = '<option value="">-- ¿Qué producción va a iniciar? --</option>' + opciones;
                 if (actual && PRESENTACIONES_ENVASADO.some(p => p.v === actual)) selMarcha.value = actual;
             }
-            // El editor de secuencia se monta despues de poblar las
-            // presentaciones: sus opciones salen de la misma lista de recetas.
-            montarPlanEnvasado();
         }
 
         // Cadena de producción: lo último cerrado es "En producción" y lo
@@ -519,12 +512,7 @@
                 el.innerHTML = `⏭️ En producción: <b>${escEnvasado(ult.presentacion)}</b> <span class="plan-vacio-inline">registrado</span>`;
                 return;
             }
-            if (planEnvasado && planEnvasado.cola.length) {
-                el.innerHTML = `⏭️ Siguiente en secuencia: <b>${escEnvasado(planEnvasado.cola[0].nombre_producto || planEnvasado.cola[0].producto_key)}</b>`
-                    + (planEnvasado.cola.length > 1 ? ` · luego: <b>${escEnvasado(planEnvasado.cola.length - 1)}</b> más` : '');
-            } else {
-                el.innerHTML = '⏭️ En producción: <span class="plan-vacio-inline">sin secuencia</span>';
-            }
+            el.innerHTML = '⏭️ En producción: <span class="plan-vacio-inline">sin registros</span>';
         }
 
         function pintarAnteriorEnvasado() {
@@ -539,23 +527,9 @@
                 : '⬅️ Anterior: —';
         }
 
-        let planEnvasado = null;
-
-        // La secuencia la arma el operario de la linea, no el sistema. Antes esto
-        // era un unico select que guardaba un solo "siguiente" en texto libre:
-        // no cabia una secuencia y el dashboard no podia mostrar el producto que
-        // estaba en curso.
-        function montarPlanEnvasado() {
-            const contenedor = document.getElementById('planEnvasado');
-            if (!contenedor || typeof PlanLinea === 'undefined') return;
-            planEnvasado = new PlanLinea({
-                area: 'envasado',
-                opciones: PRESENTACIONES_ENVASADO,
-                contenedor: contenedor,
-                alCambiar: pintarSiguienteEnvasado
-            });
-            planEnvasado.cargar();
-        }
+        // Sin editor de secuencia: la cadena la mandan los reportes (el
+        // último cerrado es "En producción") y el modal obligatorio que pide
+        // qué sigue.
 
         function cerrarSesion() {
             if (confirm('¿Estás seguro de que deseas cerrar sesión?')) {

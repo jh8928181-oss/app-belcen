@@ -17,26 +17,25 @@ const path = require('path');
 const raiz = path.join(__dirname, '..', 'public');
 const leer = (archivo) => fs.readFileSync(path.join(raiz, archivo), 'utf8');
 
-describe('Plan de produccion: pantallas de acuerdo', () => {
-  test('el editor compartido existe y se carga solo donde corresponde', () => {
-    const planJs = path.join(raiz, 'plan-linea.js');
-    const planCss = path.join(raiz, 'plan-linea.css');
-    expect(fs.existsSync(planJs)).toBe(true);
-    expect(fs.existsSync(planCss)).toBe(true);
+describe('Plan de produccion: sin editor de secuencia', () => {
+  test('el editor se elimino: ni el JS ni su montaje existen', () => {
+    expect(fs.existsSync(path.join(raiz, 'plan-linea.js'))).toBe(false);
 
     const envasado = leer('envasado.html');
-    expect(envasado).toContain('/plan-linea.js');
-    expect(envasado).toContain('/plan-linea.css');
+    expect(envasado).not.toContain('/plan-linea.js');
+    expect(envasado).not.toContain('montarPlanEnvasado');
+    expect(envasado).not.toContain('new PlanLinea');
+    expect(envasado).not.toContain('id="planEnvasado"');
+    expect(envasado).not.toContain('Guardar secuencia');
 
-    // Soplado no monta el editor: no tiene recetas, asi que no hay secuencia.
+    // Soplado tampoco lo monta: no tiene recetas, asi que no hay secuencia.
     const soplado = leer('soplado.html');
     expect(soplado).not.toContain('/plan-linea.js');
   });
 
-  test('el editor recibe el area por parametro y se expone como PlanLinea', () => {
-    const planJs = fs.readFileSync(path.join(raiz, 'plan-linea.js'), 'utf8');
-    expect(planJs).toMatch(/this\.area\s*=\s*config\.area/);
-    expect(planJs).toContain('global.PlanLinea = PlanLinea');
+  test('los estilos del plan siguen para el tablero que si los usa', () => {
+    expect(fs.existsSync(path.join(raiz, 'plan-linea.css'))).toBe(true);
+    expect(leer('dashboard.html')).toContain('/plan-linea.css');
   });
 });
 
@@ -108,35 +107,26 @@ describe('Dashboard: estado de produccion de solo lectura', () => {
   });
 });
 
-describe('Envasado: el operario arma la secuencia', () => {
+describe('Envasado: la cadena la mandan los reportes y el modal', () => {
   const envasado = leer('envasado.html');
 
-  test('el contenedor del editor existe', () => {
-    expect(envasado).toContain('id="planEnvasado"');
-    expect(envasado).toContain('montarPlanEnvasado');
+  test('no queda editor ni rastro de secuencia editable', () => {
+    expect(envasado).not.toContain('id="planEnvasado"');
+    expect(envasado).not.toContain('montarPlanEnvasado');
+    expect(envasado).not.toContain('Guardar secuencia');
+    expect(envasado).not.toContain('Agregar producto');
   });
 
-  test('el editor se monta despues de poblar las presentaciones', () => {
-    // Si se monta antes, sus opciones salen vacias porque las presentaciones
-    // vienen de las recetas y se cargan de forma asincrona.
-    const poblar = envasado.indexOf('await agregarPresentacionesDeRecetas()');
-    const montar = envasado.indexOf('montarPlanEnvasado();');
-    expect(poblar).toBeGreaterThan(-1);
-    expect(montar).toBeGreaterThan(poblar);
-  });
-
-  test('ya no queda el select unico de "siguiente"', () => {
-    expect(envasado).not.toContain('siguienteSelect');
-    expect(envasado).not.toContain('senalarSiguiente');
-    // proximo_producto solo viaja como dato al marcar marcha con producto
-    // (qué producción se inició): la secuencia la sigue armando el operario
-    // en planEnvasado, no hay selector único que la reemplace.
+  test('marcha con producto y modal obligatorio siguen presentes', () => {
+    expect(envasado).toContain('id="marchaProducto"');
+    expect(envasado).toContain('id="modalSiguiente"');
+    expect(envasado).toContain('pedirSiguienteObligatorio');
     expect(envasado).toContain('proximo_producto: prod');
-    expect(envasado).toContain('id="planEnvasado"');
   });
 
-  test('el resumen distingue el producto en curso de la cola', () => {
-    expect(envasado).toContain('En producción');
-    expect(envasado).toContain('planEnvasado.cola[0]');
+  test('anterior y en-produccion son muestreo de reportes cerrados', () => {
+    expect(envasado).toContain('id="anteriorEnvasado"');
+    expect(envasado).toContain('id="siguienteEnvasado"');
+    expect(envasado).toContain('cerradasConCantidad');
   });
 });

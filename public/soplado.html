@@ -425,6 +425,37 @@
                 const sel = document.getElementById('molde_linea_' + suf);
                 sel.innerHTML = '<option value="">-- Seleccionar molde --</option>'
                     + MOLDES_SOPLADO.map(m => `<option value="${m}">${m}</option>`).join('');
+                sel.addEventListener('change', () => filtrarBotellasPorMolde(suf));
+            }
+        }
+
+        // El molde define el tamaño de la botella que sale de la línea
+        // ("Molde de 800 ml" / "soplado_donlalo_800ml" → "800ml"): al elegir
+        // molde solo se dejan a la vista las botellas de ese tamaño.
+        function tamanoClaveSoplado(txt) {
+            const m = String(txt || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                .match(/(\d+(?:[.,]\d+)?)\s*(ml|lt|l)\b/);
+            if (!m) return '';
+            return String(parseFloat(m[1].replace(',', '.'))) + (m[2] === 'ml' ? 'ml' : 'lt');
+        }
+
+        function filtrarBotellasPorMolde(suf) {
+            const selMolde = document.getElementById('molde_linea_' + suf);
+            const selBotella = document.getElementById('botella_tipo_' + suf);
+            if (!selMolde || !selBotella) return;
+            const tam = tamanoClaveSoplado(selMolde.value);
+            let visibles = 0;
+            Array.from(selBotella.querySelectorAll('option')).forEach(opt => {
+                if (!opt.value) { opt.hidden = false; return; }
+                const ok = !tam || tamanoClaveSoplado(opt.value) === tam;
+                opt.hidden = !ok;
+                if (ok) visibles++;
+            });
+            if (selBotella.value && tam && tamanoClaveSoplado(selBotella.value) !== tam) {
+                selBotella.value = '';
+            }
+            if (tam && visibles === 0) {
+                Array.from(selBotella.querySelectorAll('option')).forEach(opt => { opt.hidden = false; });
             }
         }
 
@@ -459,6 +490,7 @@
             document.getElementById('moldeActualLinea_' + suf).textContent = actual
                 ? 'Molde actual en línea: ' + actual
                 : 'Esta línea aún no tiene molde registrado.';
+            filtrarBotellasPorMolde(suf);
         }
 
         const enviandoSoplado = {};

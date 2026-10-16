@@ -224,6 +224,26 @@ describe('POST /api/soplado/registrar', () => {
     expect(movs).toHaveLength(0);
   });
 
+  test('el molde define el tamaño: molde de 800 ml no sople botella de 1 Lt', async () => {
+    const res = await invocar('post', '/api/soplado/registrar', {
+      body: { ...cuerpoBase(), molde: 'Molde de 800 ml' }
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.cuerpo.mensaje).toMatch(/800ml/);
+    expect(res.cuerpo.mensaje).toMatch(/1lt/);
+    const movs = mockQuery.mock.calls.filter(c => /UPDATE inventario SET stock|INSERT INTO reportes_soplado/.test(String(c[0])));
+    expect(movs).toHaveLength(0);
+  });
+
+  test('un molde viejo sin tamaño legible no bloquea', async () => {
+    const res = await invocar('post', '/api/soplado/registrar', {
+      body: { ...cuerpoBase(), molde: 'Molde heredado' }
+    });
+
+    expect(res.statusCode).toBe(200);
+  });
+
   test('sin la migración se guarda como antes (sin línea ni molde)', async () => {
     mundo.columnas = [];
     const res = await invocar('post', '/api/soplado/registrar', { body: cuerpoBase() });

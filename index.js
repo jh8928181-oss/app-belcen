@@ -1475,11 +1475,13 @@ app.get('/api/inventario', async (req, res) => {
 // NO se descuenta al soplar (salen en blanco): se descuenta al etiquetar.
 // El artículo EN BLANCO es genérico por tamaño ("Botella 1 Lt (blanco)"):
 // la marca la pone la etiqueta, y así una botella soplada sirve para la
-// línea que tenga ese envase.
+// línea que tenga ese envase. El tamaño sale del molde puesto en la línea:
+// molde de 800 ml → botella de 800 ml (se valida al registrar).
 function mapaBotellaSoplado(botella_tipo) {
     let etiquetaNombre = null;
     let botellaNombre = '';
     let blancoNombre = '';
+    let tamano = '';
 
     switch (botella_tipo) {
             // LÍNEA BELINI
@@ -1487,26 +1489,31 @@ function mapaBotellaSoplado(botella_tipo) {
                 botellaNombre = 'Botella Belini x 200 ml';
                 etiquetaNombre = 'Etiqueta couche 90 gr x 200 ml B-1';
                 blancoNombre = 'Botella 200 ml (blanco)';
+                tamano = '200ml';
                 break;
             case 'soplado_belini_500ml':
                 botellaNombre = 'Botella Belini x 500 ml';
                 etiquetaNombre = 'Etiqueta couche 90 gr x 500 ml Belini';
                 blancoNombre = 'Botella 500 ml (blanco)';
+                tamano = '500ml';
                 break;
             case 'soplado_belini_900ml':
                 botellaNombre = 'Botella Belini x 900 ml';
                 etiquetaNombre = 'Etiqueta couche 90 gr x 900 ml Belini';
                 blancoNombre = 'Botella 900 ml (blanco)';
+                tamano = '900ml';
                 break;
             case 'soplado_belini_1lt':
                 botellaNombre = 'Botella Belini x 1 Lt';
                 etiquetaNombre = 'Etiqueta couche 90 gr x 1 lt Belini';
                 blancoNombre = 'Botella 1 Lt (blanco)';
+                tamano = '1lt';
                 break;
             case 'soplado_belini_3lt':
                 botellaNombre = 'Botella Belini x 3 lt';
                 etiquetaNombre = 'Etiqueta polipropileno blanco x 3 lt Belini';
                 blancoNombre = 'Botella 3 Lt (blanco)';
+                tamano = '3lt';
                 break;
 
             // LÍNEA B-1
@@ -1514,26 +1521,31 @@ function mapaBotellaSoplado(botella_tipo) {
                 botellaNombre = 'Botella de 200 ml - B-1';
                 etiquetaNombre = 'Etiqueta couche 90 gr x 200 ml B-1';
                 blancoNombre = 'Botella 200 ml (blanco)';
+                tamano = '200ml';
                 break;
             case 'soplado_b1_500ml':
                 botellaNombre = 'Botella de 500 ml - B-1';
                 etiquetaNombre = 'Etiqueta couche 90 gr x 500 ml B-1';
                 blancoNombre = 'Botella 500 ml (blanco)';
+                tamano = '500ml';
                 break;
             case 'soplado_b1_900ml':
                 botellaNombre = 'Botella de 900 ml - B-1';
                 etiquetaNombre = 'Etiqueta couche 90 gr x 900 ml B-1';
                 blancoNombre = 'Botella 900 ml (blanco)';
+                tamano = '900ml';
                 break;
             case 'soplado_b1_1lt':
                 botellaNombre = 'Botella de 1 Lt - B-1';
                 etiquetaNombre = 'Etiqueta couche 90 gr x 1 lt B-1';
                 blancoNombre = 'Botella 1 Lt (blanco)';
+                tamano = '1lt';
                 break;
             case 'soplado_b1_2lt':
                 botellaNombre = 'Botella de 2 Lt - B-1';
                 etiquetaNombre = 'Etiqueta couche 90 gr x 2 lt B-1';
                 blancoNombre = 'Botella 2 Lt (blanco)';
+                tamano = '2lt';
                 break;
 
             // OTRAS MARCAS
@@ -1541,16 +1553,28 @@ function mapaBotellaSoplado(botella_tipo) {
                 botellaNombre = 'Botella de 800ml - Don Lalo';
                 etiquetaNombre = 'Etiqueta couche 90gr x 800 ml Don Lalo';
                 blancoNombre = 'Botella 800 ml (blanco)';
+                tamano = '800ml';
                 break;
             case 'soplado_vega_900ml':
                 botellaNombre = 'Botella VEGA x 900 ml';
                 etiquetaNombre = null;
                 blancoNombre = 'Botella 900 ml (blanco)';
+                tamano = '900ml';
                 break;
             default:
                 throw new Error('Tipo de botella desconocido.');
         }
-    return { botellaNombre, etiquetaNombre, blancoNombre };
+    return { botellaNombre, etiquetaNombre, blancoNombre, tamano };
+}
+
+// Tamaño canónico de un molde o tipo de botella: "Molde de 800 ml" o
+// "soplado_donlalo_800ml" → "800ml". Vacío si el texto no trae tamaño
+// (molde viejo escrito a mano).
+function tamanoClaveBotella(txt) {
+    const m = String(txt || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .match(/(\d+(?:[.,]\d+)?)\s*(ml|lt|l)\b/);
+    if (!m) return '';
+    return String(parseFloat(m[1].replace(',', '.'))) + (m[2] === 'ml' ? 'ml' : 'lt');
 }
 
 app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
@@ -1585,7 +1609,19 @@ app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
         // ESA línea esté en marcha (sin fila registrada se permite, como antes).
         await exigirLineaEnMarcha(client, 'soplado_' + lineaVal.toLowerCase());
 
-        const { botellaNombre, blancoNombre } = mapaBotellaSoplado(botella_tipo);
+        const { botellaNombre, blancoNombre, tamano } = mapaBotellaSoplado(botella_tipo);
+
+        // El molde puesto en la línea define el tamaño de la botella: molde
+        // de 800 ml → botella de 800 ml. Un molde viejo sin tamaño legible
+        // no bloquea.
+        const tamMolde = tamanoClaveBotella(moldeVal);
+        if (tamMolde && tamano && tamMolde !== tamano) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+                success: false,
+                mensaje: `El molde "${moldeVal}" es de ${tamMolde} y la botella "${botellaNombre}" es de ${tamano}. Seleccione el molde que corresponde a esa botella.`
+            });
+        }
 
         // 1. Descontar la preforma elegida manualmente por el operador (stock en MILL)
         const preRes = await client.query('SELECT stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [preforma_nombre]);

@@ -180,12 +180,24 @@ describe('POST /api/soplado/registrar', () => {
     expect(res.statusCode).toBe(200);
     const insBlanco = mockQuery.mock.calls.find(c => /INSERT INTO inventario \(nombre, categoria, stock/.test(String(c[0])));
     expect(insBlanco).toBeDefined();
-    expect(insBlanco[1][0]).toMatch(/\(blanco\)/);
+    // El blanco es genérico por tamaño: la marca la pone la etiqueta.
+    expect(insBlanco[1][0]).toBe('Botella 1 Lt (blanco)');
     expect(insBlanco[1][1]).toBe('BOTELLAS EN BLANCO');
     const movsEtiqueta = mockQuery.mock.calls.filter(c =>
       /UPDATE inventario SET stock = stock -/.test(String(c[0])) &&
       String(c[1][1] || '').toLowerCase().includes('etiqueta'));
     expect(movsEtiqueta).toHaveLength(0);
+  });
+
+  test('el blanco de otra marca del mismo tamaño comparte artículo', async () => {
+    // B-1 1 Lt y Belini 1 Lt soplan al mismo blanco genérico.
+    const res = await invocar('post', '/api/soplado/registrar', {
+      body: { ...cuerpoBase(), botella_tipo: 'soplado_b1_1lt' }
+    });
+
+    expect(res.statusCode).toBe(200);
+    const insBlanco = mockQuery.mock.calls.find(c => /INSERT INTO inventario \(nombre, categoria, stock/.test(String(c[0])));
+    expect(insBlanco[1][0]).toBe('Botella 1 Lt (blanco)');
   });
 
   test('cada línea exige su propia marcha: manual parada no frena a la automática', async () => {

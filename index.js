@@ -1473,68 +1473,84 @@ app.get('/api/inventario', async (req, res) => {
 // --- SOPLADO (CON PREFORMA SELECCIONADA Y ETIQUETA AUTOMÁTICA) ---
 // Cada tipo de botella resuelve su nombre final y su etiqueta. La etiqueta
 // NO se descuenta al soplar (salen en blanco): se descuenta al etiquetar.
+// El artículo EN BLANCO es genérico por tamaño ("Botella 1 Lt (blanco)"):
+// la marca la pone la etiqueta, y así una botella soplada sirve para la
+// línea que tenga ese envase.
 function mapaBotellaSoplado(botella_tipo) {
     let etiquetaNombre = null;
     let botellaNombre = '';
+    let blancoNombre = '';
 
     switch (botella_tipo) {
             // LÍNEA BELINI
             case 'soplado_belini_200ml':
                 botellaNombre = 'Botella Belini x 200 ml';
                 etiquetaNombre = 'Etiqueta couche 90 gr x 200 ml B-1';
+                blancoNombre = 'Botella 200 ml (blanco)';
                 break;
             case 'soplado_belini_500ml':
                 botellaNombre = 'Botella Belini x 500 ml';
                 etiquetaNombre = 'Etiqueta couche 90 gr x 500 ml Belini';
+                blancoNombre = 'Botella 500 ml (blanco)';
                 break;
             case 'soplado_belini_900ml':
                 botellaNombre = 'Botella Belini x 900 ml';
                 etiquetaNombre = 'Etiqueta couche 90 gr x 900 ml Belini';
+                blancoNombre = 'Botella 900 ml (blanco)';
                 break;
             case 'soplado_belini_1lt':
                 botellaNombre = 'Botella Belini x 1 Lt';
                 etiquetaNombre = 'Etiqueta couche 90 gr x 1 lt Belini';
+                blancoNombre = 'Botella 1 Lt (blanco)';
                 break;
             case 'soplado_belini_3lt':
                 botellaNombre = 'Botella Belini x 3 lt';
                 etiquetaNombre = 'Etiqueta polipropileno blanco x 3 lt Belini';
+                blancoNombre = 'Botella 3 Lt (blanco)';
                 break;
 
             // LÍNEA B-1
             case 'soplado_b1_200ml':
                 botellaNombre = 'Botella de 200 ml - B-1';
                 etiquetaNombre = 'Etiqueta couche 90 gr x 200 ml B-1';
+                blancoNombre = 'Botella 200 ml (blanco)';
                 break;
             case 'soplado_b1_500ml':
                 botellaNombre = 'Botella de 500 ml - B-1';
                 etiquetaNombre = 'Etiqueta couche 90 gr x 500 ml B-1';
+                blancoNombre = 'Botella 500 ml (blanco)';
                 break;
             case 'soplado_b1_900ml':
                 botellaNombre = 'Botella de 900 ml - B-1';
                 etiquetaNombre = 'Etiqueta couche 90 gr x 900 ml B-1';
+                blancoNombre = 'Botella 900 ml (blanco)';
                 break;
             case 'soplado_b1_1lt':
                 botellaNombre = 'Botella de 1 Lt - B-1';
                 etiquetaNombre = 'Etiqueta couche 90 gr x 1 lt B-1';
+                blancoNombre = 'Botella 1 Lt (blanco)';
                 break;
             case 'soplado_b1_2lt':
                 botellaNombre = 'Botella de 2 Lt - B-1';
                 etiquetaNombre = 'Etiqueta couche 90 gr x 2 lt B-1';
+                blancoNombre = 'Botella 2 Lt (blanco)';
                 break;
 
             // OTRAS MARCAS
             case 'soplado_donlalo_800ml':
                 botellaNombre = 'Botella de 800ml - Don Lalo';
                 etiquetaNombre = 'Etiqueta couche 90gr x 800 ml Don Lalo';
+                blancoNombre = 'Botella 800 ml (blanco)';
                 break;
             case 'soplado_vega_900ml':
                 botellaNombre = 'Botella VEGA x 900 ml';
                 etiquetaNombre = null;
+                blancoNombre = 'Botella 900 ml (blanco)';
                 break;
             default:
                 throw new Error('Tipo de botella desconocido.');
         }
-    return { botellaNombre, etiquetaNombre };
+    return { botellaNombre, etiquetaNombre, blancoNombre };
 }
 
 app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
@@ -1569,7 +1585,7 @@ app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
         // ESA línea esté en marcha (sin fila registrada se permite, como antes).
         await exigirLineaEnMarcha(client, 'soplado_' + lineaVal.toLowerCase());
 
-        const { botellaNombre } = mapaBotellaSoplado(botella_tipo);
+        const { botellaNombre, blancoNombre } = mapaBotellaSoplado(botella_tipo);
 
         // 1. Descontar la preforma elegida manualmente por el operador (stock en MILL)
         const preRes = await client.query('SELECT stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [preforma_nombre]);
@@ -1598,7 +1614,6 @@ app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
 
         // 3. Sumar las botellas EN BLANCO a su artículo. Se crea solo si no
         // existe: es el pequeño inventario de soplado.
-        const blancoNombre = botellaNombre + ' (blanco)';
         let blRow = await client.query(
             'SELECT id, stock FROM inventario WHERE LOWER(BTRIM(nombre)) = LOWER(BTRIM($1))',
             [blancoNombre]
@@ -1690,9 +1705,8 @@ app.post('/api/soplado/etiquetar', gSoplado, async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, mensaje: 'Tipo de botella desconocido.' });
         }
-        const { botellaNombre, etiquetaNombre } = mapa;
+        const { botellaNombre, etiquetaNombre, blancoNombre } = mapa;
 
-        const blancoNombre = botellaNombre + ' (blanco)';
         const blRow = await client.query(
             'SELECT id, stock FROM inventario WHERE LOWER(BTRIM(nombre)) = LOWER(BTRIM($1)) FOR UPDATE',
             [blancoNombre]

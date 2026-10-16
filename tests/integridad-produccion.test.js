@@ -213,6 +213,87 @@ describe('A1. La marcha de envasado es solo muestreo: no bloquea el registro', (
 
 // ---------------------------------------------------------------------------
 
+/**
+ * E1. Al reportar directo un producto que ya estaba EN_CURSO (caso "Continuar
+ *     con este": se abre la produccion y luego se reporta directo), la fila
+ *     EN_CURSO quedaba huérfana y el indicador de "en produccion" seguia
+ *     apuntando al producto anterior. Ahora el reporte la borra por su clave.
+ */
+describe('E1. El reporte directo limpia la EN_CURSO del mismo producto', () => {
+
+  /**
+   * Camino feliz de /api/produccion/reporte: receta vigente, insumos, stock y
+   * COMMIT. El producto "Aceite de Soya Belini 1 Lt" resuelve a belini_1lt por
+   * el catalogo fijo de detectarProductoTipo, asi que la receta se busca por
+   * producto_key y su id debe existir para obtenerRecetaPorId.
+   */
+  function escenarioReporte() {
+    mockQuery.mockImplementation(async (sql) => {
+      const t = String(sql);
+      if (/FROM estado_lineas/.test(t)) return { rows: [{ estado: 'EN MARCHA' }], rowCount: 1 };
+      if (/FROM recetas\s*WHERE producto_key = \$1 AND activa/.test(t)) {
+        return { rows: [{ id: 11, producto_key: 'belini_1lt', activa: true, nombre_producto: 'Aceite de Soya Belini 1 Lt' }], rowCount: 1 };
+      }
+      if (/FROM recetas WHERE id = \$1/.test(t)) {
+        return { rows: [{ id: 11, producto_key: 'belini_1lt', nombre_producto: 'Aceite de Soya Belini 1 Lt' }], rowCount: 1 };
+      }
+      // Una linea con insumo real: el motor de expansion la convierte en hoja.
+      if (/FROM receta_insumos/.test(t)) {
+        return {
+          rows: [{
+            id: 77, receta_id: 11, orden: 1, insumo_id: 3, cantidad_por_caja: 1,
+            unidad_medida: 'UNIDADES', notas: null, seleccionable: false,
+            componente_receta_id: null, nombre_inventario: 'Preforma 1 Lt',
+            unidad_inventario: 'UNIDADES', categoria_inventario: 'INSUMOS', stock_actual: 900
+          }],
+          rowCount: 1
+        };
+      }
+      if (/FROM inventario WHERE id = ANY/.test(t)) {
+        return { rows: [{ id: 3, nombre: 'Preforma 1 Lt', stock_actual: 900, stock: 900, nombre_inventario: 'Preforma 1 Lt' }], rowCount: 1 };
+      }
+      if (/DELETE FROM reportes_produccion WHERE estado = 'EN_CURSO'/.test(t)) return { rows: [], rowCount: 1 };
+      if (/INSERT INTO reportes_produccion/.test(t)) return { rows: [{ id: 42 }], rowCount: 1 };
+      if (/FROM producto_terminado WHERE producto_key/.test(t)) return { rows: [{ id: 1, stock_cajas: 700 }], rowCount: 1 };
+      if (/INSERT INTO producto_terminado/.test(t)) return { rows: [], rowCount: 1 };
+      if (/UPDATE inventario SET stock = stock - \$1 WHERE id = \$2 RETURNING stock/.test(t)) {
+        return { rows: [{ stock: 400 }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+  }
+
+  test('borra la EN_CURSO del mismo producto_key que se reporta', async () => {
+    escenarioReporte();
+    const res = await invocar('post', '/api/produccion/reporte', {
+      rol: 'produccion',
+      body: { presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: 500 }
+    });
+
+    expect(res.cuerpo.success).toBe(true);
+    const borra = sqlDe("DELETE FROM reportes_produccion WHERE estado = 'EN_CURSO'");
+    expect(borra).toHaveLength(1);
+    // Va contra la clave resuelta de la receta, no contra el nombre del formulario.
+    expect(borra[0].params[0]).toBe('belini_1lt');
+  });
+
+  test('el DELETE corre dentro de la transaccion, antes del COMMIT', async () => {
+    escenarioReporte();
+    await invocar('post', '/api/produccion/reporte', {
+      rol: 'produccion',
+      body: { presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: 500 }
+    });
+
+    const orden = registro().map(c => c.sql);
+    const iBorra = orden.findIndex(s => /DELETE FROM reportes_produccion WHERE estado = 'EN_CURSO'/.test(s));
+    const iCommit = orden.findIndex(s => /^COMMIT$/i.test(String(s).trim()));
+    expect(iBorra).toBeGreaterThanOrEqual(0);
+    expect(iCommit).toBeGreaterThan(iBorra);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
 describe('M2. La cantidad de cajas tiene que ser un entero', () => {
 
   test('un decimal devuelve 400 y no intenta escribir', async () => {

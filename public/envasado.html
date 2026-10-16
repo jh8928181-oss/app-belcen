@@ -847,18 +847,37 @@
 
             try {
                 // Si hay una producción en curso, registrar directo crearía un
-                // segundo registro de lo mismo: se avisa para finalizarla antes.
+                // segundo registro de lo mismo. Si además es del MISMO producto
+                // (caso "Continuar con este"), se cierra con esta cantidad en
+                // vez de duplicar o solo avisar.
                 const abierta = Array.isArray(reportesGlobal)
                     ? reportesGlobal.find(r => r.estado === 'EN_CURSO')
                     : null;
-                if (abierta && !confirm(`Hay una producción en curso de "${abierta.presentacion}". Si es la misma, finalízala en vez de registrar de nuevo.\n\n¿Registrar de todas formas como registro aparte?`)) {
-                    return;
+                const mismaQueAbierta = !!(abierta
+                    && String(abierta.presentacion || '').trim() === String(presentacionSeleccionada || '').trim());
+                let res;
+                if (mismaQueAbierta) {
+                    res = await fetch('/api/produccion/cerrar', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            reporte_id: abierta.id,
+                            cantidad_cajas: formData.cantidad_cajas,
+                            toneladas: formData.toneladas,
+                            tapa_insumo_id: formData.tapa_insumo_id,
+                            usuario: formData.usuario
+                        })
+                    });
+                } else {
+                    if (abierta && !confirm(`Hay una producción en curso de "${abierta.presentacion}". Si es la misma, finalízala en vez de registrar de nuevo.\n\n¿Registrar de todas formas como registro aparte?`)) {
+                        return;
+                    }
+                    res = await fetch('/api/produccion/reporte', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(formData)
+                    });
                 }
-                const res = await fetch('/api/produccion/reporte', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(formData)
-                });
                 const data = await res.json();
                 if (res.ok && data.success) {
                     let msg = '✅ Producción registrada correctamente.';
@@ -907,7 +926,37 @@
                 return;
             }
             m.style.display = 'none';
-            document.getElementById('presentacion').value = v;
+            iniciarProduccionSiguiente(v);
+        }
+
+        // Al continuar con el siguiente, se abre producción (EN_CURSO) y se
+        // marca la línea EN MARCHA: el estado de envasado debe reflejar que ya
+        // se está produciendo ese producto, no el anterior. Si ya hay EN_CURSO
+        // de otro producto, la línea queda EN MARCHA igualmente y el usuario
+        // decide si cambiarla o no.
+        async function iniciarProduccionSiguiente(prod) {
+            const usuario = localStorage.getItem('usuario_actual') || 'envasado_user';
+            const fecha = new Date().toISOString().substring(0, 10);
+            try {
+                await fetch('/api/produccion/iniciar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fecha_produccion: fecha, presentacion: prod, usuario })
+                });
+            } catch (err) {
+                console.error('iniciarProduccionSiguiente', err);
+            }
+            try {
+                await fetch('/api/estado-linea', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ area: 'envasado', estado: 'EN MARCHA', proximo_producto: prod, usuario })
+                });
+            } catch (err) {
+                console.error('estado-linea', err);
+            }
+            document.getElementById('presentacion').value = prod;
+            await Promise.all([cargarProduccionActiva(), cargarEstadoEnvasado()]);
             setTimeout(() => document.getElementById('cantidad_cajas').focus(), 80);
         }
 

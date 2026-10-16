@@ -321,6 +321,7 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
 
         let asociados = 0;
         let sinCoincidencia = 0;
+        let totalSaldadas = 0;
         for (const item of items) {
             let estadoItem = 'CON GUIA';
             if (Number(item.cantidad_guia) !== Number(item.cantidad_fisica)) {
@@ -359,6 +360,51 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
             }
             await actualizarEstadoArticulo(client, item.nombre);
 
+            // Auto-saldado: si este insumo tenía pendientes (producción que
+            // consumió sin stock), la guía los salda primero —igual que el
+            // aplicar manual— y solo el resto queda en stock. Ej: debe 100 y
+            // llegan 867 → se saldan 100 y quedan 767.
+            let saldadasGuia = 0;
+            if (cantidadFisica > 0) {
+                const pendQ = await client.query(
+                    `SELECT id, cantidad_pendiente FROM ajustes_pendientes
+                      WHERE estado = 'PENDIENTE'
+                        AND (articulo_id = $1 OR (articulo_id IS NULL AND LOWER(BTRIM(articulo_nombre)) = LOWER(BTRIM($2))))
+                      ORDER BY id ASC`,
+                    [targetArticuloId, item.nombre]
+                );
+                for (const q of pendQ.rows) {
+                    const debe = Number(q.cantidad_pendiente) || 0;
+                    if (!(debe > 0)) continue;
+                    const dispQ = await client.query('SELECT stock FROM inventario WHERE id = $1', [targetArticuloId]);
+                    const hay = Number(dispQ.rows[0].stock) || 0;
+                    if (hay < debe) continue;
+                    const descQ = await client.query(
+                        'UPDATE inventario SET stock = stock - $1 WHERE id = $2 RETURNING stock',
+                        [debe, targetArticuloId]
+                    );
+                    await registrarHistorial(client, {
+                        tipo: 'SALIDA', origen: 'ajuste_pendiente',
+                        producto: item.nombre, articulo_id: targetArticuloId,
+                        cantidad: debe, tipo_cambio: 'RESTA',
+                        stock_anterior: hay, stock_nuevo: Number(descQ.rows[0].stock),
+                        usuario: usuarioResponsable(req, usuarioRegistro),
+                        referencia: `Ajuste pendiente saldado con guía ${numero_guia || 'S/N'}`
+                    });
+                    await client.query(
+                        `UPDATE ajustes_pendientes
+                            SET estado = 'APLICADA', cantidad_aplicada = $1,
+                                vinculo_tipo = 'GUIA', vinculo_ref = $2,
+                                aplicado_por = $3, fecha_aplicacion = CURRENT_TIMESTAMP
+                         WHERE id = $4`,
+                        [debe, numero_guia || 'S/N', usuarioResponsable(req, usuarioRegistro), q.id]
+                    );
+                    saldadasGuia += 1;
+                }
+                if (saldadasGuia) await actualizarEstadoArticulo(client, item.nombre, targetArticuloId);
+                totalSaldadas += saldadasGuia;
+            }
+
             const fila = await client.query(
                 `INSERT INTO registro_ingresos_almacen (fecha_registro, numero_guia, proveedor, producto_nombre, cantidad, estado, articulo_id, asociacion)
                  VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6, 'SIN_OC')
@@ -392,12 +438,16 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
         } else if (items.length) {
             mensaje = 'Ingreso registrado conforme. Los productos quedaron en Notificaciones hasta que se les asigne una OC.';
         }
+        if (totalSaldadas) {
+            mensaje += ` Se saldaron ${totalSaldadas} pendiente(s) con esta guía; el resto quedó en stock.`;
+        }
         res.json({
             success: true,
             mensaje,
             ingreso: { id: ingresoId, numero_guia },
             asociados,
-            sin_coincidencia: sinCoincidencia
+            sin_coincidencia: sinCoincidencia,
+            pendientes_saldados: totalSaldadas
         });
     } catch (err) {
         await client.query('ROLLBACK');

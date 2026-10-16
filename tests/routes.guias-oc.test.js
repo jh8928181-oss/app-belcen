@@ -515,6 +515,86 @@ describe('POST /api/almacen/registrar-conforme', () => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/almacen/registrar-conforme: auto-saldado de pendientes con la guía
+// ---------------------------------------------------------------------------
+describe('POST /api/almacen/registrar-conforme salda pendientes', () => {
+  const UPD_APLICADA = /UPDATE ajustes_pendientes/;
+
+  const cuerpoBaldes = {
+    tipo_documento: 'GUIA DE REMISION',
+    numero_guia: 'TV01-1',
+    proveedor: 'EUROPLAST',
+    items_json: JSON.stringify([{ nombre: 'Balde Belini x 18 lt', cantidad_guia: 867, cantidad_fisica: 867 }])
+  };
+
+  function escenarioGuia(stockIni, pendientes) {
+    let stock = stockIni;
+    mockQuery.mockImplementation(async (sql, params = []) => {
+      const texto = String(sql || '').trim();
+      if (/^(BEGIN|COMMIT|ROLLBACK)$/i.test(texto)) return { rows: [], rowCount: 0 };
+      if (/INSERT INTO ingresos_vigilancia/.test(texto)) return filas({ id: 400, numero_guia: 'TV01-1' });
+      if (/SELECT id, stock FROM inventario/.test(texto)) return filas({ id: 31, stock });
+      if (/UPDATE inventario SET stock = stock \+ \$1 WHERE id/.test(texto)) {
+        stock += Number(params[0]);
+        return { rows: [], rowCount: 1 };
+      }
+      if (/UPDATE inventario SET estado/.test(texto)) return { rows: [], rowCount: 1 };
+      if (/INSERT INTO historial_inventario/.test(texto)) return { rows: [], rowCount: 1 };
+      if (/FROM ajustes_pendientes/.test(texto)) return filas(...pendientes.map(p => ({ ...p })));
+      if (/SELECT stock FROM inventario WHERE id/.test(texto)) return filas({ stock });
+      if (/UPDATE inventario SET stock = stock - \$1 WHERE id/.test(texto)) {
+        stock -= Number(params[0]);
+        return { rows: [{ stock }], rowCount: 1 };
+      }
+      if (/UPDATE ajustes_pendientes/.test(texto)) return { rows: [], rowCount: 1 };
+      if (/INSERT INTO registro_ingresos_almacen/.test(texto)) return filas({ id: 555 });
+      return { rows: [], rowCount: 0 };
+    });
+    return () => stock;
+  }
+
+  test('la guía salda el pendiente y solo el resto queda en stock', async () => {
+    const verStock = escenarioGuia(0, [{ id: 7, cantidad_pendiente: 100 }]);
+
+    const r = await invocar('post', '/api/almacen/registrar-conforme', { body: cuerpoBaldes });
+
+    expect(r.statusCode).toBe(200);
+    // 0 + 867 - 100 = 767 en stock.
+    expect(verStock()).toBe(767);
+    const aplicada = mockQuery.mock.calls.find(c => UPD_APLICADA.test(String(c[0])));
+    expect(aplicada[1]).toEqual([100, 'TV01-1', 'admin1', 7]);
+    expect(r.cuerpo.pendientes_saldados).toBe(1);
+    expect(r.cuerpo.mensaje).toContain('Se saldaron 1 pendiente');
+  });
+
+  test('un pendiente mayor que la guía se queda pendiente', async () => {
+    escenarioGuia(0, [{ id: 7, cantidad_pendiente: 5000 }]);
+
+    const r = await invocar('post', '/api/almacen/registrar-conforme', { body: cuerpoBaldes });
+
+    expect(r.statusCode).toBe(200);
+    expect(sentencias().some(s => UPD_APLICADA.test(s))).toBe(false);
+    expect(r.cuerpo.pendientes_saldados).toBe(0);
+    expect(r.cuerpo.mensaje).not.toContain('saldaron');
+  });
+
+  test('una guía en cero no salda pendientes ajenos', async () => {
+    escenarioGuia(500, [{ id: 7, cantidad_pendiente: 100 }]);
+
+    const r = await invocar('post', '/api/almacen/registrar-conforme', {
+      body: {
+        ...cuerpoBaldes,
+        items_json: JSON.stringify([{ nombre: 'Balde Belini x 18 lt', cantidad_guia: 0, cantidad_fisica: 0 }])
+      }
+    });
+
+    expect(r.statusCode).toBe(200);
+    expect(sentencias().some(s => UPD_APLICADA.test(s))).toBe(false);
+    expect(r.cuerpo.pendientes_saldados).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // GET /api/bd/ordenes: la etiqueta SIN FACTURA
 // ---------------------------------------------------------------------------
 describe('GET /api/bd/ordenes', () => {

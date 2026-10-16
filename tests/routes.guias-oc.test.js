@@ -129,6 +129,8 @@ const SQL = {
   historialStock: /INSERT INTO stock_proveedores_historial/,
   insertIngreso: /INSERT INTO ingresos_vigilancia/,
   inventarioExiste: /SELECT id, stock FROM inventario/,
+  inventarioLista: /SELECT id, nombre, stock FROM inventario/,
+  inventarioAlta: /INSERT INTO inventario \(nombre, categoria/,
   insertRegistro: /INSERT INTO registro_ingresos_almacen/,
   listaOrdenes: /AS n_facturas/
 };
@@ -591,6 +593,86 @@ describe('POST /api/almacen/registrar-conforme salda pendientes', () => {
     expect(r.statusCode).toBe(200);
     expect(sentencias().some(s => UPD_APLICADA.test(s))).toBe(false);
     expect(r.cuerpo.pendientes_saldados).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/almacen/registrar-conforme: producto que no existe en inventario
+// ---------------------------------------------------------------------------
+describe('POST /api/almacen/registrar-conforme producto nuevo', () => {
+  const base = {
+    tipo_documento: 'GUIA DE REMISION',
+    numero_guia: 'G-1200',
+    proveedor: 'EUROPLAST',
+    numero_oc: ''
+  };
+
+  test('sin categoría no lo deja entrar: 400 y nada escrito', async () => {
+    responder([
+      [SQL.insertIngreso, filas({ id: 410, numero_guia: 'G-1200' })],
+      [SQL.inventarioExiste, filas()],
+      [SQL.inventarioLista, filas()]
+    ]);
+
+    const r = await invocar('post', '/api/almacen/registrar-conforme', {
+      body: {
+        ...base,
+        items_json: JSON.stringify([{ nombre: 'BALDE BELINI 18 LT', cantidad_guia: 10, cantidad_fisica: 10 }])
+      }
+    });
+
+    expect(r.statusCode).toBe(400);
+    expect(r.cuerpo.mensaje).toContain('BALDE BELINI 18 LT');
+    expect(r.cuerpo.mensaje).toContain('categoría');
+    expect(sentencias().some(s => SQL.inventarioAlta.test(s))).toBe(false);
+    expect(transacciones()).toEqual(['BEGIN', 'ROLLBACK']);
+  });
+
+  test('con categoría se crea en la categoría que eligió el usuario', async () => {
+    responder([
+      [SQL.insertIngreso, filas({ id: 411, numero_guia: 'G-1200' })],
+      [SQL.inventarioExiste, filas()],
+      [SQL.inventarioLista, filas()],
+      [SQL.inventarioAlta, filas({ id: 77 })],
+      [SQL.insertRegistro, filas({ id: 556 })]
+    ]);
+
+    const r = await invocar('post', '/api/almacen/registrar-conforme', {
+      body: {
+        ...base,
+        items_json: JSON.stringify([{
+          nombre: 'BALDE BELINI 18 LT', cantidad_guia: 867, cantidad_fisica: 867,
+          categoria: 'CAJAS', unidad_medida: 'UNIDADES'
+        }])
+      }
+    });
+
+    expect(r.statusCode).toBe(200);
+    expect(paramsDe(SQL.inventarioAlta)).toEqual(['BALDE BELINI 18 LT', 'CAJAS', 867, 'UNIDADES']);
+    expect(r.cuerpo.nuevos_productos).toEqual([{ nombre: 'BALDE BELINI 18 LT', categoria: 'CAJAS' }]);
+    expect(r.cuerpo.mensaje).toContain('BALDE BELINI 18 LT [CAJAS]');
+    expect(transacciones()).toEqual(['BEGIN', 'COMMIT']);
+  });
+
+  test('el nombre con tildes y puntuación distinta empatá con el artículo existente', async () => {
+    responder([
+      [SQL.insertIngreso, filas({ id: 412, numero_guia: 'G-1200' })],
+      [SQL.inventarioExiste, filas()],
+      [SQL.inventarioLista, filas({ id: 9, nombre: 'TAPA BALDE BELINI 18LT', stock: 5 })]
+    ]);
+
+    const r = await invocar('post', '/api/almacen/registrar-conforme', {
+      body: {
+        ...base,
+        items_json: JSON.stringify([{ nombre: 'Tápa balde belíni 18-lt.', cantidad_guia: 20, cantidad_fisica: 20 }])
+      }
+    });
+
+    expect(r.statusCode).toBe(200);
+    // Suma al artículo existente, no crea otro.
+    expect(sentencias().some(s => SQL.inventarioAlta.test(s))).toBe(false);
+    expect(sentencias().some(s => /UPDATE inventario SET stock = stock \+/.test(s))).toBe(true);
+    expect(r.cuerpo.nuevos_productos).toEqual([]);
   });
 });
 

@@ -4,7 +4,8 @@ const {
   extraerDireccionSUNAT,
   resolverItemGuia,
   normalizarRespuestaIA,
-  fusionarItemsSalidas
+  fusionarItemsSalidas,
+  normalizarNombreInventario
 } = require('../index');
 
 // Fixture con la estructura real que emite SUNAT. La cantidad va al final de la
@@ -464,5 +465,26 @@ describe('fusionarItemsSalidas', () => {
     const r = fusionarItemsSalidas({ itemsTabla: [], itemsIA: ia, pts: PTS, invs });
     expect(r.items[0].articulo_id).toBe(41);
     expect(r.items[0].product_key).toBe('');
+  });
+});
+
+// El matching de productos al ingresar: tildes, espacios y puntuación no
+// deben convertir "Tapa balde belini 18-lt." en un artículo distinto.
+describe('normalizarNombreInventario', () => {
+  test('ignora tildes, mayúsculas, espacios y puntuación', () => {
+    const canonico = normalizarNombreInventario('TAPA BALDE BELINI 18LT');
+    expect(normalizarNombreInventario('Tápa balde belíni 18-lt.')).toBe(canonico);
+    expect(normalizarNombreInventario('  tapa   BALDE,belini 18 lt ')).toBe(canonico);
+  });
+
+  test('nombres realmente distintos siguen sin empatar', () => {
+    expect(normalizarNombreInventario('Balde Belini 18 lt'))
+      .not.toBe(normalizarNombreInventario('Balde Belini 12 lt'));
+  });
+
+  test('vacío y null no revientan', () => {
+    expect(normalizarNombreInventario('')).toBe('');
+    expect(normalizarNombreInventario(null)).toBe('');
+    expect(normalizarNombreInventario(undefined)).toBe('');
   });
 });

@@ -322,6 +322,7 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
         let asociados = 0;
         let sinCoincidencia = 0;
         let totalSaldadas = 0;
+        const nuevosProductos = [];
         for (const item of items) {
             let estadoItem = 'CON GUIA';
             if (Number(item.cantidad_guia) !== Number(item.cantidad_fisica)) {
@@ -329,11 +330,21 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
             }
 
             const cantidadFisica = Number(item.cantidad_fisica) || 0;
+            // Busca el producto: primero igual exacto, luego por nombre plano
+            // (tildes/espacios/puntuación no importan). Si no existe en el
+            // inventario es un producto nuevo y quien lo ingresa debe decir
+            // a qué categoría va — nada de mandarlo en automático a "General".
             const existeRes = await client.query('SELECT id, stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [item.nombre]);
+            let filaInv = existeRes.rows.length > 0 ? existeRes.rows[0] : null;
+            if (!filaInv) {
+                const clave = normalizarNombreInventario(item.nombre);
+                const todas = await client.query('SELECT id, nombre, stock FROM inventario');
+                filaInv = todas.rows.find(r => normalizarNombreInventario(r.nombre) === clave) || null;
+            }
             let targetArticuloId;
-            if (existeRes.rows.length > 0) {
-                targetArticuloId = existeRes.rows[0].id;
-                const stockAnterior = Number(existeRes.rows[0].stock) || 0;
+            if (filaInv) {
+                targetArticuloId = filaInv.id;
+                const stockAnterior = Number(filaInv.stock) || 0;
                 await client.query(`UPDATE inventario SET stock = stock + $1 WHERE id = $2`, [cantidadFisica, targetArticuloId]);
                 await registrarHistorial(client, {
                     tipo: 'ENTRADA', origen: 'conformidad',
@@ -344,21 +355,31 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
                     referencia: 'Conformidad - guía ' + (numero_guia || 'S/N')
                 });
             } else {
+                const categoriaNueva = String(item.categoria || '').trim();
+                const unidadNueva = String(item.unidad_medida || '').trim() || 'UNIDADES';
+                if (!categoriaNueva) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({
+                        success: false,
+                        mensaje: `El producto "${item.nombre}" no existe en el inventario. Elija una categoría existente o cree una nueva para poder ingresarlo.`
+                    });
+                }
                 const nuevoArt = await client.query(
-                    `INSERT INTO inventario (nombre, categoria, stock, unidad_medida, estado) VALUES ($1, 'General', $2, 'UNIDADES', 'STOCK SUFICIENTE') RETURNING id`,
-                    [item.nombre, cantidadFisica]
+                    `INSERT INTO inventario (nombre, categoria, stock, unidad_medida, estado) VALUES ($1, $2, $3, $4, 'STOCK SUFICIENTE') RETURNING id`,
+                    [item.nombre, categoriaNueva, cantidadFisica, unidadNueva]
                 );
                 targetArticuloId = nuevoArt.rows[0].id;
+                nuevosProductos.push({ nombre: item.nombre, categoria: categoriaNueva });
                 await registrarHistorial(client, {
                     tipo: 'ENTRADA', origen: 'conformidad',
                     producto: item.nombre, articulo_id: targetArticuloId,
                     cantidad: cantidadFisica, tipo_cambio: 'SUMA',
                     stock_anterior: 0, stock_nuevo: cantidadFisica,
                     usuario: usuarioResponsable(req, usuarioRegistro),
-                    referencia: 'Conformidad (artículo nuevo) - guía ' + (numero_guia || 'S/N')
+                    referencia: `Conformidad (artículo nuevo, categoría ${categoriaNueva}) - guía ` + (numero_guia || 'S/N')
                 });
             }
-            await actualizarEstadoArticulo(client, item.nombre);
+            await actualizarEstadoArticulo(client, item.nombre, targetArticuloId);
 
             // Auto-saldado: si este insumo tenía pendientes (producción que
             // consumió sin stock), la guía los salda primero —igual que el
@@ -441,13 +462,17 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
         if (totalSaldadas) {
             mensaje += ` Se saldaron ${totalSaldadas} pendiente(s) con esta guía; el resto quedó en stock.`;
         }
+        if (nuevosProductos.length) {
+            mensaje += ` Productos nuevos creados en el inventario: ${nuevosProductos.map(p => `${p.nombre} [${p.categoria}]`).join(', ')}.`;
+        }
         res.json({
             success: true,
             mensaje,
             ingreso: { id: ingresoId, numero_guia },
             asociados,
             sin_coincidencia: sinCoincidencia,
-            pendientes_saldados: totalSaldadas
+            pendientes_saldados: totalSaldadas,
+            nuevos_productos: nuevosProductos
         });
     } catch (err) {
         await client.query('ROLLBACK');
@@ -2127,6 +2152,14 @@ function extraerCantidadPdf(textoPdf, claves) {
 // Normaliza un texto para comparaciones: minúsculas y solo alfanumérico
 function normalizarGuia(txt) {
     return (txt || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+// Nombre de artículo en forma plana (sin acentos, espacios ni puntuación).
+// Es el mismo matching que usa el asistente de almacén: "Tapa balde belini
+// 18lt" y "TAPA BALDE BELINI 18-LT" son el mismo artículo, y si no empata
+// ninguno el producto es nuevo y exige categoría del que lo registra.
+function normalizarNombreInventario(txt) {
+    return String(txt || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
 }
 
 // Convierte un alias de producto de la guía ("B-1 X 200 ML") en un patrón que
@@ -6930,5 +6963,5 @@ module.exports = {
     app, parsearCabeceraSUNAT, detectarItemsTabla, extraerDireccionSUNAT,
     resolverItemGuia, normalizarRespuestaIA, parseNumeroGuia, componerCamposDesdeTexto, fusionarItemsSalidas,
     IGV_POR_DEFECTO, normalizarMoneda, redondear2, normalizarItemsOrden,
-    camposEntregaDe, normalizarCuentasBancarias
+    camposEntregaDe, normalizarCuentasBancarias, normalizarNombreInventario
 };

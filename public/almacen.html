@@ -367,6 +367,8 @@
         .wz-alm .badge-diff { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
         .wz-alm .badge-diff.ok { background: rgba(52, 199, 89, 0.15); color: #1e7e34; }
         .wz-alm .badge-diff.warn { background: rgba(255, 59, 48, 0.15); color: #bd2130; }
+        .wz-alm .badge-cat-inv { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 800; background: rgba(10, 110, 168, 0.12); color: #0a6ea8; white-space: nowrap; }
+        .wz-alm .badge-cat-nuevo { display: inline-block; padding: 1px 6px; border-radius: 999px; font-weight: 800; background: rgba(255, 149, 0, 0.18); color: #b26a00; vertical-align: middle; }
         .wz-alm .sin-registros { color: var(--texto2); font-style: italic; }
         .wz-alm .resumen-doc { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
         .wz-alm .chip-dato { background: rgba(0, 0, 0, 0.05); border: 1px solid rgba(0, 0, 0, 0.06); padding: 6px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: var(--texto); }
@@ -529,7 +531,7 @@
                         <div class="fila-carga">
                             <div class="g2">
                                 <label>Descripción del Insumo / Producto:</label>
-                                <input type="text" id="almProdTextual" placeholder="Ej. Botella Belini x 1 Lt / Cajas / Tapas" onkeydown="if(event.key==='Enter'){event.preventDefault();wizardAlmAgregarItem();}">
+                                <input type="text" id="almProdTextual" list="datalistInsumosNombres" placeholder="Ej. Botella Belini x 1 Lt / Cajas / Tapas" onkeydown="if(event.key==='Enter'){event.preventDefault();wizardAlmAgregarItem();}">
                             </div>
                             <div class="g1">
                                 <label>Cantidad Guía:</label>
@@ -552,11 +554,12 @@
                                         <th class="text-center">CANT. GUÍA</th>
                                         <th class="text-center">CANT. FÍSICA</th>
                                         <th class="text-center">DIF.</th>
+                                        <th class="text-center">CATEGORÍA</th>
                                         <th class="text-center">QUITAR</th>
                                     </tr>
                                 </thead>
                                 <tbody id="almTablaItems">
-                                    <tr><td colspan="5" class="text-center sin-registros">No hay productos agregados.</td></tr>
+                                    <tr><td colspan="6" class="text-center sin-registros">No hay productos agregados.</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -1338,7 +1341,9 @@
                     document.getElementById('almProveedor').value.trim()
                 );
             }
-            if (n === 1) return itemsAlmacenArray.length > 0;
+            if (n === 1) {
+                return itemsAlmacenArray.length > 0 && !itemsAlmacenArray.some(itemFaltaCategoria);
+            }
             return true;
         }
 
@@ -1394,7 +1399,12 @@
             if (n > pasoWizardAlmacen) {
                 for (let i = pasoWizardAlmacen; i < n; i++) {
                     if (!wizardAlmPasoCompletado(i)) {
-                        alert('Completa el paso ' + ['de Documento', 'de Carga'][i] + ' para continuar.');
+                        const sinCategoria = i === 1
+                            ? itemsAlmacenArray.filter(itemFaltaCategoria).map(x => x.nombre)
+                            : [];
+                        alert(sinCategoria.length
+                            ? 'Estos productos no existen en el inventario: elige o crea una categoría para cada uno.\n\n• ' + sinCategoria.join('\n• ')
+                            : 'Completa el paso ' + ['de Documento', 'de Carga'][i] + ' para continuar.');
                         wizardAlmMarcarFaltantes(i);
                         document.getElementById(pasosIds[i]).scrollIntoView({ behavior: 'smooth', block: 'start' });
                         return;
@@ -1415,9 +1425,14 @@
         function wizardAlmNext() {
             if (!wizardAlmPasoCompletado(pasoWizardAlmacen)) {
                 const ocPendiente = pasoWizardAlmacen === 0 && wizardAlmVal('almNumeroOC').trim() && wizardAlmOcEstado !== 'ok';
+                const sinCategoria = pasoWizardAlmacen === 1
+                    ? itemsAlmacenArray.filter(itemFaltaCategoria).map(i => i.nombre)
+                    : [];
                 alert(ocPendiente
                     ? 'El N° de Orden de Compra todavía no está verificado. Corrige el aviso bajo el campo o déjalo vacío.'
-                    : 'Completa los campos requeridos de este paso para continuar.');
+                    : sinCategoria.length
+                        ? 'Estos productos no existen en el inventario: elige o crea una categoría para cada uno.\n\n• ' + sinCategoria.join('\n• ')
+                        : 'Completa los campos requeridos de este paso para continuar.');
                 wizardAlmMarcarFaltantes(pasoWizardAlmacen);
                 return;
             }
@@ -1442,6 +1457,9 @@
                 { label: 'Placa', value: wizardAlmVal('almPlaca') },
                 { label: 'Ruta', value: wizardAlmVal('almLugarPartida') }
             ].filter(d => d.value);
+            itemsAlmacenArray.filter(i => !i.existe).forEach(i => {
+                datos.push({ label: 'Nuevo', value: `${i.nombre} → ${categoriaEfectiva(i) || 'SIN CATEGORÍA'} (${i.unidad_medida || 'UNIDADES'})` });
+            });
             document.getElementById('almResumenDoc').innerHTML =
                 datos.map(d => '<span class="chip-dato">' + d.label + ': <b>' + d.value + '</b></span>').join('') ||
                 '<span class="sin-registros">Sin datos de documento.</span>';
@@ -1473,6 +1491,125 @@
             tbody.appendChild(trTot);
         }
 
+        // --- Productos del ingreso contra el inventario -------------------
+        // Mismo matching que el servidor: nombre plano (sin tildes, espacios
+        // ni puntuación). Si no empata, el producto es nuevo y hay que decir
+        // a qué categoría va en vez de caer en "General".
+        function normalizarNombreInv(txt) {
+            return String(txt || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+        }
+
+        function escAtributo(v) {
+            return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function buscarEnInventario(nombre) {
+            const clave = normalizarNombreInv(nombre);
+            if (!clave) return null;
+            return (inventarioGlobal || []).find(i => normalizarNombreInv(i.nombre) === clave) || null;
+        }
+
+        function resolverItemAlm(it) {
+            const m = buscarEnInventario(it.nombre);
+            if (m) {
+                it.existe = true;
+                it.articulo_id = m.id;
+                it.categoria = m.categoria || '';
+                it.unidad_medida = m.unidad_medida || 'UNIDADES';
+                it.categoriaSel = '';
+                it.categoriaNueva = '';
+            } else {
+                it.existe = false;
+                it.articulo_id = null;
+                if (it.categoriaSel == null) it.categoriaSel = '';
+                if (it.categoriaNueva == null) it.categoriaNueva = '';
+                if (!it.unidad_medida) it.unidad_medida = 'UNIDADES';
+            }
+            return it;
+        }
+
+        // Tras recargar el inventario, los ítems marcados como nuevos vuelven a
+        // intentar empatar (puede haberse creado justo antes con otra guía).
+        function resolverItemsAlmPendientes() {
+            let hubo = false;
+            (itemsAlmacenArray || []).forEach(it => {
+                if (!it.existe && !it.categoriaSel) { resolverItemAlm(it); hubo = true; }
+            });
+            if (hubo) wizardAlmRenderTabla();
+        }
+
+        function rellenarDatalistInsumos() {
+            const dl = document.getElementById('datalistInsumosNombres');
+            if (dl) dl.innerHTML = (inventarioGlobal || []).map(i => `<option value="${escAtributo(i.nombre)}"></option>`).join('');
+        }
+
+        function categoriasInventario() {
+            const set = new Set();
+            (inventarioGlobal || []).forEach(i => { const c = (i.categoria || '').trim(); if (c) set.add(c); });
+            ['BOTELLAS Y GALONERAS', 'BOTELLAS EN BLANCO', 'CAJAS', 'TAPAS Y ACCESORIOS', 'PREFORMAS Y SERVICIOS', 'ETIQUETAS', 'General'].forEach(c => set.add(c));
+            return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
+        }
+
+        function unidadesInventario() {
+            const set = new Set(['UNIDADES', 'MILL', 'CAJAS']);
+            (inventarioGlobal || []).forEach(i => { const u = (i.unidad_medida || '').trim(); if (u) set.add(u); });
+            return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
+        }
+
+        function categoriaEfectiva(it) {
+            if (it.existe) return (it.categoria || '').trim();
+            if (it.categoriaSel === '__nueva__') return (it.categoriaNueva || '').trim();
+            return (it.categoriaSel || '').trim();
+        }
+
+        function itemFaltaCategoria(it) {
+            return !it.existe && !categoriaEfectiva(it);
+        }
+
+        function wizardAlmCambiarCategoria(idx, valor) {
+            const it = itemsAlmacenArray[idx];
+            if (!it) return;
+            it.categoriaSel = valor;
+            if (valor !== '__nueva__') it.categoriaNueva = '';
+            wizardAlmRenderTabla();
+        }
+
+        function wizardAlmCambiarCategoriaNueva(idx, valor) {
+            const it = itemsAlmacenArray[idx];
+            if (!it) return;
+            it.categoriaNueva = valor;
+            wizardAlmActualizar();
+        }
+
+        function wizardAlmCambiarUnidad(idx, valor) {
+            const it = itemsAlmacenArray[idx];
+            if (!it) return;
+            it.unidad_medida = valor;
+            wizardAlmActualizar();
+        }
+
+        function celdaCategoriaAlm(item, idx) {
+            if (item.existe) {
+                return `<span class="badge-cat-inv" title="${escAtributo(item.nombre)}">${escAtributo(item.categoria || 'SIN CATEGORÍA')}</span>
+                    <small style="display:block; color:#666; font-size:10px;">${escAtributo(item.unidad_medida || 'UNIDADES')}</small>`;
+            }
+            const cats = categoriasInventario();
+            const sel = item.categoriaSel || '';
+            let html = `<select onchange="wizardAlmCambiarCategoria(${idx}, this.value)" style="max-width:170px; font-size:12px; padding:3px;">
+                    <option value="">-- Categoría (obligatoria) --</option>
+                    ${cats.map(c => `<option value="${escAtributo(c)}" ${sel === c ? 'selected' : ''}>${escAtributo(c)}</option>`).join('')}
+                    <option value="__nueva__" ${sel === '__nueva__' ? 'selected' : ''}>➕ Crear categoría…</option>
+                </select>`;
+            if (sel === '__nueva__') {
+                html += `<input type="text" value="${escAtributo(item.categoriaNueva || '')}" placeholder="Nombre de la nueva categoría"
+                    oninput="wizardAlmCambiarCategoriaNueva(${idx}, this.value)" style="max-width:170px; font-size:12px; margin-top:3px;">`;
+            }
+            html += `<select onchange="wizardAlmCambiarUnidad(${idx}, this.value)" style="max-width:170px; font-size:12px; padding:3px; margin-top:3px;">
+                    ${unidadesInventario().map(u => `<option value="${escAtributo(u)}" ${(item.unidad_medida || 'UNIDADES') === u ? 'selected' : ''}>${escAtributo(u)}</option>`).join('')}
+                </select>`;
+            return html;
+        }
+
         function wizardAlmAgregarItem() {
             const nombre = document.getElementById('almProdTextual').value.trim();
             const cantidad_guia = parseFloat(document.getElementById('almProdCantGuia').value);
@@ -1481,8 +1618,15 @@
                 alert('❌ Complete la descripción y las cantidades (guía y física).');
                 return;
             }
-            itemsAlmacenArray.push({ nombre, cantidad_guia, cantidad_fisica });
+            itemsAlmacenArray.push(resolverItemAlm({ nombre, cantidad_guia, cantidad_fisica }));
             wizardAlmRenderTabla();
+            if (!itemsAlmacenArray[itemsAlmacenArray.length - 1].existe) {
+                const ult = itemsAlmacenArray[itemsAlmacenArray.length - 1];
+                setTimeout(() => {
+                    const fila = document.getElementById('almTablaItems').children[itemsAlmacenArray.indexOf(ult)];
+                    if (fila) fila.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }, 0);
+            }
             document.getElementById('almProdTextual').value = '';
             document.getElementById('almProdCantGuia').value = '';
             document.getElementById('almProdCantFisica').value = '';
@@ -1506,10 +1650,11 @@
                 const dif = Number(item.cantidad_fisica) - Number(item.cantidad_guia);
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td><b>${item.nombre}</b></td>
+                    <td><b>${item.nombre}</b>${item.existe ? '' : ' <span class="badge-cat-nuevo" style="font-size:9px;">NUEVO</span>'}</td>
                     <td class="text-center">${item.cantidad_guia}</td>
                     <td class="text-center">${item.cantidad_fisica}</td>
                     <td class="text-center">${wizardAlmBadge(dif)}</td>
+                    <td>${celdaCategoriaAlm(item, idx)}</td>
                     <td class="text-center"><button type="button" onclick="wizardAlmQuitarItem(${idx})" class="btn-x">X</button></td>
                 `;
                 tbody.appendChild(tr);
@@ -1584,7 +1729,7 @@
                 wizardAlmOcInvalidar();
 
                 if (data.items && data.items.length) {
-                    itemsAlmacenArray = data.items.map(i => ({
+                    itemsAlmacenArray = data.items.map(i => resolverItemAlm({
                         nombre: i.nombre,
                         cantidad_guia: Number(i.cantidad_guia) || 0,
                         cantidad_fisica: Number(i.cantidad_guia) || 0
@@ -1640,6 +1785,13 @@
             formData.append('placa', wizardAlmVal('almPlaca'));
             formData.append('lugar_partida', wizardAlmVal('almLugarPartida'));
             formData.append('observaciones', wizardAlmVal('almObservaciones'));
+            // Cada ítem lleva su categoría/unidad: si es nuevo el servidor la
+            // exige para crearlo donde corresponde; si existe la ignora y usa
+            // la del inventario.
+            itemsAlmacenArray.forEach(it => {
+                it.categoria = categoriaEfectiva(it);
+                it.unidad_medida = (it.unidad_medida || 'UNIDADES').trim() || 'UNIDADES';
+            });
             const inputFoto = document.getElementById('almFotoGuia');
             if (inputFoto && inputFoto.files && inputFoto.files[0]) formData.append('foto_guia', inputFoto.files[0]);
             formData.append('usuario', localStorage.getItem('usuario_actual') || 'almacen1');
@@ -1714,6 +1866,9 @@
                 w.style.display = 'block';
                 if (btn) btn.textContent = '✖ Cerrar formulario';
                 if (barra) barra.style.display = '';
+                // Inventario fresco: de aquí salen las categorías existentes y
+                // el matching de "¿este producto ya está?".
+                cargarInventarioAlmacen();
                 w.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
         }
@@ -2312,6 +2467,8 @@
             try {
                 const res = await fetch('/api/inventario');
                 inventarioGlobal = await res.json();
+                rellenarDatalistInsumos();
+                resolverItemsAlmPendientes();
                 aplicarFiltros();
             } catch(e) { console.error(e); }
         }

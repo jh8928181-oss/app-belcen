@@ -2092,22 +2092,45 @@ function regexDesdeAlias(alias) {
 //
 // En la guía el producto llega con su presentación pegada ("B-1 X 200 ML
 // ACEITE DE SOYA"), así que el último número de la línea era la medida y no la
-// cantidad pedida. Primero se borra el alias del producto y solo después se
-// toma el último número que queda, que es la columna Cantidad. Si tras borrar
-// el alias no queda ninguna cifra se devuelve null (y el item queda para
-// revisión manual) en vez de inventar un número.
+// cantidad pedida. Primero se borra el alias del producto, luego la
+// presentación ("X 12 UND", "X 12 CAJA") y solo después se busca la cantidad:
+// pegada a su unidad ("MLL 150.00", "9,775.000 UND") o, si no hay unidad, la
+// última cifra. Si no queda ninguna cifra se devuelve null (y el item queda
+// para revisión manual) en vez de inventar un número.
 //
-// Si la tabla trae columna PESO después de CANTIDAD ("MLL 150.00 100.00"),
-// se toma el penúltimo: el último es el peso, no lo pedido.
+// Si la tabla trae columna PESO después de CANTIDAD y aun así quedan varias
+// cifras sueltas, se toma la penúltima: la última es el peso, no lo pedido.
+const UNID_CANT = 'MLL|MILL|MILLARES|UND|UNI|UNIDADES?|UN|CAJAS?|CJ';
 function extraerCantidadFila(linea, alias, tomaPenultimo) {
     const reAlias = regexDesdeAlias(alias);
-    const resto = reAlias ? linea.replace(reAlias, ' ') : linea;
+    let resto = reAlias ? linea.replace(reAlias, ' ') : linea;
+    resto = resto.replace(new RegExp('\\bX\\s*\\d+\\s*(?:' + UNID_CANT + ')\\b', 'i'), ' ');
     const tm = /\b(TM|TON(?:ELADAS?)?|KG|KGM)\b/i.test(resto);
+    const num = n => (tm && /^\d+\.\d{3}$/.test(n) ? Number(n) : parseNumeroGuia(n));
+    const avisos = [];
+    let m = resto.match(new RegExp('(' + UNID_CANT + ')\\s*(\\d[\\d.,]*)', 'i'));
+    if (m) {
+        const valor = num(m[2]);
+        if (valor !== null) {
+            const sobran = resto.replace(m[0], ' ').match(/\d[\d.,]*/g) || [];
+            if (sobran.some(x => num(x) !== null)) {
+                avisos.push(`La fila "${linea.slice(0, 60)}" trae más cifras además de la cantidad; se tomó ${valor}. Revísala.`);
+            }
+            return { valor, avisos };
+        }
+    }
+    m = resto.match(new RegExp('(\\d[\\d.,]*)\\s*(' + UNID_CANT + ')\\b', 'i'));
+    if (m) {
+        const despues = resto.slice(m.index + m[0].length);
+        if (!/\d+[.,]\d+/.test(despues)) {
+            const valor = num(m[1]);
+            if (valor !== null) return { valor, avisos };
+        }
+    }
     const numeros = (resto.match(/\d[\d.,]*/g) || [])
-        .map(n => tm && /^\d+\.\d{3}$/.test(n) ? Number(n) : parseNumeroGuia(n))
+        .map(num)
         .filter(v => v !== null && v > 0 && v < 100000);
     if (numeros.length === 0) return { valor: null, avisos: [] };
-    const avisos = [];
     let valor = numeros[numeros.length - 1];
     if (tomaPenultimo && numeros.length > 1) {
         valor = numeros[numeros.length - 2];

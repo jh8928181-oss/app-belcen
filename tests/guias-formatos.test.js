@@ -7,6 +7,7 @@
  */
 const {
   parsearCabeceraSUNAT,
+  detectarItemsTabla,
   componerCamposDesdeTexto,
   parseNumeroGuia
 } = require('../index');
@@ -167,6 +168,24 @@ describe('formato NORTH GRAPHIC (etiquetas con PESO)', () => {
     expect(r.items).toHaveLength(3);
     expect(r.items.map(i => i.cantidad_guia)).toEqual([150, 100, 100]);
     expect(r.items[0].nombre).toMatch(/BELINI 1 LITRO/);
+  });
+
+  test('la presentación X 12 UND no se lee como cantidad', () => {
+    const res = detectarItemsTabla(
+      'Bienes por Transportar\nDON LALO X 800 ML ACEITE DE SOYA X 12 UND CAJA 600\nIndicador de traslado'
+    );
+    expect(res.items).toHaveLength(1);
+    expect(res.items[0].product_key).toBe('donlalo_800ml');
+    expect(res.items[0].cantidad).toBe(600);
+  });
+
+  test('cantidad pegada a su unidad con peso detrás', () => {
+    const res = detectarItemsTabla(
+      'ITEM DESCRIPCIÓN UNID. CANT. PESO\nBELINI X 900 ML ACEITE DE SOYA MLL 150.00 100.00\nIndicador de traslado'
+    );
+    expect(res.items).toHaveLength(1);
+    expect(res.items[0].product_key).toBe('belini_900ml');
+    expect(res.items[0].cantidad).toBe(150);
   });
 });
 

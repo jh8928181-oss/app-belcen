@@ -128,7 +128,7 @@ const SQL = {
   stockInsert: /INSERT INTO stock_proveedores\s*\(proveedor_nombre/,
   historialStock: /INSERT INTO stock_proveedores_historial/,
   insertIngreso: /INSERT INTO ingresos_vigilancia/,
-  inventarioExiste: /SELECT id, stock FROM inventario/,
+  inventarioExiste: /SELECT id, nombre, stock FROM inventario WHERE/,
   inventarioLista: /SELECT id, nombre, stock FROM inventario/,
   inventarioAlta: /INSERT INTO inventario \(nombre, categoria/,
   insertRegistro: /INSERT INTO registro_ingresos_almacen/,
@@ -535,7 +535,7 @@ describe('POST /api/almacen/registrar-conforme salda pendientes', () => {
       const texto = String(sql || '').trim();
       if (/^(BEGIN|COMMIT|ROLLBACK)$/i.test(texto)) return { rows: [], rowCount: 0 };
       if (/INSERT INTO ingresos_vigilancia/.test(texto)) return filas({ id: 400, numero_guia: 'TV01-1' });
-      if (/SELECT id, stock FROM inventario/.test(texto)) return filas({ id: 31, stock });
+      if (/SELECT id, (nombre, )?stock FROM inventario/.test(texto)) return filas({ id: 31, stock });
       if (/UPDATE inventario SET stock = stock \+ \$1 WHERE id/.test(texto)) {
         stock += Number(params[0]);
         return { rows: [], rowCount: 1 };

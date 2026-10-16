@@ -6,7 +6,9 @@ const {
   normalizarRespuestaIA,
   fusionarItemsSalidas,
   normalizarNombreInventario,
-  variantesNombreInventario
+  variantesNombreInventario,
+  tokensArticulo,
+  resolverArticuloPorNombre
 } = require('../index');
 
 // Fixture con la estructura real que emite SUNAT. La cantidad va al final de la
@@ -512,5 +514,72 @@ describe('variantesNombreInventario', () => {
   test('vacío no devuelve claves', () => {
     expect(variantesNombreInventario('')).toEqual([]);
     expect(variantesNombreInventario(null)).toEqual([]);
+  });
+});
+
+describe('resolverArticuloPorNombre', () => {
+  // Caso real: la guía T001-0005658 traía nombres cortos y la conformidad
+  // creó "ETIQUETAS BELINI 1LT" / "Etiquetas b-1 1lt" / "Etiquetas don Lalo
+  // 800ml" nuevos en vez de sumar a los que ya existían.
+  const ETIQUETAS = [
+    { id: 60, nombre: 'Etiqueta couche 90 gr x 1 lt B-1', stock: 101.53 },
+    { id: 66, nombre: 'Etiqueta couche 90 gr x 1 lt Belini', stock: 7.31 },
+    { id: 63, nombre: 'Etiqueta couche 90gr x 800 ml Don Lalo', stock: 26.57 }
+  ];
+  const dbFalso = filas => ({
+    query: async (sql, params = []) => {
+      if (/LOWER\(BTRIM\(nombre\)\) = LOWER\(BTRIM\(\$1\)\)/.test(sql)) {
+        const t = String(params[0]).trim().toLowerCase();
+        return { rows: filas.filter(f => f.nombre.trim().toLowerCase() === t) };
+      }
+      return { rows: filas };
+    }
+  });
+
+  test('el nombre exacto manda aunque haya parecidos', async () => {
+    const r = await resolverArticuloPorNombre(dbFalso(ETIQUETAS), 'Etiqueta couche 90 gr x 1 lt B-1');
+    expect(r.tipo).toBe('exacta');
+    expect(r.articulo.id).toBe(60);
+  });
+
+  test.each([
+    ['ETIQUETAS BELINI 1LT', 66],
+    ['Etiquetas b-1 1lt', 60],
+    ['Etiquetas don Lalo 800ml', 63]
+  ])('"%s" se resuelve al artículo existente %i sin crear duplicado', async (guia, id) => {
+    const r = await resolverArticuloPorNombre(dbFalso(ETIQUETAS), guia);
+    expect(r.tipo).toBe('similar');
+    expect(r.articulo.id).toBe(id);
+  });
+
+  test('"b-1 1lt" no cae en la versión Belini ni viceversa', async () => {
+    const r = await resolverArticuloPorNombre(dbFalso(ETIQUETAS), 'etiqueta b-1 1lt');
+    expect(r.articulo.id).toBe(60);
+    expect(r.articulo.id).not.toBe(66);
+  });
+
+  test('un nombre que calza con varios no adivina: devuelve candidatos', async () => {
+    const r = await resolverArticuloPorNombre(dbFalso(ETIQUETAS), 'Etiqueta 1 lt');
+    expect(r.tipo).toBe('ambigua');
+    expect(r.articulo).toBeNull();
+    expect(r.candidatos.map(c => c.id).sort()).toEqual([60, 66]);
+  });
+
+  test('lo que no existe devuelve ninguna', async () => {
+    const r = await resolverArticuloPorNombre(dbFalso(ETIQUETAS), 'Preforma 5 lt marciana');
+    expect(r.tipo).toBe('ninguna');
+    expect(await resolverArticuloPorNombre(dbFalso(ETIQUETAS), '')).toMatchObject({ tipo: 'ninguna' });
+  });
+
+  test('la variante plana sigue funcionando (balde con y sin x)', async () => {
+    const db = dbFalso([{ id: 7, nombre: 'Balde Belini x 18 lt', stock: 10 }]);
+    const r = await resolverArticuloPorNombre(db, 'BALDE BELINI 18 LT');
+    expect(r.tipo).toBe('variante');
+    expect(r.articulo.id).toBe(7);
+  });
+
+  test('tokensArticulo parte medida y singulariza', () => {
+    expect(tokensArticulo('Etiquetas b-1 1lt')).toEqual(['etiqueta', 'b', '1', '1', 'lt']);
+    expect(tokensArticulo('')).toEqual([]);
   });
 });

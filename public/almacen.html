@@ -1965,18 +1965,47 @@
             await cargarInventarioSiVacío();
 
             const itemsPend = pendientesMap[id] || [];
-            const nombresInv = new Set((inventarioGlobal || []).map(i => String(i.nombre || '').trim().toLowerCase()));
 
-            const faltantes = itemsPend.filter(p =>
-                p.nombre && !nombresInv.has(String(p.nombre).trim().toLowerCase())
-            );
+            // Primero se resuelve cada nombre contra el inventario: lo que
+            // coincide (igual, sin puntuación o por contenido con un solo
+            // candidato) va directo a conformidad. Solo lo que de verdad no
+            // existe —o calza con varios— abre el modal de integración manual.
+            let resueltos = new Map();
+            try {
+                const res = await fetch('/api/almacen/resolver-items', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nombres: itemsPend.map(p => p.nombre).filter(Boolean) })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    resueltos = new Map((data.items || []).map(i => [String(i.nombre).trim().toLowerCase(), i]));
+                }
+            } catch (err) { console.error(err); }
+            const resDe = p => resueltos.get(String(p.nombre || '').trim().toLowerCase());
 
-            if (faltantes.length > 0) {
-                abrirModalIntegrarManualmente(id, faltantes);
+            const porResolver = itemsPend.filter(p => {
+                const r = resDe(p);
+                return !r || r.tipo !== 'unico';
+            });
+
+            if (porResolver.length > 0) {
+                abrirModalIntegrarManualmente(id, porResolver.map(p => Object.assign({}, p, {
+                    candidatos: (resDe(p) && resDe(p).candidatos) || []
+                })));
                 return;
             }
 
-            if (!confirm('¿Confirma el ingreso de estos productos? Si hay diferencias entre la guía y el físico, se registrarán como pendientes de regularización.')) return;
+            // Lo que se reconoció por similitud (nombre distinto al de la guía)
+            // se muestra para que el operario lo valide antes de sumar stock.
+            const similares = itemsPend
+                .map(p => ({ guia: p.nombre, art: resDe(p) && resDe(p).articulo }))
+                .filter(x => x.art && String(x.art.nombre).trim().toLowerCase() !== String(x.guia).trim().toLowerCase());
+            const detalleSim = similares.length
+                ? '\n\nReconocidos por similitud:\n' + similares.map(x => `• "${x.guia}" → "${x.art.nombre}"`).join('\n')
+                : '';
+
+            if (!confirm('¿Confirma el ingreso de estos productos? Si hay diferencias entre la guía y el físico, se registrarán como pendientes de regularización.' + detalleSim)) return;
             guardConformidad = true;
             try {
                 const res = await fetch('/api/almacen/conformidad', {
@@ -2010,10 +2039,18 @@
             tbody.innerHTML = '';
             faltantes.forEach(p => {
                 const nomOrig = (p.nombre || '').replace(/"/g, '&quot;');
+                // Si el nombre calza con artículos existentes se preselecciona
+                // el primero y se avisa: elegir uno evita crear un duplicado.
+                const cands = Array.isArray(p.candidatos) ? p.candidatos : [];
+                const sugerido = cands.length ? String(cands[0].nombre || '').replace(/"/g, '&quot;') : nomOrig;
+                const avisoCands = cands.length
+                    ? `<div style="font-size:12px;color:#856404;">⚠️ Coincide con: ${cands.map(c => String(c.nombre || '').replace(/</g, '&lt;')).join(' · ')}. Elige uno o escribe el nombre del artículo nuevo.</div>`
+                    : '';
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>
-                        <input type="text" class="integraNombre" list="datalistInsumosNombres" value="${nomOrig}" placeholder="Nombre del producto">
+                        <input type="text" class="integraNombre" list="datalistInsumosNombres" value="${sugerido}" placeholder="Nombre del producto">
+                        ${avisoCands}
                     </td>
                     <td><input type="number" step="0.01" min="0" class="integraCantidad" value="${p.cantidad_fisica ?? p.cantidad ?? ''}"></td>
                     <td>

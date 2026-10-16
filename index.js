@@ -192,12 +192,24 @@ app.post('/api/almacen/conformidad', gAlmacen, async (req, res) => {
                 estadoItem = 'POR REGULARIZAR';
             }
 
+            // El nombre puede venir de la guía con otra redacción ("ETIQUETAS
+            // BELINI 1LT" vs "Etiqueta couche 90 gr x 1 lt Belini"): se busca el
+            // artículo que coincide antes de crear uno nuevo. Solo se crea
+            // cuando de verdad no existe ninguno.
             let targetArticuloId = null;
-            const existeRes = await client.query('SELECT id, stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [nombreFinal]);
-            
-            if (existeRes.rows.length > 0) {
-                targetArticuloId = existeRes.rows[0].id;
-                const stockAnterior = Number(existeRes.rows[0].stock) || 0;
+            const hallado = await resolverArticuloPorNombre(client, nombreFinal);
+            if (hallado.tipo === 'ambigua') {
+                await client.query('ROLLBACK');
+                return res.status(409).json({
+                    success: false,
+                    mensaje: `"${nombreFinal}" coincide con varios artículos: elige cuál es en vez de crear otro.`,
+                    candidatos: hallado.candidatos.map(c => ({ id: c.id, nombre: c.nombre, stock: c.stock }))
+                });
+            }
+
+            if (hallado.articulo) {
+                targetArticuloId = hallado.articulo.id;
+                const stockAnterior = Number(hallado.articulo.stock) || 0;
                 await client.query(`UPDATE inventario SET stock = stock + $1 WHERE id = $2`, [cantidadFisica, targetArticuloId]);
                 await registrarHistorial(client, {
                     tipo: 'ENTRADA', origen: 'conformidad',
@@ -330,19 +342,21 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
             }
 
             const cantidadFisica = Number(item.cantidad_fisica) || 0;
-            // Busca el producto: primero igual exacto, luego por nombre plano
-            // (tildes/espacios/puntuación no importan). Si no existe en el
-            // inventario es un producto nuevo y quien lo ingresa debe decir
-            // a qué categoría va — nada de mandarlo en automático a "General".
-            const existeRes = await client.query('SELECT id, stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [item.nombre]);
-            let filaInv = existeRes.rows.length > 0 ? existeRes.rows[0] : null;
-            if (!filaInv) {
-                const claves = new Set(variantesNombreInventario(item.nombre));
-                if (claves.size) {
-                    const todas = await client.query('SELECT id, nombre, stock FROM inventario');
-                    filaInv = todas.rows.find(r => variantesNombreInventario(r.nombre).some(k => claves.has(k))) || null;
-                }
+            // Busca el producto en 3 capas (exacto, plano sin puntuación y por
+            // contenido de tokens con un único candidato). Si coincide con
+            // varios no se adivina: se pide el nombre exacto, nunca se crea un
+            // duplicado en silencio.
+            const halladoRegistro = await resolverArticuloPorNombre(client, item.nombre);
+            if (halladoRegistro.tipo === 'ambigua') {
+                await client.query('ROLLBACK');
+                return res.status(409).json({
+                    success: false,
+                    mensaje: `El producto "${item.nombre}" coincide con varios artículos: escribe el nombre exacto de uno de ellos (${halladoRegistro.candidatos.map(c => `"${c.nombre}"`).join(', ')}).`
+                });
             }
+            const filaInv = halladoRegistro.articulo
+                ? { id: halladoRegistro.articulo.id, stock: halladoRegistro.articulo.stock }
+                : null;
             let targetArticuloId;
             if (filaInv) {
                 targetArticuloId = filaInv.id;
@@ -569,11 +583,19 @@ app.post('/api/almacen/conformidad-ajustada', gAlmacen, async (req, res) => {
                 estadoItem = 'POR REGULARIZAR';
             }
 
-            const existeRes = await client.query('SELECT id, stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [nombre]);
+            const halladoAjuste = await resolverArticuloPorNombre(client, nombre);
+            if (halladoAjuste.tipo === 'ambigua') {
+                await client.query('ROLLBACK');
+                return res.status(409).json({
+                    success: false,
+                    mensaje: `"${nombre}" coincide con varios artículos: elige cuál es en vez de crear otro.`,
+                    candidatos: halladoAjuste.candidatos.map(c => ({ id: c.id, nombre: c.nombre, stock: c.stock }))
+                });
+            }
             let targetArticuloId;
-            if (existeRes.rows.length > 0) {
-                targetArticuloId = existeRes.rows[0].id;
-                const stockAnterior = Number(existeRes.rows[0].stock) || 0;
+            if (halladoAjuste.articulo) {
+                targetArticuloId = halladoAjuste.articulo.id;
+                const stockAnterior = Number(halladoAjuste.articulo.stock) || 0;
                 await client.query(
                     `UPDATE inventario SET stock = stock + $1 WHERE id = $2`,
                     [cantidad, targetArticuloId]
@@ -672,6 +694,33 @@ app.post('/api/almacen/pendientes/anular', gAlmacen, async (req, res) => {
 });
 
 // --- ALMACÉN: CREAR NUEVO PRODUCTO EN INVENTARIO ---
+// Resuelve nombres de guía contra el inventario SIN escribir nada: lo usa la
+// conformidad para que solo lo que de verdad no existe pida datos de artículo
+// nuevo. Por ítem responde 'unico' (con articulo), 'ninguno' o 'ambiguo' (con
+// candidatos para que el operario elija en vez de crear un duplicado).
+app.post('/api/almacen/resolver-items', gAlmacen, async (req, res) => {
+    try {
+        const nombres = Array.isArray(req.body.nombres) ? req.body.nombres : [];
+        const items = [];
+        for (const n of nombres) {
+            const r = await resolverArticuloPorNombre(pool, n);
+            const unico = r.tipo === 'exacta' || r.tipo === 'variante' || r.tipo === 'similar';
+            items.push({
+                nombre: String(n || ''),
+                tipo: unico ? 'unico' : (r.tipo === 'ambigua' ? 'ambiguo' : 'ninguno'),
+                articulo: r.articulo
+                    ? { id: r.articulo.id, nombre: r.articulo.nombre, stock: r.articulo.stock }
+                    : null,
+                candidatos: (r.candidatos || []).map(c => ({ id: c.id, nombre: c.nombre, stock: c.stock }))
+            });
+        }
+        res.json({ success: true, items });
+    } catch (err) {
+        console.error('Error al resolver items:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
 app.post('/api/inventario/nuevo', gAlmacen, async (req, res) => {
     try {
         const { nombre, categoria, unidad_medida, stock } = req.body;
@@ -684,9 +733,16 @@ app.post('/api/inventario/nuevo', gAlmacen, async (req, res) => {
         const stockInicial = parseFloat(stock);
         const stockValido = isNaN(stockInicial) || stockInicial < 0 ? 0 : stockInicial;
 
-        const existe = await pool.query('SELECT id FROM inventario WHERE LOWER(nombre) = LOWER($1)', [nom]);
-        if (existe.rows.length > 0) {
-            return res.status(400).json({ success: false, mensaje: `Ya existe "${nom}" en el inventario. Usa el botón Ajustar para corregir su stock.` });
+        const existe = await resolverArticuloPorNombre(pool, nom);
+        if (existe.articulo) {
+            return res.status(400).json({ success: false, mensaje: `Ya existe "${existe.articulo.nombre}" en el inventario (coincide con "${nom}"). Usa el botón Ajustar para corregir su stock.` });
+        }
+        if (existe.tipo === 'ambigua') {
+            return res.status(409).json({
+                success: false,
+                mensaje: `"${nom}" se parece a varios artículos: verifica si uno de ellos es el que quieres crear.`,
+                candidatos: existe.candidatos.map(c => ({ id: c.id, nombre: c.nombre, stock: c.stock }))
+            });
         }
 
         const nuevo = await pool.query(
@@ -2225,6 +2281,74 @@ function variantesNombreInventario(txt) {
         .join('');
     if (!base) return [];
     return base === sinX ? [base] : [base, sinX];
+}
+
+// Tokens de un nombre para matching por CONTENIDO: minúsculas, sin acentos,
+// "1lt" se parte en "1"+"lt", se ignora la "x" de presentación y los plurales
+// se singularizan ("etiquetas"→"etiqueta"). Así "Etiquetas b-1 1lt" y
+// "Etiqueta couche 90 gr x 1 lt B-1" comparten (casi) todo su vocabulario
+// aunque la guía omita el material ("couche 90 gr").
+function tokensArticulo(txt) {
+    return String(txt || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/([0-9])([a-z])/g, '$1 $2')
+        .replace(/([a-z])([0-9])/g, '$1 $2')
+        .split(/[^a-z0-9]+/).filter(Boolean)
+        .filter(t => t !== 'x')
+        .map(t => (t.length > 3 && t.endsWith('s') ? t.slice(0, -1) : t));
+}
+
+// Resuelve un nombre de guía/operario contra el inventario en 3 capas:
+// 1) igual exacto, 2) plano sin puntuación ni "x", 3) contenido de tokens con
+// UN SOLO candidato (si hay varios no se adivina: se devuelven para elegir).
+// Devuelve { tipo, articulo, candidatos }: tipo 'exacta' | 'variante' |
+// 'similar' | 'ninguna' | 'ambigua'. Solo 'exacta'/'variante'/'similar' traen
+// articulo; solo 'ambigua' trae candidatos.
+async function resolverArticuloPorNombre(db, nombre) {
+    const texto = String(nombre || '').trim();
+    if (!texto) return { tipo: 'ninguna', articulo: null, candidatos: [] };
+
+    const exacto = await db.query(
+        'SELECT id, nombre, stock FROM inventario WHERE LOWER(BTRIM(nombre)) = LOWER(BTRIM($1)) LIMIT 1',
+        [texto]
+    );
+    if (exacto.rows.length) {
+        return { tipo: 'exacta', articulo: exacto.rows[0], candidatos: [] };
+    }
+
+    const claves = new Set(variantesNombreInventario(texto));
+    const toks = tokensArticulo(texto);
+    if (!claves.size && !toks.length) return { tipo: 'ninguna', articulo: null, candidatos: [] };
+
+    const todos = await db.query('SELECT id, nombre, stock FROM inventario');
+    const porVariante = [];
+    const porTokens = [];
+    for (const fila of todos.rows) {
+        if (claves.size && variantesNombreInventario(fila.nombre).some(k => claves.has(k))) {
+            porVariante.push(fila);
+            continue;
+        }
+        if (toks.length) {
+            const ft = tokensArticulo(fila.nombre);
+            if (!ft.length) continue;
+            const setLargo = new Set(toks.length >= ft.length ? toks : ft);
+            const corto = toks.length >= ft.length ? ft : toks;
+            if (corto.every(t => setLargo.has(t))) porTokens.push(fila);
+        }
+    }
+    // La variante plana manda sobre la similitud por tokens: es más estricta.
+    if (porVariante.length === 1) {
+        return { tipo: 'variante', articulo: porVariante[0], candidatos: [] };
+    }
+    if (porVariante.length > 1) {
+        return { tipo: 'ambigua', articulo: null, candidatos: porVariante };
+    }
+    if (porTokens.length === 1) {
+        return { tipo: 'similar', articulo: porTokens[0], candidatos: [] };
+    }
+    if (porTokens.length > 1) {
+        return { tipo: 'ambigua', articulo: null, candidatos: porTokens };
+    }
+    return { tipo: 'ninguna', articulo: null, candidatos: [] };
 }
 
 // Convierte un alias de producto de la guía ("B-1 X 200 ML") en un patrón que
@@ -3881,6 +4005,13 @@ app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
         // La marcha de envasado es solo muestreo en pantalla: no bloquea el
         // registro (igual que el cierre, que nunca la exigió).
         const mov = await aplicarMovimientosProduccion(client, req, { producto_tipo, presentacion, cajas, usuario, tapaInsumoId: tapa_insumo_id });
+        // Si quedó una EN_CURSO de este mismo producto (se abrió al elegir
+        // "Continuar con este" y aquí se reporta directo), se borra: su estado
+        // de "en producción" ya lo cumple este registro.
+        await client.query(
+            `DELETE FROM reportes_produccion WHERE estado = 'EN_CURSO' AND COALESCE(producto_key, '') = $1`,
+            [producto_tipo]
+        );
             const tmRep = toneladas === undefined || toneladas === null || toneladas === '' ? 0 : Number(toneladas);
             // Mismo producto dos veces en el día: se suma al registro
             // existente en vez de crear otra fila.
@@ -7028,5 +7159,6 @@ module.exports = {
     app, parsearCabeceraSUNAT, detectarItemsTabla, extraerDireccionSUNAT,
     resolverItemGuia, normalizarRespuestaIA, parseNumeroGuia, componerCamposDesdeTexto, fusionarItemsSalidas,
     IGV_POR_DEFECTO, normalizarMoneda, redondear2, normalizarItemsOrden,
-    camposEntregaDe, normalizarCuentasBancarias, normalizarNombreInventario, variantesNombreInventario
+    camposEntregaDe, normalizarCuentasBancarias, normalizarNombreInventario, variantesNombreInventario,
+    tokensArticulo, resolverArticuloPorNombre
 };

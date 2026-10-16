@@ -513,19 +513,19 @@
                             <small id="almNumeroOCEstado" style="display:block; color:#555; font-size:11px; line-height:1.3;"></small>
                         </div>
                         <div>
-                            <label class="etiqueta-mini">👤 Nombre del Conductor</label>
+                            <label class="etiqueta-mini">👤 Nombre del Conductor (opcional)</label>
                             <input type="text" id="almChofer" name="chofer" placeholder="Apellidos y nombres del chofer">
                         </div>
                         <div>
-                            <label class="etiqueta-mini">🪪 Documento de Identidad (DNI)</label>
+                            <label class="etiqueta-mini">🪪 Documento de Identidad (opcional)</label>
                             <input type="text" id="almDniChofer" name="dni_chofer" placeholder="N° de DNI / Pasaporte">
                         </div>
                         <div>
-                            <label class="etiqueta-mini">🚛 Placa del Vehículo</label>
+                            <label class="etiqueta-mini">🚛 Placa del Vehículo (opcional)</label>
                             <input type="text" id="almPlaca" name="placa" placeholder="Ej. ABC-123">
                         </div>
                         <div class="span-2">
-                            <label class="etiqueta-mini">🗺️ Lugar de Partida / Destino</label>
+                            <label class="etiqueta-mini">🗺️ Lugar de Partida / Destino (opcional)</label>
                             <input type="text" id="almLugarPartida" name="lugar_partida" placeholder="Origen -> Planta Principal Belcen">
                         </div>
                     </div>
@@ -1550,6 +1550,19 @@
             alert('📋 Texto copiado en Observaciones.');
         }
 
+        // La IA a veces pega la cola del membrete ("...S.A.C. FECHA EMISIÓN
+        // 5 6", "...RUC 20..."): se corta por esas marcas. Lo que queda igual
+        // hay que revisarlo a mano (el aviso ya lo pide).
+        function limpiarEmpresaIA(v) {
+            let s = String(v || '');
+            s = s.split(/FECHA\s+EMISI[OÓ]N/i)[0];
+            s = s.split(/FECHA\s+TRASLADO/i)[0];
+            s = s.split(/R\.?\s*U\.?\s*C\.?\s*N?[°º.]?\s*\d{6,}/i)[0];
+            s = s.split(/MOTIVO/i)[0];
+            s = s.split(/PUNTO\s+(DE\s+)?(PARTIDA|LLEGADA)/i)[0];
+            return s.replace(/\s+/g, ' ').trim().replace(/[\s\-–:;,.]+$/, '');
+        }
+
         async function leerDocumentoAlmacen() {
             const input = document.getElementById('almFotoGuia');
             if (!input.files || !input.files[0]) {
@@ -1572,7 +1585,7 @@
                     ? wizardAlmMapearTipo(c.tipo_documento) : document.getElementById('almTipoDocumento').value;
                 if (c.numero_guia) document.getElementById('almNumeroGuia').value = c.numero_guia;
                 if (c.orden_compra && !document.getElementById('almNumeroOC').value.trim()) document.getElementById('almNumeroOC').value = c.orden_compra;
-                if (c.proveedor) document.getElementById('almProveedor').value = c.proveedor;
+                if (c.proveedor) document.getElementById('almProveedor').value = limpiarEmpresaIA(c.proveedor);
                 if (c.chofer) document.getElementById('almChofer').value = c.chofer;
                 if (c.dni_chofer) document.getElementById('almDniChofer').value = c.dni_chofer;
                 if (c.placa) document.getElementById('almPlaca').value = String(c.placa).replace(/\s+Principal$/i, '');

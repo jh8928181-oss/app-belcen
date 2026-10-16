@@ -5,7 +5,8 @@ const {
   resolverItemGuia,
   normalizarRespuestaIA,
   fusionarItemsSalidas,
-  normalizarNombreInventario
+  normalizarNombreInventario,
+  variantesNombreInventario
 } = require('../index');
 
 // Fixture con la estructura real que emite SUNAT. La cantidad va al final de la
@@ -486,5 +487,30 @@ describe('normalizarNombreInventario', () => {
     expect(normalizarNombreInventario('')).toBe('');
     expect(normalizarNombreInventario(null)).toBe('');
     expect(normalizarNombreInventario(undefined)).toBe('');
+  });
+});
+
+// La "x" de presentación ("Balde Belini x 18 lt") no debe convertir la guía
+// "BALDE BELINI 18 LT" en un artículo distinto: fue el duplicado en General.
+describe('variantesNombreInventario', () => {
+  test('la x de presentación no separa artículos', () => {
+    const guia = variantesNombreInventario('BALDE BELINI 18 LT');
+    const catalogo = variantesNombreInventario('Balde Belini x 18 lt');
+    expect(guia.some(k => catalogo.includes(k))).toBe(true);
+  });
+
+  test('sin x no cambia la clave', () => {
+    expect(variantesNombreInventario('Tapa color Rojo 2lt')).toEqual(['tapacolorrojo2lt']);
+  });
+
+  test('nombres distintos siguen sin compartir clave', () => {
+    const a = variantesNombreInventario('Balde Belini 18 lt');
+    const b = variantesNombreInventario('Balde Belini 12 lt');
+    expect(a.some(k => b.includes(k))).toBe(false);
+  });
+
+  test('vacío no devuelve claves', () => {
+    expect(variantesNombreInventario('')).toEqual([]);
+    expect(variantesNombreInventario(null)).toEqual([]);
   });
 });

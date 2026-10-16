@@ -337,9 +337,11 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
             const existeRes = await client.query('SELECT id, stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [item.nombre]);
             let filaInv = existeRes.rows.length > 0 ? existeRes.rows[0] : null;
             if (!filaInv) {
-                const clave = normalizarNombreInventario(item.nombre);
-                const todas = await client.query('SELECT id, nombre, stock FROM inventario');
-                filaInv = todas.rows.find(r => normalizarNombreInventario(r.nombre) === clave) || null;
+                const claves = new Set(variantesNombreInventario(item.nombre));
+                if (claves.size) {
+                    const todas = await client.query('SELECT id, nombre, stock FROM inventario');
+                    filaInv = todas.rows.find(r => variantesNombreInventario(r.nombre).some(k => claves.has(k))) || null;
+                }
             }
             let targetArticuloId;
             if (filaInv) {
@@ -2160,6 +2162,19 @@ function normalizarGuia(txt) {
 // ninguno el producto es nuevo y exige categoría del que lo registra.
 function normalizarNombreInventario(txt) {
     return String(txt || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+}
+
+// Claves de matching de un nombre: la plana y la que ignora la "x" de
+// presentación ("Balde Belini x 18 lt" y "BALDE BELINI 18 LT" son el mismo
+// artículo; sin esto la guía creaba un duplicado en General).
+function variantesNombreInventario(txt) {
+    const base = normalizarNombreInventario(txt);
+    const sinX = String(txt || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .split(/[^a-z0-9]+/)
+        .filter(t => t && t !== 'x')
+        .join('');
+    if (!base) return [];
+    return base === sinX ? [base] : [base, sinX];
 }
 
 // Convierte un alias de producto de la guía ("B-1 X 200 ML") en un patrón que
@@ -6963,5 +6978,5 @@ module.exports = {
     app, parsearCabeceraSUNAT, detectarItemsTabla, extraerDireccionSUNAT,
     resolverItemGuia, normalizarRespuestaIA, parseNumeroGuia, componerCamposDesdeTexto, fusionarItemsSalidas,
     IGV_POR_DEFECTO, normalizarMoneda, redondear2, normalizarItemsOrden,
-    camposEntregaDe, normalizarCuentasBancarias, normalizarNombreInventario
+    camposEntregaDe, normalizarCuentasBancarias, normalizarNombreInventario, variantesNombreInventario
 };

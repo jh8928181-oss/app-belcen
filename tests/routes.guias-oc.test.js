@@ -674,6 +674,28 @@ describe('POST /api/almacen/registrar-conforme producto nuevo', () => {
     expect(sentencias().some(s => /UPDATE inventario SET stock = stock \+/.test(s))).toBe(true);
     expect(r.cuerpo.nuevos_productos).toEqual([]);
   });
+
+  test('la x de presentación de la guía empatá con el artículo del catálogo', async () => {
+    // El caso real de la guía TV01-00006299: "BALDE BELINI 18 LT" contra el
+    // catálogo "Balde Belini x 18 lt" creaba un duplicado en General.
+    responder([
+      [SQL.insertIngreso, filas({ id: 413, numero_guia: 'G-1200' })],
+      [SQL.inventarioExiste, filas()],
+      [SQL.inventarioLista, filas({ id: 16, nombre: 'Balde Belini x 18 lt', stock: 0 })]
+    ]);
+
+    const r = await invocar('post', '/api/almacen/registrar-conforme', {
+      body: {
+        ...base,
+        items_json: JSON.stringify([{ nombre: 'BALDE BELINI 18 LT', cantidad_guia: 867, cantidad_fisica: 867 }])
+      }
+    });
+
+    expect(r.statusCode).toBe(200);
+    expect(sentencias().some(s => SQL.inventarioAlta.test(s))).toBe(false);
+    expect(sentencias().some(s => /UPDATE inventario SET stock = stock \+/.test(s))).toBe(true);
+    expect(r.cuerpo.nuevos_productos).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------

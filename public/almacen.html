@@ -1499,14 +1499,26 @@
             return String(txt || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
         }
 
+        function variantesNombreInv(txt) {
+            const base = normalizarNombreInv(txt);
+            const sinX = String(txt || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                .split(/[^a-z0-9]+/)
+                .filter(t => t && t !== 'x')
+                .join('');
+            if (!base) return [];
+            return base === sinX ? [base] : [base, sinX];
+        }
+
         function escAtributo(v) {
             return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
         function buscarEnInventario(nombre) {
-            const clave = normalizarNombreInv(nombre);
-            if (!clave) return null;
-            return (inventarioGlobal || []).find(i => normalizarNombreInv(i.nombre) === clave) || null;
+            const claves = variantesNombreInv(nombre);
+            if (!claves.length) return null;
+            return (inventarioGlobal || []).find(i =>
+                variantesNombreInv(i.nombre).some(k => claves.includes(k))
+            ) || null;
         }
 
         function resolverItemAlm(it) {

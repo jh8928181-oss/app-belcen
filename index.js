@@ -2431,6 +2431,13 @@ function parsearCabeceraSUNAT(textoPdf) {
         // Series como TV01, T001, EG07 o F001, con o sin "N°" delante.
         m = textoPdf.match(/\b([A-Z]{1,4}\s*0?\d{2,3})\s*[-–]\s*(\d{4,8})/i);
         if (m) res.numero_guia = (m[1] + '-' + m[2]).replace(/\s+/g, '').toUpperCase();
+        else {
+            // Series cortas tipo T009-842: el prefijo trae dígito (T009, F001),
+            // a diferencia de placas (AZS-904) u OC (60-2026), que no lo traen
+            // al inicio. Solo se usa si no hubo número largo.
+            m = textoPdf.match(/\b(?=[A-Z][A-Z0-9-]*\d)([A-Z]{0,3}\d[A-Z0-9]{0,3})\s*[-–]\s*(\d{1,8})/i);
+            if (m) res.numero_guia = (m[1] + '-' + m[2]).replace(/\s+/g, '').toUpperCase();
+        }
     }
 
     // RUC del emisor: el primero del documento (cabecera). Acepta "RUC",

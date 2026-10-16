@@ -58,6 +58,13 @@ describe('parsearCabeceraSUNAT', () => {
     expect(parsearCabeceraSUNAT('GUIA T001 - 4567').numero_guia).toBe('T001-4567');
   });
 
+  test('acepta serie corta tipo T009-842 sin confundirla con placa ni OC', () => {
+    expect(parsearCabeceraSUNAT('GUIA T009-842').numero_guia).toBe('T009-842');
+    // Placas (sin dígito en el prefijo) y OC no son número de guía.
+    expect(parsearCabeceraSUNAT('Marca y Placa : KIA AZS-904').numero_guia).toBe('');
+    expect(parsearCabeceraSUNAT('Observaciones : OC:60-2026').numero_guia).toBe('');
+  });
+
   test('cae al regex de RUC suelto cuando no hay bloque de destinatario', () => {
     expect(parsearCabeceraSUNAT('RUC N° 20987654321').ruc).toBe('20987654321');
   });

@@ -1725,7 +1725,7 @@
                 if (!ths.length) return;
                 tabla.querySelectorAll('tbody tr').forEach(fila => {
                     if (/sep-categoria|sep-cat/.test(fila.className)) {
-                        fila.cells.forEach(td => {
+                        Array.from(fila.cells).forEach(td => {
                             td.setAttribute('data-label', '');
                             td.classList.add('label-encabezado-grupo');
                         });
@@ -2614,9 +2614,11 @@
             if (!base) return '<option value="">-- Vincular producto --</option>';
             let html = '<option value="">-- Vincular producto --</option>';
             base.querySelectorAll('optgroup').forEach(g => {
-                html += `<optgroup label="${escOpServ(g.label)}">`
-                    + [...g.options].map(o => `<option value="${escOpServ(o.value)}">${escOpServ(o.textContent)}</option>`).join('')
-                    + '</optgroup>';
+                html += `<optgroup label="${escOpServ(g.label)}">`;
+                g.querySelectorAll('option').forEach(o => {
+                    html += `<option value="${escOpServ(o.value)}">${escOpServ(o.textContent)}</option>`;
+                });
+                html += '</optgroup>';
             });
             return html;
         }

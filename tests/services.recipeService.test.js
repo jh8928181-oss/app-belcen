@@ -13,7 +13,7 @@ const servicio = require('../services/recipeService');
 
 /** Base de datos falsa: responde por patrón y registra lo que se le pidió. */
 function crearPoolFake({ recetas = [], lineas = {}, inventario = [], compartidos = [] }) {
-  const registro = { selects: [], inserts: [], updates: [] };
+  const registro = { selects: [], inserts: [], updates: [], opciones: [] };
 
   async function query(sql, params = []) {
     registro.selects.push({ sql, params });
@@ -71,7 +71,11 @@ function crearPoolFake({ recetas = [], lineas = {}, inventario = [], compartidos
     }
     if (/^INSERT INTO receta_insumos/.test(sql)) {
       registro.inserts.push({ sql, params });
-      return { rows: [], rowCount: 1 };
+      return { rows: [{ id: 500 + registro.inserts.length }], rowCount: 1 };
+    }
+    if (/^INSERT INTO receta_insumo_opciones/.test(sql)) {
+      registro.opciones.push({ sql, params });
+      return { rows: [{ id: 1 }], rowCount: 1 };
     }
     if (/^INSERT INTO recetas/.test(sql)) {
       const [producto_key, nombre_producto, origen, version] = params;
@@ -614,13 +618,122 @@ describe('idsInsumosFaltantes', () => {
   });
 });
 
+describe('tapa seleccionable (Faisan 900 ml)', () => {
+  const BOTELLA = 84;
+  const DORADO = 35;
+  const ROJO = 68;
+  const VERDE = 69;
+
+  function recetaConTapa() {
+    return {
+      id: 100, producto_key: 'faisan_900ml', nombre_producto: 'Faisan 900 ml',
+      version: 1, activa: true,
+      insumos: [
+        insumo({
+          id: 50, receta_id: 100, insumo_id: BOTELLA, orden: 0,
+          insumo_nombre: 'Botella Faisan x 900 ML',
+          nombre_inventario: 'Botella Faisan x 900 ML',
+          unidad_medida: 'UNIDADES', unidad_inventario: 'UNIDADES',
+          cantidad_por_caja: 12, cantidad_efectiva: 12
+        }),
+        insumo({
+          id: 51, receta_id: 100, insumo_id: DORADO, orden: 1,
+          insumo_nombre: 'Tapa dosif. N° 26 blanco/Dorado',
+          nombre_inventario: 'Tapa dosif. N° 26 blanco/Dorado',
+          unidad_medida: 'MILL', unidad_inventario: 'MILL',
+          cantidad_por_caja: 0.012, cantidad_efectiva: 0.012,
+          seleccionable: true,
+          opciones: [
+            { insumo_id: DORADO, nombre: 'Tapa dosif. N° 26 blanco/Dorado', unidad_medida: 'MILL', categoria: 'Tapas', stock: 51768 },
+            { insumo_id: ROJO, nombre: 'TAPA DOSIFICADORA N 26 ROJO', unidad_medida: 'MILL', categoria: 'Tapas', stock: 49 },
+            { insumo_id: VERDE, nombre: 'TAPA DOSIFICADORA N 26 VERDE', unidad_medida: 'MILL', categoria: 'Tapas', stock: 2 }
+          ]
+        })
+      ]
+    };
+  }
+
+  function poolDeReceta() {
+    const { pool } = crearPoolFake({
+      recetas: [{ id: 100, producto_key: 'faisan_900ml', version: 1, activa: true }],
+      lineas: { 100: recetaConTapa().insumos }
+    });
+    return pool;
+  }
+
+  test('sin eleccion descuenta la tapa por defecto de la receta', async () => {
+    const r = await servicio.calcularInsumosProduccion('faisan_900ml', 10, poolDeReceta());
+    const tapa = r.find(i => i.seleccionable);
+    expect(tapa.insumo_id).toBe(DORADO);
+    expect(tapa.cantidad).toBe(0.12); // 10 cajas * 0.012 MILL
+  });
+
+  test('con la tapa elegida la hoja ES el insumo elegido, con la misma cantidad', async () => {
+    const r = await servicio.calcularInsumosProduccion('faisan_900ml', 10, poolDeReceta(), ROJO);
+    const tapa = r.find(i => i.seleccionable);
+    expect(tapa.insumo_id).toBe(ROJO);
+    expect(tapa.nombre).toBe('TAPA DOSIFICADORA N 26 ROJO');
+    expect(tapa.unidad).toBe('MILL');
+    expect(tapa.stock_actual).toBe(49);
+    expect(tapa.cantidad).toBe(0.12);
+    // La botella no se mueve: solo cambia la tapa.
+    expect(r.find(i => i.insumo_id === BOTELLA).cantidad).toBe(120);
+  });
+
+  test('una tapa que la receta no ofrece se rechaza con 400, no se descuenta otra', async () => {
+    const err = await servicio.calcularInsumosProduccion('faisan_900ml', 10, poolDeReceta(), 999)
+      .then(() => null, e => e);
+    expect(err).toBeTruthy();
+    expect(err.status).toBe(400);
+    expect(err.message).toMatch(/no es una opcion valida/);
+  });
+
+  test('eleccionesDesdeTapa mapea la linea y solo si la opcion existe', async () => {
+    const receta = recetaConTapa();
+    expect(servicio.eleccionesDesdeTapa(receta, ROJO).get(51)).toBe(ROJO);
+    expect(servicio.eleccionesDesdeTapa(receta, 999).size).toBe(0);
+    expect(servicio.eleccionesDesdeTapa(null, ROJO).size).toBe(0);
+  });
+
+  test('insertarLineas guarda el flag y sus opciones como insumos reales', async () => {
+    const { pool, registro } = crearPoolFake({
+      inventario: [
+        { id: BOTELLA, nombre: 'Botella Faisan x 900 ML', unidad_medida: 'UNIDADES' },
+        { id: DORADO, nombre: 'Tapa dosif. N° 26 blanco/Dorado', unidad_medida: 'MILL' },
+        { id: ROJO, nombre: 'TAPA DOSIFICADORA N 26 ROJO', unidad_medida: 'MILL' },
+        { id: VERDE, nombre: 'TAPA DOSIFICADORA N 26 VERDE', unidad_medida: 'MILL' }
+      ]
+    });
+
+    await servicio.insertarLineas(pool, 100, [{
+      insumo_id: DORADO, cantidad_por_caja: 0.012, merma_pct: 0,
+      seleccionable: true, opciones: [DORADO, ROJO, VERDE]
+    }], 'faisan_900ml');
+
+    expect(registro.inserts[0].params[10]).toBe(true); // seleccionable
+    expect(registro.opciones.map(o => o.params[1])).toEqual([DORADO, ROJO, VERDE]);
+  });
+
+  test('clavesConTapaSeleccionable y resolverKeyPorNombre leen la base', async () => {
+    const pool = {
+      query: jest.fn()
+        .mockResolvedValueOnce({ rows: [{ producto_key: 'faisan_900ml' }] })
+        .mockResolvedValueOnce({ rows: [{ producto_key: 'faisan_900ml' }] })
+    };
+    await expect(servicio.clavesConTapaSeleccionable(pool)).resolves.toEqual(['faisan_900ml']);
+    await expect(servicio.resolverKeyPorNombre('Faisan x 900ml', pool)).resolves.toBe('faisan_900ml');
+  });
+});
+
 describe('contrato del módulo', () => {
   test('exporta todo lo que usan las rutas', () => {
     [
       'obtenerRecetaPorId', 'obtenerRecetaVigente', 'listarRecetas', 'crearReceta',
       'activarReceta', 'clonarRecetaParaEdicion', 'calcularInsumosProduccion',
       'simularImpacto', 'evaluarCobertura', 'validarLineas', 'detectaCiclo',
-      'idsInsumosFaltantes', 'insertarLineas', 'diffReceta'
+      'idsInsumosFaltantes', 'insertarLineas', 'diffReceta',
+      'eleccionesDesdeTapa', 'clavesConTapaSeleccionable', 'resolverKeyPorNombre',
+      'copiarOpcionesYSeleccionables', 'calcularInsumosDeReceta'
     ].forEach(fn => expect(typeof servicio[fn]).toBe('function'));
   });
 

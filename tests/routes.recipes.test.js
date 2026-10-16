@@ -42,6 +42,10 @@ const mockService = {
   insertarLineas: jest.fn(),
   diffReceta: jest.fn(),
   nombreDe: r => r.nombre_producto || r.producto_key,
+  eleccionesDesdeTapa: jest.fn(),
+  clavesConTapaSeleccionable: jest.fn(),
+  resolverKeyPorNombre: jest.fn(),
+  copiarOpcionesYSeleccionables: jest.fn(),
   PROFUNDIDAD_MAXIMA: 5
 };
 
@@ -104,6 +108,9 @@ beforeEach(() => {
   mockService.detectaCiclo.mockReset().mockResolvedValue(false);
   mockService.validarLineas.mockReset().mockResolvedValue({ ok: true, errores: [] });
   mockService.idsInsumosFaltantes.mockReset().mockResolvedValue([]);
+  mockService.clavesConTapaSeleccionable.mockReset().mockResolvedValue([]);
+  mockService.resolverKeyPorNombre.mockReset().mockResolvedValue('');
+  mockService.eleccionesDesdeTapa.mockReset().mockReturnValue(new Map());
   mockService.resolverNombresInventario.mockReset().mockResolvedValue(new Map([
     [1, { id: 1, nombre: 'Resina PET', unidad_medida: 'KG', categoria: 'Materia prima', stock: 50 }]
   ]));
@@ -349,5 +356,70 @@ describe('GET /:id/impacto — simula la receta pedida', () => {
     const res = await invocar('get', '/:id/impacto', reqFalso({ id: '10' }, {}, { cajas: '0' }));
     expect(res.statusCode).toBe(400);
     expect(mockService.simularImpacto).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET / — los productos con tapa elegible salen de la base', () => {
+  test('devuelve lo que diga clavesConTapaSeleccionable, no una lista fija', async () => {
+    mockService.listarRecetas.mockResolvedValue([]);
+    mockService.clavesConTapaSeleccionable.mockResolvedValue(['faisan_900ml']);
+
+    const res = await invocar('get', '/', reqFalso());
+
+    expect(res.statusCode).toBeNull();
+    expect(res.cuerpo.productos_tapa_dinamica).toEqual(['faisan_900ml']);
+    expect(mockService.clavesConTapaSeleccionable).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('GET /:producto_key — el simulador acepta clave o nombre y la tapa elegida', () => {
+  const recetaConTapa = (over = {}) => recetaActiva(Object.assign({
+    producto_key: 'faisan_900ml', nombre_producto: 'Aceite de Soya Faisan 900 ml',
+    insumos: [{
+      id: 50, insumo_id: 84, componente_receta_id: null, cantidad_por_caja: 12,
+      seleccionable: true,
+      opciones: [{ insumo_id: 35, nombre: 'Dorado' }, { insumo_id: 68, nombre: 'Rojo' }]
+    }]
+  }, over));
+
+  test('sin cajas devuelve la receta vigente con sus opciones', async () => {
+    mockService.obtenerRecetaVigente.mockResolvedValue(recetaConTapa());
+
+    const res = await invocar('get', '/:producto_key', reqFalso({ producto_key: 'faisan_900ml' }));
+
+    expect(res.statusCode).toBeNull();
+    expect(res.cuerpo.receta.insumos[0].opciones).toHaveLength(2);
+  });
+
+  test('un nombre de formulario se resuelve a la clave antes de buscar receta', async () => {
+    mockService.obtenerRecetaVigente
+      .mockResolvedValueOnce(null)            // por clave: no existe
+      .mockResolvedValueOnce(recetaConTapa());
+    mockService.resolverKeyPorNombre.mockResolvedValue('faisan_900ml');
+
+    const res = await invocar('get', '/:producto_key', reqFalso({ producto_key: 'Faisan x 900ml' }));
+
+    expect(res.statusCode).toBeNull();
+    expect(mockService.resolverKeyPorNombre).toHaveBeenCalledWith('Faisan x 900ml');
+    expect(res.cuerpo.receta.producto_key).toBe('faisan_900ml');
+  });
+
+  test('con cajas y tapa manda la eleccion a la simulacion y marca la linea', async () => {
+    mockService.obtenerRecetaVigente.mockResolvedValue(recetaConTapa());
+    const elecciones = new Map([[50, 68]]);
+    mockService.eleccionesDesdeTapa.mockReturnValue(elecciones);
+    mockService.simularImpacto.mockResolvedValue({
+      insumos: [{ nombre: 'TAPA DOSIFICADORA N 26 ROJO', cantidad: 12, cantidad_por_caja: 12, unidad: 'MILL', insumo_id: 68, obligatorio: true, stock_actual: 49, seleccionable: true }],
+      cobertura: [], faltantes: [], cajas_maximas: 99, advertencias: [], despues: []
+    });
+
+    const res = await invocar('get', '/:producto_key', reqFalso({ producto_key: 'faisan_900ml' }, {}, { cajas: '1', tapa_insumo_id: '68' }));
+
+    expect(res.statusCode).toBeNull();
+    expect(mockService.eleccionesDesdeTapa).toHaveBeenCalledWith(expect.any(Object), 68);
+    expect(mockService.simularImpacto).toHaveBeenCalledWith('faisan_900ml', 1, expect.anything(), null, elecciones);
+    expect(res.cuerpo.requiere_selector_tapa).toBe(true);
+    const lineaTapa = res.cuerpo.insumos.find(i => i.tapa_dinamica);
+    expect(lineaTapa.insumo_id).toBe(68);
   });
 });

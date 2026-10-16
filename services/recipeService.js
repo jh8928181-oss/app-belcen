@@ -50,14 +50,29 @@ async function obtenerRecetaPorId(id, db = pool) {
   const insumos = await db.query(
     `SELECT ri.*, inv.nombre AS nombre_inventario, inv.unidad_medida AS unidad_inventario,
             inv.categoria AS categoria_inventario, inv.stock AS stock_actual,
-            sub.producto_key AS sub_producto_key, sub.nombre_producto AS sub_nombre_producto
+            sub.producto_key AS sub_producto_key, sub.nombre_producto AS sub_nombre_producto,
+            COALESCE((
+              SELECT jsonb_agg(jsonb_build_object(
+                       'insumo_id', op.insumo_id,
+                       'nombre', inv2.nombre,
+                       'unidad_medida', inv2.unidad_medida,
+                       'categoria', inv2.categoria,
+                       'stock', inv2.stock
+                     ) ORDER BY op.orden)
+                FROM receta_insumo_opciones op
+                JOIN inventario inv2 ON inv2.id = op.insumo_id
+               WHERE op.receta_insumo_id = ri.id
+            ), '[]'::jsonb) AS opciones
        FROM receta_insumos ri
        LEFT JOIN inventario inv ON inv.id = ri.insumo_id
        LEFT JOIN recetas sub ON sub.id = ri.componente_receta_id
       WHERE ri.receta_id = $1 ORDER BY ri.orden, ri.id`,
     [id]
   );
-  return { ...receta.rows[0], insumos: insumos.rows };
+  return {
+    ...receta.rows[0],
+    insumos: insumos.rows.map(l => ({ ...l, opciones: Array.isArray(l.opciones) ? l.opciones : [] }))
+  };
 }
 
 /** Todas las recetas del producto, de la mas nueva a la mas vieja. */
@@ -92,6 +107,48 @@ async function obtenerRecetaVigente(producto_key, db = pool) {
 }
 
 /**
+ * Traduce la tapa elegida por el operario (un insumo_id) al par
+ * receta_insumo_id -> insumo_id que entiende el motor de expansion. Devuelve
+ * mapa vacio si la receta no tiene linea seleccionable que ofrezca esa tapa:
+ * el llamador decide si eso es un error o si se usa la tapa de defecto.
+ */
+function eleccionesDesdeTapa(receta, tapaInsumoId) {
+  const elecciones = new Map();
+  if (!receta || !tapaInsumoId) return elecciones;
+  const elegido = Number(tapaInsumoId);
+  const linea = (receta.insumos || []).find(l =>
+    l.seleccionable && (l.opciones || []).some(o => Number(o.insumo_id) === elegido)
+  );
+  if (linea) elecciones.set(linea.id, elegido);
+  return elecciones;
+}
+
+/** Claves de producto cuya receta vigente tiene una linea seleccionable. */
+async function clavesConTapaSeleccionable(db = pool) {
+  const r = await db.query(`
+    SELECT DISTINCT r.producto_key
+      FROM recetas r
+      JOIN receta_insumos ri ON ri.receta_id = r.id
+     WHERE r.activa = true AND ri.seleccionable = true
+     ORDER BY r.producto_key
+  `);
+  return r.rows.map(x => x.producto_key);
+}
+
+/** Traduce el nombre que usa el formulario (o la clave) al producto_key. */
+async function resolverKeyPorNombre(nombre, db = pool) {
+  const texto = String(nombre || '').trim();
+  if (!texto) return '';
+  const r = await db.query(
+    `SELECT producto_key FROM recetas
+      WHERE nombre_producto ILIKE $1 OR producto_key ILIKE $1
+      ORDER BY (activa = true) DESC, version DESC LIMIT 1`,
+    [texto]
+  );
+  return r.rows.length ? r.rows[0].producto_key : '';
+}
+
+/**
  * Motor de expansión. Recorre el BOM y devuelve HOJAS de inventario ya
  * Devuelve las hojas de inventario ya aplanadas, con la cantidad ABSOLUTA que
  * hay que descontar (multiplicadores ya aplicados) y el camino de sub-ensamblados
@@ -103,6 +160,9 @@ async function obtenerRecetaVigente(producto_key, db = pool) {
 async function resolverHojas(receta, multiplicador, db, contexto = {}) {
   const visitadas = contexto.visitadas || new Set();
   const profundidad = contexto.profundidad || 0;
+  // Map<receta_insumo_id, insumo_id>: la tapa (u otra linea seleccionable) que
+  // el operario eligio al registrar la produccion.
+  const elecciones = contexto.elecciones || new Map();
 
   if (visitadas.has(receta.id)) {
     const nombres = [...visitadas].join(' -> ');
@@ -146,7 +206,8 @@ async function resolverHojas(receta, multiplicador, db, contexto = {}) {
       // ya vienen escaladas por la cantidad de sub-ensamblados que hacen falta.
       const subHojas = await resolverHojas(sub, total, db, {
         visitadas: new Set(visitadas),
-        profundidad: profundidad + 1
+        profundidad: profundidad + 1,
+        elecciones
       });
 
       for (const [id, dato] of subHojas) {
@@ -176,18 +237,40 @@ async function resolverHojas(receta, multiplicador, db, contexto = {}) {
       );
     }
 
-    const previo = hojas.get(linea.insumo_id);
-    const nombre = linea.nombre_inventario || linea.insumo_nombre;
+    // Linea seleccionable (la tapa de Faisan): si el operario ya eligio una
+    // opcion valida, la hoja que se descuenta es ESA, no el insumo por defecto
+    // de la receta. La cantidad por caja no cambia: solo cambia el insumo.
+    let insumoId = Number(linea.insumo_id);
+    let nombre = linea.nombre_inventario || linea.insumo_nombre;
+    let unidad = linea.unidad_inventario || linea.unidad_medida || 'UNIDADES';
+    let categoria = linea.categoria_inventario || '';
+    let stockActual = Number(linea.stock_actual) || 0;
+    if (linea.seleccionable && elecciones.has(linea.id)) {
+      const elegido = Number(elecciones.get(linea.id));
+      const opcion = (linea.opciones || []).find(o => Number(o.insumo_id) === elegido);
+      if (!opcion) {
+        throw new Error(
+          `La linea seleccionable "${nombre}" de la receta ${receta.producto_key} no ofrece el insumo (id ${elegido}).`
+        );
+      }
+      insumoId = Number(opcion.insumo_id);
+      nombre = opcion.nombre || nombre;
+      unidad = opcion.unidad_medida || unidad;
+      categoria = opcion.categoria || categoria;
+      stockActual = Number(opcion.stock) || 0;
+    }
+
+    const previo = hojas.get(insumoId);
     if (previo) {
       previo.cantidad_total += total;
       previo.lineas.push({ ...linea, cantidad_total: total });
     } else {
-      hojas.set(linea.insumo_id, {
-        insumo_id: linea.insumo_id,
+      hojas.set(insumoId, {
+        insumo_id: insumoId,
         nombre,
-        unidad: linea.unidad_inventario || linea.unidad_medida || 'UNIDADES',
-        categoria: linea.categoria_inventario || '',
-        stock_actual: Number(linea.stock_actual) || 0,
+        unidad,
+        categoria,
+        stock_actual: stockActual,
         obligatorio: linea.obligatorio !== false,
         stock_minimo: linea.stock_minimo === null || linea.stock_minimo === undefined || linea.stock_minimo === ''
           ? null
@@ -198,13 +281,14 @@ async function resolverHojas(receta, multiplicador, db, contexto = {}) {
     }
     arbol.push({
       tipo: 'insumo',
-      insumo_id: linea.insumo_id,
+      insumo_id: insumoId,
       nombre,
       cantidad_por_caja: porCaja,
       cantidad_total: total,
-      unidad: linea.unidad_inventario || linea.unidad_medida,
+      unidad,
       merma_pct: Number(linea.merma_pct) || 0,
       obligatorio: linea.obligatorio !== false,
+      seleccionable: linea.seleccionable === true,
       notas: linea.notas
     });
   }
@@ -255,10 +339,13 @@ async function árbolDe(receta, db, visitadas, profundidad) {
  * Insumos a descontar para producir `cajas` cajas de UNA receta concreta.
  * Devuelve una fila por hoja de inventario, con la cantidad total y el nombre
  * canonico (el del inventario, nunca el que envio el cliente).
+ *
+ * `elecciones` (opcional) es un Map receta_insumo_id -> insumo_id con lo que el
+ * operario decidio en las lineas seleccionables (la tapa).
  */
-async function calcularInsumosDeReceta(receta, cajas, db = pool) {
+async function calcularInsumosDeReceta(receta, cajas, db = pool, elecciones = new Map()) {
   const multiplicador = Number(cajas) || 0;
-  const hojas = await resolverHojas(receta, multiplicador, db);
+  const hojas = await resolverHojas(receta, multiplicador, db, { elecciones });
 
   // resolverHojas ya devuelve la cantidad absoluta (con sub-recetas y merma
   // aplicadas). El "por caja" se deriva de ahí para poder mostrarlo en la UI.
@@ -272,16 +359,30 @@ async function calcularInsumosDeReceta(receta, cajas, db = pool) {
     stock_actual: h.stock_actual,
     obligatorio: h.obligatorio,
     stock_minimo: h.stock_minimo,
+    seleccionable: h.lineas.some(l => l.seleccionable === true),
     receta_id: receta.id,
     nombre_producto: nombreDe(receta)
   })).sort((a, b) => b.cantidad - a.cantidad);
 }
 
-/** Insumos a descontar para producir `cajas` cajas de la versión vigente. */
-async function calcularInsumosProduccion(producto_key, cajas, db = pool) {
+/**
+ * Insumos a descontar para producir `cajas` cajas de la versión vigente.
+ * `tapaInsumoId` (opcional) es la tapa que el operario eligio: si la receta
+ * tiene una linea seleccionable que la ofrece, esa tapa sustituye a la de
+ * defecto; si no, la eleccion se rechaza con error 400.
+ */
+async function calcularInsumosProduccion(producto_key, cajas, db = pool, tapaInsumoId = null) {
   const receta = await obtenerRecetaVigente(producto_key, db);
   if (!receta) return [];
-  return calcularInsumosDeReceta(receta, cajas, db);
+  const elecciones = tapaInsumoId ? eleccionesDesdeTapa(receta, tapaInsumoId) : new Map();
+  if (tapaInsumoId && !elecciones.size) {
+    const e = new Error(
+      `La tapa elegida (insumo ${tapaInsumoId}) no es una opcion valida para "${producto_key}".`
+    );
+    e.status = 400;
+    throw e;
+  }
+  return calcularInsumosDeReceta(receta, cajas, db, elecciones);
 }
 
 /**
@@ -323,14 +424,15 @@ function evaluarCobertura(insumos, cajas) {
 /**
  * Simula el impacto de una receta sin tocar nada.
  * `recetaId` permite simular un borrador concreto; sin él usa la vigente.
+ * `elecciones` aplica lo que el operario eligio en lineas seleccionables.
  */
-async function simularImpacto(producto_key, cajas, db = pool, recetaId = null) {
+async function simularImpacto(producto_key, cajas, db = pool, recetaId = null, elecciones = new Map()) {
   const receta = recetaId
     ? await obtenerRecetaPorId(recetaId, db)
     : await obtenerRecetaVigente(producto_key, db);
   if (!receta) return null;
 
-  const insumos = await calcularInsumosDeReceta(receta, cajas, db);
+  const insumos = await calcularInsumosDeReceta(receta, cajas, db, elecciones);
   const cobertura = evaluarCobertura(insumos, cajas);
   const obligatorios = cobertura.filter(c => c.obligatorio);
   const faltantes = obligatorios.filter(c => !c.alcanza);
@@ -505,10 +607,10 @@ async function insertarLineas(client, recetaId, insumos, productoKey) {
     const inv = porId.get(Number(linea.insumo_id));
     if (!inv) throw new Error(`El insumo (id ${linea.insumo_id}) no existe en inventario.`);
 
-    await client.query(
+    const insertada = await client.query(
       `INSERT INTO receta_insumos
-         (receta_id, insumo_nombre, cantidad_por_caja, merma_pct, stock_minimo, unidad_medida, obligatorio, orden, notas, insumo_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+         (receta_id, insumo_nombre, cantidad_por_caja, merma_pct, stock_minimo, unidad_medida, obligatorio, orden, notas, insumo_id, seleccionable)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
       [
         recetaId,
         inv.nombre,
@@ -519,9 +621,32 @@ async function insertarLineas(client, recetaId, insumos, productoKey) {
         linea.obligatorio !== false,
         orden,
         linea.notas || '',
-        inv.id
+        inv.id,
+        linea.seleccionable === true
       ]
     );
+
+    // Opciones elegibles de una linea seleccionable (la tapa): siempre son
+    // insumos reales de inventario; el primero es el que se usa sin eleccion.
+    const opciones = Array.isArray(linea.opciones) ? linea.opciones.filter(Boolean) : [];
+    if (opciones.length) {
+      const idsOpciones = [...new Set(opciones.map(Number))];
+      const existen = await client.query(
+        'SELECT id FROM inventario WHERE id = ANY($1::int[])',
+        [idsOpciones]
+      );
+      const validos = new Set(existen.rows.map(x => x.id));
+      const malos = idsOpciones.filter(id => !validos.has(id));
+      if (malos.length) {
+        throw new Error(`La linea seleccionable "${inv.nombre}" ofrece insumos que no existen (id ${malos.join(', ')}).`);
+      }
+      for (const [i, opcionId] of idsOpciones.entries()) {
+        await client.query(
+          'INSERT INTO receta_insumo_opciones (receta_insumo_id, insumo_id, orden) VALUES ($1,$2,$3)',
+          [insertada.rows[0].id, opcionId, i]
+        );
+      }
+    }
   }
   return productoKey;
 }
@@ -682,25 +807,59 @@ async function activarReceta(id, usuario, opciones = {}) {
   }
 }
 
+/**
+ * Copia las lineas seleccionables y sus opciones de una receta a otra,
+ * emparejando por insumo_id (la misma llave que usa el diff de edicion).
+ * Asi clonar para editar no pierde la tapa elegible de Faisan.
+ */
+async function copiarOpcionesYSeleccionables(client, origenId, destinoId) {
+  await client.query(
+    `UPDATE receta_insumos nueva SET seleccionable = true
+       FROM receta_insumos vieja
+      WHERE vieja.receta_id = $1 AND nueva.receta_id = $2
+        AND nueva.insumo_id = vieja.insumo_id AND vieja.seleccionable = true`,
+    [origenId, destinoId]
+  );
+  await client.query(
+    `INSERT INTO receta_insumo_opciones (receta_insumo_id, insumo_id, orden)
+     SELECT nueva.id, op.insumo_id, op.orden
+       FROM receta_insumo_opciones op
+       JOIN receta_insumos vieja ON vieja.id = op.receta_insumo_id
+       JOIN receta_insumos nueva ON nueva.receta_id = $2 AND nueva.insumo_id = vieja.insumo_id
+      WHERE vieja.receta_id = $1`,
+    [origenId, destinoId]
+  );
+}
+
 async function clonarRecetaParaEdicion(id, usuario, client = null) {
-  const receta = await obtenerRecetaPorId(id, client || pool);
-  if (!receta) throw new Error('Receta no encontrada.');
-  return await crearReceta({
-    producto_key: receta.producto_key,
-    nombre_producto: receta.nombre_producto,
-    insumos: receta.insumos.map(i => ({
-      insumo_id: i.insumo_id,
-      componente_receta_id: i.componente_receta_id,
-      cantidad_por_caja: i.cantidad_por_caja,
-      merma_pct: Number(i.merma_pct) || 0,
-      stock_minimo: i.stock_minimo,
-      unidad: i.unidad_medida,
-      obligatorio: i.obligatorio,
-      notas: i.notas
-    })),
-    observaciones: `Clon de v${receta.version} para edicion`,
-    created_by: usuario
-  }, client);
+  const propia = !client;
+  const conn = client || await pool.connect();
+  try {
+    const receta = await obtenerRecetaPorId(id, conn);
+    if (!receta) throw new Error('Receta no encontrada.');
+    const clon = await crearReceta({
+      producto_key: receta.producto_key,
+      nombre_producto: receta.nombre_producto,
+      insumos: receta.insumos.map(i => ({
+        insumo_id: i.insumo_id,
+        componente_receta_id: i.componente_receta_id,
+        cantidad_por_caja: i.cantidad_por_caja,
+        merma_pct: Number(i.merma_pct) || 0,
+        stock_minimo: i.stock_minimo,
+        unidad: i.unidad_medida,
+        obligatorio: i.obligatorio,
+        notas: i.notas
+      })),
+      observaciones: `Clon de v${receta.version} para edicion`,
+      created_by: usuario
+    }, conn);
+    if (receta.insumos.some(i => i.seleccionable)) {
+      await copiarOpcionesYSeleccionables(conn, receta.id, clon.id);
+    }
+    return await obtenerRecetaPorId(clon.id, conn);
+  } finally {
+    if (propia) conn.release();
+  }
 }
 
 /** Diferencias entre la version vigente y una receta, para revisar antes de activar. */
@@ -795,5 +954,9 @@ module.exports = {
   siguienteVersion,
   diffReceta,
   nombreDe,
+  eleccionesDesdeTapa,
+  clavesConTapaSeleccionable,
+  resolverKeyPorNombre,
+  copiarOpcionesYSeleccionables,
   PROFUNDIDAD_MAXIMA
 };

@@ -84,6 +84,8 @@
                 <label style="color: #495057;"><b>⚙️ Tapa / Color que utilizará el operario:</b></label>
                 <select id="sim_tapa" style="width: 100%; margin-top: 5px;">
                     <option value="Tapa dosif. N° 26 blanco / Dorado">Tapa dosif. N° 26 blanco / Dorado</option>
+                    <option value="TAPA DOSIFICADORA N 26 ROJO">TAPA DOSIFICADORA N 26 ROJO</option>
+                    <option value="TAPA DOSIFICADORA N 26 VERDE">TAPA DOSIFICADORA N 26 VERDE</option>
                     <option value="Tapa Dosif. N° 26 blanco / Celeste">Tapa Dosif. N° 26 blanco / Celeste</option>
                     <option value="Tapa dosif. N° 28 blanco / Dorado">Tapa dosif. N° 28 blanco / Dorado</option>
                     <option value="Tapa Dosf. N° 28 / Celeste">Tapa Dosf. N° 28 / Celeste</option>
@@ -328,9 +330,16 @@
                 return;
             }
 
+            // Si el producto tiene tapa elegible (Faisan), la simulación se
+            // pide con el MISMO id que luego descontaría la producción: la
+            // respuesta ya trae el insumo elegido con su nombre y stock.
+            const grupoTapaVisible = document.getElementById('grupoTapaSimulador').style.display === 'block';
+            const tapaId = grupoTapaVisible ? Number(document.getElementById('sim_tapa').value) : 0;
+            const conTapa = tapaId > 0 ? '&tapa_insumo_id=' + tapaId : '';
+
             let data;
             try {
-                const res = await fetch('/api/recetas/' + encodeURIComponent(tipo) + '?cajas=' + cajas);
+                const res = await fetch('/api/recetas/' + encodeURIComponent(tipo) + '?cajas=' + cajas + conTapa);
                 const body = await res.json();
                 if (!res.ok || !body.success) throw new Error(body.mensaje || 'No se pudo obtener la receta.');
                 data = body;
@@ -340,10 +349,8 @@
                 return;
             }
 
-            const tapaSeleccionada = document.getElementById('sim_tapa').value || data.tapa_por_defecto;
             const filas = (data.insumos || []).map(ins => {
-                let nombre = ins.nombre;
-                if (ins.tapa_dinamica) nombre = tapaSeleccionada;
+                const nombre = ins.nombre;
                 const inv = buscarArticuloEnInventario(nombre);
                 const stock = inv ? (parseFloat(inv.stock) || 0) : 0;
                 const unidad = inv && inv.unidad_medida ? inv.unidad_medida : (ins.unidad_medida || 'UNIDADES');
@@ -385,12 +392,28 @@
             etiquetarTablas();
         }
 
-        function verificarTapaSimulador() {
+        async function verificarTapaSimulador() {
             const tipo = document.getElementById('sim_producto').value;
             const usaSelector = catalogoRecetas.productos_tapa_dinamica.includes(tipo);
-            document.getElementById('grupoTapaSimulador').style.display = usaSelector ? 'block' : 'none';
+            const grupo = document.getElementById('grupoTapaSimulador');
+            const sel = document.getElementById('sim_tapa');
+            grupo.style.display = usaSelector ? 'block' : 'none';
             if (!usaSelector) {
-                document.getElementById('sim_tapa').value = catalogoRecetas.tapa_por_defecto;
+                sel.value = sel.options[0] ? sel.options[0].value : '';
+                return;
+            }
+            // Las opciones salen de la receta vigente (tapa seleccionable):
+            // mismo origen que usa Envasado al descontar, no una lista fija.
+            try {
+                const res = await fetch('/api/produccion/opciones-tapa?producto=' + encodeURIComponent(tipo));
+                const data = await res.json();
+                if (res.ok && data.success && data.requiere_tapa && Array.isArray(data.opciones) && data.opciones.length) {
+                    sel.innerHTML = data.opciones.map(o =>
+                        `<option value="${o.insumo_id}"${Number(o.insumo_id) === Number(data.defecto) ? ' selected' : ''}>${escaparTexto(o.nombre)}${o.stock === null ? '' : ` (stock ${formatoCantidad(o.stock, o.unidad)})`}</option>`
+                    ).join('');
+                }
+            } catch (err) {
+                console.error(err);
             }
         }
 

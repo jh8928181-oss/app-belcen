@@ -21,10 +21,14 @@ router.use(permisoPorRuta);
 router.get('/', async (req, res) => {
   try {
     const recetas = await recipeService.listarRecetas();
+    // Productos cuya receta vigente tiene una linea que el operario puede
+    // elegir al producir (la tapa de Faisan): sale de la base, no de una
+    // lista hardcodeada que se desincronizaba con cada receta nueva.
+    const productos_tapa_dinamica = await recipeService.clavesConTapaSeleccionable();
     res.json({
       success: true,
       recetas,
-      productos_tapa_dinamica: [],
+      productos_tapa_dinamica,
       tapa_por_defecto: TAPA_DEFECTO_RECETA
     });
   } catch (err) { res.status(500).json({ success: false, mensaje: err.message }); }
@@ -55,24 +59,34 @@ router.get('/:id/impacto', async (req, res) => {
   } catch (err) { res.status(err.status || 500).json({ success: false, mensaje: err.message }); }
 });
 
-// Receta vigente o cálculo simulador por producto (?cajas=N)
+// Receta vigente o cálculo simulador por producto (?cajas=N &tapa_insumo_id=M)
 router.get('/:producto_key', async (req, res) => {
   try {
     const { producto_key } = req.params;
     const cajasRaw = parseFloat(req.query.cajas);
+    const tapaSel = req.query.tapa_insumo_id ? Number(req.query.tapa_insumo_id) : null;
 
-    const receta = await recipeService.obtenerRecetaVigente(producto_key);
+    // El formulario de Envasado envia el NOMBRE legible, no la clave: se
+    // acepta cualquiera de los dos para no multiplicar endpoints.
+    let clave = producto_key;
+    let receta = await recipeService.obtenerRecetaVigente(clave);
+    if (!receta) {
+      clave = await recipeService.resolverKeyPorNombre(producto_key) || clave;
+      receta = await recipeService.obtenerRecetaVigente(clave);
+    }
     if (!receta) return res.status(404).json({ success: false, mensaje: 'No hay receta vigente para este producto' });
 
     // Modo simulador (compatible con frontend existente)
     if (!isNaN(cajasRaw) && cajasRaw > 0) {
-      const impacto = await recipeService.simularImpacto(producto_key, cajasRaw);
+      const elecciones = tapaSel ? recipeService.eleccionesDesdeTapa(receta, tapaSel) : new Map();
+      const impacto = await recipeService.simularImpacto(clave, cajasRaw, db, null, elecciones);
       if (!impacto) return res.status(404).json({ success: false, mensaje: 'No hay receta vigente para este producto' });
+      const requiereSelector = impacto.insumos.some(i => i.seleccionable);
       return res.json({
         success: true,
-        producto_tipo: producto_key,
+        producto_tipo: clave,
         cajas: cajasRaw,
-        requiere_selector_tapa: false,
+        requiere_selector_tapa: requiereSelector,
         tapa_por_defecto: TAPA_DEFECTO_RECETA,
         // Se mantiene insumos con la forma que el simulador ya esperaba.
         insumos: impacto.insumos.map(i => ({
@@ -83,7 +97,9 @@ router.get('/:producto_key', async (req, res) => {
           insumo_id: i.insumo_id,
           obligatorio: i.obligatorio,
           stock_actual: i.stock_actual,
-          tapa_dinamica: false
+          seleccionable: i.seleccionable === true,
+          // El simulador viejo buscaba la linea por este flag de nombre.
+          tapa_dinamica: i.seleccionable === true
         })),
         cobertura: impacto.cobertura,
         faltantes: impacto.faltantes,
@@ -151,6 +167,10 @@ async function prepararLineas(bruto, db_ = db) {
       throw Object.assign(new Error(`Linea ${n}: el stock de seguridad de "${inv.nombre}" no puede ser negativo.`), { status: 400 });
     }
 
+    // `opciones` solo aplica a lineas seleccionables (la tapa): son ids de
+    // inventario entre los que el operario podra elegir al producir.
+    const opciones = Array.isArray(l.opciones) ? l.opciones.map(Number).filter(Boolean) : [];
+
     preparadas.push({
       insumo_id: invId,
       nombre: inv.nombre,
@@ -159,7 +179,9 @@ async function prepararLineas(bruto, db_ = db) {
       stock_minimo: sm,
       unidad: l.unidad || inv.unidad_medida || 'UNIDADES',
       obligatorio: l.obligatorio !== false,
-      notas: l.notas || ''
+      notas: l.notas || '',
+      seleccionable: l.seleccionable === true,
+      opciones
     });
   }
   return preparadas.filter(Boolean);
@@ -241,7 +263,9 @@ function lineasParaFormulario(receta) {
     categoria: l.categoria_inventario || '',
     stock_actual: l.stock_actual === null || l.stock_actual === undefined ? null : Number(l.stock_actual),
     obligatorio: l.obligatorio !== false,
-    notas: l.notas || ''
+    notas: l.notas || '',
+    seleccionable: l.seleccionable === true,
+    opciones: (l.opciones || []).map(o => Number(o.insumo_id))
   }));
 }
 
@@ -305,8 +329,46 @@ router.put('/:id', soloAdmin, async (req, res) => {
                          antes.get(k).obligatorio !== despues.get(k).obligatorio)
         };
 
+        // El DELETE cascada borra tambien las opciones de las lineas
+        // seleccionables (la tapa elegible): se rescatan ANTES y se vuelven a
+        // colgar despues, salvo que el formulario haya mandado opciones nuevas.
+        const opcionesAntes = await cliente.query(
+          `SELECT ri.insumo_id, ri.seleccionable, op.insumo_id AS opcion_id, op.orden
+             FROM receta_insumos ri
+             LEFT JOIN receta_insumo_opciones op ON op.receta_insumo_id = ri.id
+            WHERE ri.receta_id = $1`,
+          [destino.id]
+        );
+        const conOpcionesNuevas = new Set(lineas.filter(l => l.opciones && l.opciones.length).map(l => Number(l.insumo_id)));
+
         await cliente.query('DELETE FROM receta_insumos WHERE receta_id = $1', [destino.id]);
         await recipeService.insertarLineas(cliente, destino.id, lineas, destino.producto_key);
+
+        if (opcionesAntes.rows.some(r => r.seleccionable)) {
+          const nuevas = await cliente.query(
+            'SELECT id, insumo_id FROM receta_insumos WHERE receta_id = $1',
+            [destino.id]
+          );
+          const lineaPorInsumo = new Map(nuevas.rows.map(n => [Number(n.insumo_id), n]));
+          const grupos = new Map();
+          for (const r of opcionesAntes.rows) {
+            if (!r.seleccionable || conOpcionesNuevas.has(Number(r.insumo_id))) continue;
+            const g = grupos.get(Number(r.insumo_id)) || { seleccionable: true, opciones: [] };
+            if (r.opcion_id) g.opciones.push({ insumo_id: Number(r.opcion_id), orden: Number(r.orden) || 0 });
+            grupos.set(Number(r.insumo_id), g);
+          }
+          for (const [insumoId, grupo] of grupos) {
+            const lineaNueva = lineaPorInsumo.get(insumoId);
+            if (!lineaNueva) continue;
+            await cliente.query('UPDATE receta_insumos SET seleccionable = true WHERE id = $1', [lineaNueva.id]);
+            for (const op of grupo.opciones) {
+              await cliente.query(
+                'INSERT INTO receta_insumo_opciones (receta_insumo_id, insumo_id, orden) VALUES ($1,$2,$3)',
+                [lineaNueva.id, op.insumo_id, op.orden]
+              );
+            }
+          }
+        }
 
         await cliente.query(
           `INSERT INTO historial_recetas (receta_id, accion, usuario_ejecutor, valores_nuevos, diff)

@@ -624,6 +624,33 @@ describe('resolverArticuloPorNombre', () => {
       expect(r.tipo).toBe('similar');
       expect(r.articulo.id).toBe(11);
     });
+
+    // El orden de los tokens no importa: la guía puede traer "b-1 1 lt" aunque
+    // el inventario diga "Botella de 1 Lt - B-1". El matching es por
+    // contenido, no por posición.
+    test.each([
+      ['b-1 1lt', 1],
+      ['1 lt b-1 botellas', 1],
+      ['B-1 BOTELLAS 1Lt', 1],
+      ['b-2 5lt botellas', 3]
+    ])('"%s" resuelve igual aunque el orden de tokens cambie', async (guia, id) => {
+      const r = await resolverArticuloPorNombre(dbFalso(BOTELLAS), guia);
+      expect(r.tipo).toBe('similar');
+      expect(r.articulo.id).toBe(id);
+    });
+
+    // Presentación escrita pegada o suelta: "belini 900ml" debe encontrar la
+    // etiqueta de 900 ml de Belini aunque el inventario la escriba con espacios.
+    test('medida pegada (900ml) encuentra el producto con medida suelta (900 ml)', async () => {
+      const db = dbFalso([
+        { id: 20, nombre: 'Etiqueta couche 900 ml Belini', stock: 10 },
+        { id: 21, nombre: 'Etiqueta couche 700 ml Belini', stock: 10 },
+        { id: 22, nombre: 'Etiqueta couche 900 ml Don Lalo', stock: 10 }
+      ]);
+      const r = await resolverArticuloPorNombre(db, 'belini 900ml');
+      expect(r.tipo).toBe('similar');
+      expect(r.articulo.id).toBe(20);
+    });
   });
 
   test('tokensArticulo parte medida, singulariza y junta el código de envase', () => {

@@ -578,8 +578,59 @@ describe('resolverArticuloPorNombre', () => {
     expect(r.articulo.id).toBe(7);
   });
 
-  test('tokensArticulo parte medida y singulariza', () => {
-    expect(tokensArticulo('Etiquetas b-1 1lt')).toEqual(['etiqueta', 'b', '1', '1', 'lt']);
+  // Guía real de B&M DYPLAST: "BOTELLAS 1Lt b-1" no debe empatar con
+  // "Botella de 2 Lt - B-1". El comparador viejo solo miraba la intersección
+  // de tokens, así que el "2" de la ficha se ignoraba y las dos botellas
+  // quedaban "iguales": el operario recibía un 409 con un candidato que nunca
+  // fue el suyo.
+  describe('medidas y códigos de envase que no deben empatar', () => {
+    const BOTELLAS = [
+      { id: 1, nombre: 'Botella de 1 Lt - B-1', stock: 100 },
+      { id: 2, nombre: 'Botella de 2 Lt - B-1', stock: 100 },
+      { id: 3, nombre: 'Botella de 5 Lt - B-2', stock: 100 }
+    ];
+
+    test('"BOTELLAS 1Lt b-1" resuelve al de 1 lt, sin candidatos', async () => {
+      const r = await resolverArticuloPorNombre(dbFalso(BOTELLAS), 'BOTELLAS 1Lt b-1');
+      expect(r.tipo).toBe('similar');
+      expect(r.articulo.id).toBe(1);
+    });
+
+    test.each([
+      ['BOTELLAS 2Lt b-1', 2],
+      ['Botellas 5lt b-2', 3],
+      ['botella 2 lt b-1', 2]
+    ])('"%s" cae en su propio artículo y no en otro', async (guia, id) => {
+      const r = await resolverArticuloPorNombre(dbFalso(BOTELLAS), guia);
+      expect(r.tipo).toBe('similar');
+      expect(r.articulo.id).toBe(id);
+    });
+
+    test('la medida distinta descarta al resto en vez de devolver candidatos', async () => {
+      const r = await resolverArticuloPorNombre(dbFalso(BOTELLAS), 'BOTELLAS 1Lt b-1');
+      expect(r.tipo).not.toBe('ambigua');
+      expect(r.candidatos || []).toHaveLength(0);
+    });
+
+    // B-1 y B-2 traen la MISMA medida (1 lt), así que el filtro de medida no
+    // las separa. Las resuelve el código de envase: el "b-2" de la guía deja
+    // al B-2 por delante del B-1.
+    test('un código de envase distinto desempata (b-2 cae en el B-2)', async () => {
+      const db = dbFalso([
+        { id: 10, nombre: 'Botella de 1 Lt - B-1', stock: 5 },
+        { id: 11, nombre: 'Botella de 1 Lt - B-2', stock: 5 }
+      ]);
+      const r = await resolverArticuloPorNombre(db, 'botellas 1lt b-2');
+      expect(r.tipo).toBe('similar');
+      expect(r.articulo.id).toBe(11);
+    });
+  });
+
+  test('tokensArticulo parte medida, singulariza y junta el código de envase', () => {
+    // "b-1" se parte en (b,1) al repartir letra/dígito y se vuelve a juntar
+    // como "b1"; el "1 lt" de la medida queda suelto porque es un par
+    // número+unidad y no un código de envase.
+    expect(tokensArticulo('Etiquetas b-1 1lt')).toEqual(['etiqueta', 'b1', '1', 'lt']);
     expect(tokensArticulo('')).toEqual([]);
   });
 });

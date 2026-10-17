@@ -2294,7 +2294,65 @@ function tokensArticulo(txt) {
         .replace(/([a-z])([0-9])/g, '$1 $2')
         .split(/[^a-z0-9]+/).filter(Boolean)
         .filter(t => t !== 'x')
-        .map(t => (t.length > 3 && t.endsWith('s') ? t.slice(0, -1) : t));
+        .map(t => (t.length > 3 && t.endsWith('s') ? t.slice(0, -1) : t))
+        // El código de envase "B-1" queda como par (b,1) tras el reparto de
+        // arriba; se vuelve a juntar como "b1". Sin esto el "1" de "B-1" se
+        // confunde con el "1" de la medida "1 lt" y no se puede distinguir un
+        // envase B-1 de un B-2.
+        .reduce((acc, t, i, arr) => {
+            const prev = arr[i - 1];
+            if (prev && /^[a-z]$/.test(prev) && /^\d+$/.test(t)) {
+                acc[acc.length - 1] = prev + t;
+                return acc;
+            }
+            acc.push(t);
+            return acc;
+        }, []);
+}
+
+// Un número SUELTO no sirve para comparar: en "B-1" el "1" es el código del
+// envase, en "1 lt" es la medida, y "18 lt" reparte su tamaño entre dos tokens.
+// Lo fiable es el PAR consecutivo número+unidad que deja el tokenizado: "1lt"
+// y "1 lt" ambos producen ("1","lt"), y "800ml" produce ("800","ml"). Si la
+// guía trae ("1","lt") y la ficha ("2","lt"), son tamaños distintos aunque el
+// resto de las palabras coincida.
+function medidasEn(toks) {
+    const unidades = new Set(['ml', 'lt', 'gr', 'kg', 'mt', 'cc', 'mt2']);
+    const out = [];
+    for (let i = 0; i < toks.length - 1; i++) {
+        if (/^\d+$/.test(toks[i]) && unidades.has(toks[i + 1])) {
+            out.push(toks[i] + toks[i + 1]);
+            i++; // la unidad ya se consumió
+        }
+    }
+    return out;
+}
+
+// true si la guía y la ficha traen medida y ninguna coincide: son tamaños
+// distintos. Requiere medida en AMBOS lados; con un solo lado no hay nada con
+// qué comparar y se deja pasar (así "Preforma 5 lt" no descarta etiquetas).
+function conflictoEnMedida(guia, cat) {
+    const g = medidasEn(guia);
+    const c = medidasEn(cat);
+    if (!g.length || !c.length) return false;
+    const setCat = new Set(c);
+    return !g.some(t => setCat.has(t));
+}
+
+// true si la guía y la ficha traen código de envase (b1, b2, ...) y ninguno
+// coincide. A diferencia de la medida, esto no es "si o si": un B-2 de la
+// guía puede perfectamente apuntar a la ficha "Botella de 1 Lt - B-2", así que
+// solo sirve como señal de desempate y no como veto absoluto.
+function codigosEnvase(toks) {
+    return toks.filter(t => /^[a-z]\d+$/.test(t));
+}
+
+function conflictoEnEnvase(guia, cat) {
+    const g = codigosEnvase(guia);
+    const c = codigosEnvase(cat);
+    if (!g.length || !c.length) return false;
+    const setCat = new Set(c);
+    return !g.some(t => setCat.has(t));
 }
 
 // Resuelve un nombre de guía/operario contra el inventario en 3 capas:
@@ -2330,9 +2388,24 @@ async function resolverArticuloPorNombre(db, nombre) {
         if (toks.length) {
             const ft = tokensArticulo(fila.nombre);
             if (!ft.length) continue;
-            const setLargo = new Set(toks.length >= ft.length ? toks : ft);
-            const corto = toks.length >= ft.length ? ft : toks;
-            if (corto.every(t => setLargo.has(t))) porTokens.push(fila);
+            // El conflicto de medida descarta por sí solo: si la guía dice "1lt"
+            // y la ficha "2 lt", son tamaños distintos aunque el resto de las
+            // palabras coincida. Sin eso, "BOTELLAS 1Lt b-1" empatava con
+            // "Botella de 2 Lt - B-1" (solo fallaba en el "2") y el operario
+            // veía un 409 con un candidato que nunca fue el suyo.
+            // El código de envase NO veta (un "b-2" de la guía puede apuntar a
+            // la ficha "Botella de 1 Lt - B-2"); solo desempata: si la guía
+            // trae "b-1", el B-1 queda por delante del B-2 de igual medida.
+            if (conflictoEnMedida(toks, ft)) continue;
+            const setCat = new Set(ft);
+            const cuantos = toks.filter(t => setCat.has(t)).length;
+            if (cuantos > 0) {
+                porTokens.push({
+                    fila,
+                    cobertura: cuantos / ft.length,
+                    envase: conflictoEnEnvase(toks, ft) ? 0 : 1
+                });
+            }
         }
     }
     // La variante plana manda sobre la similitud por tokens: es más estricta.
@@ -2342,11 +2415,17 @@ async function resolverArticuloPorNombre(db, nombre) {
     if (porVariante.length > 1) {
         return { tipo: 'ambigua', articulo: null, candidatos: porVariante };
     }
-    if (porTokens.length === 1) {
-        return { tipo: 'similar', articulo: porTokens[0], candidatos: [] };
-    }
-    if (porTokens.length > 1) {
-        return { tipo: 'ambigua', articulo: null, candidatos: porTokens };
+    // De los que compartieron al menos un token, manda primero el código de
+    // envase (b1/b2) y solo después la cobertura de tokens. Con dos señales
+    // iguales no se adivina: se devuelven para elegir. Así "botellas 1lt b-2"
+    // cae en el B-2 aunque el B-1 tenga la misma medida.
+    if (porTokens.length) {
+        const cmp = (a, b) => (b.envase - a.envase) || (b.cobertura - a.cobertura);
+        const orden = [...porTokens].sort(cmp);
+        if (orden.length === 1 || cmp(orden[0], orden[1]) < 0) {
+            return { tipo: 'similar', articulo: orden[0].fila, candidatos: [] };
+        }
+        return { tipo: 'ambigua', articulo: null, candidatos: orden.map(c => c.fila) };
     }
     return { tipo: 'ninguna', articulo: null, candidatos: [] };
 }

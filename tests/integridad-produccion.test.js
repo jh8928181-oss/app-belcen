@@ -787,4 +787,41 @@ describe('Plan de produccion por linea', () => {
       expect(sqlDe('DELETE FROM linea_plan')).toHaveLength(0);
     });
   });
+
+  /**
+   * P3. La cola vieja seguia apareciendo en el dashboard como SIGUIENTE/LUEGO
+   *     aunque la linea estuviera PARADO. Parar la linea ahora borra la cola
+   *     y el proximo_producto: sin produccion no hay "siguiente".
+   */
+  describe('PARADO vacia el plan', () => {
+    test('en envasado borra la cola y el proximo_producto', async () => {
+      mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+      const res = await invocar('post', '/api/estado-linea', {
+        body: { area: 'envasado', estado: 'PARADO', usuario: 'envasado_user' }
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(sqlDe('DELETE FROM linea_plan WHERE area')).toHaveLength(1);
+      // El CASE del upsert pone proximo_producto en NULL al parar.
+      expect(sqlDe("EXCLUDED.estado = 'PARADO'")).toHaveLength(1);
+    });
+
+    test('en EN MARCHA la cola no se toca', async () => {
+      mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+      await invocar('post', '/api/estado-linea', {
+        body: { area: 'envasado', estado: 'EN MARCHA', proximo_producto: 'belini_1lt' }
+      });
+
+      expect(sqlDe('DELETE FROM linea_plan')).toHaveLength(0);
+    });
+
+    test('PARADO en soplado no borra nada: soplado no tiene plan', async () => {
+      mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+      await invocar('post', '/api/estado-linea', {
+        body: { area: 'soplado_manual', estado: 'PARADO', usuario: 'soplado1' }
+      });
+
+      expect(sqlDe('DELETE FROM linea_plan')).toHaveLength(0);
+    });
+  });
 });

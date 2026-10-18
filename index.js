@@ -1931,9 +1931,17 @@ app.post('/api/estado-linea', gEnvasado, async (req, res) => {
                 estado = EXCLUDED.estado,
                 usuario_registro = EXCLUDED.usuario_registro,
                 fecha_actualizacion = EXCLUDED.fecha_actualizacion,
-                proximo_producto = CASE WHEN $5 THEN EXCLUDED.proximo_producto ELSE estado_lineas.proximo_producto END`,
+                proximo_producto = CASE
+                    WHEN EXCLUDED.estado = 'PARADO' THEN NULL
+                    WHEN $5 THEN EXCLUDED.proximo_producto
+                    ELSE estado_lineas.proximo_producto END`,
             [area, estado, usuario || 'operador', tieneSiguiente ? proximo_producto : null, tieneSiguiente]
         );
+        // Parar la linea deja todo a cero: sin produccion no hay "siguiente".
+        // Sin esto la cola vieja seguia apareciendo en el dashboard como SIGUIENTE.
+        if (estado === 'PARADO' && AREAS_CON_PLAN.includes(area)) {
+            await pool.query('DELETE FROM linea_plan WHERE area = $1', [area]);
+        }
         res.json({ success: true, area, estado, proximo_producto: tieneSiguiente ? proximo_producto : undefined });
     } catch (err) {
         console.error('Error al actualizar estado de línea:', err);

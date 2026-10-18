@@ -400,7 +400,7 @@
             document.getElementById('linkDashboard').style.display = 'none';
         }
 
-        document.getElementById('fecha_produccion').valueAsDate = new Date();
+        document.getElementById('fecha_produccion').value = hoyLocalISO();
         let reportesGlobal = [];
 
         const PRESENTACIONES_ENVASADO = [
@@ -577,6 +577,14 @@
             } catch (err) {
                 console.error('No se pudieron cargar las tapas del producto:', err);
             }
+        }
+
+        // Hoy en hora LOCAL del operario. valueAsDate y toISOString usan UTC:
+        // en México (UTC-6) a las 18:00 ya devuelven mañana y la producción
+        // quedaba fechada al día siguiente, invisible al cierre del día real.
+        function hoyLocalISO() {
+            const d = new Date();
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         }
 
         function fechaLocalISO(iso) {
@@ -804,7 +812,7 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    fecha_produccion: fecha || new Date().toISOString().substring(0, 10),
+                    fecha_produccion: fecha || hoyLocalISO(),
                     presentacion,
                     usuario: localStorage.getItem('usuario_actual') || 'envasado_user'
                 })
@@ -813,7 +821,7 @@
             if (res.ok && data.success) {
                 alert('✅ ' + data.mensaje);
                 document.getElementById('formEnvasado').reset();
-                document.getElementById('fecha_produccion').valueAsDate = new Date();
+                document.getElementById('fecha_produccion').value = hoyLocalISO();
                 cargarProduccionActiva();
                 return true;
             }
@@ -888,7 +896,7 @@
                     }
                     alert(msg);
                     document.getElementById('formEnvasado').reset();
-                    document.getElementById('fecha_produccion').valueAsDate = new Date();
+        document.getElementById('fecha_produccion').value = hoyLocalISO();
                     document.getElementById('grupoTapaDinamica').style.display = 'none';
                     await cargarProduccionActiva();
                     pedirSiguienteObligatorio(presentacionSeleccionada);
@@ -936,7 +944,7 @@
         // decide si cambiarla o no.
         async function iniciarProduccionSiguiente(prod) {
             const usuario = localStorage.getItem('usuario_actual') || 'envasado_user';
-            const fecha = new Date().toISOString().substring(0, 10);
+            const fecha = hoyLocalISO();
             try {
                 await fetch('/api/produccion/iniciar', {
                     method: 'POST',

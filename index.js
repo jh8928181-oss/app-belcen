@@ -4132,7 +4132,7 @@ app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
             const repIns = await client.query(
                 `INSERT INTO reportes_produccion (fecha_produccion, presentacion, cantidad_cajas, unidad_medida, toneladas, observaciones, usuario_registro, desglose_insumos, producto_key, tapa_insumo_id)
                  VALUES ($1, $2, $3, 'CAJAS', $4, $5, $6, $7, $8, $9) RETURNING id`,
-                [fecha_produccion || new Date(), presentacion, cajas, toneladas, observaciones || '', usuario || 'envasado_user', desgloseJson, producto_tipo, tapa_insumo_id]
+                [fecha_produccion || hoyPlantaISO(), presentacion, cajas, toneladas, observaciones || '', usuario || 'envasado_user', desgloseJson, producto_tipo, tapa_insumo_id]
             );
             const reporteId = repIns.rows[0].id;
             for (const p of mov.pendientes) {
@@ -4207,7 +4207,7 @@ app.post('/api/produccion/iniciar', gProduccion, async (req, res) => {
         const ins = await client.query(
             `INSERT INTO reportes_produccion (fecha_produccion, presentacion, cantidad_cajas, unidad_medida, toneladas, observaciones, usuario_registro, producto_key, estado, tapa_insumo_id)
              VALUES ($1, $2, NULL, 'CAJAS', NULL, $3, $4, $5, 'EN_CURSO', $6) RETURNING id`,
-            [fecha_produccion || new Date(), presentacion, observaciones || '', usuario || 'envasado_user', producto_tipo, tapa_insumo_id]
+            [fecha_produccion || hoyPlantaISO(), presentacion, observaciones || '', usuario || 'envasado_user', producto_tipo, tapa_insumo_id]
         );
         await client.query('COMMIT');
         res.json({ success: true, mensaje: `Producción de "${presentacion}" iniciada.`, reporte_id: ins.rows[0].id });
@@ -4977,7 +4977,7 @@ app.post('/api/produccion/cierre', gProduccion, async (req, res) => {
             totalCajas += parseFloat(row.cantidad_cajas || 0);
             totalTn += parseFloat(row.toneladas || 0);
             return {
-                fecha: row.fecha_produccion ? row.fecha_produccion.toISOString().split('T')[0] : fecha_cierre,
+                fecha: row.fecha_produccion ? aFechaSql(row.fecha_produccion) : fecha_cierre,
                 presentacion: row.presentacion,
                 cant: row.cantidad_cajas,
                 um: row.unidad_medida || 'CAJAS',
@@ -5523,6 +5523,19 @@ function aFechaSql(valor) {
         return `${valor.getFullYear()}-${mes}-${dia}`;
     }
     return String(valor).trim().slice(0, 10);
+}
+
+// Hoy en la zona de la planta (Mexico, UTC-6), NO en UTC del servidor. En
+// Render el proceso corre en UTC: new Date() a las 18:00 de un viernes ya es
+// sabado, y un INSERT sin fecha guardaba la produccion al dia siguiente. El
+// cierre del dia real (viernes) no la encontraba y parecia que faltaba cerrar.
+const TZ_PLANTA = 'America/Mexico_City';
+function hoyPlantaISO() {
+    const partes = new Intl.DateTimeFormat('en-CA', {
+        timeZone: TZ_PLANTA, year: 'numeric', month: '2-digit', day: '2-digit'
+    }).formatToParts(new Date());
+    const g = t => partes.find(p => p.type === t).value;
+    return `${g('year')}-${g('month')}-${g('day')}`;
 }
 
 async function registrarHistorialStockProveedor(q, datos) {

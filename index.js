@@ -5525,11 +5525,11 @@ function aFechaSql(valor) {
     return String(valor).trim().slice(0, 10);
 }
 
-// Hoy en la zona de la planta (Mexico, UTC-6), NO en UTC del servidor. En
-// Render el proceso corre en UTC: new Date() a las 18:00 de un viernes ya es
-// sabado, y un INSERT sin fecha guardaba la produccion al dia siguiente. El
-// cierre del dia real (viernes) no la encontraba y parecia que faltaba cerrar.
-const TZ_PLANTA = 'America/Mexico_City';
+// Hoy en la zona de la planta (Peru, UTC-5), NO en UTC del servidor. En
+// Render el proceso corre en UTC: new Date() a las 19:00 ya es manana, y un
+// INSERT sin fecha guardaba la produccion al dia siguiente. El cierre del dia
+// real no la encontraba y parecia que faltaba cerrar.
+const TZ_PLANTA = 'America/Lima';
 function hoyPlantaISO() {
     const partes = new Intl.DateTimeFormat('en-CA', {
         timeZone: TZ_PLANTA, year: 'numeric', month: '2-digit', day: '2-digit'

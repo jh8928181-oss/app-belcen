@@ -6,7 +6,9 @@
  *      formulario de cierre (fecha, presentación, cant, UM, TN, obs, estado).
  *  2. El cierre diario solo consolida producciones cerradas: las EN_CURSO
  *      no tienen cantidad, no se tocan ni se borran.
- *  3. Sin cerradas en la fecha se rechaza con 400 en vez de consolidar vacío.
+ *  3. Archiva TODAS las cerradas sin filtrar por fecha (la fila puede ser
+ *      de ayer si el turno cruzó de día); el picker solo etiqueta el
+ *      historial. Sin cerradas se rechaza con 400 en vez de consolidar vacío.
  */
 const mockQuery = jest.fn();
 const mockRelease = jest.fn();
@@ -143,7 +145,7 @@ describe('POST /api/produccion/cierre', () => {
     expect(String(del[0])).toMatch(/EN_CURSO/);
   });
 
-  test('sin cerradas en la fecha se rechaza y no escribe nada', async () => {
+  test('sin cerradas (aunque sea de otra fecha) se rechaza y no escribe nada', async () => {
     mundo.reportes = [curso];
     const res = await invocar('post', '/api/produccion/cierre', {
       body: { fecha_cierre: '2026-10-13', usuario: 'admin1' }

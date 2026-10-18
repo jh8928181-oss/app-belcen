@@ -4959,16 +4959,18 @@ app.post('/api/produccion/cierre', gProduccion, async (req, res) => {
         }
         await client.query('BEGIN');
 
-        // Solo producciones cerradas (o directas anteriores al abrir/cerrar):
-        // las EN_CURSO no tienen cantidad y no se tocan ni se consolidan.
+        // Archiva TODAS las producciones cerradas (las EN_CURSO no tienen
+        // cantidad y no se tocan). No se filtra por fecha: la fecha de la
+        // fila puede ser la de ayer si el turno cruzó de día, y el operario
+        // no debe adivinarla en un picker. El cierre es una sola acción:
+        // "lo cerrado pasa a Auditoría".
         const reportesRes = await client.query(
-            `SELECT * FROM reportes_produccion WHERE fecha_produccion::text LIKE $1 AND COALESCE(estado, '') <> 'EN_CURSO'`,
-            [`${fecha_cierre}%`]
+            `SELECT * FROM reportes_produccion WHERE COALESCE(estado, '') <> 'EN_CURSO'`
         );
 
         if (reportesRes.rows.length === 0) {
             await client.query('ROLLBACK');
-            return res.status(400).json({ success: false, mensaje: 'No hay producciones cerradas para consolidar en esta fecha. Las que siguen en curso no se tocan.' });
+            return res.status(400).json({ success: false, mensaje: 'No hay producciones cerradas para archivar. Las que siguen en curso no se tocan.' });
         }
 
         let totalCajas = 0;
@@ -4997,10 +4999,9 @@ app.post('/api/produccion/cierre', gProduccion, async (req, res) => {
         // o reporte que traiga el insumo) y recién después se borra.
         const huerf = await client.query(
             `UPDATE ajustes_pendientes SET reporte_id = NULL
-              WHERE reporte_id IN (SELECT id FROM reportes_produccion WHERE fecha_produccion::text LIKE $1 AND COALESCE(estado, '') <> 'EN_CURSO')`,
-            [`${fecha_cierre}%`]
+              WHERE reporte_id IN (SELECT id FROM reportes_produccion WHERE COALESCE(estado, '') <> 'EN_CURSO')`
         );
-        await client.query(`DELETE FROM reportes_produccion WHERE fecha_produccion::text LIKE $1 AND COALESCE(estado, '') <> 'EN_CURSO'`, [`${fecha_cierre}%`]);
+        await client.query(`DELETE FROM reportes_produccion WHERE COALESCE(estado, '') <> 'EN_CURSO'`);
 
         await client.query('COMMIT');
         res.json({

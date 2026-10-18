@@ -117,7 +117,8 @@ const REPORTE_OK = {
   fecha_produccion: '2026-10-13',
   presentacion: 'Aceite de Soya Belini 1 Lt',
   cantidad_cajas: 500,
-  toneladas: 5
+  toneladas: 5,
+  lote: '0885'
 };
 
 function baseReporte() {

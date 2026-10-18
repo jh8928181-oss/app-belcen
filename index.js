@@ -3925,7 +3925,7 @@ function safeParseJson(str) {
 // día cada producto sale una sola vez con su total.
 async function buscarCierreDelDia(client, productoKey, excluirId) {
     const r = await client.query(
-        `SELECT id, cantidad_cajas, toneladas, observaciones, desglose_insumos
+        `SELECT id, cantidad_cajas, toneladas, observaciones, desglose_insumos, lote
            FROM reportes_produccion
           WHERE COALESCE(producto_key, '') = $1
             AND fecha_produccion::date = CURRENT_DATE
@@ -3958,6 +3958,20 @@ function unirObs(base, nueva) {
     if (!a) return b;
     if (a.includes(b)) return a;
     return a + ' | ' + b;
+}
+
+// Dos reportes del mismo dia que se fusionan pueden traer lotes distintos:
+// se unen con coma y sin repetir (la clave es minuscula para que "0885" y
+// " 0885 " no se aparezcan dos veces).
+function unirLotes(base, nuevo) {
+    const mapa = new Map();
+    for (const parte of [base, nuevo]) {
+        for (const trozo of String(parte || '').split(',')) {
+            const t = String(trozo).trim();
+            if (t && !mapa.has(t.toLowerCase())) mapa.set(t.toLowerCase(), t);
+        }
+    }
+    return [...mapa.values()].join(', ');
 }
 
 async function aplicarMovimientosProduccion(client, req, { producto_tipo, presentacion, cajas, usuario, tapaInsumoId = null }) {
@@ -4068,9 +4082,14 @@ app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
         const cajas = Number(cantidad_cajas);
         // Tapa elegida por el operario en productos con linea seleccionable.
         const tapa_insumo_id = req.body.tapa_insumo_id ? Number(req.body.tapa_insumo_id) : null;
+        // El lote es campo propio obligatorio (antes vivia dentro de obs).
+        const loteLimpio = String(req.body.lote ?? '').trim();
 
         if (!presentacion || !String(presentacion).trim()) {
             return res.status(400).json({ success: false, mensaje: 'Debe seleccionar la presentación de la producción.' });
+        }
+        if (!loteLimpio) {
+            return res.status(400).json({ success: false, mensaje: 'Debe indicar el número de lote.' });
         }
         const producto_tipo = await resolverProductoKey(presentacion);
         if (!producto_tipo) {
@@ -4104,8 +4123,8 @@ app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
                 const desgloseF = sumarDesglose(safeParseJson(destinoRep.desglose_insumos), mov.desglose);
                 const totalRep = (Number(destinoRep.cantidad_cajas) || 0) + cajas;
                 await client.query(
-                    `UPDATE reportes_produccion SET cantidad_cajas = $1, toneladas = COALESCE(toneladas,0) + $2, desglose_insumos = $3, observaciones = $4 WHERE id = $5`,
-                    [totalRep, tmRep, JSON.stringify(desgloseF), unirObs(destinoRep.observaciones, observaciones), destinoRep.id]
+                    `UPDATE reportes_produccion SET cantidad_cajas = $1, toneladas = COALESCE(toneladas,0) + $2, desglose_insumos = $3, observaciones = $4, lote = $5 WHERE id = $6`,
+                    [totalRep, tmRep, JSON.stringify(desgloseF), unirObs(destinoRep.observaciones, observaciones), unirLotes(destinoRep.lote, loteLimpio), destinoRep.id]
                 );
                 for (const p of mov.pendientes) {
                     await client.query(
@@ -4135,9 +4154,9 @@ app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
             // o renombró entre la producción y el borrado, los insumos volvían
             // (van por snapshot) pero las cajas no.
             const repIns = await client.query(
-                `INSERT INTO reportes_produccion (fecha_produccion, presentacion, cantidad_cajas, unidad_medida, toneladas, observaciones, usuario_registro, desglose_insumos, producto_key, tapa_insumo_id)
-                 VALUES ($1, $2, $3, 'CAJAS', $4, $5, $6, $7, $8, $9) RETURNING id`,
-                [fecha_produccion || hoyPlantaISO(), presentacion, cajas, toneladas, observaciones || '', usuario || 'envasado_user', desgloseJson, producto_tipo, tapa_insumo_id]
+                `INSERT INTO reportes_produccion (fecha_produccion, presentacion, cantidad_cajas, unidad_medida, toneladas, observaciones, usuario_registro, desglose_insumos, producto_key, tapa_insumo_id, lote)
+                 VALUES ($1, $2, $3, 'CAJAS', $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+                [fecha_produccion || hoyPlantaISO(), presentacion, cajas, toneladas, observaciones || '', usuario || 'envasado_user', desgloseJson, producto_tipo, tapa_insumo_id, loteLimpio]
             );
             const reporteId = repIns.rows[0].id;
             for (const p of mov.pendientes) {
@@ -4236,6 +4255,10 @@ app.post('/api/produccion/cerrar', gProduccion, async (req, res) => {
         // marcha, donde el formulario no estuvo a la vista): si viene, manda
         // sobre la que se guardo al iniciar y se persiste en el reporte.
         const tapaDelCierre = req.body.tapa_insumo_id ? Number(req.body.tapa_insumo_id) : null;
+        // El lote se pide al registrar cantidades: puede venir del cuerpo o,
+        // si la fila abierta ya lo tenia (se cerro desde el formulario), del
+        // reporte mismo.
+        const loteLimpio = String(req.body.lote ?? '').trim();
         const cajas = Number(cantidad_cajas);
         const tm = toneladas === undefined || toneladas === null || toneladas === '' ? 0 : Number(toneladas);
         if (!Number.isInteger(cajas) || cajas <= 0 || cajas > 1000000) {
@@ -4263,6 +4286,11 @@ app.post('/api/produccion/cerrar', gProduccion, async (req, res) => {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, mensaje: `La presentación "${reporte.presentacion}" no tiene receta registrada.` });
         }
+        const loteEfectivo = loteLimpio || String(reporte.lote || '').trim();
+        if (!loteEfectivo) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: 'Debe indicar el número de lote.' });
+        }
         const tapaEfectiva = tapaDelCierre || reporte.tapa_insumo_id || null;
         const mov = await aplicarMovimientosProduccion(client, req, {
             producto_tipo, presentacion: reporte.presentacion, cajas, usuario, tapaInsumoId: tapaEfectiva
@@ -4276,8 +4304,8 @@ app.post('/api/produccion/cerrar', gProduccion, async (req, res) => {
             const desgloseF = sumarDesglose(safeParseJson(destino.desglose_insumos), mov.desglose);
             const totalCajas = (Number(destino.cantidad_cajas) || 0) + cajas;
             await client.query(
-                `UPDATE reportes_produccion SET cantidad_cajas = $1, toneladas = COALESCE(toneladas,0) + $2, desglose_insumos = $3, observaciones = $4 WHERE id = $5`,
-                [totalCajas, tm, JSON.stringify(desgloseF), unirObs(destino.observaciones, reporte.observaciones), destino.id]
+                `UPDATE reportes_produccion SET cantidad_cajas = $1, toneladas = COALESCE(toneladas,0) + $2, desglose_insumos = $3, observaciones = $4, lote = $5 WHERE id = $6`,
+                [totalCajas, tm, JSON.stringify(desgloseF), unirObs(destino.observaciones, reporte.observaciones), unirLotes(destino.lote, loteEfectivo), destino.id]
             );
             for (const p of mov.pendientes) {
                 await client.query(
@@ -4308,8 +4336,8 @@ app.post('/api/produccion/cerrar', gProduccion, async (req, res) => {
             );
         }
         await client.query(
-            `UPDATE reportes_produccion SET cantidad_cajas = $1, toneladas = $2, estado = 'CERRADO' WHERE id = $3`,
-            [cajas, tm, reporte_id]
+            `UPDATE reportes_produccion SET cantidad_cajas = $1, toneladas = $2, estado = 'CERRADO', lote = $3 WHERE id = $4`,
+            [cajas, tm, loteEfectivo, reporte_id]
         );
         await client.query('COMMIT');
         if (mov.pendientes.length) {
@@ -4371,6 +4399,7 @@ app.get('/api/produccion/informes', async (req, res) => {
             estado: r.estado || null,
             usuario_registro: r.usuario_registro,
             observaciones: r.observaciones,
+            lote: r.lote || null,
             tapa_insumo_id: r.tapa_insumo_id || null,
             desglose: r.desglose_insumos ? safeParseJson(r.desglose_insumos) : null
         }));
@@ -4989,6 +5018,7 @@ app.post('/api/produccion/cierre', gProduccion, async (req, res) => {
                 cant: row.cantidad_cajas,
                 um: row.unidad_medida || 'CAJAS',
                 tn: row.toneladas,
+                lote: row.lote || null,
                 obs: row.observaciones
             };
         });

@@ -154,7 +154,7 @@ describe('A1. La marcha de envasado es solo muestreo: no bloquea el registro', (
     });
 
     const res = await invocar('post', '/api/produccion/reporte', {
-      body: { fecha_produccion: '2026-10-05', presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: 500 }
+      body: { fecha_produccion: '2026-10-05', presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: 500, lote: '0885' }
     });
 
     expect(res.statusCode).not.toBe(409);
@@ -170,7 +170,7 @@ describe('A1. La marcha de envasado es solo muestreo: no bloquea el registro', (
     });
 
     const res = await invocar('post', '/api/produccion/reporte', {
-      body: { presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: 500 }
+      body: { presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: 500, lote: '0885' }
     });
 
     expect(res.statusCode).not.toBe(409);
@@ -184,7 +184,7 @@ describe('A1. La marcha de envasado es solo muestreo: no bloquea el registro', (
     });
 
     const res = await invocar('post', '/api/produccion/reporte', {
-      body: { presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: 500 }
+      body: { presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: 500, lote: '0885' }
     });
 
     expect(res.cuerpo.mensaje).toMatch(/receta/);
@@ -267,7 +267,7 @@ describe('E1. El reporte directo limpia la EN_CURSO del mismo producto', () => {
     escenarioReporte();
     const res = await invocar('post', '/api/produccion/reporte', {
       rol: 'produccion',
-      body: { presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: 500 }
+      body: { presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: 500, lote: '0885' }
     });
 
     expect(res.cuerpo.success).toBe(true);
@@ -275,13 +275,18 @@ describe('E1. El reporte directo limpia la EN_CURSO del mismo producto', () => {
     expect(borra).toHaveLength(1);
     // Va contra la clave resuelta de la receta, no contra el nombre del formulario.
     expect(borra[0].params[0]).toBe('belini_1lt');
+    // El lote viaja como columna propia del INSERT, no dentro de observaciones.
+    const ins = sqlDe('INSERT INTO reportes_produccion');
+    expect(ins).toHaveLength(1);
+    expect(String(ins[0].sql)).toMatch(/, lote\)/);
+    expect(ins[0].params).toContain('0885');
   });
 
   test('el DELETE corre dentro de la transaccion, antes del COMMIT', async () => {
     escenarioReporte();
     await invocar('post', '/api/produccion/reporte', {
       rol: 'produccion',
-      body: { presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: 500 }
+      body: { presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: 500, lote: '0885' }
     });
 
     const orden = registro().map(c => c.sql);
@@ -300,7 +305,7 @@ describe('M2. La cantidad de cajas tiene que ser un entero', () => {
     mockQuery.mockImplementation(async () => ({ rows: [{ estado: 'EN MARCHA' }], rowCount: 1 }));
 
     const res = await invocar('post', '/api/produccion/reporte', {
-      body: { presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: 10.7 }
+      body: { presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: 10.7, lote: '0885' }
     });
 
     expect(res.statusCode).toBe(400);
@@ -314,7 +319,7 @@ describe('M2. La cantidad de cajas tiene que ser un entero', () => {
     for (const cantidad of [0, -5]) {
       limpia();
       const res = await invocar('post', '/api/produccion/reporte', {
-        body: { presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: cantidad }
+        body: { presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: cantidad, lote: '0885' }
       });
       expect(res.statusCode).toBe(400);
     }
@@ -335,11 +340,12 @@ describe('C2. El reporte guarda la clave del producto que se produjo', () => {
     const sentencia = fuente.match(/INSERT INTO reportes_produccion \(([^)]*)\)/);
     expect(sentencia).toBeTruthy();
     expect(sentencia[1]).toMatch(/producto_key/);
+    expect(sentencia[1]).toMatch(/\blote\b/);
 
     // Y que se rellene con la clave resuelta, no con un literal.
     const paso = fuente.slice(fuente.indexOf('INSERT INTO reportes_produccion'));
-    expect(paso.slice(0, 400)).toMatch(/desglose_insumos, producto_key, tapa_insumo_id\)/);
-    expect(paso.slice(0, 470)).toMatch(/observaciones \|\| '', usuario \|\| 'envasado_user', desgloseJson, producto_tipo, tapa_insumo_id\]/);
+    expect(paso.slice(0, 430)).toMatch(/desglose_insumos, producto_key, tapa_insumo_id, lote\)/);
+    expect(paso.slice(0, 520)).toMatch(/observaciones \|\| '', usuario \|\| 'envasado_user', desgloseJson, producto_tipo, tapa_insumo_id, loteLimpio\]/);
   });
 
   test('la migracion que crea la columna existe y es la que la registra', () => {
@@ -823,5 +829,42 @@ describe('Plan de produccion por linea', () => {
 
       expect(sqlDe('DELETE FROM linea_plan')).toHaveLength(0);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+/**
+ * L1. El lote salio del textarea de observaciones a su propio campo
+ *     obligatorio: sin lote no hay registro, y la migracion extrae de la obs
+ *     lo que ya estaba guardado ahi dentro.
+ */
+describe('L1. El lote es obligatorio y vive en su propia columna', () => {
+  test('un reporte sin lote responde 400 sin escribir nada', async () => {
+    const res = await invocar('post', '/api/produccion/reporte', {
+      body: { presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: 500, observaciones: '1010 | Tapa X' }
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.cuerpo.mensaje).toMatch(/número de lote/i);
+    expect(sqlDe('INSERT INTO reportes_produccion')).toHaveLength(0);
+  });
+
+  test('un lote en blanco (solo espacios) tambien se rechaza', async () => {
+    const res = await invocar('post', '/api/produccion/reporte', {
+      body: { presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: 500, lote: '   ' }
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(sqlDe('INSERT INTO reportes_produccion')).toHaveLength(0);
+  });
+
+  test('la migracion crea la columna y la limpia de observaciones', () => {
+    const ruta = path.join(__dirname, '..', 'migrations', '1792030000000_lote-reportes-produccion.mjs');
+    expect(fs.existsSync(ruta)).toBe(true);
+    const fuente = fs.readFileSync(ruta, 'utf8');
+    expect(fuente).toMatch(/addColumns\('reportes_produccion'/);
+    expect(fuente).toMatch(/lote: \{ type: 'varchar\(100\)' \}/);
+    expect(fuente).toMatch(/historial_cierres_produccion/);
   });
 });

@@ -291,6 +291,11 @@
                 <input type="number" step="0.01" id="toneladas" name="toneladas" placeholder="Ej. 1.5" required>
             </div>
 
+            <div>
+                <label><b>N° de Lote:</b></label>
+                <input type="text" id="lote" name="lote" required maxlength="100" placeholder="Ej. 0885">
+            </div>
+
             <div id="grupoTapaDinamica" class="tapa-box span-2" style="display: none;">
                 <label><b>⚙️ Tapa Utilizada para este Producto:</b></label>
                 <select id="tapa_elegida" name="tapa_elegida">
@@ -311,8 +316,8 @@
             </div>
 
             <div class="span-2">
-                <label><b>Observaciones (N° de Lote / Detalles adicionales):</b></label>
-                <textarea id="observaciones" name="observaciones" rows="2" placeholder="Ej. Lote: 0885 | Observaciones de línea..."></textarea>
+                <label><b>Observaciones (Detalles adicionales):</b></label>
+                <textarea id="observaciones" name="observaciones" rows="2" placeholder="Ej. Tapa dosif. N° 26 | Sin novedades de línea"></textarea>
             </div>
 
             <div class="span-2">
@@ -334,6 +339,7 @@
                             <tr>
                                 <th>FECHA</th>
                                 <th>PRESENTACIÓN</th>
+                                <th>LOTE</th>
                     <th class="text-center">CANT</th>
                     <th class="text-center">UM</th>
                     <th class="text-center">TN</th>
@@ -342,7 +348,7 @@
                 </tr>
             </thead>
             <tbody id="tablaProduccionActiva">
-                <tr><td colspan="7" class="text-center">Cargando producción...</td></tr>
+                <tr><td colspan="8" class="text-center">Cargando producción...</td></tr>
             </tbody>
         </table>
         </div>
@@ -636,7 +642,7 @@
                 const tbody = document.getElementById('tablaProduccionActiva');
                 
                 if (reportesGlobal.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="7" class="text-center">No hay registros activos para el día en curso.</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="8" class="text-center">No hay registros activos para el día en curso.</td></tr>`;
                     document.getElementById('totalTmActivo').textContent = '0.00';
                     pintarTotalesPorProducto([]);
                     resumenEstadoEnvasado();
@@ -652,15 +658,17 @@
                     const esAbierta = row.estado === 'EN_CURSO';
                     const cantTxt = (row.cantidad_cajas === null || row.cantidad_cajas === undefined) ? '—' : row.cantidad_cajas;
                     const tnTxt = (row.toneladas === null || row.toneladas === undefined) ? '—' : row.toneladas;
+                    const loteSeguro = String(row.lote || '').replace(/'/g, "\\'");
                     tbody.innerHTML += `
                         <tr>
                             <td>${fechaStr}</td>
                             <td><b>${esAbierta ? '🟢 ' : ''}${row.presentacion}</b></td>
+                            <td>${row.lote || '-'}</td>
                             <td class="text-center">${cantTxt}</td>
                             <td class="text-center">${row.unidad_medida || 'CAJAS'}</td>
                             <td class="text-center">${tnTxt}</td>
                             <td>${esAbierta ? 'En curso…' : (row.observaciones || '-')}</td>
-                            <td class="text-center">${esAbierta ? `<button onclick="cerrarProduccionPorId(${row.id}, '${presentacionSegura}', true, ${row.tapa_insumo_id ?? null})" class="btn-accion" style="margin-right:6px;">🏁 Finalizar</button>` : ''}<button onclick="eliminarReporte(${row.id}, '${presentacionSegura}')" class="btn-comer" title="Eliminar reporte"><span class="ico-papelera"><span class="tapa"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/></svg></span><span class="base"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></span></span><span class="texto-papelera"><span class="letra">D</span><span class="letra">e</span><span class="letra">l</span><span class="letra">e</span><span class="letra">t</span><span class="letra">e</span></span></button></td>
+                            <td class="text-center">${esAbierta ? `<button onclick="cerrarProduccionPorId(${row.id}, '${presentacionSegura}', true, ${row.tapa_insumo_id ?? null}, '${loteSeguro}')" class="btn-accion" style="margin-right:6px;">🏁 Finalizar</button>` : ''}<button onclick="eliminarReporte(${row.id}, '${presentacionSegura}')" class="btn-comer" title="Eliminar reporte"><span class="ico-papelera"><span class="tapa"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/></svg></span><span class="base"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></span></span><span class="texto-papelera"><span class="letra">D</span><span class="letra">e</span><span class="letra">l</span><span class="letra">e</span><span class="letra">t</span><span class="letra">e</span></span></button></td>
                         </tr>
                     `;
                 });
@@ -848,6 +856,7 @@
                 presentacion: presentacionSeleccionada,
                 cantidad_cajas: parseInt(document.getElementById('cantidad_cajas').value),
                 toneladas: parseFloat(document.getElementById('toneladas').value),
+                lote: document.getElementById('lote').value.trim(),
                 observaciones: observacionesTexto,
                 tapa_insumo_id: tapaElegida || null,
                 usuario: localStorage.getItem('usuario_actual') || 'envasado_user'
@@ -872,6 +881,7 @@
                             reporte_id: abierta.id,
                             cantidad_cajas: formData.cantidad_cajas,
                             toneladas: formData.toneladas,
+                            lote: formData.lote,
                             tapa_insumo_id: formData.tapa_insumo_id,
                             usuario: formData.usuario
                         })
@@ -994,7 +1004,7 @@
         // Cierra la producción en curso pidiendo la cantidad recién al final.
         // Si preguntarSiguiente es true (cierre por fila), al terminar pregunta
         // qué producto sigue; el botón "Cierre de producción" es definitivo.
-        async function cerrarProduccionPorId(id, presentacion, preguntar = true, tapaActual = null) {
+        async function cerrarProduccionPorId(id, presentacion, preguntar = true, tapaActual = null, loteActual = '') {
             if (cerrandoProduccion) return;
             let tapaDeCierre = null;
             if (tapaActual === null || tapaActual === undefined) {
@@ -1009,6 +1019,15 @@
             if (tmTxt === null) return;
             const tm = parseFloat(tmTxt);
             if (isNaN(tm) || tm < 0) { alert('❌ Toneladas inválidas.'); return; }
+            // El lote se pide al registrar cantidades: si la fila no trae uno
+            // (abierta por la marcha, sin formulario) es obligatorio aqui.
+            let lote = String(loteActual || '').trim();
+            if (!lote) {
+                const loteTxt = prompt(`N° de lote de "${presentacion}":`);
+                if (loteTxt === null) return;
+                lote = loteTxt.trim();
+                if (!lote) { alert('❌ El número de lote es obligatorio.'); return; }
+            }
             cerrandoProduccion = true;
             try {
                 const res = await fetch('/api/produccion/cerrar', {
@@ -1018,6 +1037,7 @@
                         reporte_id: id,
                         cantidad_cajas: cajas,
                         toneladas: tm,
+                        lote,
                         tapa_insumo_id: tapaDeCierre || tapaActual || null,
                         usuario: localStorage.getItem('usuario_actual') || 'envasado_user'
                     })
@@ -1042,7 +1062,7 @@
         function cierreProduccion() {
             const abiertas = (reportesGlobal || []).filter(r => r.estado === 'EN_CURSO');
             if (!abiertas.length) { alert('No hay producción en curso.'); return; }
-            cerrarProduccionPorId(abiertas[0].id, abiertas[0].presentacion, false, abiertas[0].tapa_insumo_id ?? null);
+            cerrarProduccionPorId(abiertas[0].id, abiertas[0].presentacion, false, abiertas[0].tapa_insumo_id ?? null, abiertas[0].lote || '');
         }
 
         // Al cerrar se pregunta qué producto sigue: el siguiente de la

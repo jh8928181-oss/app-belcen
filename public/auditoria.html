@@ -489,6 +489,7 @@
                                 <tr>
                                     <th style="background-color:#8a6d00;">Fecha</th>
                                     <th style="background-color:#8a6d00;">Presentación</th>
+                                    <th style="background-color:#8a6d00;">Lote</th>
                                     <th class="text-center" style="background-color:#8a6d00;">Cant</th>
                                     <th class="text-center" style="background-color:#8a6d00;">UM</th>
                                     <th class="text-center" style="background-color:#8a6d00;">TN</th>
@@ -496,7 +497,7 @@
                                 </tr>
                             </thead>
                             <tbody id="tablaProduccion">
-                                <tr><td colspan="6" class="text-center">Cargando producción...</td></tr>
+                                <tr><td colspan="7" class="text-center">Cargando producción...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -974,11 +975,12 @@
             const q = (document.getElementById('filtroProduccion').value || '').toLowerCase();
             const filtradas = informesGlobal.filter(it =>
                 (it.presentacion || '').toLowerCase().includes(q) ||
+                (it.lote || '').toLowerCase().includes(q) ||
                 (it.observaciones || '').toLowerCase().includes(q) ||
                 (it.fecha_produccion || '').toLowerCase().includes(q)
             );
             const tbody = document.getElementById('tablaProduccion');
-            tbody.innerHTML = filtradas.length === 0 ? '<tr><td colspan="6" class="text-center sin-registros">No hay producciones que coincidan con la búsqueda.</td></tr>' : '';
+            tbody.innerHTML = filtradas.length === 0 ? '<tr><td colspan="7" class="text-center sin-registros">No hay producciones que coincidan con la búsqueda.</td></tr>' : '';
             filtradas.forEach(inf => {
                 const cant = parseInt(inf.cantidad_cajas, 10) || 0;
                 const ton = parseFloat(inf.toneladas || 0);
@@ -986,6 +988,7 @@
                 tr.innerHTML = `
                     <td><b>${fechaSoloDia(inf.fecha_produccion)}</b></td>
                     <td>${inf.presentacion || 'N/D'}</td>
+                    <td>${inf.lote || '-'}</td>
                     <td class="text-center" style="color:#8a6d00; font-weight:bold;">${cant}</td>
                     <td class="text-center">${inf.unidad_medida || 'CAJAS'}</td>
                     <td class="text-center">${ton.toFixed(2)}</td>
@@ -1008,7 +1011,7 @@
                 actualizarContadores();
             } catch (err) {
                 console.error(err);
-                document.getElementById('tablaProduccion').innerHTML = '<tr><td colspan="6" class="text-center" style="color:red;">Error al cargar la producción.</td></tr>';
+                document.getElementById('tablaProduccion').innerHTML = '<tr><td colspan="7" class="text-center" style="color:red;">Error al cargar la producción.</td></tr>';
             }
         }
 
@@ -1166,6 +1169,7 @@ tbody.appendChild(tr);
                             <tr>
                                 <td>${item.fecha || fechaCierreStr}</td>
                                 <td><b>${item.presentacion}</b></td>
+                                <td>${item.lote || '-'}</td>
                                 <td class="text-center">${item.cant}</td>
                                 <td class="text-center">${item.um}</td>
                                 <td class="text-center">${item.tn}</td>
@@ -1174,7 +1178,7 @@ tbody.appendChild(tr);
                         `;
                     });
                 } else {
-                    filasHtml = `<tr><td colspan="6" class="text-center">Cierre consolidado (Total Cajas: ${cierre.total_cajas})</td></tr>`;
+                    filasHtml = `<tr><td colspan="7" class="text-center">Cierre consolidado (Total Cajas: ${cierre.total_cajas})</td></tr>`;
                 }
                 contenedor.innerHTML += `
                     <div style="border: 1px solid #dee2e6; border-radius: 6px; margin-bottom: 20px; background: #fff;">
@@ -1187,6 +1191,7 @@ tbody.appendChild(tr);
                                     <tr style="background-color: #6c757d; color: white;">
                                         <th>FECHA</th>
                                         <th>PRESENTACIÓN</th>
+                                        <th>LOTE</th>
                                         <th class="text-center">CANT</th>
                                         <th class="text-center">UM</th>
                                         <th class="text-center">TN</th>

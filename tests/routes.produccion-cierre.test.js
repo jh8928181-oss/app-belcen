@@ -3,12 +3,15 @@
  *
  * Reglas que se cuidan aqui:
  *  1. /api/produccion/informes devuelve cada registro con sus datos del
- *      formulario de cierre (fecha, presentación, cant, UM, TN, obs, estado).
+ *      formulario de cierre (fecha, presentación, cant, UM, TN, lote, obs,
+ *      estado).
  *  2. El cierre diario solo consolida producciones cerradas: las EN_CURSO
  *      no tienen cantidad, no se tocan ni se borran.
  *  3. Archiva TODAS las cerradas sin filtrar por fecha (la fila puede ser
  *      de ayer si el turno cruzó de día); el picker solo etiqueta el
  *      historial. Sin cerradas se rechaza con 400 en vez de consolidar vacío.
+ *  4. El detalle archivado lleva el lote en su clave 'lote' (Auditoría lo
+ *      muestra en columna LOTE), separado de la obs.
  */
 const mockQuery = jest.fn();
 const mockRelease = jest.fn();
@@ -104,7 +107,7 @@ describe('GET /api/produccion/informes', () => {
     mundo.reportes = [{
       id: 1, fecha_produccion: new Date('2026-10-13'), presentacion: 'Aceite Belini 1 Lt',
       cantidad_cajas: 300, unidad_medida: 'CAJAS', toneladas: 3, estado: 'CERRADO',
-      usuario_registro: 'envasado_user', observaciones: '0997 | Tapa X',
+      usuario_registro: 'envasado_user', observaciones: 'Tapa dosif. N° 26', lote: '0997',
       desglose_insumos: JSON.stringify([{ nombre: 'Botella', cantidad: 3600, unidad_medida: 'UNIDADES' }])
     }];
     const res = await invocar('get', '/api/produccion/informes');
@@ -115,7 +118,8 @@ describe('GET /api/produccion/informes', () => {
       unidad_medida: 'CAJAS',
       toneladas: 3,
       estado: 'CERRADO',
-      observaciones: '0997 | Tapa X'
+      observaciones: 'Tapa dosif. N° 26',
+      lote: '0997'
     });
   });
 });
@@ -123,7 +127,8 @@ describe('GET /api/produccion/informes', () => {
 describe('POST /api/produccion/cierre', () => {
   const cerr = {
     id: 1, fecha_produccion: new Date('2026-10-13T12:00:00'), presentacion: 'Aceite Belini 1 Lt',
-    cantidad_cajas: 300, unidad_medida: 'CAJAS', toneladas: 3, estado: 'CERRADO', observaciones: '0997'
+    cantidad_cajas: 300, unidad_medida: 'CAJAS', toneladas: 3, estado: 'CERRADO',
+    lote: '0997', observaciones: 'Tapa dosif. N° 26'
   };
   const curso = {
     id: 2, fecha_produccion: new Date('2026-10-13T08:00:00'), presentacion: 'Aceite B-1 1 Lt',
@@ -140,7 +145,12 @@ describe('POST /api/produccion/cierre', () => {
     expect(ins).toBeDefined();
     const detalle = JSON.parse(ins[1][4]);
     expect(detalle).toHaveLength(1);
-    expect(detalle[0]).toMatchObject({ presentacion: 'Aceite Belini 1 Lt', cant: 300, um: 'CAJAS', tn: 3, obs: '0997' });
+    // El detalle archivado conserva el lote en su propia clave (Auditoría lo
+    // pinta en columna LOTE) y la obs ya sin el número de lote pegado.
+    expect(detalle[0]).toMatchObject({
+      presentacion: 'Aceite Belini 1 Lt', cant: 300, um: 'CAJAS', tn: 3,
+      lote: '0997', obs: 'Tapa dosif. N° 26'
+    });
     const del = mockQuery.mock.calls.find(c => /DELETE FROM reportes_produccion/.test(String(c[0])));
     expect(String(del[0])).toMatch(/EN_CURSO/);
   });

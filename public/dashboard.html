@@ -392,10 +392,10 @@
                         <tr>
                             <th>Servicio</th>
                             <th>Insumo</th>
+                            <th>Unidad de medida</th>
                             <th>Enviado</th>
-                            <th>Consumido</th>
+                            <th>Entregado</th>
                             <th>Saldo en servicio</th>
-                            <th>Stock actual</th>
                         </tr>
                     </thead>
                     <tbody id="tablaServiciosSoplado">
@@ -696,10 +696,10 @@ const filtrados = baseInventario.filter(a =>
                         tr.innerHTML = `
                             <td>${i === 0 ? `<b>${sv.servicio}</b>` : ''}</td>
                             <td><b>${ins.nombre}</b> <span style="opacity:.7;">(${ins.tipo_item || ''})</span></td>
+                            <td>${ins.unidad_medida || 'MILLARES'}</td>
                             <td><b>${formatearNumero(ins.enviado)}</b></td>
-                            <td><b>${formatearNumero(ins.consumido)}</b></td>
+                            <td><b>${formatearNumero(ins.entregado)}</b></td>
                             <td><b>${formatearNumero(ins.saldo)}</b></td>
-                            <td>${ins.stock_actual === null ? '—' : `<b>${formatearNumero(ins.stock_actual)}</b>`}</td>
                         `;
                         tbody.appendChild(tr);
                     });

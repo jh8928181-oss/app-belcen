@@ -970,7 +970,7 @@ app.get('/api/servicios/panel', async (req, res) => {
         const con = await pool.query(
             `SELECT g.servicio,
                     i.etiqueta_id AS articulo_id, i.etiqueta_nombre AS nombre,
-                    COALESCE(SUM(i.cant_etiquetas), 0) AS consumido
+                    COALESCE(SUM(i.cant_etiquetas), 0) AS entregado
                FROM servicios_guias_items i
                JOIN servicios_guias g ON g.id = i.guia_id
               WHERE g.tipo_doc = 'GUIA' AND i.etiqueta_id IS NOT NULL
@@ -978,33 +978,30 @@ app.get('/api/servicios/panel', async (req, res) => {
               UNION ALL
              SELECT g.servicio,
                     i.preforma_id AS articulo_id, i.preforma_nombre AS nombre,
-                    COALESCE(SUM(i.cant_preformas), 0) AS consumido
+                    COALESCE(SUM(i.cant_preformas), 0) AS entregado
                FROM servicios_guias_items i
                JOIN servicios_guias g ON g.id = i.guia_id
               WHERE g.tipo_doc = 'GUIA' AND i.preforma_id IS NOT NULL
               GROUP BY g.servicio, i.preforma_id, i.preforma_nombre`
         );
-        const consumidoPor = {};
+        const entregadoPor = {};
         for (const c of con.rows) {
             const k = c.servicio + '|' + c.articulo_id;
-            consumidoPor[k] = (consumidoPor[k] || 0) + Number(c.consumido);
+            entregadoPor[k] = (entregadoPor[k] || 0) + Number(c.entregado);
         }
-        const stocks = await pool.query('SELECT id, stock FROM inventario');
-        const stockPorId = {};
-        for (const s of stocks.rows) stockPorId[s.id] = Number(s.stock) || 0;
         const servicios = SERVICIOS_SOPLADO.map(sv => {
             const insumos = env.rows
                 .filter(e => e.servicio === sv)
                 .map(e => {
-                    const cons = consumidoPor[sv + '|' + e.articulo_id] || 0;
+                    const cons = entregadoPor[sv + '|' + e.articulo_id] || 0;
                     const enviado = Number(e.enviado) || 0;
                     return {
                         articulo_id: e.articulo_id,
                         nombre: e.articulo_nombre,
                         tipo_item: e.tipo_item,
-                        stock_actual: stockPorId[e.articulo_id] ?? null,
+                        unidad_medida: 'MILLARES',
                         enviado,
-                        consumido: cons,
+                        entregado: cons,
                         saldo: enviado - cons
                     };
                 });

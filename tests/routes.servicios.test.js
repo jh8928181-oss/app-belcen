@@ -293,8 +293,7 @@ describe('GET /api/servicios', () => {
   test('el panel trae servicios, guias y pendientes', async () => {
     responder([
       [/FROM servicios_envios GROUP BY/, { rows: [{ servicio: 'SAUÑE', articulo_id: 4, articulo_nombre: 'Et X', tipo_item: 'ETIQUETA', enviado: '10' }], rowCount: 1 }],
-      [/cant_etiquetas/, { rows: [{ servicio: 'SAUÑE', articulo_id: 4, nombre: 'Et X', consumido: '3' }], rowCount: 1 }],
-      [/SELECT id, stock FROM inventario/, { rows: [{ id: 4, stock: '7' }], rowCount: 1 }],
+      [/cant_etiquetas/, { rows: [{ servicio: 'SAUÑE', articulo_id: 4, nombre: 'Et X', entregado: '3' }], rowCount: 1 }],
       [/FROM servicios_guias ORDER BY/, { rows: [{ id: 1, numero: 'T009-1' }], rowCount: 1 }],
       [/tipo_doc = 'CONTROL'/, { rows: [{ servicio: 'SAUÑE', n: 2 }], rowCount: 1 }],
       [/factura_estado = 'PENDIENTE'/, { rows: [{ servicio: 'SAUÑE', n: 1 }], rowCount: 1 }]

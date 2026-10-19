@@ -4,9 +4,11 @@
  * Reglas que se cuidan aqui:
  *  1. Solo etiquetas o preformas salen al servicio, en millares y con stock
  *      suficiente. Otros articulos y servicios desconocidos se rechazan.
- *  2. El control interno NO mueve stock: es un anuncio pendiente de guia.
- *  3. La guia descuenta 1 etiqueta + 1 preforma por botella (UND a MILL) y
- *      suma las botellas al inventario, todo en una transaccion.
+ *  2. El control interno SI mueve stock: suma las botellas (resolviendo el
+ *      nombre aunque venga escrito a mano) y queda PENDIENTE de guia; la guia
+ *      vinculada a controles no vuelve a mover stock (sin doble conteo).
+ *  3. La guia sin controles descuenta 1 etiqueta + 1 preforma por botella
+ *      (UND a MILL) y suma las botellas, todo en una transaccion.
  *  4. El numero de guia/control no se duplica por servicio.
  *  5. La guia nace PENDIENTE de factura y se le vincula despues.
  */
@@ -98,7 +100,7 @@ function responder(reglas) {
 const SQL = {
   artEnvio: /SELECT nombre, categoria, stock FROM inventario WHERE id = \$1/,
   artGuia: /SELECT nombre, stock FROM inventario WHERE id = \$1/,
-  botella: /SELECT id, stock FROM inventario WHERE LOWER\(BTRIM\(nombre\)\)/,
+  botella: /SELECT id, nombre, stock FROM inventario WHERE LOWER\(BTRIM\(nombre\)\)/,
   updateMenos: /UPDATE inventario SET stock = stock - \$1/,
   updateMas: /UPDATE inventario SET stock = stock \+ \$1/,
   insEnvio: /INSERT INTO servicios_envios/,
@@ -175,19 +177,70 @@ describe('POST /api/servicios/envios', () => {
 });
 
 describe('POST /api/servicios/guias', () => {
-  test('el CONTROL no mueve stock y queda pendiente', async () => {
-    responder([
-      [/SELECT id FROM servicios_guias/, { rows: [], rowCount: 0 }],
-      [SQL.insGuia, { rows: [{ id: 5 }], rowCount: 1 }]
-    ]);
+  test('el CONTROL suma las botellas al inventario y queda pendiente de guia', async () => {
+    mockQuery.mockImplementation(async (sql) => {
+      const texto = String(sql || '').trim();
+      if (/^(BEGIN|COMMIT|ROLLBACK)$/i.test(texto)) return { rows: [], rowCount: 0 };
+      if (/SELECT id FROM servicios_guias/.test(texto)) return { rows: [], rowCount: 0 };
+      if (SQL.botella.test(texto)) return { rows: [{ id: 30, nombre: 'Botella X', stock: '100' }], rowCount: 1 };
+      if (SQL.updateMas.test(texto)) return { rows: [], rowCount: 1 };
+      if (/UPDATE inventario SET estado/.test(texto)) return { rows: [], rowCount: 1 };
+      if (SQL.insGuia.test(texto)) return { rows: [{ id: 5 }], rowCount: 1 };
+      if (/INSERT INTO servicios_guias_items/.test(texto)) return { rows: [], rowCount: 1 };
+      if (SQL.historial.test(texto)) return { rows: [], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    });
     const res = await invocar('post', '/api/servicios/guias', {
       body: { servicio: 'SAUÑE', tipo_doc: 'CONTROL', numero: 'CI-1', producto: 'Botella X', cantidad: 100 }
     });
     expect(res.statusCode).toBe(200);
     expect(res.cuerpo.mensaje).toMatch('pendiente de guía');
     const textos = mockQuery.mock.calls.map(c => String(c[0]));
-    expect(textos.some(t => /UPDATE inventario/.test(t))).toBe(false);
-    expect(textos.some(t => SQL.historial.test(t))).toBe(false);
+    expect(textos.some(t => SQL.updateMas.test(t))).toBe(true);
+    const hist = mockQuery.mock.calls.find(c => SQL.historial.test(String(c[0])));
+    expect(hist[1][0]).toBe('MOVIMIENTO');
+    expect(hist[1][6]).toBe('SUMA');
+  });
+
+  test('el CONTROL resuelve el nombre de botella escrito a mano (sin x, sin espacios)', async () => {
+    mockQuery.mockImplementation(async (sql) => {
+      const texto = String(sql || '').trim();
+      if (/^(BEGIN|COMMIT|ROLLBACK)$/i.test(texto)) return { rows: [], rowCount: 0 };
+      if (/SELECT id FROM servicios_guias/.test(texto)) return { rows: [], rowCount: 0 };
+      if (SQL.botella.test(texto)) return { rows: [], rowCount: 0 };
+      if (/UPPER\(categoria\) LIKE/.test(texto)) {
+        return { rows: [{ id: 11, nombre: 'Botella Belini x 900 ml', stock: '10360' }], rowCount: 1 };
+      }
+      if (SQL.updateMas.test(texto)) return { rows: [], rowCount: 1 };
+      if (/UPDATE inventario SET estado/.test(texto)) return { rows: [], rowCount: 1 };
+      if (SQL.insGuia.test(texto)) return { rows: [{ id: 6 }], rowCount: 1 };
+      if (/INSERT INTO servicios_guias_items/.test(texto)) return { rows: [], rowCount: 1 };
+      if (SQL.historial.test(texto)) return { rows: [], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    });
+    const res = await invocar('post', '/api/servicios/guias', {
+      body: { servicio: 'SAUÑE', tipo_doc: 'CONTROL', numero: 'CI-2', producto: 'Botella belini 900ml', cantidad: 9180 }
+    });
+    expect(res.statusCode).toBe(200);
+    const mas = mockQuery.mock.calls.find(c => SQL.updateMas.test(String(c[0])));
+    expect(mas[1]).toEqual([9180, 11]);
+  });
+
+  test('el CONTROL rechaza una botella que no existe en inventario', async () => {
+    mockQuery.mockImplementation(async (sql) => {
+      const texto = String(sql || '').trim();
+      if (/^(BEGIN|COMMIT|ROLLBACK)$/i.test(texto)) return { rows: [], rowCount: 0 };
+      if (/SELECT id FROM servicios_guias/.test(texto)) return { rows: [], rowCount: 0 };
+      if (SQL.botella.test(texto)) return { rows: [], rowCount: 0 };
+      if (/UPPER\(categoria\) LIKE/.test(texto)) return { rows: [], rowCount: 0 };
+      return { rows: [], rowCount: 0 };
+    });
+    const res = await invocar('post', '/api/servicios/guias', {
+      body: { servicio: 'SAUÑE', tipo_doc: 'CONTROL', numero: 'CI-3', producto: 'Botella Fantasma', cantidad: 10 }
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.cuerpo.mensaje).toMatch('no existe');
+    expect(mockQuery.mock.calls.some(c => SQL.updateMas.test(String(c[0])))).toBe(false);
   });
 
   test('rechaza numero duplicado por servicio', async () => {
@@ -269,6 +322,33 @@ describe('POST /api/servicios/guias', () => {
     expect(itemsIns[0][1][0]).toBe(9);
     const menos = mockQuery.mock.calls.filter(c => SQL.updateMenos.test(String(c[0])));
     expect(menos).toHaveLength(4);
+  });
+
+  test('la GUIA vinculada a controles es documental: no vuelve a mover stock', async () => {
+    mockQuery.mockImplementation(async (sql) => {
+      const texto = String(sql || '').trim();
+      if (/^(BEGIN|COMMIT|ROLLBACK)$/i.test(texto)) return { rows: [], rowCount: 0 };
+      if (/SELECT id FROM servicios_guias\s+WHERE id = ANY/.test(texto)) return { rows: [{ id: 1 }], rowCount: 1 };
+      if (/SELECT id FROM servicios_guias/.test(texto)) return { rows: [], rowCount: 0 };
+      if (SQL.botella.test(texto)) return { rows: [{ id: 30, nombre: 'Botella X', stock: '100' }], rowCount: 1 };
+      if (/UPDATE servicios_guias SET estado = 'VINCULADA'/.test(texto)) return { rows: [], rowCount: 1 };
+      if (SQL.insGuia.test(texto)) return { rows: [{ id: 8 }], rowCount: 1 };
+      if (/INSERT INTO servicios_guias_items/.test(texto)) return { rows: [], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    });
+    const res = await invocar('post', '/api/servicios/guias', {
+      body: {
+        servicio: 'SAUÑE', tipo_doc: 'GUIA', numero: 'T009-9', fecha: '2026-10-17',
+        items: [{ producto: 'Botella X', cantidad: 100 }],
+        controles_ids: [1]
+      }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.cuerpo.mensaje).toMatch('vinculada a 1 control');
+    const textos = mockQuery.mock.calls.map(c => String(c[0]));
+    expect(textos.some(t => SQL.updateMenos.test(t))).toBe(false);
+    expect(textos.some(t => SQL.updateMas.test(t))).toBe(false);
+    expect(textos.some(t => SQL.historial.test(t))).toBe(false);
   });
 });
 

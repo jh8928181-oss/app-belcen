@@ -73,4 +73,16 @@ describe('Auditoría: el filtro de ingresos por proveedor', () => {
     expect(html).toContain('onclick="vincularProveedoresAutomatico()"');
     expect(html).toContain("fetch('/api/auditoria/vincular-proveedores', { method: 'POST' })");
   });
+
+  test('las filas sin vínculo se pueden vincular a mano desde la tabla', () => {
+    // red de seguridad: el match automático no decide ante variantes ambiguas
+    // o un proveedor que se dio de alta con otra redacción después
+    expect(html).toContain('function celdaProveedorAlm(');
+    expect(html).toContain('class="sel-vinc-prov"');
+    expect(html).toContain('${celdaProveedorAlm(item)}');
+    expect(html).toContain('async function vincularIngreso(');
+    expect(html).toContain("fetch('/api/auditoria/vincular-ingreso'");
+    // tras vincular, la fila se repinta en el sitio con el nombre canónico
+    expect(html).toContain('fila.proveedor_id = d.proveedor_id');
+  });
 });

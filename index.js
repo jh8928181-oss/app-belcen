@@ -3771,6 +3771,7 @@ app.get('/api/auditoria/entradas', gAuditoria, async (req, res) => {
             entradas.push({
                 fecha: a.fecha_registro,
                 numero_guia: a.numero_guia,
+                ingreso_id: a.id,
                 proveedor: a.proveedor || 'N/D',
                 proveedor_id: a.proveedor_id !== undefined ? a.proveedor_id : null,
                 proveedor_catalogo: a.proveedor_catalogo || null,
@@ -3838,6 +3839,31 @@ app.post('/api/auditoria/vincular-proveedores', gAuditoria, async (req, res) => 
         res.status(500).json({ success: false, mensaje: 'Error al vincular proveedores: ' + err.message });
     } finally {
         client.release();
+    }
+});
+
+// Vínculo manual de UN ingreso con un proveedor del catálogo: cubre lo que el
+// match automático no decide (varias variantes del mismo nombre, texto raro
+// o un proveedor que recién se dio de alta con otra redacción). El que
+// confirma es quien sabe cual es.
+app.post('/api/auditoria/vincular-ingreso', gAuditoria, async (req, res) => {
+    try {
+        const ingreso_id = Number(req.body.ingreso_id);
+        const proveedor_id = Number(req.body.proveedor_id);
+        if (!Number.isInteger(ingreso_id) || !ingreso_id || !Number.isInteger(proveedor_id) || !proveedor_id) {
+            return res.status(400).json({ success: false, mensaje: 'Indique el ingreso y el proveedor del catálogo.' });
+        }
+        const prov = await pool.query('SELECT id FROM proveedores WHERE id = $1', [proveedor_id]);
+        if (!prov.rows.length) {
+            return res.status(404).json({ success: false, mensaje: 'Ese proveedor ya no está en el catálogo.' });
+        }
+        const upd = await pool.query('UPDATE registro_ingresos_almacen SET proveedor_id = $1 WHERE id = $2', [proveedor_id, ingreso_id]);
+        if (!upd.rowCount) {
+            return res.status(404).json({ success: false, mensaje: 'El ingreso no existe.' });
+        }
+        res.json({ success: true, proveedor_id });
+    } catch (err) {
+        res.status(500).json({ success: false, mensaje: 'Error al vincular el ingreso: ' + err.message });
     }
 });
 

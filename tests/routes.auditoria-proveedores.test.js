@@ -99,8 +99,8 @@ describe('GET /api/auditoria/entradas — expone el vínculo con el catálogo', 
       if (/FROM ingresos_vigilancia/.test(sql)) return { rows: [], rowCount: 0 };
       if (/proveedor_catalogo/.test(sql)) return {
         rows: [
-          { fecha_registro: '2026-10-01', numero_guia: 'G-1', proveedor: 'EUROPLAST', proveedor_id: 7, proveedor_catalogo: 'EUROPLAST SAC', producto_nombre: 'Preforma', cantidad: 5, foto_url: null },
-          { fecha_registro: '2026-10-02', numero_guia: 'G-2', proveedor: 'SIN ASOCIAR', proveedor_id: null, proveedor_catalogo: null, producto_nombre: 'Tapas', cantidad: 2, foto_url: null }
+          { id: 91, fecha_registro: '2026-10-01', numero_guia: 'G-1', proveedor: 'EUROPLAST', proveedor_id: 7, proveedor_catalogo: 'EUROPLAST SAC', producto_nombre: 'Preforma', cantidad: 5, foto_url: null },
+          { id: 92, fecha_registro: '2026-10-02', numero_guia: 'G-2', proveedor: 'SIN ASOCIAR', proveedor_id: null, proveedor_catalogo: null, producto_nombre: 'Tapas', cantidad: 2, foto_url: null }
         ],
         rowCount: 2
       };
@@ -113,8 +113,8 @@ describe('GET /api/auditoria/entradas — expone el vínculo con el catálogo', 
     expect(res.cuerpo).toHaveLength(2);
     // el endpoint ordena por fecha descendente: se busca por guía, no por posición
     const porGuia = new Map(res.cuerpo.map(f => [f.numero_guia, f]));
-    expect(porGuia.get('G-1')).toMatchObject({ origen: 'ALMACEN', proveedor_id: 7, proveedor_catalogo: 'EUROPLAST SAC' });
-    expect(porGuia.get('G-2')).toMatchObject({ origen: 'ALMACEN', proveedor_id: null, proveedor_catalogo: null });
+    expect(porGuia.get('G-1')).toMatchObject({ origen: 'ALMACEN', ingreso_id: 91, proveedor_id: 7, proveedor_catalogo: 'EUROPLAST SAC' });
+    expect(porGuia.get('G-2')).toMatchObject({ origen: 'ALMACEN', ingreso_id: 92, proveedor_id: null, proveedor_catalogo: null });
     expect(sqlDe('LEFT JOIN proveedores p ON p.id = a.proveedor_id')).toHaveLength(1);
   });
 });
@@ -163,6 +163,82 @@ describe('POST /api/auditoria/vincular-proveedores', () => {
     expect(upd[1]).toEqual([[11], [7]]);
     expect(mockQuery.mock.calls.some(c => String(c[0]).trim() === 'BEGIN')).toBe(true);
     expect(mockQuery.mock.calls.some(c => String(c[0]).trim() === 'COMMIT')).toBe(true);
+  });
+
+  test('un catálogo corto agregado después vincula el texto largo (EUROPLAST → EUROPLAST SAC)', async () => {
+    // El ingreso dice "EUROPLAST SAC" y recién se dio de alta "EUROPLAST":
+    // el contenido único empaña en cualquier dirección.
+    mockQuery.mockImplementation(async (sql) => {
+      if (/SELECT id, proveedor FROM registro_ingresos_almacen/.test(sql)) {
+        return { rows: [{ id: 13, proveedor: 'EUROPLAST SAC' }], rowCount: 1 };
+      }
+      if (/SELECT id, nombre FROM proveedores ORDER BY id/.test(sql)) {
+        return { rows: [{ id: 8, nombre: 'EUROPLAST' }], rowCount: 1 };
+      }
+      if (/UPDATE registro_ingresos_almacen r SET proveedor_id/.test(sql)) return { rows: [], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    });
+
+    const res = await invocar('post', '/api/auditoria/vincular-proveedores', {});
+
+    expect(res.statusCode).toBe(200);
+    expect(res.cuerpo).toEqual({ success: true, vinculados: 1, revisadas: 1 });
+    const upd = mockQuery.mock.calls.find(c => /UPDATE registro_ingresos_almacen r SET proveedor_id/.test(String(c[0])));
+    expect(upd[1]).toEqual([[13], [8]]);
+  });
+});
+
+describe('POST /api/auditoria/vincular-ingreso — vínculo manual fila por fila', () => {
+  function montarVinculo({ proveedorExiste = true, ingresoExiste = true } = {}) {
+    mockQuery.mockImplementation(async (sql) => {
+      if (/SELECT id FROM proveedores WHERE id/.test(sql)) return { rows: proveedorExiste ? [{ id: 7 }] : [], rowCount: proveedorExiste ? 1 : 0 };
+      if (/UPDATE registro_ingresos_almacen SET proveedor_id/.test(sql)) return { rows: [], rowCount: ingresoExiste ? 1 : 0 };
+      return { rows: [], rowCount: 0 };
+    });
+  }
+
+  test('valida proveedor e ingreso y actualiza la fila', async () => {
+    montarVinculo();
+
+    const res = await invocar('post', '/api/auditoria/vincular-ingreso', {
+      body: { ingreso_id: 3, proveedor_id: 7 }
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.cuerpo).toEqual({ success: true, proveedor_id: 7 });
+    const upd = mockQuery.mock.calls.find(c => /UPDATE registro_ingresos_almacen SET proveedor_id/.test(String(c[0])));
+    expect(upd[1]).toEqual([7, 3]);
+  });
+
+  test('un proveedor que ya no está en el catálogo responde 404 sin tocar nada', async () => {
+    montarVinculo({ proveedorExiste: false });
+
+    const res = await invocar('post', '/api/auditoria/vincular-ingreso', {
+      body: { ingreso_id: 3, proveedor_id: 77 }
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(sqlDe('UPDATE registro_ingresos_almacen SET proveedor_id')).toHaveLength(0);
+  });
+
+  test('un ingreso inexistente responde 404', async () => {
+    montarVinculo({ ingresoExiste: false });
+
+    const res = await invocar('post', '/api/auditoria/vincular-ingreso', {
+      body: { ingreso_id: 99999, proveedor_id: 7 }
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.cuerpo.mensaje).toContain('ingreso');
+  });
+
+  test('body incompleto responde 400', async () => {
+    montarVinculo();
+
+    const res = await invocar('post', '/api/auditoria/vincular-ingreso', { body: {} });
+
+    expect(res.statusCode).toBe(400);
+    expect(sqlDe('UPDATE registro_ingresos_almacen SET proveedor_id')).toHaveLength(0);
   });
 });
 
@@ -214,5 +290,18 @@ describe('POST /api/almacen/conformidad — guarda el proveedor del catálogo', 
     const reg = sqlDe('INSERT INTO registro_ingresos_almacen');
     expect(reg).toHaveLength(1);
     expect(reg[0].params.slice(0, 3)).toEqual(['T001-1', 'IMPORTADORA XYZ', null]);
+  });
+
+  test('la guía trae el nombre largo y el catálogo el corto (EUROPLAST SAC → EUROPLAST)', async () => {
+    montar(ingresoCon('EUROPLAST SAC'), [{ id: 8, nombre: 'EUROPLAST' }]);
+
+    const res = await invocar('post', '/api/almacen/conformidad', {
+      body: { ingreso_id: 5, usuario_almacen: 'admin' }
+    });
+
+    expect(res.statusCode).toBe(200);
+    const reg = sqlDe('INSERT INTO registro_ingresos_almacen');
+    expect(reg).toHaveLength(1);
+    expect(reg[0].params.slice(0, 3)).toEqual(['T001-1', 'EUROPLAST SAC', 8]);
   });
 });

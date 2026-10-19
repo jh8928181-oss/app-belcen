@@ -184,6 +184,11 @@
         }
         .btn-vincular-prov:hover { background: var(--azul); color: #fff; }
         .resumen-prov-alm { margin-top: 10px; font-size: 13px; font-weight: 700; color: var(--texto2); white-space: nowrap; }
+        .sel-vinc-prov {
+            max-width: 230px; padding: 6px 8px; border-radius: 8px;
+            border: 1px solid rgba(0, 0, 0, 0.15); font-size: 12px;
+            font-family: inherit; background: rgba(255, 255, 255, 0.8); color: var(--texto);
+        }
 
         /* Control segmentado (Ingresos / Salidas) */
         .seg-alm { display: flex; gap: 6px; margin: 10px 0 2px; flex-wrap: wrap; }
@@ -891,6 +896,23 @@
             etiquetarTablas();
         }
 
+        // Nombre canónico del catálogo. Si el ingreso quedó sin vínculo (el
+        // proveedor puede darse de alta después, y el texto viene como
+        // "EUROPLAST" o como "EUROPLAST SAC"), la celda ofrece el select para
+        // vincularlo a mano: ningún ingreso queda atascado.
+        function celdaProveedorAlm(item) {
+            if (item.proveedor_id !== null && item.proveedor_id !== undefined) {
+                return item.proveedor_catalogo || item.proveedor || 'N/D';
+            }
+            if (proveedoresFiltro.length && item.ingreso_id != null) {
+                return `<select class="sel-vinc-prov" title="Vincular este ingreso con un proveedor del catálogo" onchange="vincularIngreso(${item.ingreso_id}, this.value)">` +
+                    `<option value="">🔗 Vincular…</option>` +
+                    proveedoresFiltro.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('') +
+                    '</select>';
+            }
+            return item.proveedor || 'N/D';
+        }
+
         function renderEntradasAlm() {
             const q = (document.getElementById('filtroEntradasAlm').value || '').toLowerCase();
             const provSel = (document.getElementById('filtroProvIngresos') || {}).value || '';
@@ -918,7 +940,7 @@
                     <td>${item.producto || 'N/D'}</td>
                     <td class="text-center" style="color:#1e7e34; font-weight:bold;">${item.cantidad}</td>
                     <td class="text-center">${linkGuia(item.foto_url, 'Ver Foto')}</td>
-                    <td>${item.proveedor_catalogo || item.proveedor || 'N/D'}</td>
+                    <td>${celdaProveedorAlm(item)}</td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -956,6 +978,33 @@
                 await cargarEntradas();
             } catch (err) {
                 alert('No se pudieron vincular los proveedores: ' + err.message);
+            }
+        }
+
+        // Vínculo manual fila por fila (red de seguridad del match automático:
+        // variantes ambiguas o texto que no empata). La fila se repinta en el
+        // sitio sin recargar la lista.
+        async function vincularIngreso(ingresoId, proveedorId) {
+            if (!proveedorId) return;
+            try {
+                const r = await fetch('/api/auditoria/vincular-ingreso', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ingreso_id: ingresoId, proveedor_id: Number(proveedorId) })
+                });
+                const d = await r.json();
+                if (!r.ok || d.success === false) throw new Error(d.mensaje || 'Error del servidor.');
+                const fila = entradasAlmGlobal.find(x => x.ingreso_id === ingresoId);
+                if (fila) {
+                    fila.proveedor_id = d.proveedor_id;
+                    const prov = proveedoresFiltro.find(p => p.id === d.proveedor_id);
+                    if (prov) fila.proveedor_catalogo = prov.nombre;
+                }
+                poblarFiltroProveedores();
+                renderEntradasAlm();
+            } catch (err) {
+                alert('No se pudo vincular el ingreso: ' + err.message);
+                renderEntradasAlm();
             }
         }
 

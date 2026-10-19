@@ -179,6 +179,8 @@ app.post('/api/almacen/conformidad', gAlmacen, async (req, res) => {
 
         let tieneDiferencias = false;
 
+        const proveedorId = await resolverProveedorId(client, ingreso.proveedor);
+
         for (const item of items) {
             const ajuste = ajustes.get((item.nombre || '').trim().toLowerCase());
             const nombreFinal = (ajuste && ajuste.nombre_ajustado && ajuste.nombre_ajustado.trim()) ? ajuste.nombre_ajustado.trim() : item.nombre;
@@ -237,9 +239,9 @@ app.post('/api/almacen/conformidad', gAlmacen, async (req, res) => {
             await actualizarEstadoArticulo(client, nombreFinal);
 
             await client.query(`
-                INSERT INTO registro_ingresos_almacen (fecha_registro, numero_guia, proveedor, producto_nombre, cantidad, estado, articulo_id)
-                VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6);
-            `, [ingreso.numero_guia, ingreso.proveedor, nombreFinal, cantidadFisica, estadoItem, targetArticuloId]);
+                INSERT INTO registro_ingresos_almacen (fecha_registro, numero_guia, proveedor, proveedor_id, producto_nombre, cantidad, estado, articulo_id)
+                VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6, $7);
+            `, [ingreso.numero_guia, ingreso.proveedor, proveedorId, nombreFinal, cantidadFisica, estadoItem, targetArticuloId]);
         }
 
         // El descuento contra el stock de proveedores ya no se hace a ciegas por
@@ -302,6 +304,7 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
 
         const foto_url = req.file ? `/uploads/${req.file.filename}` : null;
         const usuarioRegistro = usuario || 'almacen1';
+        const proveedorId = await resolverProveedorId(client, proveedor);
 
         let tieneDiferencias = false;
         for (const item of items) {
@@ -443,10 +446,10 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
             }
 
             const fila = await client.query(
-                `INSERT INTO registro_ingresos_almacen (fecha_registro, numero_guia, proveedor, producto_nombre, cantidad, estado, articulo_id, asociacion)
-                 VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6, 'SIN_OC')
+                `INSERT INTO registro_ingresos_almacen (fecha_registro, numero_guia, proveedor, proveedor_id, producto_nombre, cantidad, estado, articulo_id, asociacion)
+                 VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6, $7, 'SIN_OC')
                  RETURNING id`,
-                [numero_guia, proveedor, item.nombre, item.cantidad_fisica, estadoItem, targetArticuloId]
+                [numero_guia, proveedor, proveedorId, item.nombre, item.cantidad_fisica, estadoItem, targetArticuloId]
             );
 
             // Con OC declarada se abona contra el item que empate. Lo que no empate
@@ -564,6 +567,8 @@ app.post('/api/almacen/conformidad-ajustada', gAlmacen, async (req, res) => {
 
         let tieneDiferencias = false;
 
+        const proveedorId = await resolverProveedorId(client, ingreso.proveedor);
+
         for (const item of items) {
             const nombre = (item.nombre || '').trim();
             const cantidad = parseFloat(item.cantidad);
@@ -628,9 +633,9 @@ app.post('/api/almacen/conformidad-ajustada', gAlmacen, async (req, res) => {
             await actualizarEstadoArticulo(client, nombre);
 
             await client.query(`
-                INSERT INTO registro_ingresos_almacen (fecha_registro, numero_guia, proveedor, producto_nombre, cantidad, estado, articulo_id, categoria, unidad_medida)
-                VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6, $7, $8);
-            `, [ingreso.numero_guia, ingreso.proveedor, nombre, cantidad, estadoItem, targetArticuloId, categoria, unidad_medida]);
+                INSERT INTO registro_ingresos_almacen (fecha_registro, numero_guia, proveedor, proveedor_id, producto_nombre, cantidad, estado, articulo_id, categoria, unidad_medida)
+                VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6, $7, $8, $9);
+            `, [ingreso.numero_guia, ingreso.proveedor, proveedorId, nombre, cantidad, estadoItem, targetArticuloId, categoria, unidad_medida]);
         }
 
         const estadoFinalIngreso = tieneDiferencias ? 'CONFORME CON DIFERENCIAS (POR REGULARIZAR)' : `RECIBIDO POR ${usuario_almacen || 'almacen1'}`;
@@ -3721,7 +3726,10 @@ app.get('/api/salidas/historial', async (req, res) => {
 app.get('/api/auditoria/entradas', gAuditoria, async (req, res) => {
     try {
         const vig = await pool.query(`SELECT * FROM ingresos_vigilancia ORDER BY fecha_ingreso DESC`);
-        const alm = await pool.query(`SELECT * FROM registro_ingresos_almacen ORDER BY fecha_registro DESC, id DESC`);
+        const alm = await pool.query(`SELECT a.*, p.nombre AS proveedor_catalogo
+                                         FROM registro_ingresos_almacen a
+                                    LEFT JOIN proveedores p ON p.id = a.proveedor_id
+                                     ORDER BY a.fecha_registro DESC, a.id DESC`);
 
         const fotoPorGuia = {};
         vig.rows.forEach(v => {
@@ -3764,6 +3772,8 @@ app.get('/api/auditoria/entradas', gAuditoria, async (req, res) => {
                 fecha: a.fecha_registro,
                 numero_guia: a.numero_guia,
                 proveedor: a.proveedor || 'N/D',
+                proveedor_id: a.proveedor_id !== undefined ? a.proveedor_id : null,
+                proveedor_catalogo: a.proveedor_catalogo || null,
                 producto: a.producto_nombre || 'N/D',
                 cantidad: a.cantidad !== undefined && a.cantidad !== null ? a.cantidad : 0,
                 foto_url: fotoPorGuia[g] || null,
@@ -3775,6 +3785,59 @@ app.get('/api/auditoria/entradas', gAuditoria, async (req, res) => {
         res.json(entradas);
     } catch (err) {
         res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+// Lista mínima del catálogo de la Base de Datos General para separar los
+// ingresos por proveedor en Auditoria. No se sirve /api/bd/proveedores aquí:
+// ese exige roles de BD General y esta pantalla la abren también producción
+// y supervisor.
+app.get('/api/auditoria/proveedores', gAuditoria, async (req, res) => {
+    try {
+        const r = await pool.query('SELECT id, nombre FROM proveedores ORDER BY nombre');
+        res.json(r.rows);
+    } catch (err) {
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+// Reintenta vincular los ingresos que quedaron sin proveedor del catálogo
+// (los proveedores se dan de alta de a poco en BD General): mismo match de la
+// migración, corregido en lote y en una sola transaccion.
+app.post('/api/auditoria/vincular-proveedores', gAuditoria, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const pend = await client.query(
+            `SELECT id, proveedor FROM registro_ingresos_almacen
+              WHERE proveedor_id IS NULL AND btrim(coalesce(proveedor, '')) <> ''
+              ORDER BY id`
+        );
+        let vinculados = 0;
+        if (pend.rows.length) {
+            const cat = (await client.query('SELECT id, nombre FROM proveedores ORDER BY id')).rows;
+            const filas = [];
+            for (const fila of pend.rows) {
+                const id = matchProveedorCatalogo(cat, fila.proveedor);
+                if (id !== null) filas.push([fila.id, id]);
+            }
+            if (filas.length) {
+                const upd = await client.query(
+                    `UPDATE registro_ingresos_almacen r SET proveedor_id = x.proveedor_id
+                       FROM unnest($1::int[], $2::int[]) AS x(id, proveedor_id)
+                      WHERE r.id = x.id`,
+                    [filas.map(f => f[0]), filas.map(f => f[1])]
+                );
+                vinculados = upd.rowCount;
+            }
+        }
+        await client.query('COMMIT');
+        res.json({ success: true, vinculados, revisadas: pend.rows.length });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        res.status(500).json({ success: false, mensaje: 'Error al vincular proveedores: ' + err.message });
+    } finally {
+        client.release();
     }
 });
 
@@ -5677,6 +5740,32 @@ function normalizarTexto(valor) {
         .toLowerCase()
         .replace(/\s+/g, ' ')
         .trim();
+}
+
+// Vincula el texto de proveedor de una guia con el catálogo de la Base de
+// Datos General. Misma regla que contra las órdenes: gana el nombre exacto
+// normalizado; si no, un único candidato que contenga al otro con 5+
+// caracteres. Varias opciones o ninguna -> null: el ingreso queda "sin
+// vínculo" visible en Auditoria y el texto se conserva tal cual.
+function matchProveedorCatalogo(catalogo, nombreProveedor) {
+    const texto = normalizarTexto(nombreProveedor);
+    if (!texto) return null;
+    let exacto = null;
+    const contenidos = [];
+    for (const p of catalogo) {
+        const clave = normalizarTexto(p.nombre);
+        if (!clave) continue;
+        if (clave === texto) { if (exacto === null) exacto = p.id; continue; }
+        if (Math.min(clave.length, texto.length) >= 5 && (clave.includes(texto) || texto.includes(clave))) contenidos.push(p.id);
+    }
+    if (exacto !== null) return exacto;
+    return contenidos.length === 1 ? contenidos[0] : null;
+}
+
+async function resolverProveedorId(q, nombreProveedor) {
+    if (!normalizarTexto(nombreProveedor)) return null;
+    const cat = await q.query('SELECT id, nombre FROM proveedores ORDER BY id');
+    return matchProveedorCatalogo(cat.rows, nombreProveedor);
 }
 
 // Busca la orden de compra contra la que se va a aplicar una guia y comprueba

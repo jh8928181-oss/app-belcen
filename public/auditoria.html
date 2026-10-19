@@ -174,6 +174,17 @@
         }
         .filtro:focus { outline: none; border-color: var(--azul); box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.15); }
 
+        /* Separación de ingresos de Almacén por proveedor (catálogo de la BD General) */
+        .barra-prov-alm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .barra-prov-alm .filtro-prov { width: auto; min-width: 240px; max-width: 320px; flex: 1 1 240px; }
+        .btn-vincular-prov {
+            margin-top: 10px; padding: 9px 14px; border: none; border-radius: 999px;
+            background: rgba(120, 120, 128, 0.10); color: var(--texto2);
+            font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+        }
+        .btn-vincular-prov:hover { background: var(--azul); color: #fff; }
+        .resumen-prov-alm { margin-top: 10px; font-size: 13px; font-weight: 700; color: var(--texto2); white-space: nowrap; }
+
         /* Control segmentado (Ingresos / Salidas) */
         .seg-alm { display: flex; gap: 6px; margin: 10px 0 2px; flex-wrap: wrap; }
         .seg-alm button {
@@ -428,6 +439,13 @@
                     <div class="vista-alm" id="vistaalm-ingresos">
                         <h4 class="sub-titulo entradas">📥 Conformidad de Ingresos — Registrada por Almacén</h4>
                         <input id="filtroEntradasAlm" class="filtro" placeholder="🔍 Buscar por producto, proveedor, N° de guía o fecha...">
+                        <div class="barra-prov-alm">
+                            <select id="filtroProvIngresos" class="filtro filtro-prov" title="Separar los ingresos por proveedor del catálogo de la Base de Datos General">
+                                <option value="">🏢 Todos los proveedores</option>
+                            </select>
+                            <button type="button" id="btnVincularProv" class="btn-vincular-prov" style="display:none;" onclick="vincularProveedoresAutomatico()" title="Vincular los ingresos sin proveedor con el catálogo de la BD General">🔗 Vincular con el catálogo</button>
+                            <span id="resumenProvIngresos" class="resumen-prov-alm"></span>
+                        </div>
                         <div class="tabla-wrap">
                             <table>
                                 <thead>
@@ -697,6 +715,8 @@
         // 📥 ENTRADAS SEPARADAS (Vigilancia y Almacén por individual)
         let vigilanciaGlobal = [];
         let entradasAlmGlobal = [];
+        let proveedoresFiltro = []; // catálogo de la Base de Datos General
+        let proveedoresFiltroOk = false;
         let salidasGlobal = [];
         let informesGlobal = [];
         let refinadoActual = null;
@@ -873,15 +893,23 @@
 
         function renderEntradasAlm() {
             const q = (document.getElementById('filtroEntradasAlm').value || '').toLowerCase();
-            const filtradas = entradasAlmGlobal.filter(it =>
-                (it.producto || '').toLowerCase().includes(q) ||
-                (it.proveedor || '').toLowerCase().includes(q) ||
-                (it.numero_guia || '').toLowerCase().includes(q) ||
-                formatearFecha(it.fecha).toLowerCase().includes(q) ||
-                String(it.cantidad).toLowerCase().includes(q)
-            );
+            const provSel = (document.getElementById('filtroProvIngresos') || {}).value || '';
+            const filtradas = entradasAlmGlobal.filter(it => {
+                if (provSel === 'sin') {
+                    if (it.proveedor_id !== null && it.proveedor_id !== undefined) return false;
+                } else if (provSel !== '' && String(it.proveedor_id) !== provSel) {
+                    return false;
+                }
+                return (
+                    (it.producto || '').toLowerCase().includes(q) ||
+                    (it.proveedor || '').toLowerCase().includes(q) ||
+                    (it.numero_guia || '').toLowerCase().includes(q) ||
+                    formatearFecha(it.fecha).toLowerCase().includes(q) ||
+                    String(it.cantidad).toLowerCase().includes(q)
+                );
+            });
             const tbody = document.getElementById('tablaEntradasAlm');
-            tbody.innerHTML = filtradas.length === 0 ? '<tr><td colspan="6" class="text-center sin-registros">No hay conformidad de almacén que coincida con la búsqueda.</td></tr>' : '';
+            tbody.innerHTML = filtradas.length === 0 ? '<tr><td colspan="6" class="text-center sin-registros">No hay conformidad de almacén que coincida con la búsqueda o el filtro.</td></tr>' : '';
             filtradas.forEach(item => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
@@ -890,11 +918,45 @@
                     <td>${item.producto || 'N/D'}</td>
                     <td class="text-center" style="color:#1e7e34; font-weight:bold;">${item.cantidad}</td>
                     <td class="text-center">${linkGuia(item.foto_url, 'Ver Foto')}</td>
-                    <td>${item.proveedor || 'N/D'}</td>
+                    <td>${item.proveedor_catalogo || item.proveedor || 'N/D'}</td>
                 `;
                 tbody.appendChild(tr);
             });
+            const resumen = document.getElementById('resumenProvIngresos');
+            if (resumen) {
+                const und = filtradas.reduce((s, it) => s + (Number(it.cantidad) || 0), 0);
+                resumen.textContent = `${filtradas.length} ingresos · ${und} und.`;
+            }
             etiquetarTablas();
+        }
+
+        // Opciones del filtro: el catálogo de proveedores de la Base de Datos
+        // General más el conteo de ingresos que todavía no tienen vínculo. Se
+        // repinta en cada carga (auto-refresco) y conserva la selección.
+        function poblarFiltroProveedores() {
+            const sel = document.getElementById('filtroProvIngresos');
+            if (!sel) return;
+            const actual = sel.value;
+            const sinVinculo = entradasAlmGlobal.filter(it => it.proveedor_id === null || it.proveedor_id === undefined).length;
+            sel.innerHTML = `<option value="">🏢 Todos los proveedores (${entradasAlmGlobal.length})</option>` +
+                proveedoresFiltro.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('') +
+                `<option value="sin">Sin vínculo con el catálogo (${sinVinculo})</option>`;
+            sel.value = Array.prototype.some.call(sel.options, o => o.value === actual) ? actual : '';
+            const btn = document.getElementById('btnVincularProv');
+            if (btn) btn.style.display = (sinVinculo > 0 && proveedoresFiltro.length > 0) ? '' : 'none';
+        }
+
+        async function vincularProveedoresAutomatico() {
+            if (!confirm('¿Vincular los ingresos que aún no tienen proveedor con el catálogo de la Base de Datos General?')) return;
+            try {
+                const r = await fetch('/api/auditoria/vincular-proveedores', { method: 'POST' });
+                const d = await r.json();
+                if (!r.ok || d.success === false) throw new Error(d.mensaje || 'Error del servidor.');
+                alert(`Se vincularon ${d.vinculados} de ${d.revisadas} ingresos revisados con el catálogo.`);
+                await cargarEntradas();
+            } catch (err) {
+                alert('No se pudieron vincular los proveedores: ' + err.message);
+            }
         }
 
         async function cargarEntradas() {
@@ -913,6 +975,21 @@
                     const lista = Array.isArray(datosA) ? datosA : [];
                     entradasAlmGlobal = lista.filter(a => String(a.origen || '').toUpperCase() === 'ALMACEN');
                 }
+                // El catálogo solo se trae una vez: si falla (rol sin permiso,
+                // caída puntual) el filtro sigue funcionando con "Todos".
+                if (!proveedoresFiltroOk) {
+                    try {
+                        const resProv = await fetch('/api/auditoria/proveedores');
+                        if (resProv.ok) {
+                            const datosP = await resProv.json();
+                            proveedoresFiltro = Array.isArray(datosP) ? datosP : [];
+                            proveedoresFiltroOk = true;
+                        }
+                    } catch (eProv) {
+                        console.error('No se pudo cargar el catálogo de proveedores:', eProv);
+                    }
+                }
+                poblarFiltroProveedores();
                 renderVigilancia();
                 renderEntradasAlm();
                 actualizarContadores();
@@ -1513,6 +1590,7 @@ tbody.appendChild(tr);
 
         document.getElementById('filtroEntradasVig').addEventListener('input', renderVigilancia);
         document.getElementById('filtroEntradasAlm').addEventListener('input', renderEntradasAlm);
+        document.getElementById('filtroProvIngresos').addEventListener('change', renderEntradasAlm);
         document.getElementById('filtroSalidas').addEventListener('input', renderSalidas);
         document.getElementById('filtroProduccion').addEventListener('input', renderProduccion);
         document.getElementById('filtroRefinado').addEventListener('change', cargarRefinado);

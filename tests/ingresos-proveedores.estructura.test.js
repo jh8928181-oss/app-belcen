@@ -86,3 +86,56 @@ describe('Auditoría: el filtro de ingresos por proveedor', () => {
     expect(html).toContain('fila.proveedor_id = d.proveedor_id');
   });
 });
+
+describe('Carga del catálogo de proveedores desde el Excel de planta', () => {
+  const fuente = leer(path.join('migrations', '1792050000000_seed-proveedores-excel.mjs'));
+
+  test('trae los proveedores del Excel, con su RUC y sin duplicados', () => {
+    expect(fuente).toContain('const PROVEEDORES');
+    expect(fuente).toContain("['EUROPLAST SAC', '20100277213']");
+    expect(fuente).toContain("['A2B INDUSTRIAL SAC', '20614029901']");
+    // la fila repetida del Excel (mismo RUC) se carga una sola vez
+    const cartones = fuente.match(/^\s*\['CARTONES VILLA MARINA/gm) || [];
+    expect(cartones.length).toBe(1);
+  });
+
+  test('hace upsert por nombre para completar el RUC de lo ya existente', () => {
+    expect(fuente).toContain('ON CONFLICT (nombre)');
+    expect(fuente).toContain('usuario_registro');
+    expect(fuente).toContain("'carga-excel'");
+    // CLARIANT cambió de nombre en el Excel: se renombra con sus snapshots
+    // antes del upsert para que el RUC caiga en la fila existente
+    expect(fuente).toContain("WHERE nombre = 'CLARIANT SAC'");
+    expect(fuente).toContain('UPDATE ordenes_compras_servicios');
+    expect(fuente).toContain('UPDATE stock_proveedores');
+  });
+
+  test('vuelve a rellenar proveedor_id de los ingresos con el catálogo ya cargado', () => {
+    // los ingresos que antes quedaban sin vínculo (EUROPLAST, A2B) se
+    // resuelven solos al cargar el catálogo del Excel
+    expect(fuente).toContain('SET proveedor_id = e.id');
+    expect(fuente).toContain('exactos > 0 OR total = 1');
+  });
+
+  test('down revierte el renombre y borra solo la fila de la carga', () => {
+    expect(fuente).toMatch(/export const down/);
+    expect(fuente).toContain("DELETE FROM proveedores WHERE usuario_registro = 'carga-excel'");
+    expect(fuente).toContain("SET nombre = 'CLARIANT SAC'");
+  });
+});
+
+describe('Fusión del proveedor J&M duplicado por variante de nombre', () => {
+  const fuente = leer(path.join('migrations', '1792060000000_fix-proveedor-jm-duplicado.mjs'));
+
+  test('borra la fila de carga que comparte RUC con el registro original', () => {
+    expect(fuente).toContain("usuario_registro = 'carga-excel'");
+    expect(fuente).toContain('otra.ruc = p.ruc AND otra.id < p.id');
+  });
+
+  test('conserva el original con el nombre del Excel y sus snapshots', () => {
+    expect(fuente).toContain("SET nombre = 'J&M QUIMICOS Y TECNOLOGIA SAC'");
+    expect(fuente).toContain("WHERE nombre = 'J & M QUIMICOS Y TECNOLOGIA SAC'");
+    expect(fuente).toContain('UPDATE ordenes_compras_servicios');
+    expect(fuente).toContain('UPDATE stock_proveedores');
+  });
+});

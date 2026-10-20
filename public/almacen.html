@@ -193,6 +193,7 @@
         .btn-filtro-todos { background: var(--azul); color: #fff; }
         .btn-filtro-guia { background: var(--verde); color: #fff; }
         .btn-filtro-regularizar { background: #ffd60a; color: #5c3a00; }
+        .btn-filtro-singuia { background: #ff9500; color: #fff; }
 
         .btn-agregar { background: rgba(120, 120, 128, 0.16); color: var(--texto); border: none; padding: 9px 16px; border-radius: 999px; font-weight: 800; font-size: 13px; cursor: pointer; font-family: inherit; transition: filter 0.15s ease; }
         .btn-agregar:hover { filter: brightness(0.95); }
@@ -495,18 +496,18 @@
                     <div class="grid-form" style="margin-top:16px;">
                         <div>
                             <label class="etiqueta-mini">🧾 Tipo de Documento</label>
-                            <select id="almTipoDocumento" name="tipo_documento">
+                            <select id="almTipoDocumento" name="tipo_documento" onchange="wizardAlmTipoDocCambio()">
                                 <option value="GUIA DE REMISION">Guía de Remisión</option>
                                 <option value="FACTURA">Factura</option>
                                 <option value="OTRO">Otro Documento</option>
                             </select>
                         </div>
                         <div>
-                            <label class="etiqueta-mini">🔢 N° de Guía / Documento *</label>
+                            <label class="etiqueta-mini" id="almLblNumeroGuia">🔢 N° de Guía / Documento *</label>
                             <input type="text" id="almNumeroGuia" name="numero_guia" placeholder="Ej. T001-000452" required>
                         </div>
                         <div>
-                            <label class="etiqueta-mini">🏢 Empresa Proveedora *</label>
+                            <label class="etiqueta-mini" id="almLblProveedor">🏢 Empresa Proveedora *</label>
                             <input type="text" id="almProveedor" name="proveedor" placeholder="Razón Social del Proveedor" required>
                         </div>
                         <div>
@@ -522,6 +523,12 @@
                             <label class="etiqueta-mini">🗺️ Lugar de Partida / Destino (opcional)</label>
                             <input type="text" id="almLugarPartida" name="lugar_partida" placeholder="Origen -> Planta Principal Belcen">
                         </div>
+                        <div class="span-2" id="almCajaSinGuia" style="display:none;">
+                            <label class="etiqueta-mini" style="display:flex; gap:8px; align-items:flex-start; cursor:pointer; background:#fff7ed; border:1px dashed #f59e0b; border-radius:8px; padding:10px 12px;">
+                                <input type="checkbox" id="almSinGuia" style="margin-top:3px;" onchange="wizardAlmSinGuiaCambio()">
+                                <span>📎 <b>Ingresar SIN GUÍA</b> — los productos entran al inventario ahora (solo se pide la carga y la placa del carro). Después, desde el Registro de Ingresos, vinculo el N° de guía y completo los datos que falten.</span>
+                            </label>
+                        </div>
                     </div>
                 </section>
 
@@ -533,7 +540,7 @@
                                 <label>Descripción del Insumo / Producto:</label>
                                 <input type="text" id="almProdTextual" list="datalistInsumosNombres" placeholder="Ej. Botella Belini x 1 Lt / Cajas / Tapas" onkeydown="if(event.key==='Enter'){event.preventDefault();wizardAlmAgregarItem();}">
                             </div>
-                            <div class="g1">
+                            <div class="g1" id="almCantGuiaCaja">
                                 <label>Cantidad Guía:</label>
                                 <input type="number" step="0.01" id="almProdCantGuia" placeholder="Cant. Papel">
                             </div>
@@ -617,6 +624,7 @@
             <button onclick="filtrarIngresos('TODOS')" class="btn-filtro btn-filtro-todos">Ver Todos</button>
             <button onclick="filtrarIngresos('CON GUIA')" class="btn-filtro btn-filtro-guia">Con Guía Conforme</button>
             <button onclick="filtrarIngresos('POR REGULARIZAR')" class="btn-filtro btn-filtro-regularizar">Por Regularizar (Diferencias)</button>
+            <button onclick="filtrarIngresos('SIN GUIA')" class="btn-filtro btn-filtro-singuia">Sin Guía (por vincular)</button>
         </div>
 
         <div class="tabla-wrap tabla-card-movil">
@@ -1102,6 +1110,39 @@
         </div>
     </div>
 
+    <!-- MODAL: VINCULAR UN INGRESO REGISTRADO SIN GUÍA A SU N° DE GUÍA -->
+    <div id="modalVincularGuia" class="modal-fondo">
+        <div class="modal-carta mc-520">
+            <h3 class="h-modal-teal">🔗 Vincular ingreso a su guía</h3>
+
+            <div class="aviso-ia-modal" style="margin-bottom:12px;">
+                <span id="vgInfo" style="font-size:13px;"></span>
+            </div>
+
+            <div class="campo-modal">
+                <label>N° de Guía *</label>
+                <input type="text" id="vgNumeroGuia" placeholder="Ej. T001-000452">
+            </div>
+            <div class="campo-modal">
+                <label>Empresa Proveedora *</label>
+                <input type="text" id="vgProveedor" placeholder="Razón Social del Proveedor">
+            </div>
+            <div class="campo-modal">
+                <label>Tipo de Documento</label>
+                <select id="vgTipoDocumento">
+                    <option value="GUIA DE REMISION">Guía de Remisión</option>
+                    <option value="FACTURA">Factura</option>
+                    <option value="OTRO">Otro Documento</option>
+                </select>
+            </div>
+
+            <div class="barra-botones">
+                <button type="button" onclick="cerrarModalVincularGuia()" class="btn-modal-cancelar">Cancelar</button>
+                <button type="button" id="btnVincularGuiaGuardar" onclick="guardarVinculoGuia()" class="btn-modal-ok">💾 Vincular</button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL: REVISAR Y AJUSTAR CONFORMIDAD -->
     <div id="modalRevisarAjuste" class="modal-fondo">
         <div class="modal-carta mc-820">
@@ -1243,6 +1284,63 @@
             return (el && el.value != null) ? el.value : '';
         }
 
+        // ---- INGRESO SIN GUÍA (solo con "Otro Documento") ----
+        // El documento todavía no existe: solo se pide la carga y la placa, los
+        // productos entran al stock de una vez y el N° de guía se completa luego
+        // con el botón "Vincular guía" del Registro de Ingresos.
+        function wizardAlmTipoDocCambio() {
+            const esOtro = document.getElementById('almTipoDocumento').value === 'OTRO';
+            const caja = document.getElementById('almCajaSinGuia');
+            if (caja) caja.style.display = esOtro ? '' : 'none';
+            if (!esOtro && document.getElementById('almSinGuia')?.checked) {
+                document.getElementById('almSinGuia').checked = false;
+                wizardAlmSinGuiaCambio();
+            }
+            wizardAlmActualizar();
+        }
+
+        function wizardAlmSinGuiaActivo() {
+            const el = document.getElementById('almSinGuia');
+            return Boolean(el && el.checked);
+        }
+
+        function wizardAlmSinGuiaCambio() {
+            const activo = wizardAlmSinGuiaActivo();
+            const guia = document.getElementById('almNumeroGuia');
+            const proveedor = document.getElementById('almProveedor');
+            const lblGuia = document.getElementById('almLblNumeroGuia');
+            const lblProv = document.getElementById('almLblProveedor');
+            if (guia) {
+                guia.disabled = activo;
+                guia.required = !activo;
+                if (activo) guia.value = '';
+                guia.placeholder = activo ? 'Se completa al vincular la guía' : 'Ej. T001-000452';
+                guia.classList.remove('campo-falta');
+            }
+            if (lblGuia) lblGuia.innerHTML = activo
+                ? '🔢 N° de Guía / Documento <small style="color:#8a5a00;">(se completa al vincular)</small>'
+                : '🔢 N° de Guía / Documento *';
+            if (proveedor) {
+                proveedor.required = !activo;
+                proveedor.placeholder = activo ? 'Opcional — se completa al vincular' : 'Razón Social del Proveedor';
+                proveedor.classList.remove('campo-falta');
+            }
+            if (lblProv) lblProv.innerHTML = activo
+                ? '🏢 Empresa Proveedora <small style="color:#8a5a00;">(opcional — se completa al vincular)</small>'
+                : '🏢 Empresa Proveedora *';
+            // Los ítems ya cargados pasan a usar solo la cantidad física.
+            if (activo && itemsAlmacenArray.length) {
+                itemsAlmacenArray.forEach(it => { it.cantidad_guia = it.cantidad_fisica; });
+                wizardAlmRenderTabla();
+            }
+            // Sin guía no hay cantidad en papel: se oculta el campo.
+            const cajaCantGuia = document.getElementById('almCantGuiaCaja');
+            if (cajaCantGuia) cajaCantGuia.style.display = activo ? 'none' : '';
+            const cantGuia = document.getElementById('almProdCantGuia');
+            if (cantGuia && activo) cantGuia.value = '';
+            wizardAlmActualizar();
+        }
+
         // N° de OC declarado en la guía. El campo es opcional: sin OC los productos
         // quedan en SIN_OC y esperan en Notificaciones de Base de Datos General.
         // Con OC, el paso no se abre hasta que el servidor la verifique contra el
@@ -1336,6 +1434,8 @@
             if (n === 0) {
                 const oc = wizardAlmVal('almNumeroOC').trim();
                 if (oc && (wizardAlmOcEstado !== 'ok' || wizardAlmOcNumero !== oc)) return false;
+                // Sin guía no se pide documento: solo la carga (paso 2) importa.
+                if (wizardAlmSinGuiaActivo()) return true;
                 return Boolean(
                     document.getElementById('almNumeroGuia').value.trim() &&
                     document.getElementById('almProveedor').value.trim()
@@ -1348,7 +1448,7 @@
         }
 
         function wizardAlmMarcarFaltantes(n) {
-            const ids = n === 0 ? ['almNumeroGuia', 'almProveedor'] : [];
+            const ids = (n === 0 && !wizardAlmSinGuiaActivo()) ? ['almNumeroGuia', 'almProveedor'] : [];
             ids.forEach(id => {
                 const el = document.getElementById(id);
                 el.classList.toggle('campo-falta', !el.value.trim());
@@ -1449,8 +1549,11 @@
         }
 
         function wizardAlmRenderResumen() {
+            const sinGuia = wizardAlmSinGuiaActivo();
             const datos = [
-                { label: 'N°', value: wizardAlmVal('almNumeroGuia') },
+                sinGuia
+                    ? { label: 'Guía', value: 'SIN GUIA — se vincula después' }
+                    : { label: 'N°', value: wizardAlmVal('almNumeroGuia') },
                 { label: 'Tipo', value: document.getElementById('almTipoDocumento').options[document.getElementById('almTipoDocumento').selectedIndex].text },
                 { label: 'Proveedor', value: wizardAlmVal('almProveedor') },
                 { label: 'OC', value: wizardAlmVal('almNumeroOC') },
@@ -1623,11 +1726,16 @@
         }
 
         function wizardAlmAgregarItem() {
+            const sinGuia = wizardAlmSinGuiaActivo();
             const nombre = document.getElementById('almProdTextual').value.trim();
-            const cantidad_guia = parseFloat(document.getElementById('almProdCantGuia').value);
             const cantidad_fisica = parseFloat(document.getElementById('almProdCantFisica').value);
+            const cantidad_guia = sinGuia
+                ? cantidad_fisica
+                : parseFloat(document.getElementById('almProdCantGuia').value);
             if (!nombre || isNaN(cantidad_guia) || isNaN(cantidad_fisica)) {
-                alert('❌ Complete la descripción y las cantidades (guía y física).');
+                alert(sinGuia
+                    ? '❌ Complete la descripción y la cantidad física (sin guía no se pide cantidad en papel).'
+                    : '❌ Complete la descripción y las cantidades (guía y física).');
                 return;
             }
             itemsAlmacenArray.push(resolverItemAlm({ nombre, cantidad_guia, cantidad_fisica }));
@@ -1736,6 +1844,8 @@
                 if (c.proveedor) document.getElementById('almProveedor').value = limpiarEmpresaIA(c.proveedor);
                 if (c.placa) document.getElementById('almPlaca').value = String(c.placa).replace(/\s+Principal$/i, '');
                 if (c.partida) document.getElementById('almLugarPartida').value = c.partida;
+                // El tipo cambió por programa: la casilla sin guía lo sigue.
+                wizardAlmTipoDocCambio();
                 // El documento rellenado cambia proveedor y número de guía: una OC
                 // declarada deja de estar verificada hasta que se vuelva a validar.
                 wizardAlmOcInvalidar();
@@ -1793,6 +1903,7 @@
             formData.append('tipo_documento', wizardAlmVal('almTipoDocumento'));
             formData.append('numero_guia', wizardAlmVal('almNumeroGuia'));
             formData.append('proveedor', wizardAlmVal('almProveedor'));
+            formData.append('sin_guia', wizardAlmSinGuiaActivo() ? '1' : '0');
             formData.append('numero_oc', wizardAlmVal('almNumeroOC'));
             formData.append('placa', wizardAlmVal('almPlaca'));
             formData.append('lugar_partida', wizardAlmVal('almLugarPartida'));
@@ -1830,9 +1941,10 @@
         }
 
         function mostrarExitoAlmacen(data) {
+            const sinGuia = wizardAlmSinGuiaActivo();
             const resumen = document.getElementById('almExitoResumen');
             resumen.innerHTML = `
-                <div><b>N° guía:</b> ${wizardAlmVal('almNumeroGuia') || 'S/N'}</div>
+                <div><b>N° guía:</b> ${sinGuia ? 'Sin guía — pendiente de vincular' : (wizardAlmVal('almNumeroGuia') || 'S/N')}</div>
                 <div><b>Proveedor:</b> ${wizardAlmVal('almProveedor') || '—'}</div>
                 <div><b>Ítems:</b> ${itemsAlmacenArray.length}</div>
                 <div><b>Hora:</b> ${new Date().toLocaleString('es-PE')}</div>
@@ -1848,6 +1960,11 @@
 
         function reiniciarFormularioAlmacen() {
             document.getElementById('formWizardAlm').reset();
+            // reset() no re-habilita campos ni desmarca casillas con estado propio.
+            const sinGuia = document.getElementById('almSinGuia');
+            if (sinGuia) sinGuia.checked = false;
+            wizardAlmTipoDocCambio();
+            wizardAlmSinGuiaCambio();
             wizardAlmOcInvalidar();
             itemsAlmacenArray = [];
             wizardAlmRenderTabla();
@@ -2381,30 +2498,95 @@
         }
 
         function renderIngresos(lista) {
-            const tbody = document.getElementById('tablaRegistroIngresos');            tbody.innerHTML = lista.length === 0 ? `<tr><td colspan="6" class="text-center">Sin registros.</td></tr>` : '';
+            const tbody = document.getElementById('tablaRegistroIngresos');
+            tbody.innerHTML = lista.length === 0 ? `<tr><td colspan="6" class="text-center">Sin registros.</td></tr>` : '';
             lista.forEach(row => {
                 const fecha = row.fecha_registro ? fechaLocalISO(row.fecha_registro) : '';
-                const badge = row.estado === 'POR REGULARIZAR'
-                    ? `<span class="badge-pendiente">POR REGULARIZAR</span>`
-                    : `<span class="badge-cumplido">CON GUÍA CONFORME</span>`;
+                const esSinGuia = row.estado === 'SIN GUIA';
+                const badge = esSinGuia
+                    ? `<span class="badge-pendiente">SIN GUÍA · POR VINCULAR</span>`
+                    : row.estado === 'POR REGULARIZAR'
+                        ? `<span class="badge-pendiente">POR REGULARIZAR</span>`
+                        : `<span class="badge-cumplido">CON GUÍA CONFORME</span>`;
+                const btnVincular = esSinGuia && row.ingreso_id
+                    ? `<div style="margin-top:6px;"><button type="button" class="btn-accion btn-ajustar" onclick="abrirModalVincularGuia(${row.ingreso_id})">🔗 Vincular guía</button></div>`
+                    : '';
 
                 tbody.innerHTML += `
                     <tr>
                         <td><b>${fecha}</b></td>
-                        <td>${row.numero_guia}</td>
-                        <td>${row.proveedor}</td>
+                        <td>${row.numero_guia || (esSinGuia ? '<span class="sub-text">se vincula después</span>' : '—')}</td>
+                        <td>${row.proveedor || '—'}</td>
                         <td><b>${row.producto_nombre}</b></td>
                         <td class="text-center celda-azul">${row.cantidad}</td>
-                        <td class="text-center">${badge}${row.categoria ? `<div class="sub-text">${row.categoria} · ${row.unidad_medida || 'UNIDADES'}</div>` : ''}</td>
-                            </tr>
-                        `;
-                    });
-                    etiquetarTablas();
-                }
+                        <td class="text-center">${badge}${btnVincular}${row.categoria ? `<div class="sub-text">${row.categoria} · ${row.unidad_medida || 'UNIDADES'}</div>` : ''}</td>
+                    </tr>
+                `;
+            });
+            etiquetarTablas();
+        }
 
                 function filtrarIngresos(tipo) {
             if (tipo === 'TODOS') renderIngresos(ingresosGlobal);
             else renderIngresos(ingresosGlobal.filter(i => i.estado === tipo));
+        }
+
+        // ---- VINCULAR UN INGRESO SIN GUÍA A SU N° DE GUÍA (cuando llegue) ----
+        let vinculoGuiaIngresoId = null;
+
+        function abrirModalVincularGuia(ingresoId) {
+            vinculoGuiaIngresoId = ingresoId;
+            const filas = ingresosGlobal.filter(r => Number(r.ingreso_id) === Number(ingresoId));
+            const info = document.getElementById('vgInfo');
+            info.innerHTML = filas.length
+                ? `<b>${filas.length} producto(s) ingresados sin guía:</b> ${filas.map(r => `${r.producto_nombre} (${r.cantidad})`).join(', ')}. Al vincular, el registro queda como entrada conforme con la guía indicada.`
+                : 'Completa los datos del documento para vincular este ingreso.';
+            document.getElementById('vgNumeroGuia').value = '';
+            document.getElementById('vgProveedor').value = (filas[0] && filas[0].proveedor) || '';
+            document.getElementById('vgTipoDocumento').value = 'GUIA DE REMISION';
+            document.getElementById('modalVincularGuia').style.display = 'flex';
+            document.getElementById('vgNumeroGuia').focus();
+        }
+
+        function cerrarModalVincularGuia() {
+            document.getElementById('modalVincularGuia').style.display = 'none';
+            vinculoGuiaIngresoId = null;
+        }
+
+        async function guardarVinculoGuia() {
+            if (!vinculoGuiaIngresoId) return;
+            const numero = document.getElementById('vgNumeroGuia').value.trim();
+            const proveedor = document.getElementById('vgProveedor').value.trim();
+            if (!numero) { alert('❌ Escribe el N° de guía a vincular.'); return; }
+            if (!proveedor) { alert('❌ Escribe la empresa proveedora.'); return; }
+
+            const btn = document.getElementById('btnVincularGuiaGuardar');
+            btn.disabled = true;
+            try {
+                const res = await fetch(`/api/almacen/ingresos/${vinculoGuiaIngresoId}/vincular-guia`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        numero_guia: numero,
+                        proveedor,
+                        tipo_documento: document.getElementById('vgTipoDocumento').value,
+                        usuario: localStorage.getItem('usuario_actual') || 'almacen1'
+                    })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok && data.success) {
+                    alert('✅ ' + (data.mensaje || 'Ingreso vinculado.'));
+                    cerrarModalVincularGuia();
+                    cargarRegistroIngresos();
+                } else {
+                    alert('❌ ' + (data.mensaje || 'No se pudo vincular el ingreso.'));
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Error de conexión con el servidor.');
+            } finally {
+                btn.disabled = false;
+            }
         }
 
         async function cargarProductoTerminado() {

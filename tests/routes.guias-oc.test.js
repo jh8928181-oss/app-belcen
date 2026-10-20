@@ -714,3 +714,125 @@ describe('GET /api/bd/ordenes', () => {
     expect(consulta).toMatch(/estado <> 'ANULADA'/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// POST /api/almacen/registrar-conforme sin guía: entra al stock ya y el
+// documento se vincula después.
+// ---------------------------------------------------------------------------
+describe('POST /api/almacen/registrar-conforme sin guía', () => {
+  const SIN_GUIA = {
+    tipo_documento: 'OTRO',
+    numero_guia: '',
+    proveedor: '',
+    sin_guia: '1',
+    numero_oc: '',
+    items_json: JSON.stringify([{ nombre: 'CEMENTO CP40', cantidad_guia: 100, cantidad_fisica: 100 }])
+  };
+
+  test('la cabecera queda SIN GUIA y el registro guarda ingreso_id', async () => {
+    responder([
+      [SQL.insertIngreso, filas({ id: 420, numero_guia: null })],
+      [SQL.inventarioExiste, filas({ id: 31, stock: 5 })],
+      [SQL.insertRegistro, filas({ id: 560 })]
+    ]);
+
+    const r = await invocar('post', '/api/almacen/registrar-conforme', { body: SIN_GUIA });
+
+    expect(r.statusCode).toBe(200);
+    expect(r.cuerpo.sin_guia).toBe(true);
+    expect(r.cuerpo.mensaje).toContain('SIN GUÍA');
+
+    const cabecera = paramsDe(SQL.insertIngreso);
+    expect(cabecera[0]).toBe('OTRO');
+    // Sin documento todavía: el N° de guía viaja nulo, no vacío.
+    expect(cabecera[1]).toBeNull();
+    // $13 = estado.
+    expect(cabecera[12]).toBe('INGRESO SIN GUIA (POR VINCULAR)');
+
+    const fila = paramsDe(SQL.insertRegistro);
+    expect(fila[0]).toBeNull();
+    expect(fila[5]).toBe('SIN GUIA');
+    // $8 = ingreso_id: sin eso no hay cómo vincular las filas después.
+    expect(fila[7]).toBe(420);
+
+    // El stock igual entra de una vez: es lo que pedía almacén.
+    expect(sentencias().some(s => /UPDATE inventario SET stock = stock \+/.test(s))).toBe(true);
+    expect(transacciones()).toEqual(['BEGIN', 'COMMIT']);
+  });
+
+  test('sin_guia = 0 se comporta como siempre: guía normal', async () => {
+    responder([
+      [SQL.insertIngreso, filas({ id: 421, numero_guia: 'G-777' })],
+      [SQL.inventarioExiste, filas({ id: 31, stock: 5 })],
+      [SQL.insertRegistro, filas({ id: 561 })]
+    ]);
+
+    const r = await invocar('post', '/api/almacen/registrar-conforme', {
+      body: { ...SIN_GUIA, sin_guia: '0', numero_guia: 'G-777', proveedor: PROVEEDOR }
+    });
+
+    expect(r.statusCode).toBe(200);
+    expect(r.cuerpo.sin_guia).toBe(false);
+    expect(paramsDe(SQL.insertRegistro)[0]).toBe('G-777');
+    expect(paramsDe(SQL.insertRegistro)[5]).toBe('CON GUIA');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/almacen/ingresos/:id/vincular-guia
+// ---------------------------------------------------------------------------
+describe('POST /api/almacen/ingresos/:id/vincular-guia', () => {
+  const CABECERA = /SELECT \* FROM ingresos_vigilancia WHERE id = \$1 FOR UPDATE/;
+  const UPD_FILAS = /UPDATE registro_ingresos_almacen\s+SET numero_guia/;
+
+  test('completa el documento de la cabecera y las filas del registro', async () => {
+    responder([
+      [CABECERA, filas({ id: 420, estado: 'INGRESO SIN GUIA (POR VINCULAR)', proveedor: '', tipo_documento: 'OTRO', observaciones: '' })],
+      [UPD_FILAS, { rows: [], rowCount: 3 }]
+    ]);
+
+    const r = await invocar('post', '/api/almacen/ingresos/420/vincular-guia', {
+      params: { id: '420' },
+      body: { numero_guia: 'G-901', proveedor: PROVEEDOR }
+    });
+
+    expect(r.statusCode).toBe(200);
+    expect(r.cuerpo.filas_vinculadas).toBe(3);
+    expect(r.cuerpo.mensaje).toContain('G-901');
+    expect(transacciones()).toEqual(['BEGIN', 'COMMIT']);
+
+    // Las filas dejan SIN GUIA y quedan como cualquier otra entrada conforme.
+    const paramsFilas = paramsDe(UPD_FILAS);
+    expect(paramsFilas[0]).toBe('G-901');
+    expect(paramsFilas[1]).toBe(PROVEEDOR);
+    expect(paramsFilas[3]).toBe(420);
+  });
+
+  test('pide el N° de guía antes de tocar nada', async () => {
+    const r = await invocar('post', '/api/almacen/ingresos/420/vincular-guia', {
+      params: { id: '420' },
+      body: { proveedor: PROVEEDOR }
+    });
+
+    expect(r.statusCode).toBe(400);
+    expect(r.cuerpo.mensaje).toContain('N° de guía');
+    expect(transacciones()).toEqual([]);
+    expect(sentencias().some(s => /UPDATE ingresos_vigilancia/.test(s))).toBe(false);
+  });
+
+  test('un ingreso que ya tiene guía no se vuelve a vincular', async () => {
+    responder([
+      [CABECERA, filas({ id: 420, estado: 'RECIBIDO POR admin1', numero_guia: 'G-100' })]
+    ]);
+
+    const r = await invocar('post', '/api/almacen/ingresos/420/vincular-guia', {
+      params: { id: '420' },
+      body: { numero_guia: 'G-902', proveedor: PROVEEDOR }
+    });
+
+    expect(r.statusCode).toBe(400);
+    expect(r.cuerpo.mensaje).toContain('pendiente de vincular');
+    expect(transacciones()).toEqual(['BEGIN', 'ROLLBACK']);
+    expect(sentencias().some(s => UPD_FILAS.test(s))).toBe(false);
+  });
+});

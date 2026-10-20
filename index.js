@@ -278,8 +278,17 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
             observaciones,
             usuario,
             items_json,
-            numero_oc
+            numero_oc,
+            sin_guia
         } = req.body;
+
+        // Ingreso sin guia: el documento todavia no llega, el stock entra ya
+        // y el N° de guia se completa despues con el vinculo del registro.
+        const sinGuia = String(sin_guia || '') === '1' || sin_guia === true;
+        const numeroGuia = sinGuia ? null : numero_guia;
+        const refDoc = sinGuia
+            ? 'guía pendiente de vincular (sin N°)'
+            : 'guía ' + (numero_guia || 'S/N');
 
         // La OC declarada en la guia se valida antes de abrir la transaccion: una
         // guia con un numero de orden inexistente o de otro proveedor no debe
@@ -314,9 +323,11 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
             }
         }
 
-        const estadoFinal = tieneDiferencias
-            ? 'CONFORME CON DIFERENCIAS (POR REGULARIZAR)'
-            : `RECIBIDO POR ${usuarioRegistro}`;
+        const estadoFinal = sinGuia
+            ? 'INGRESO SIN GUIA (POR VINCULAR)'
+            : tieneDiferencias
+                ? 'CONFORME CON DIFERENCIAS (POR REGULARIZAR)'
+                : `RECIBIDO POR ${usuarioRegistro}`;
 
         const insert = await client.query(
             `INSERT INTO ingresos_vigilancia
@@ -324,7 +335,7 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), $14, $15)
              RETURNING id, numero_guia`,
             [
-                tipo_documento, numero_guia, proveedor,
+                tipo_documento, numeroGuia, proveedor,
                 chofer || '', dni_chofer || '', placa || '',
                 lugar_partida || '', punto_llegada || 'Planta Principal - Corporación Belcen',
                 observaciones || '', foto_url, usuarioRegistro, JSON.stringify(items), estadoFinal,
@@ -340,7 +351,9 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
         const nuevosProductos = [];
         for (const item of items) {
             let estadoItem = 'CON GUIA';
-            if (Number(item.cantidad_guia) !== Number(item.cantidad_fisica)) {
+            if (sinGuia) {
+                estadoItem = 'SIN GUIA';
+            } else if (Number(item.cantidad_guia) !== Number(item.cantidad_fisica)) {
                 estadoItem = 'POR REGULARIZAR';
             }
 
@@ -371,7 +384,7 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
                     cantidad: cantidadFisica, tipo_cambio: 'SUMA',
                     stock_anterior: stockAnterior, stock_nuevo: stockAnterior + cantidadFisica,
                     usuario: usuarioResponsable(req, usuarioRegistro),
-                    referencia: 'Conformidad - guía ' + (numero_guia || 'S/N')
+                    referencia: 'Conformidad - ' + refDoc
                 });
             } else {
                 const categoriaNueva = String(item.categoria || '').trim();
@@ -395,7 +408,7 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
                     cantidad: cantidadFisica, tipo_cambio: 'SUMA',
                     stock_anterior: 0, stock_nuevo: cantidadFisica,
                     usuario: usuarioResponsable(req, usuarioRegistro),
-                    referencia: `Conformidad (artículo nuevo, categoría ${categoriaNueva}) - guía ` + (numero_guia || 'S/N')
+                    referencia: `Conformidad (artículo nuevo, categoría ${categoriaNueva}) - ` + refDoc
                 });
             }
             await actualizarEstadoArticulo(client, item.nombre, targetArticuloId);
@@ -429,7 +442,7 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
                         cantidad: debe, tipo_cambio: 'RESTA',
                         stock_anterior: hay, stock_nuevo: Number(descQ.rows[0].stock),
                         usuario: usuarioResponsable(req, usuarioRegistro),
-                        referencia: `Ajuste pendiente saldado con guía ${numero_guia || 'S/N'}`
+                        referencia: `Ajuste pendiente saldado con ` + refDoc
                     });
                     await client.query(
                         `UPDATE ajustes_pendientes
@@ -446,10 +459,10 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
             }
 
             const fila = await client.query(
-                `INSERT INTO registro_ingresos_almacen (fecha_registro, numero_guia, proveedor, proveedor_id, producto_nombre, cantidad, estado, articulo_id, asociacion)
-                 VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6, $7, 'SIN_OC')
+                `INSERT INTO registro_ingresos_almacen (fecha_registro, numero_guia, proveedor, proveedor_id, producto_nombre, cantidad, estado, articulo_id, asociacion, ingreso_id)
+                 VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6, $7, 'SIN_OC', $8)
                  RETURNING id`,
-                [numero_guia, proveedor, proveedorId, item.nombre, item.cantidad_fisica, estadoItem, targetArticuloId]
+                [numeroGuia, proveedor, proveedorId, item.nombre, item.cantidad_fisica, estadoItem, targetArticuloId, ingresoId]
             );
 
             // Con OC declarada se abona contra el item que empate. Lo que no empate
@@ -470,12 +483,14 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
         }
 
         await client.query('COMMIT');
-        let mensaje = 'Ingreso registrado conforme. Stock actualizado.';
+        let mensaje = sinGuia
+            ? 'Ingreso SIN GUÍA registrado: los productos entraron al inventario. Cuando llegue el documento, vincula el N° de guía desde el Registro de Ingresos (botón "Vincular guía").'
+            : 'Ingreso registrado conforme. Stock actualizado.';
         if (ordenAsociada) {
             mensaje = sinCoincidencia
                 ? `Ingreso asociado a la orden ${ordenAsociada.numero}. ${sinCoincidencia} producto(s) sin coincidencia quedaron en Notificaciones.`
                 : `Ingreso asociado a la orden ${ordenAsociada.numero}. Stock del proveedor descontado.`;
-        } else if (items.length) {
+        } else if (!sinGuia && items.length) {
             mensaje = 'Ingreso registrado conforme. Los productos quedaron en Notificaciones hasta que se les asigne una OC.';
         }
         if (totalSaldadas) {
@@ -487,7 +502,8 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
         res.json({
             success: true,
             mensaje,
-            ingreso: { id: ingresoId, numero_guia },
+            ingreso: { id: ingresoId, numero_guia: numeroGuia },
+            sin_guia: sinGuia,
             asociados,
             sin_coincidencia: sinCoincidencia,
             pendientes_saldados: totalSaldadas,
@@ -497,6 +513,71 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
         await client.query('ROLLBACK');
         console.error('Error en registrar-conforme:', err);
         res.status(500).json({ success: false, mensaje: 'Error al registrar el ingreso conforme: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// --- ALMACÉN: VINCULAR UN INGRESO REGISTRADO SIN GUÍA ---
+// El ingreso sin guía ya sumó stock; aquí se le completa el documento cuando
+// llega: N° de guía, proveedor y tipo, y las filas del registro dejan el
+// estado SIN GUIA para quedar como cualquier otra entrada conforme.
+app.post('/api/almacen/ingresos/:id/vincular-guia', gAlmacen, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const ingresoId = Number(req.params.id);
+        const { numero_guia, proveedor, tipo_documento, usuario } = req.body || {};
+        const guia = String(numero_guia || '').trim();
+        if (!guia) {
+            return res.status(400).json({ success: false, mensaje: 'Indica el N° de guía a vincular.' });
+        }
+
+        await client.query('BEGIN');
+        const cab = await client.query('SELECT * FROM ingresos_vigilancia WHERE id = $1 FOR UPDATE', [ingresoId]);
+        if (!cab.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'El ingreso no existe.' });
+        }
+        const ingreso = cab.rows[0];
+        if (!/SIN GUIA/i.test(String(ingreso.estado || ''))) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: 'Este ingreso no está pendiente de vincular una guía.' });
+        }
+
+        const usuarioResp = usuarioResponsable(req, usuario || 'almacen1');
+        const proveedorEfectivo = String(proveedor || '').trim() || ingreso.proveedor;
+        const tipoEfectivo = String(tipo_documento || '').trim() || ingreso.tipo_documento || 'GUIA DE REMISION';
+
+        await client.query(
+            `UPDATE ingresos_vigilancia
+                SET numero_guia = $1, proveedor = $2, tipo_documento = $3,
+                    estado = $4, observaciones = COALESCE(NULLIF(observaciones, ''), $5)
+              WHERE id = $6`,
+            [guia, proveedorEfectivo, tipoEfectivo,
+                `VINCULADA A GUIA ${guia} POR ${usuarioResp}`,
+                `Guía ${guia} vinculada el ${new Date().toLocaleDateString('es-PE')}`, ingresoId]
+        );
+
+        const proveedorId = await resolverProveedorId(client, proveedorEfectivo);
+        const filasVinculadas = await client.query(
+            `UPDATE registro_ingresos_almacen
+                SET numero_guia = $1, proveedor = $2, proveedor_id = $3, estado = 'CON GUIA'
+              WHERE ingreso_id = $4 AND estado = 'SIN GUIA'`,
+            [guia, proveedorEfectivo, proveedorId, ingresoId]
+        );
+
+        await client.query('COMMIT');
+        const n = filasVinculadas.rowCount || 0;
+        res.json({
+            success: true,
+            mensaje: `Ingreso vinculado a la guía ${guia}.${n ? ` ${n} producto(s) actualizados en el registro.` : ' Sin filas de registro pendientes.'}`,
+            numero_guia: guia,
+            filas_vinculadas: n
+        });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Error al vincular guía del ingreso:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al vincular la guía: ' + err.message });
     } finally {
         client.release();
     }

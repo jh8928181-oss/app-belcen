@@ -46,8 +46,9 @@ export const up = (pgm) => {
           JOIN inventario inv ON inv.id = ri.insumo_id
          WHERE r.activa = true
            AND r.producto_key IN (${lista})
-           AND (UPPER(inv.categoria) LIKE '%TAPA%'
-                OR UPPER(inv.nombre) LIKE '%TAPA%'
+           -- Solo la linea de tapa/tapon por NOMBRE: la categoria TAPAS Y
+           -- ACCESORIOS tambien incluye asas, que no son elegibles.
+           AND (UPPER(inv.nombre) LIKE '%TAPA%'
                 OR UPPER(inv.nombre) LIKE '%TAPON%')
       LOOP
         UPDATE receta_insumos SET seleccionable = true WHERE id = rec.linea_id;

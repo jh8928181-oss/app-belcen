@@ -41,12 +41,12 @@
 <body>
     <div class="card reveal" style="border-top: 5px solid #007bff;">
         <h2>📊 BASE DE DATOS Y CONTROL GENERAL DE PLANTA</h2>
-        <p>Vista consolidada en tiempo real de inventarios, productos terminados y simulador inteligente de viabilidad de insumos.</p>
+        <p>Vista consolidada en tiempo real de inventarios, productos terminados y producción a base de insumos.</p>
         <a href="dashboard.html" class="logout" id="linkDashboard">⬅ Volver al Dashboard General</a>
     </div>
 
     <div class="card reveal" style="border-top: 5px solid #17a2b8;">
-        <h3 style="color: #17a2b8; border-bottom: 2px solid #17a2b8;">🧮 SIMULADOR DE VIABILIDAD DE INSUMOS</h3>
+        <h3 style="color: #17a2b8; border-bottom: 2px solid #17a2b8;">🏭 PRODUCCIÓN A BASE DE INSUMOS</h3>
         <div class="simulador-box">
 <div class="grid-linea" style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 15px;">
                 <div>
@@ -97,6 +97,33 @@
                 </select>
             </div>
             <div id="resultadoSimulacion" style="margin-top: 15px; padding: 12px; background: #fff; border-radius: 4px; border: 1px solid #ddd; display: none;">
+            </div>
+
+            <!-- Cuadro global: envase en stock -> cajas, alcance de tapas y sugerencias -->
+            <div style="margin-top: 22px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                    <h4 style="color: #17a2b8; margin: 0;">📋 Producción a base de insumos (todos los productos)</h4>
+                    <button onclick="cargarBaseInsumos()" class="btn-accion" style="margin: 0;">🔄 Actualizar cuadro</button>
+                </div>
+                <div class="tabla-wrap tabla-card-movil" style="margin-top: 10px;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>PRODUCTO</th>
+                                <th class="text-center">EN STOCK (ENVASE)</th>
+                                <th class="text-center">ENVASE / CAJA</th>
+                                <th class="text-center">VARIANTE EN CAJAS</th>
+                                <th>TAPA</th>
+                                <th class="text-center">ALCANCE EN TAPAS</th>
+                                <th>SUGERENCIAS DE TAPA</th>
+                                <th class="text-center">CAJAS POSIBLES (TODO)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaBaseInsumos">
+                            <tr><td colspan="8" class="text-center">Cargando producción a base de insumos...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -470,6 +497,87 @@
             const resDiv = document.getElementById('resultadoSimulacion');
             if (resDiv.style.display !== 'none') {
                 simularProduccion();
+            }
+            // El cuadro global consulta todas las recetas: se refresca como
+            // maximo cada 60 s (el boton "Actualizar cuadro" lo fuerza).
+            if (Date.now() - ultimaCargaBaseInsumos > 60000) cargarBaseInsumos();
+        }
+
+        let ultimaCargaBaseInsumos = 0;
+
+        /**
+         * Cuadro global: por cada producto, el stock de su envase convertido a
+         * cajas, si el stock de tapa alcanza para esas cajas (con sugerencias
+         * de colores cuando la tapa es elegible) y las cajas posibles con
+         * TODOS los insumos obligatorios.
+         */
+        async function cargarBaseInsumos() {
+            const tbody = document.getElementById('tablaBaseInsumos');
+            try {
+                const res = await fetch('/api/produccion/base-insumos');
+                if (!res.ok) throw new Error('Error del servidor.');
+                const data = await res.json();
+                ultimaCargaBaseInsumos = Date.now();
+                const productos = (data.productos || []).slice().sort((a, b) =>
+                    String(a.nombre).localeCompare(String(b.nombre), 'es'));
+                if (!productos.length) {
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center sin-registros">No hay productos con receta activa.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = productos.map(p => {
+                    const stockEnv = formatoCantidad(p.stock_envase, p.unidad_envase);
+                    const porCaja = p.envase_por_caja ? formatoCantidad(p.envase_por_caja, p.unidad_envase) + ' und' : '—';
+                    const cajasEnv = `${Number(p.cajas_por_envase || 0).toLocaleString('es-PE')} cajas`;
+
+                    const tapa = p.tapa;
+                    let tapaNombre = '—';
+                    let alcance = '—';
+                    if (tapa) {
+                        tapaNombre = escaparTexto(tapa.nombre);
+                        const alcanzaOk = Number(p.cajas_por_envase || 0) <= Number(tapa.cajas_alcance || 0);
+                        alcance = `<b>${Number(tapa.cajas_alcance || 0).toLocaleString('es-PE')} cajas</b> ` +
+                            (alcanzaOk
+                                ? '<span style="color:#155724;">✅ alcanza</span>'
+                                : '<span style="color:#721c24;">❌ no alcanza</span>');
+                    }
+
+                    // Sugerencias de colores alternativos (rojo, verde, etc.):
+                    // se resaltan las que alcanzan MAS cajas que la tapa por defecto.
+                    const defs = (p.sugerencias || []);
+                    let sugerenciasHtml = '—';
+                    if (defs.length) {
+                        const base = tapa ? Number(tapa.cajas_alcance || 0) : 0;
+                        sugerenciasHtml = defs.map(s => {
+                            const mejor = Number(s.cajas_alcance || 0) > base;
+                            const tag = String(s.nombre || '').toUpperCase().includes('ROJO') ? 'ROJO'
+                                : String(s.nombre || '').toUpperCase().includes('VERDE') ? 'VERDE'
+                                : String(s.nombre || '').toUpperCase().includes('CELESTE') ? 'CELESTE'
+                                : escaparTexto(s.nombre);
+                            return `<span style="display:inline-block; margin:1px 3px 1px 0; padding:1px 6px; border-radius:10px; font-size:11px; ` +
+                                (mejor ? 'background:#d4edda; color:#155724; font-weight:bold;' : 'background:#e9ecef; color:#495057;') +
+                                `">${tag}: ${Number(s.cajas_alcance || 0).toLocaleString('es-PE')} cajas</span>`;
+                        }).join('');
+                    }
+
+                    const cajasMax = p.cajas_maximas === null || p.cajas_maximas === undefined
+                        ? '—'
+                        : `<b>${Number(p.cajas_maximas).toLocaleString('es-PE')} cajas</b>`;
+
+                    return `<tr>
+                        <td><b>${escaparTexto(p.nombre)}</b></td>
+                        <td class="text-center">${stockEnv} ${escaparTexto(p.unidad_envase || '')}</td>
+                        <td class="text-center">${porCaja}</td>
+                        <td class="text-center"><b style="color:#17a2b8;">${cajasEnv}</b></td>
+                        <td>${tapaNombre}</td>
+                        <td class="text-center">${alcance}</td>
+                        <td>${sugerenciasHtml}</td>
+                        <td class="text-center">${cajasMax}</td>
+                    </tr>`;
+                }).join('');
+                etiquetarTablas();
+            } catch (err) {
+                console.error(err);
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center" style="color:#721c24;">Error al cargar el cuadro de producción.</td></tr>';
             }
         }
 

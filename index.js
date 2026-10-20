@@ -16,7 +16,7 @@ const { analizarDocumentoConGemini } = require('./services/geminiService');
 const { esClavePt } = require('./services/catalogoPt');
 const { initRedis } = require('./services/rateLimiter');
 const { authMiddleware, crearGuardRoles, ROLES_MODULO, requerirRolAdmin, permisoPorRuta } = require('./middleware/auth');
-const { calcularInsumosProduccion, calcularInsumosDeReceta, obtenerRecetaVigente, eleccionesDesdeTapa } = require('./services/recipeService');
+const { calcularInsumosProduccion, calcularInsumosDeReceta, obtenerRecetaVigente, eleccionesDesdeTapa, evaluarCobertura } = require('./services/recipeService');
 const { datosParaOrdenPDF, datosFormularioOC } = require('./services/ocPdfDatos');
 const { generarPDFOrdenCompra, nombreArchivoSeguro } = require('./services/pdfOrdenCompra');
 const { normalizar } = require('./utils/helpers');
@@ -4743,6 +4743,104 @@ app.get('/api/produccion/opciones-tapa', async (req, res) => {
             }))
         });
     } catch (err) {
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+// --- PRODUCCIÓN A BASE DE INSUMOS: cuadro global por producto ---
+// Para cada producto con receta vigente: el stock de su envase (botellas,
+// galoneras, baldes o latas) convertido a cajas, el alcance del stock de
+// tapa en cajas (con sugerencias de colores cuando la tapa es elegible) y
+// las cajas posibles considerando TODOS los insumos obligatorios.
+const CATEGORIA_ENVASE = 'BOTELLAS Y GALONERAS';
+const esNombreTapa = (n) => /TAPA|TAPON/i.test(String(n || ''));
+
+app.get('/api/produccion/base-insumos', async (req, res) => {
+    try {
+        const claves = await pool.query(
+            `SELECT DISTINCT producto_key FROM recetas
+              WHERE activa = true
+                AND vigente_desde <= CURRENT_DATE
+                AND (vigente_hasta IS NULL OR vigente_hasta >= CURRENT_DATE)
+              ORDER BY producto_key`
+        );
+        const productos = [];
+        for (const { producto_key } of claves.rows) {
+            try {
+                const receta = await obtenerRecetaVigente(producto_key, pool);
+                if (!receta) continue;
+                // cajas=1 => cantidades POR CAJA con merma y sub-recetas ya expandidas.
+                const insumos = await calcularInsumosDeReceta(receta, 1, pool);
+
+                // Envase: la categoria cubre botellas, galoneras, baldes y latas.
+                const envase = insumos
+                    .filter(i => String(i.categoria || '').toUpperCase() === CATEGORIA_ENVASE)
+                    .sort((a, b) => (Number(b.cantidad_por_caja) || 0) - (Number(a.cantidad_por_caja) || 0))[0];
+                // Tapa por NOMBRE: la categoria TAPAS Y ACCESORIOS tambien
+                // incluye asas, que no son tapa (mismo criterio que las
+                // migraciones de tapa seleccionable).
+                const tapa = insumos.find(i =>
+                    esNombreTapa(i.nombre) && String(i.categoria || '').toUpperCase().includes('TAPAS')
+                );
+
+                const stockEnvase = envase ? Number(envase.stock_actual) || 0 : 0;
+                const porCajaEnvase = envase ? Number(envase.cantidad_por_caja) || 0 : 0;
+                const cajasPorEnvase = porCajaEnvase > 0 ? Math.floor(stockEnvase / porCajaEnvase) : 0;
+
+                let tapaInfo = null;
+                let sugerencias = [];
+                if (tapa) {
+                    const porCajaTapa = Number(tapa.cantidad_por_caja) || 0;
+                    const stockTapa = Number(tapa.stock_actual) || 0;
+                    tapaInfo = {
+                        nombre: tapa.nombre,
+                        por_caja: porCajaTapa,
+                        stock: stockTapa,
+                        unidad: tapa.unidad,
+                        cajas_alcance: porCajaTapa > 0 ? Math.floor(stockTapa / porCajaTapa) : 0
+                    };
+                    // Tapa elegible (varios colores N°26, etc.): cada opcion
+                    // tiene su propio stock; se ofrecen como sugerencias
+                    // aparte de la de por defecto de la receta.
+                    const lineaSel = (receta.insumos || []).find(l =>
+                        l.seleccionable === true && Array.isArray(l.opciones) && l.opciones.length);
+                    if (lineaSel) {
+                        sugerencias = lineaSel.opciones
+                            .filter(o => Number(o.insumo_id) !== Number(lineaSel.insumo_id))
+                            .map(o => ({
+                                nombre: o.nombre,
+                                stock: Number(o.stock) || 0,
+                                unidad: o.unidad_medida || 'UNIDADES',
+                                cajas_alcance: porCajaTapa > 0 ? Math.floor((Number(o.stock) || 0) / porCajaTapa) : 0
+                            }));
+                    }
+                }
+
+                const cobertura = evaluarCobertura(insumos, 1);
+                const obligatorios = cobertura.filter(c => c.obligatorio);
+                const cajasMaximas = obligatorios.length
+                    ? Math.min(...obligatorios.map(c => c.cajas_posibles))
+                    : null;
+
+                productos.push({
+                    producto_key,
+                    nombre: receta.nombre_producto || producto_key,
+                    envase_nombre: envase ? envase.nombre : null,
+                    stock_envase: stockEnvase,
+                    unidad_envase: envase ? envase.unidad : 'UNIDADES',
+                    envase_por_caja: porCajaEnvase,
+                    cajas_por_envase: cajasPorEnvase,
+                    tapa: tapaInfo,
+                    sugerencias,
+                    cajas_maximas: cajasMaximas === Infinity ? null : cajasMaximas
+                });
+            } catch (errProd) {
+                console.error(`base-insumos: error con ${producto_key}:`, errProd.message);
+            }
+        }
+        res.json({ success: true, productos });
+    } catch (err) {
+        console.error('Error en producción a base de insumos:', err);
         res.status(500).json({ success: false, mensaje: err.message });
     }
 });

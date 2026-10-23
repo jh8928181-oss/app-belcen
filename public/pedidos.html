@@ -151,6 +151,7 @@
         <button class="pestana activa" id="tabNuevo" onclick="mostrarTab('nuevo')">➕ Nuevo pedido</button>
         <button class="pestana" id="tabPedidos" onclick="mostrarTab('pedidos')">📋 Pedidos</button>
         <button class="pestana" id="tabProduccion" onclick="mostrarTab('produccion')">🏭 Producción (consolidado)</button>
+        <button class="pestana" id="tabStock" onclick="mostrarTab('stock')">📦 Stock actual</button>
     </div>
 
     <!-- ============ NUEVO PEDIDO ============ -->
@@ -314,6 +315,38 @@
         <div id="avisoAtencion" class="panel-aviso oculto"></div>
     </div>
 
+    <!-- ============ STOCK ============ -->
+    <div id="panelStock" class="table-container sec-teal oculto">
+        <h3 class="h3-teal">Stock de producto terminado</h3>
+        <p class="subtitulo">Existencias en cajas por presentación. Se refresca solo cada 30 segundos.</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Producto</th>
+                    <th class="num">Cajas</th>
+                    <th class="num">Mínimo</th>
+                    <th>Estado</th>
+                </tr>
+            </thead>
+            <tbody id="tbStockPT"></tbody>
+        </table>
+
+        <h3 class="h3-teal" style="margin-top:24px;">Insumos de recetas vigentes</h3>
+        <p class="mini-info">Solo los insumos que alguna receta activa usa (incluidas las opciones seleccionables, como las tapas).</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Insumo</th>
+                    <th class="num">Stock</th>
+                    <th class="num">Mínimo</th>
+                    <th>Unidad</th>
+                    <th>Categoría</th>
+                </tr>
+            </thead>
+            <tbody id="tbStockInsumos"></tbody>
+        </table>
+    </div>
+
     <script src="/auth-client.js"></script>
     <script>
         'use strict';
@@ -341,11 +374,14 @@
             document.getElementById('panelNuevo').classList.toggle('oculto', cual !== 'nuevo');
             document.getElementById('panelPedidos').classList.toggle('oculto', cual !== 'pedidos');
             document.getElementById('panelProduccion').classList.toggle('oculto', cual !== 'produccion');
+            document.getElementById('panelStock').classList.toggle('oculto', cual !== 'stock');
             document.getElementById('tabNuevo').classList.toggle('activa', cual === 'nuevo');
             document.getElementById('tabPedidos').classList.toggle('activa', cual === 'pedidos');
             document.getElementById('tabProduccion').classList.toggle('activa', cual === 'produccion');
+            document.getElementById('tabStock').classList.toggle('activa', cual === 'stock');
             if (cual === 'pedidos') cargarPedidos();
             if (cual === 'produccion') cargarConsolidado();
+            if (cual === 'stock') cargarStock();
         }
 
         function cambioDestino() {
@@ -609,6 +645,43 @@
             } catch (e) { alert('Sin conexión con el servidor.'); }
         }
 
+        function estadoStock(actual, minimo) {
+            const a = Number(actual) || 0;
+            const m = Number(minimo);
+            if (a <= 0) return '<span class="badge b-rojo">SIN STOCK</span>';
+            if (Number.isFinite(m) && minimo != null && a < m) return '<span class="badge b-ambar">BAJO DEL MÍNIMO</span>';
+            return '<span class="badge b-verde">OK</span>';
+        }
+
+        async function cargarStock() {
+            try {
+                const res = await fetch('/api/pedidos/stock');
+                const data = await res.json();
+                const pt = (data && data.pt) || [];
+                const ins = (data && data.insumos) || [];
+                document.getElementById('tbStockPT').innerHTML = pt.length
+                    ? pt.map(p => `<tr>
+                        <td>${esc(p.nombre_producto)}</td>
+                        <td class="num"><b>${Number(p.stock_cajas) || 0}</b></td>
+                        <td class="num">${p.stock_minimo == null ? '—' : Number(p.stock_minimo)}</td>
+                        <td>${estadoStock(p.stock_cajas, p.stock_minimo)}</td>
+                    </tr>`).join('')
+                    : '<tr><td colspan="4" style="color:var(--texto2);">Sin productos en stock.</td></tr>';
+                document.getElementById('tbStockInsumos').innerHTML = ins.length
+                    ? ins.map(i => `<tr>
+                        <td>${esc(i.nombre)}</td>
+                        <td class="num"><b>${Number(i.stock) || 0}</b></td>
+                        <td class="num">${i.stock_minimo == null ? '—' : Number(i.stock_minimo)}</td>
+                        <td>${esc(i.unidad_medida || '')}</td>
+                        <td>${esc(i.categoria || '')}</td>
+                    </tr>`).join('')
+                    : '<tr><td colspan="5" style="color:var(--texto2);">Sin insumos en recetas vigentes.</td></tr>';
+            } catch (e) {
+                document.getElementById('tbStockPT').innerHTML = '<tr><td colspan="4">Sin conexión.</td></tr>';
+                document.getElementById('tbStockInsumos').innerHTML = '<tr><td colspan="5">Sin conexión.</td></tr>';
+            }
+        }
+
         // Arranque
         (function init() {
             const hoy = new Date();
@@ -625,6 +698,7 @@
             cargarLogistica();
             window.registrarAutoRefresco(function () {
                 if (!document.getElementById('panelPedidos').classList.contains('oculto')) cargarPedidos();
+                if (!document.getElementById('panelStock').classList.contains('oculto')) cargarStock();
             }, 30000);
         })();
     </script>

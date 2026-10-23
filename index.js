@@ -7825,24 +7825,48 @@ app.get('/api/pedidos', async (req, res) => {
     }
 });
 
-app.get('/api/pedidos/:id', async (req, res) => {
-    const id = parseInt(req.params.id, 10);
-    if (!Number.isFinite(id)) return res.status(400).json({ success: false, mensaje: 'Id inválido.' });
-    try {
-        const pedidos = await armarPedidoDesdeBase('id = $1', [id]);
-        if (!pedidos.length) return res.status(404).json({ success: false, mensaje: 'Pedido no encontrado.' });
-        res.json({ success: true, pedido: pedidos[0] });
-    } catch (err) {
-        res.status(500).json({ success: false, mensaje: err.message });
-    }
-});
-
+// Ojo con el orden de Express: las rutas estáticas (catalogo-pt, stock,
+// logistica-opciones, consolidado-produccion) van ANTES de /:id, o el :id se
+// las come y responde 400 "Id inválido".
 app.get('/api/pedidos/catalogo-pt', async (req, res) => {
     try {
         const r = await pool.query(
             'SELECT producto_key, nombre_producto, stock_cajas FROM producto_terminado ORDER BY nombre_producto'
         );
         res.json({ success: true, productos: r.rows });
+    } catch (err) {
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+// Stock para la pestaña "Stock" de pedidos.html: producto terminado en cajas
+// e insumos que alguna receta vigente usa (incluidas las opciones seleccionables),
+// para ver existencias sin salir del módulo.
+app.get('/api/pedidos/stock', async (req, res) => {
+    try {
+        const pt = await pool.query(
+            'SELECT producto_key, nombre_producto, stock_cajas, stock_minimo FROM producto_terminado ORDER BY nombre_producto'
+        );
+        const insumos = await pool.query(
+            `SELECT inv.id, inv.nombre, inv.stock, inv.stock_minimo, inv.unidad_medida, inv.categoria
+               FROM inventario inv
+              WHERE inv.id IN (
+                    SELECT ri.insumo_id FROM receta_insumos ri
+                    JOIN recetas r ON r.id = ri.receta_id
+                     WHERE r.activa = true AND ri.insumo_id IS NOT NULL
+                       AND r.vigente_desde <= CURRENT_DATE
+                       AND (r.vigente_hasta IS NULL OR r.vigente_hasta >= CURRENT_DATE)
+                    UNION
+                    SELECT op.insumo_id FROM receta_insumo_opciones op
+                    JOIN receta_insumos ri ON ri.id = op.receta_insumo_id
+                    JOIN recetas r ON r.id = ri.receta_id
+                     WHERE r.activa = true AND op.insumo_id IS NOT NULL
+                       AND r.vigente_desde <= CURRENT_DATE
+                       AND (r.vigente_hasta IS NULL OR r.vigente_hasta >= CURRENT_DATE)
+              )
+              ORDER BY inv.nombre`
+        );
+        res.json({ success: true, pt: pt.rows, insumos: insumos.rows });
     } catch (err) {
         res.status(500).json({ success: false, mensaje: err.message });
     }
@@ -8002,6 +8026,18 @@ app.get('/api/pedidos/consolidado-produccion', async (req, res) => {
               ORDER BY total_pendiente DESC`
         );
         res.json({ success: true, consolidado: r.rows });
+    } catch (err) {
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+app.get('/api/pedidos/:id', async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ success: false, mensaje: 'Id inválido.' });
+    try {
+        const pedidos = await armarPedidoDesdeBase('id = $1', [id]);
+        if (!pedidos.length) return res.status(404).json({ success: false, mensaje: 'Pedido no encontrado.' });
+        res.json({ success: true, pedido: pedidos[0] });
     } catch (err) {
         res.status(500).json({ success: false, mensaje: err.message });
     }

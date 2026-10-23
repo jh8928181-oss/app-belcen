@@ -59,7 +59,10 @@ function pilaDe(method, ruta) {
   });
 
   if (!candidatas.length) throw new Error(`No existe la ruta ${method.toUpperCase()} ${ruta}`);
-  const capa = candidatas.pop();
+  // Express evalúa en orden de registro y la ruta estática gana sobre /:id;
+  // aqui se replica eligiendo la exacta cuando existe.
+  const exactas = candidatas.filter(c => !c.route.path.split('/').some(seg => seg.startsWith(':')));
+  const capa = (exactas.length ? exactas : candidatas).pop();
   return capa.route.stack.map(l => l.handle);
 }
 
@@ -395,5 +398,28 @@ describe('POST /api/pedidos/atender-produccion', () => {
     const r = await invocar('post', '/api/pedidos/atender-produccion', { body: { producto_key: 'belini_1lt', cajas: 0 } });
     expect(r.statusCode).toBe(400);
     expect(transacciones()).toHaveLength(0);
+  });
+});
+
+describe('GET /api/pedidos/stock', () => {
+  test('devuelve producto terminado e insumos de recetas vigentes', async () => {
+    responder([
+      [/FROM producto_terminado ORDER BY nombre_producto/, filas(
+        { producto_key: 'belini_1lt', nombre_producto: 'Belini 1 Lt', stock_cajas: 518, stock_minimo: 100 },
+        { producto_key: 'b1_1lt', nombre_producto: 'B-1 1 Lt', stock_cajas: 902, stock_minimo: null }
+      )],
+      [/FROM inventario inv\s+WHERE inv\.id IN/, filas(
+        { id: 201, nombre: 'Botella Belini x 1 lt', stock: 12000, stock_minimo: 5000, unidad_medida: 'UNIDADES', categoria: 'BOTELLAS' }
+      )]
+    ]);
+    const r = await invocar('get', '/api/pedidos/stock');
+    expect(r.statusCode).toBe(200);
+    expect(r.cuerpo.pt).toHaveLength(2);
+    expect(r.cuerpo.pt[0]).toMatchObject({ producto_key: 'belini_1lt', stock_cajas: 518 });
+    expect(r.cuerpo.insumos).toHaveLength(1);
+    expect(r.cuerpo.insumos[0]).toMatchObject({ id: 201, unidad_medida: 'UNIDADES' });
+    // El stock es lectura pura: ni transacción ni escritura.
+    expect(transacciones()).toHaveLength(0);
+    expect(sentencias().filter(s => /INSERT|UPDATE|DELETE/i.test(s))).toHaveLength(0);
   });
 });

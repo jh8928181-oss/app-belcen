@@ -105,7 +105,7 @@ function generarPDFPedidoVenta(datos) {
       doc.fillColor(AZUL).font('Helvetica-Bold').fontSize(14)
         .text('CORPORACIÓN DON LALO S.A.C.', MARGEN, MARGEN);
       doc.font('Helvetica').fontSize(8).fillColor(GRIS)
-        .text('R.U.C. 20601832616 — Lurigancho, Lima', MARGEN, doc.y + 1);
+        .text('R.U.C. 20609912694 — CAL. LOS CIPRESES NRO. 105 Z.I. CAJAMARQUILLA 2DA ETAPA, LURIGANCHO, LIMA - LIMA', MARGEN, doc.y + 1);
       doc.font('Helvetica-Bold').fontSize(12).fillColor('#1A202C')
         .text('ORDEN DE PEDIDO', MARGEN, MARGEN + 2, { align: 'right', width: ancho });
       doc.font('Helvetica-Bold').fontSize(11).fillColor(AZUL)

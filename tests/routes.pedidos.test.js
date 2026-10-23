@@ -7,7 +7,10 @@
  *      falta producir, sin inventar cantidades.
  *   2. Lo que falta producir se valida contra la receta: sin receta no hay
  *      pedido parcial, y los insumos faltantes quedan anotados.
- *   3. El despacho descuenta producto terminado y no deja stock negativo.
+ *   3. El despacho descuenta producto terminado, no deja stock negativo y
+ *      registra la salida en salidas_almacen (protocolo de almacén: cada
+ *      despacho de pedido aparece en la pestaña Salidas, con guía o quede
+ *      PENDIENTE REGULARIZAR).
  *   4. El consolidado suma varios pedidos del mismo producto en un solo lote.
  *
  * Las rutas viven en index.js y se alcanzan recorriendo la pila del app.
@@ -122,6 +125,7 @@ const SQL = {
   bajaStock: /UPDATE producto_terminado SET stock_cajas = stock_cajas -/,
   marcaDespachada: /UPDATE pedidos_venta_items SET cantidad_despachada/,
   historial: /INSERT INTO historial_inventario/,
+  insertSalida: /INSERT INTO salidas_almacen/,
   reevaluar: /SELECT total_despacho, total_produccion/,
   updateEstado: /UPDATE pedidos_venta SET estado = \$1/,
   sumaDespachada: /SELECT COALESCE\(SUM\(cantidad_despachada\)/,
@@ -307,14 +311,14 @@ describe('POST /api/pedidos/crear evaluación', () => {
 });
 
 describe('POST /api/pedidos/:id/despachar', () => {
-  test('descuenta producto terminado, historialea y cierra el pedido', async () => {
+  test('descuenta producto terminado, historialea, registra la salida en almacén y cierra el pedido', async () => {
     responder([
-      [SQL.pedidoForUpdate, filas({ id: 7, numero_pedido: 'PED-2026-0007', estado: 'PARA_DESPACHO' })],
+      [SQL.pedidoForUpdate, filas({ id: 7, numero_pedido: 'PED-2026-0007', estado: 'PARA_DESPACHO', tipo_destino: 'TIENDA', direccion: 'Av. Principal 123', chofer: 'Juan Pérez', vehiculo: 'ABC-123' })],
       [SQL.itemsDePedido, filas({ id: 71, pedido_id: 7, producto_key: 'belini_1lt', nombre_producto: 'Belini 1 Lt', cantidad_despacho: 50, cantidad_despachada: 0 })],
       [SQL.ptForUpdate, filas({ nombre_producto: 'Belini 1 Lt', stock_cajas: 60 })],
       [SQL.reevaluar, filas({ total_despacho: 50, total_produccion: 0, despachada: 50, producida: 0 })]
     ]);
-    const r = await invocar('post', '/api/pedidos/7/despachar', { params: { id: '7' } });
+    const r = await invocar('post', '/api/pedidos/7/despachar', { params: { id: '7' }, body: { numero_guia: 'G-001' } });
     expect(r.statusCode).toBe(200);
     expect(r.cuerpo.estado).toBe('DESPACHADO');
     expect(r.cuerpo.despachados).toEqual([{ producto_key: 'belini_1lt', nombre: 'Belini 1 Lt', cajas: 50 }]);
@@ -322,7 +326,33 @@ describe('POST /api/pedidos/:id/despachar', () => {
     const paramsBaja = mockQuery.mock.calls.find(c => /stock_cajas = stock_cajas -/.test(String(c[0])))[1];
     expect(paramsBaja).toEqual([50, 'belini_1lt']);
     expect(sentencias().filter(s => /INSERT INTO historial_inventario/.test(s))).toHaveLength(1);
+    // Protocolo de almacén: el despacho deja su fila en salidas_almacen,
+    // vinculada al pedido, con la guía que se envió.
+    expect(sentencias().filter(s => /INSERT INTO salidas_almacen/.test(s))).toHaveLength(1);
+    const paramsSalida = mockQuery.mock.calls.find(c => /INSERT INTO salidas_almacen/.test(String(c[0])))[1];
+    expect(paramsSalida[0]).toBe('CON GUIA');
+    expect(paramsSalida[1]).toBe('G-001');
+    expect(paramsSalida[2]).toContain('PED-2026-0007');
+    expect(paramsSalida[6]).toBe(50);           // cantidad_salida
+    expect(paramsSalida[8]).toBe('REGULARIZADO');
+    expect(paramsSalida[10]).toBe('belini_1lt');
+    expect(paramsSalida[11]).toBe(7);           // pedido_id
     expect(transacciones()).toEqual(['BEGIN', 'COMMIT']);
+  });
+
+  test('sin número de guía la salida queda PENDIENTE REGULARIZAR', async () => {
+    responder([
+      [SQL.pedidoForUpdate, filas({ id: 7, numero_pedido: 'PED-2026-0007', estado: 'PARA_DESPACHO', tipo_destino: 'REPARTO' })],
+      [SQL.itemsDePedido, filas({ id: 71, pedido_id: 7, producto_key: 'belini_1lt', cantidad_despacho: 20, cantidad_despachada: 0 })],
+      [SQL.ptForUpdate, filas({ nombre_producto: 'Belini 1 Lt', stock_cajas: 30 })],
+      [SQL.reevaluar, filas({ total_despacho: 20, total_produccion: 0, despachada: 20, producida: 0 })]
+    ]);
+    const r = await invocar('post', '/api/pedidos/7/despachar', { params: { id: '7' }, body: { numero_guia: '' } });
+    expect(r.statusCode).toBe(200);
+    const paramsSalida = mockQuery.mock.calls.find(c => /INSERT INTO salidas_almacen/.test(String(c[0])))[1];
+    expect(paramsSalida[0]).toBe('SIN GUIA');
+    expect(paramsSalida[1]).toBe('S/N');
+    expect(paramsSalida[8]).toBe('PENDIENTE REGULARIZAR');
   });
 
   test('si el stock no alcanza no se descuenta nada y se avisa', async () => {
@@ -335,6 +365,7 @@ describe('POST /api/pedidos/:id/despachar', () => {
     expect(r.statusCode).toBe(400);
     expect(r.cuerpo.mensaje).toMatch(/insuficiente/i);
     expect(sentencias().filter(s => /stock_cajas = stock_cajas -/.test(s))).toHaveLength(0);
+    expect(sentencias().filter(s => /INSERT INTO salidas_almacen/.test(s))).toHaveLength(0);
     expect(transacciones()).toEqual(['BEGIN', 'ROLLBACK']);
   });
 });

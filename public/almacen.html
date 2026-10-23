@@ -823,7 +823,7 @@
         <div class="fila-filtro-salida">
             <label><b>Filtrar por Fecha de Salida:</b></label>
             <input type="date" id="filtroFechaSalida" onchange="buscarSalidaPorFecha()" style="max-width: 250px;">
-            <button onclick="cargarHistorialSalidas()" class="btn-filtro">Ver Todos</button>
+            <button onclick="verTodasSalidas()" class="btn-filtro">Ver Todos</button>
         </div>
 
         <div id="contenedorHistorialSalidas">
@@ -3029,8 +3029,16 @@
             try {
                 const res = await fetch('/api/salidas/historial');
                 historialSalidasGlobal = await res.json();
-                renderizarSalidasAgrupadas(historialSalidasGlobal);
+                // Si hay un filtro de fecha activo, se respeta al refrescar
+                const filtro = document.getElementById('filtroFechaSalida').value;
+                if (filtro) buscarSalidaPorFecha();
+                else renderizarSalidasAgrupadas(historialSalidasGlobal);
             } catch(e) { console.error(e); }
+        }
+
+        function verTodasSalidas() {
+            document.getElementById('filtroFechaSalida').value = '';
+            cargarHistorialSalidas();
         }
 
         function fechaLocalISO(iso) {
@@ -3765,6 +3773,7 @@
             cargarInventarioAlmacen();
             cargarAjustesPendientes();
             cargarPreingresos();
+            cargarHistorialSalidas();
         }, 15000);
     </script>
 </body>

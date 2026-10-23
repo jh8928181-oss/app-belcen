@@ -3704,6 +3704,12 @@ app.post('/api/salidas/eliminar', gAlmacen, async (req, res) => {
         if (filas.length === 0) {
             return res.status(404).json({ success: false, mensaje: 'No se encontró el despacho a eliminar.' });
         }
+        // Las salidas que nacieron de un pedido de venta no se borran desde
+        // aquí: el pedido es el dueño del flujo y borrar solo la salida dejaría
+        // el pedido diciendo DESPACHADO sin su registro de salida.
+        if (filas.some(f => f.pedido_id)) {
+            return res.status(400).json({ success: false, mensaje: 'Esta salida viene de un pedido de venta: no se puede eliminar desde Salidas. Usa el módulo de Pedidos.' });
+        }
 
         await client.query('BEGIN');
         let borradas = 0;
@@ -3763,6 +3769,11 @@ app.post('/api/salidas/editar', gAlmacen, upload.single('archivo_guia'), async (
 
         const filas = (await client.query('SELECT * FROM salidas_almacen WHERE despacho_id = $1', [despacho_id])).rows;
         if (filas.length === 0) return res.status(404).json({ success: false, mensaje: 'No se encontró el despacho a editar.' });
+        // Mismo criterio que eliminar: una salida de pedido se gestiona desde
+        // Pedidos, no reescribiendo el historial de salidas.
+        if (filas.some(f => f.pedido_id)) {
+            return res.status(400).json({ success: false, mensaje: 'Este despacho viene de un pedido de venta: no se puede editar desde Salidas. Usa el módulo de Pedidos.' });
+        }
 
         await client.query('BEGIN');
 
@@ -7903,6 +7914,13 @@ app.post('/api/pedidos/:id/despachar', gAlmacen, async (req, res) => {
     if (!Number.isFinite(id)) return res.status(400).json({ success: false, mensaje: 'Id inválido.' });
     const client = await pool.connect();
     try {
+        // Protocolo de despacho: el pedido manda su guía (opcional). Sin guía
+        // la salida queda PENDIENTE REGULARIZAR, igual que una salida manual.
+        const b = req.body || {};
+        const numeroGuia = String(b.numero_guia || '').trim();
+        const tipoRegistro = numeroGuia ? 'CON GUIA' : 'SIN GUIA';
+        const estadoGuia = numeroGuia ? 'REGULARIZADO' : 'PENDIENTE REGULARIZAR';
+        const despachoId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         await client.query('BEGIN');
         const ped = await client.query('SELECT * FROM pedidos_venta WHERE id = $1 FOR UPDATE', [id]);
         if (!ped.rows.length) {
@@ -7954,9 +7972,27 @@ app.post('/api/pedidos/:id/despachar', gAlmacen, async (req, res) => {
                 tipo_cambio: 'RESTA',
                 stock_anterior: stock,
                 stock_nuevo: stock - restante,
-                usuario: usuarioResponsable(req, req.body && req.body.usuario),
+                usuario: usuarioResponsable(req, b.usuario),
                 referencia: `Despacho pedido ${pedido.numero_pedido}`
             });
+            // El despacho también es una salida de almacén: se registra en
+            // salidas_almacen para que aparezca en el historial de la pestaña
+            // Salidas. El descuento de stock ya se hizo arriba, aquí solo se
+            // anota el movimiento (no se vuelve a restar).
+            await client.query(
+                `INSERT INTO salidas_almacen
+                   (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino,
+                    chofer_licencia, placa, punto_partida, articulo_id, cantidad_salida,
+                    usuario_registro, estado_guia, guia_url, despacho_id, producto_key, pedido_id)
+                 VALUES (CURRENT_TIMESTAMP, $1, $2, $3, 'N/A', $4, $5, $6, 'Almacén Principal', NULL, $7, $8, $9, NULL, $10, $11, $12)`,
+                [tipoRegistro, numeroGuia || 'S/N',
+                 `${pedido.numero_pedido} — ${pedido.tipo_destino}`,
+                 pedido.direccion || pedido.tipo_destino,
+                 pedido.chofer || 'N/A', pedido.vehiculo || 'N/A',
+                 restante,
+                 usuarioResponsable(req, b.usuario),
+                 estadoGuia, despachoId, item.producto_key, id]
+            );
             despachados.push({ producto_key: item.producto_key, nombre: st.rows[0].nombre_producto, cajas: restante });
         }
 

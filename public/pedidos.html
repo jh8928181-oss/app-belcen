@@ -583,9 +583,19 @@
         }
 
         async function despacharPedido(id) {
-            if (!confirm('¿Registrar el despacho del pedido N° ' + id + '? Se descontarán las cajas del stock.')) return;
+            const p = pedidosCache.find(x => x.id === id) || {};
+            const guia = prompt(
+                'Despacho del pedido ' + (p.numero_pedido || 'N° ' + id) + '.\n' +
+                '¿N° de guía de remisión? (deja vacío si aún no existe: la salida quedará PENDIENTE REGULARIZAR en Almacén)',
+                ''
+            );
+            if (guia === null) return;
             try {
-                const res = await fetch('/api/pedidos/' + id + '/despachar', { method: 'POST' });
+                const res = await fetch('/api/pedidos/' + id + '/despachar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ numero_guia: guia.trim() })
+                });
                 const data = await res.json();
                 alert(data.mensaje || (data.success ? 'Despachado.' : 'No se pudo despachar.'));
                 cargarPedidos();

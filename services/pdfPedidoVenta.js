@@ -13,6 +13,37 @@
  */
 
 const PDFDocument = require('pdfkit');
+const fs = require('fs');
+const path = require('path');
+
+// Logo de la corporación en el encabezado. Si el archivo no existe (o no se
+// puede leer), el PDF sale igual, solo sin la imagen: el documento no depende
+// del logo para generarse.
+const RUTAS_LOGO = [
+  path.join(__dirname, '..', 'public', 'logo-donlalo.png'),
+  path.join(__dirname, '..', 'public', 'logo-donlalo.jpg'),
+  path.join(__dirname, '..', 'public', 'logo-donlalo.jpeg')
+];
+
+/** Dimensiones de un PNG o JPEG sin dependencias extra. */
+function dimensionesImagen(ruta) {
+  const b = fs.readFileSync(ruta);
+  if (b.length > 24 && b.slice(1, 4).toString('latin1') === 'PNG') {
+    return { ancho: b.readUInt32BE(16), alto: b.readUInt32BE(20) };
+  }
+  if (b.length > 4 && b[0] === 0xFF && b[1] === 0xD8) {
+    let i = 2;
+    while (i < b.length - 9) {
+      if (b[i] !== 0xFF) { i++; continue; }
+      const marcador = b[i + 1];
+      if (marcador >= 0xC0 && marcador <= 0xCF && marcador !== 0xC4 && marcador !== 0xC8 && marcador !== 0xCC) {
+        return { alto: b.readUInt16BE(i + 5), ancho: b.readUInt16BE(i + 7) };
+      }
+      i += 2 + b.readUInt16BE(i + 2);
+    }
+  }
+  return null;
+}
 
 const CM = 28.3465;
 const MARGEN = 1.4 * CM;
@@ -101,11 +132,26 @@ function generarPDFPedidoVenta(datos) {
     doc.on('error', reject);
 
     try {
-      // Encabezado
+      // Encabezado: logo a la izquierda (si está disponible) y el texto de la
+      // corporación a la derecha, como en el papel membretado.
+      let xTexto = MARGEN;
+      const ALTO_LOGO = 42;
+      for (const ruta of RUTAS_LOGO) {
+        try {
+          if (!fs.existsSync(ruta)) continue;
+          const dim = dimensionesImagen(ruta);
+          doc.image(ruta, MARGEN, MARGEN - 3, { height: ALTO_LOGO });
+          const anchoLogo = dim ? Math.round(ALTO_LOGO * (dim.ancho / dim.alto)) : 100;
+          xTexto = MARGEN + anchoLogo + 14;
+          break;
+        } catch (e) { /* logo ilegible: se sigue sin imagen */ }
+      }
+      const anchoTexto = ancho - (xTexto - MARGEN) - 140;
       doc.fillColor(AZUL).font('Helvetica-Bold').fontSize(14)
-        .text('CORPORACIÓN DON LALO S.A.C.', MARGEN, MARGEN);
+        .text('CORPORACIÓN DON LALO S.A.C.', xTexto, MARGEN);
       doc.font('Helvetica').fontSize(8).fillColor(GRIS)
-        .text('R.U.C. 20609912694 — CAL. LOS CIPRESES NRO. 105 Z.I. CAJAMARQUILLA 2DA ETAPA, LURIGANCHO, LIMA - LIMA', MARGEN, doc.y + 1);
+        .text('R.U.C. 20609912694 — CAL. LOS CIPRESES NRO. 105 Z.I. CAJAMARQUILLA 2DA ETAPA, LURIGANCHO, LIMA - LIMA',
+          xTexto, doc.y + 1, { width: anchoTexto });
       doc.font('Helvetica-Bold').fontSize(12).fillColor('#1A202C')
         .text('ORDEN DE PEDIDO', MARGEN, MARGEN + 2, { align: 'right', width: ancho });
       doc.font('Helvetica-Bold').fontSize(11).fillColor(AZUL)

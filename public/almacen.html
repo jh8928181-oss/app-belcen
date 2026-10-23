@@ -153,6 +153,10 @@
         @media (min-width: 1024px) {
             .modulo-dos-col { grid-template-columns: 1fr 1fr; }
         }
+        /* Salidas siempre en pila: el REGISTRO queda arriba (primer elemento,
+           ancho completo) y el historial debajo. Con dos columnas el formulario
+           "se perdía" a un lado y el usuario no lo veía al abrir la pestaña. */
+        #modulo-salidas .modulo-dos-col { grid-template-columns: 1fr !important; }
         .modulo-stock-pila { grid-template-columns: 1fr; }
 
         .tabbar {
@@ -1275,10 +1279,13 @@
             document.querySelectorAll('.nav-btn, .tab-btn').forEach(b => {
                 b.classList.toggle('activo', b.dataset.vista === nombre);
             });
+            // Las tarjetas .reveal de una vista que estaba oculta nunca cruzaron
+            // el IntersectionObserver: al abrirla quedaban con opacidad 0 (el
+            // formulario de Salidas "no aparecía"). Se fuerzan visibles.
+            if (mod) mod.querySelectorAll('.reveal').forEach(el => el.classList.add('is-visible'));
             // El scroll se pide en el frame siguiente: si se lanza en el mismo
             // tick en que la vista pasa de display:none a block, el navegador
-            // puede ignorarlo y la página se quedaba abajo (el formulario de
-            // Salidas no "subía").
+            // puede ignorarlo y la página se quedaba abajo.
             requestAnimationFrame(() => requestAnimationFrame(() => {
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             }));

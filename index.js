@@ -19,6 +19,7 @@ const { authMiddleware, crearGuardRoles, ROLES_MODULO, requerirRolAdmin, permiso
 const { calcularInsumosProduccion, calcularInsumosDeReceta, obtenerRecetaVigente, eleccionesDesdeTapa, evaluarCobertura } = require('./services/recipeService');
 const { datosParaOrdenPDF, datosFormularioOC } = require('./services/ocPdfDatos');
 const { generarPDFOrdenCompra, nombreArchivoSeguro } = require('./services/pdfOrdenCompra');
+const { generarPDFPedidoVenta } = require('./services/pdfPedidoVenta');
 const { normalizar } = require('./utils/helpers');
 
 process.on('unhandledRejection', (reason) => {
@@ -7653,6 +7654,441 @@ app.get('/api/refinado/historial', requerirRolRefinado, async (req, res) => {
         res.json({ success: true, historial: filas });
     } catch (err) {
         res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+// ==================== PEDIDOS DE VENTA ====================
+// Captura del pedido, evaluación en dos niveles (stock de producto terminado y
+// luego insumos de la receta para lo que falta producir), cola de despacho,
+// consolidado de requerimientos para planta y PDF de la orden.
+
+const TIPOS_DESTINO = ['TIENDA', 'REPARTO', 'PROVINCIA'];
+
+/** Estado del pedido tras despachar/atender producción: DESPACHADO solo si ya no queda nada. */
+async function reevaluarEstadoPedido(client, pedidoId, estadoActual) {
+    const t = await client.query(
+        `SELECT total_despacho, total_produccion,
+                (SELECT COALESCE(SUM(cantidad_despachada), 0) FROM pedidos_venta_items WHERE pedido_id = $1) AS despachada,
+                (SELECT COALESCE(SUM(cantidad_producida), 0) FROM pedidos_venta_items WHERE pedido_id = $1) AS producida
+           FROM pedidos_venta WHERE id = $1`,
+        [pedidoId]
+    );
+    if (!t.rows.length) return estadoActual;
+    const r = t.rows[0];
+    const despachoOk = Number(r.despachada) >= Number(r.total_despacho);
+    const produccionOk = Number(r.total_produccion) === 0 || Number(r.producida) >= Number(r.total_produccion);
+    let nuevo = estadoActual;
+    if (despachoOk && produccionOk) nuevo = 'DESPACHADO';
+    else if (estadoActual !== 'INSUMOS_FALTANTES' && Number(r.total_produccion) > 0) nuevo = 'EN_PRODUCCION';
+    if (nuevo !== estadoActual) {
+        await client.query('UPDATE pedidos_venta SET estado = $1 WHERE id = $2', [nuevo, pedidoId]);
+    }
+    return nuevo;
+}
+
+async function armarPedidoDesdeBase(filtroSql, params) {
+    const cab = await pool.query(`SELECT * FROM pedidos_venta WHERE ${filtroSql} ORDER BY id DESC`, params);
+    const ids = cab.rows.map(r => r.id);
+    const items = ids.length
+        ? (await pool.query('SELECT * FROM pedidos_venta_items WHERE pedido_id = ANY($1::int[]) ORDER BY id', [ids])).rows
+        : [];
+    const insumos = ids.length
+        ? (await pool.query("SELECT * FROM pedidos_venta_insumos WHERE pedido_id = ANY($1::int[]) AND estado = 'FALTANTE' ORDER BY id", [ids])).rows
+        : [];
+    const porPedido = new Map();
+    cab.rows.forEach(p => porPedido.set(p.id, { ...p, items: [], insumos_faltantes: [] }));
+    items.forEach(i => { const p = porPedido.get(i.pedido_id); if (p) p.items.push(i); });
+    insumos.forEach(i => { const p = porPedido.get(i.pedido_id); if (p) p.insumos_faltantes.push(i); });
+    return Array.from(porPedido.values());
+}
+
+app.post('/api/pedidos/crear', gAlmacen, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const b = req.body || {};
+        const tipoDestino = String(b.tipo_destino || '').trim().toUpperCase();
+        if (!TIPOS_DESTINO.includes(tipoDestino)) {
+            return res.status(400).json({ success: false, mensaje: 'Tipo de destino inválido. Usa TIENDA, REPARTO o PROVINCIA.' });
+        }
+        const direccion = String(b.direccion || '').trim();
+        if ((tipoDestino === 'REPARTO' || tipoDestino === 'PROVINCIA') && !direccion) {
+            return res.status(400).json({ success: false, mensaje: 'La dirección de entrega es obligatoria cuando el destino es REPARTO o PROVINCIA.' });
+        }
+        const bruto = Array.isArray(b.items) ? b.items : [];
+        if (!bruto.length) {
+            return res.status(400).json({ success: false, mensaje: 'El pedido debe tener al menos un producto.' });
+        }
+        if (bruto.length > 50) {
+            return res.status(400).json({ success: false, mensaje: 'Un pedido no puede tener más de 50 líneas.' });
+        }
+        const lineas = [];
+        for (const raw of bruto) {
+            const producto_key = String((raw && raw.producto_key) || '').trim();
+            const cantidad = parseInt(raw && raw.cantidad, 10);
+            if (!producto_key || !Number.isFinite(cantidad) || cantidad <= 0) {
+                return res.status(400).json({ success: false, mensaje: 'Cada producto debe tener clave y una cantidad mayor a cero.' });
+            }
+            lineas.push({ producto_key, cantidad });
+        }
+
+        await client.query('BEGIN');
+        const evaluadas = [];
+        for (const linea of lineas) {
+            const pt = await client.query(
+                'SELECT producto_key, nombre_producto, stock_cajas FROM producto_terminado WHERE producto_key = $1',
+                [linea.producto_key]
+            );
+            const receta = await obtenerRecetaVigente(linea.producto_key, client);
+            if (!pt.rows.length && !receta) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: `El producto "${linea.producto_key}" no existe (ni en producto terminado ni con receta).` });
+            }
+            const stockPT = pt.rows.length ? Number(pt.rows[0].stock_cajas) || 0 : 0;
+            const qsol = linea.cantidad;
+            const sPT = Math.min(stockPT, qsol);
+            const qprod = qsol - sPT;
+            const nombre = pt.rows.length ? pt.rows[0].nombre_producto : (receta.nombre_producto || linea.producto_key);
+            let cobertura = [];
+            if (qprod > 0) {
+                if (!receta) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, mensaje: `"${nombre}" no tiene receta vigente: no se puede calcular la producción de ${qprod} cajas.` });
+                }
+                const requeridos = await calcularInsumosProduccion(linea.producto_key, qprod, client);
+                cobertura = evaluarCobertura(requeridos, qprod).filter(c => c.obligatorio);
+            }
+            evaluadas.push({ ...linea, nombre, stockPT, sPT, qprod, cobertura });
+        }
+
+        const totalSolicitado = evaluadas.reduce((a, e) => a + e.cantidad, 0);
+        const totalDespacho = evaluadas.reduce((a, e) => a + e.sPT, 0);
+        const totalProduccion = evaluadas.reduce((a, e) => a + e.qprod, 0);
+        const hayFaltantes = evaluadas.some(e => e.cobertura.some(c => !c.alcanza));
+        const estado = totalProduccion === 0 ? 'PARA_DESPACHO' : (hayFaltantes ? 'INSUMOS_FALTANTES' : 'EN_PRODUCCION');
+        const solicitante = String(b.solicitante || '').trim() || usuarioResponsable(req, null);
+        const fechaDespacho = b.fecha_despacho ? String(b.fecha_despacho).trim() : null;
+        if (fechaDespacho && !/^\d{4}-\d{2}-\d{2}$/.test(fechaDespacho)) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: 'La fecha de despacho debe tener formato AAAA-MM-DD.' });
+        }
+
+        const insert = await client.query(
+            `INSERT INTO pedidos_venta (fecha_despacho, solicitante, vehiculo, chofer, tipo_destino, direccion, estado,
+                                        total_solicitado, total_despacho, total_produccion, observaciones, usuario_registro)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+            [fechaDespacho, solicitante, String(b.vehiculo || '').trim() || null, String(b.chofer || '').trim() || null,
+             tipoDestino, direccion || null, estado, totalSolicitado, totalDespacho, totalProduccion,
+             String(b.observaciones || '').trim() || null, usuarioResponsable(req, b.usuario)]
+        );
+        const pedidoId = insert.rows[0].id;
+        const numero = `PED-${new Date().getFullYear()}-${String(pedidoId).padStart(4, '0')}`;
+        await client.query('UPDATE pedidos_venta SET numero_pedido = $1 WHERE id = $2', [numero, pedidoId]);
+
+        for (const e of evaluadas) {
+            await client.query(
+                `INSERT INTO pedidos_venta_items (pedido_id, producto_key, nombre_producto, cantidad_solicitada, cantidad_despacho, cantidad_produccion)
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [pedidoId, e.producto_key, e.nombre, e.cantidad, e.sPT, e.qprod]
+            );
+            for (const c of e.cobertura) {
+                const faltante = Math.max(0, Number(c.solicitado) - Number(c.disponible));
+                await client.query(
+                    `INSERT INTO pedidos_venta_insumos (pedido_id, producto_key, insumo_id, nombre_insumo, requerido, disponible, faltante, estado)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                    [pedidoId, e.producto_key, c.insumo_id, c.nombre, c.solicitado, c.disponible, faltante,
+                     c.alcanza ? 'OK' : 'FALTANTE']
+                );
+            }
+        }
+        await client.query('COMMIT');
+        const [pedido] = await armarPedidoDesdeBase('id = $1', [pedidoId]);
+        res.json({
+            success: true,
+            mensaje: `Pedido ${numero} registrado con estado ${estado}.`,
+            pedido
+        });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('Error al crear pedido de venta:', err);
+        res.status(500).json({ success: false, mensaje: 'No se pudo registrar el pedido.' });
+    } finally {
+        client.release();
+    }
+});
+
+app.get('/api/pedidos', async (req, res) => {
+    try {
+        const pedidos = await armarPedidoDesdeBase('TRUE', []);
+        res.json({ success: true, pedidos });
+    } catch (err) {
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+app.get('/api/pedidos/:id', async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ success: false, mensaje: 'Id inválido.' });
+    try {
+        const pedidos = await armarPedidoDesdeBase('id = $1', [id]);
+        if (!pedidos.length) return res.status(404).json({ success: false, mensaje: 'Pedido no encontrado.' });
+        res.json({ success: true, pedido: pedidos[0] });
+    } catch (err) {
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+app.get('/api/pedidos/catalogo-pt', async (req, res) => {
+    try {
+        const r = await pool.query(
+            'SELECT producto_key, nombre_producto, stock_cajas FROM producto_terminado ORDER BY nombre_producto'
+        );
+        res.json({ success: true, productos: r.rows });
+    } catch (err) {
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+app.get('/api/pedidos/logistica-opciones', async (req, res) => {
+    try {
+        const placas = await pool.query(
+            `SELECT DISTINCT placa FROM (
+                SELECT placa FROM salidas_almacen WHERE placa IS NOT NULL AND TRIM(placa) <> ''
+                UNION
+                SELECT placa FROM ingresos_vigilancia WHERE placa IS NOT NULL AND TRIM(placa) <> ''
+             ) t ORDER BY placa`
+        );
+        const choferes = await pool.query(
+            `SELECT DISTINCT chofer FROM (
+                SELECT chofer_licencia AS chofer FROM salidas_almacen WHERE chofer_licencia IS NOT NULL AND TRIM(chofer_licencia) <> ''
+                UNION
+                SELECT chofer FROM ingresos_vigilancia WHERE chofer IS NOT NULL AND TRIM(chofer) <> ''
+             ) t ORDER BY chofer`
+        );
+        res.json({
+            success: true,
+            placas: placas.rows.map(r => r.placa),
+            choferes: choferes.rows.map(r => r.chofer)
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+app.post('/api/pedidos/:id/despachar', gAlmacen, async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ success: false, mensaje: 'Id inválido.' });
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const ped = await client.query('SELECT * FROM pedidos_venta WHERE id = $1 FOR UPDATE', [id]);
+        if (!ped.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'Pedido no encontrado.' });
+        }
+        const pedido = ped.rows[0];
+        if (pedido.estado === 'CANCELADO' || pedido.estado === 'DESPACHADO') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: `El pedido está ${pedido.estado}: no hay nada por despachar.` });
+        }
+        const items = (await client.query('SELECT * FROM pedidos_venta_items WHERE pedido_id = $1', [id])).rows;
+        const pendientes = items.filter(i => Number(i.cantidad_despacho) - Number(i.cantidad_despachada) > 0);
+        if (!pendientes.length) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: 'Este pedido ya despachó todo su stock asignado.' });
+        }
+
+        const despachados = [];
+        for (const item of pendientes) {
+            const restante = Number(item.cantidad_despacho) - Number(item.cantidad_despachada);
+            const st = await client.query(
+                'SELECT nombre_producto, stock_cajas FROM producto_terminado WHERE producto_key = $1 FOR UPDATE',
+                [item.producto_key]
+            );
+            if (!st.rows.length) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: `El producto "${item.producto_key}" ya no existe en producto terminado.` });
+            }
+            const stock = Number(st.rows[0].stock_cajas) || 0;
+            if (stock < restante) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: `Stock insuficiente de "${st.rows[0].nombre_producto}": quedan ${stock} cajas y el pedido necesita ${restante}.` });
+            }
+            await client.query(
+                'UPDATE producto_terminado SET stock_cajas = stock_cajas - $1 WHERE producto_key = $2',
+                [restante, item.producto_key]
+            );
+            await client.query(
+                'UPDATE pedidos_venta_items SET cantidad_despachada = cantidad_despachada + $1 WHERE id = $2',
+                [restante, item.id]
+            );
+            await registrarHistorial(client, {
+                tipo: 'SALIDA',
+                origen: 'pedido_venta',
+                producto: st.rows[0].nombre_producto,
+                producto_key: item.producto_key,
+                cantidad: restante,
+                tipo_cambio: 'RESTA',
+                stock_anterior: stock,
+                stock_nuevo: stock - restante,
+                usuario: usuarioResponsable(req, req.body && req.body.usuario),
+                referencia: `Despacho pedido ${pedido.numero_pedido}`
+            });
+            despachados.push({ producto_key: item.producto_key, nombre: st.rows[0].nombre_producto, cajas: restante });
+        }
+
+        const nuevoEstado = await reevaluarEstadoPedido(client, id, pedido.estado);
+        await client.query('COMMIT');
+        res.json({
+            success: true,
+            mensaje: `Despacho del pedido ${pedido.numero_pedido} registrado (${nuevoEstado}).`,
+            estado: nuevoEstado,
+            despachados
+        });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('Error al despachar pedido:', err);
+        res.status(500).json({ success: false, mensaje: 'No se pudo despachar el pedido.' });
+    } finally {
+        client.release();
+    }
+});
+
+app.post('/api/pedidos/:id/cancelar', gAlmacen, async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ success: false, mensaje: 'Id inválido.' });
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const ped = await client.query('SELECT * FROM pedidos_venta WHERE id = $1 FOR UPDATE', [id]);
+        if (!ped.rows.length) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'Pedido no encontrado.' });
+        }
+        const pedido = ped.rows[0];
+        const despachada = (await client.query(
+            'SELECT COALESCE(SUM(cantidad_despachada), 0) AS n FROM pedidos_venta_items WHERE pedido_id = $1', [id]
+        )).rows[0].n;
+        if (Number(despachada) > 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: 'El pedido ya tiene cajas despachadas: no se puede cancelar.' });
+        }
+        await client.query("UPDATE pedidos_venta SET estado = 'CANCELADO' WHERE id = $1", [id]);
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: `Pedido ${pedido.numero_pedido} cancelado.` });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('Error al cancelar pedido:', err);
+        res.status(500).json({ success: false, mensaje: 'No se pudo cancelar el pedido.' });
+    } finally {
+        client.release();
+    }
+});
+
+// Consolidado de requerimientos: varios pedidos del mismo producto se suman en
+// un solo lote para planta, en vez de llegar como tareas aisladas.
+app.get('/api/pedidos/consolidado-produccion', async (req, res) => {
+    try {
+        const r = await pool.query(
+            `SELECT i.producto_key,
+                    COALESCE(MAX(pt.nombre_producto), MAX(i.nombre_producto)) AS nombre_producto,
+                    SUM(i.cantidad_produccion - i.cantidad_producida)::int AS total_pendiente,
+                    COUNT(DISTINCT i.pedido_id)::int AS pedidos
+               FROM pedidos_venta_items i
+               JOIN pedidos_venta p ON p.id = i.pedido_id
+               LEFT JOIN producto_terminado pt ON pt.producto_key = i.producto_key
+              WHERE p.estado IN ('EN_PRODUCCION', 'INSUMOS_FALTANTES')
+                AND i.cantidad_produccion > i.cantidad_producida
+              GROUP BY i.producto_key
+              ORDER BY total_pendiente DESC`
+        );
+        res.json({ success: true, consolidado: r.rows });
+    } catch (err) {
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+// La producción ya sumó las cajas al cerrar el reporte; aquí solo se anota en
+// el pedido que esas cajas cubren su porción, en orden de llegada.
+app.post('/api/pedidos/atender-produccion', gEnvasado, async (req, res) => {
+    const producto_key = String((req.body && req.body.producto_key) || '').trim();
+    const cajas = parseInt(req.body && req.body.cajas, 10);
+    if (!producto_key || !Number.isFinite(cajas) || cajas <= 0) {
+        return res.status(400).json({ success: false, mensaje: 'Producto y cantidad de cajas válidos son requeridos.' });
+    }
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const filas = (await client.query(
+            `SELECT i.id, i.pedido_id, i.cantidad_produccion, i.cantidad_producida, p.numero_pedido, p.estado
+               FROM pedidos_venta_items i
+               JOIN pedidos_venta p ON p.id = i.pedido_id
+              WHERE i.producto_key = $1
+                AND p.estado IN ('EN_PRODUCCION', 'INSUMOS_FALTANTES')
+                AND i.cantidad_produccion > i.cantidad_producida
+              ORDER BY p.id
+              FOR UPDATE OF i`,
+            [producto_key]
+        )).rows;
+        let resto = cajas;
+        const atendidos = [];
+        const pedidosTocados = new Map();
+        for (const fila of filas) {
+            if (resto <= 0) break;
+            const pendiente = Number(fila.cantidad_produccion) - Number(fila.cantidad_producida);
+            const cubrir = Math.min(resto, pendiente);
+            await client.query(
+                'UPDATE pedidos_venta_items SET cantidad_producida = cantidad_producida + $1 WHERE id = $2',
+                [cubrir, fila.id]
+            );
+            resto -= cubrir;
+            atendidos.push({ numero_pedido: fila.numero_pedido, cajas: cubrir });
+            pedidosTocados.set(fila.pedido_id, fila.estado);
+        }
+        for (const [pedidoId, estado] of pedidosTocados) {
+            await reevaluarEstadoPedido(client, pedidoId, estado);
+        }
+        await client.query('COMMIT');
+        res.json({
+            success: true,
+            mensaje: resto > 0
+                ? `Se atendieron ${cajas - resto} de ${cajas} cajas; ${resto} no tienen pedido pendiente.`
+                : `${cajas} cajas atendidas contra pedidos pendientes.`,
+            atendidos,
+            sin_destino: resto
+        });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('Error al atender producción de pedidos:', err);
+        res.status(500).json({ success: false, mensaje: 'No se pudo registrar la producción atendida.' });
+    } finally {
+        client.release();
+    }
+});
+
+app.post('/api/pedidos/:id/pdf', async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return res.status(400).json({ success: false, mensaje: 'Id inválido.' });
+    try {
+        const pedidos = await armarPedidoDesdeBase('id = $1', [id]);
+        if (!pedidos.length) return res.status(404).json({ success: false, mensaje: 'Pedido no encontrado.' });
+        const pedido = pedidos[0];
+        const insumosCompletos = (await pool.query(
+            'SELECT * FROM pedidos_venta_insumos WHERE pedido_id = $1 ORDER BY id', [id]
+        )).rows;
+        const fecha = new Date(pedido.fecha_registro);
+        const buffer = await generarPDFPedidoVenta({
+            ...pedido,
+            fecha_registro_larga: fecha.toLocaleString('es-PE', { timeZone: 'America/Lima', dateStyle: 'long', timeStyle: 'short' }),
+            insumos: insumosCompletos
+        });
+        res.set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${pedido.numero_pedido}.pdf"`
+        });
+        res.send(buffer);
+    } catch (err) {
+        console.error('Error al generar PDF de pedido:', err);
+        res.status(500).json({ success: false, mensaje: 'No se pudo generar el PDF del pedido.' });
     }
 });
 

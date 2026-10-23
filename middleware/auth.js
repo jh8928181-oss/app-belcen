@@ -185,6 +185,7 @@ const REGLAS_MODULO = [
   [/^\/api\/servicios/, 'almacen'],
   [/^\/api\/producto-terminado/, 'almacen'],
   [/^\/api\/salidas/, 'almacen'],
+  [/^\/api\/pedidos/, 'almacen'],
   [/^\/api\/soplado/, 'soplado'],
   [/^\/api\/produccion\/(reporte|iniciar|cerrar|eliminar)/, 'envasado'],
   [/^\/api\/produccion\/cierre/, 'auditoria'],

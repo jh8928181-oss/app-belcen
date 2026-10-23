@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pedidos de Venta - Belcen</title>
+    <link rel="stylesheet" href="/motion.css">
+    <style>
+        :root {
+            --bg: #f2f2f7;
+            --card: rgba(255, 255, 255, 0.72);
+            --card-bord: rgba(0, 0, 0, 0.07);
+            --texto: #1c1c1e;
+            --texto2: #6c7280;
+            --azul: #0a84ff;
+            --verde: #34c759;
+            --rojo: #ff3b30;
+            --ambar: #ff9500;
+            --teal: #17a2b8;
+            --sombra: 0 8px 30px rgba(0, 0, 0, 0.08);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            margin: 0;
+            background-color: var(--bg);
+            color: var(--texto);
+            padding: 24px 16px 56px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .table-container {
+            max-width: 1100px; margin: auto;
+            background: var(--card);
+            backdrop-filter: blur(20px) saturate(160%);
+            -webkit-backdrop-filter: blur(20px) saturate(160%);
+            border: 1px solid var(--card-bord);
+            border-radius: 20px;
+            box-shadow: var(--sombra);
+            padding: 25px;
+            margin-bottom: 25px;
+        }
+        .sec-teal { border-top: 5px solid var(--teal); }
+        .sec-azul { border-top: 5px solid var(--azul); }
+        .sec-verde { border-top: 5px solid var(--verde); }
+
+        h3 {
+            color: var(--texto);
+            text-align: center;
+            border-bottom: 2px solid rgba(0, 0, 0, 0.09);
+            padding: 0 0 12px;
+            margin: 0 0 16px;
+            font-size: 19px;
+            font-weight: 800;
+            letter-spacing: -0.3px;
+        }
+        .h3-teal { color: #0e869c; border-bottom-color: rgba(23, 162, 184, 0.35); }
+
+        .barra-top {
+            max-width: 1100px; margin: 0 auto 18px;
+            display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+        }
+        .barra-top a {
+            color: #0e869c; text-decoration: none; font-weight: 700; font-size: 14px;
+        }
+
+        .pestanas {
+            max-width: 1100px; margin: 0 auto 18px;
+            display: flex; gap: 8px; flex-wrap: wrap;
+        }
+        .pestana {
+            border: 1px solid rgba(0,0,0,0.08); background: rgba(255,255,255,0.7);
+            border-radius: 999px; padding: 9px 18px; font-size: 14px; font-weight: 700;
+            cursor: pointer; color: var(--texto2);
+        }
+        .pestana.activa { background: #0e869c; color: #fff; border-color: #0e869c; }
+
+        .fila { display: flex; gap: 12px; flex-wrap: wrap; }
+        .campo { flex: 1 1 220px; }
+        .campo label { font-size: 13px; font-weight: 700; color: var(--texto2); }
+        .campo label .req { color: var(--rojo); }
+
+        select, input, textarea {
+            padding: 12px 14px;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 12px;
+            font-size: 14px;
+            box-sizing: border-box;
+            width: 100%;
+            margin-top: 6px;
+            margin-bottom: 4px;
+            background: rgba(255, 255, 255, 0.7);
+            color: var(--texto);
+            font-family: inherit;
+        }
+        textarea { min-height: 74px; resize: vertical; }
+
+        .radio-destino { display: flex; gap: 14px; margin-top: 6px; flex-wrap: wrap; }
+        .radio-destino label { font-size: 14px; font-weight: 600; display: flex; gap: 6px; align-items: center; cursor: pointer; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13.5px; }
+        th, td { padding: 9px 8px; border-bottom: 1px solid rgba(0,0,0,0.07); text-align: left; }
+        th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--texto2); }
+        td.num, th.num { text-align: right; }
+
+        .btn {
+            border: none; border-radius: 999px; padding: 11px 20px; cursor: pointer;
+            font-weight: 800; font-family: inherit; font-size: 14px;
+        }
+        .btn-teal { background: #0e869c; color: #fff; }
+        .btn-azul { background: var(--azul); color: #fff; }
+        .btn-verde { background: var(--verde); color: #fff; }
+        .btn-rojo { background: var(--rojo); color: #fff; }
+        .btn-gris { background: #e5e5ea; color: #1c1c1e; }
+        .btn-mini { padding: 6px 12px; font-size: 12.5px; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .barra-botones { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; align-items: center; }
+
+        .badge {
+            display: inline-block; padding: 3px 10px; border-radius: 999px;
+            font-size: 11.5px; font-weight: 800; letter-spacing: 0.2px;
+        }
+        .b-verde { background: rgba(52,199,89,0.15); color: #248a3d; }
+        .b-azul { background: rgba(10,132,255,0.15); color: #0a84ff; }
+        .b-rojo { background: rgba(255,59,48,0.15); color: #d6362b; }
+        .b-gris { background: rgba(120,120,128,0.15); color: #495057; }
+        .b-ambar { background: rgba(255,149,0,0.15); color: #c93400; }
+
+        .panel-aviso {
+            margin-top: 14px; padding: 12px 14px; border-radius: 12px; font-size: 13.5px;
+        }
+        .aviso-ok { background: rgba(52,199,89,0.12); border: 1px solid rgba(52,199,89,0.4); }
+        .aviso-error { background: rgba(255,59,48,0.10); border: 1px solid rgba(255,59,48,0.4); }
+
+        .oculto { display: none !important; }
+        .subtitulo { font-size: 13px; color: var(--texto2); text-align: center; margin: -6px 0 14px; }
+        .mini-info { font-size: 12px; color: var(--texto2); margin-top: 6px; }
+        .faltantes-lista { margin: 8px 0 0; padding-left: 18px; font-size: 13px; color: #d6362b; }
+    </style>
+</head>
+<body>
+    <div class="barra-top">
+        <a href="dashboard.html">← Volver al Dashboard</a>
+        <a href="almacen.html">Ir a Almacén →</a>
+    </div>
+
+    <div class="pestanas">
+        <button class="pestana activa" id="tabNuevo" onclick="mostrarTab('nuevo')">➕ Nuevo pedido</button>
+        <button class="pestana" id="tabPedidos" onclick="mostrarTab('pedidos')">📋 Pedidos</button>
+        <button class="pestana" id="tabProduccion" onclick="mostrarTab('produccion')">🏭 Producción (consolidado)</button>
+    </div>
+
+    <!-- ============ NUEVO PEDIDO ============ -->
+    <div id="panelNuevo" class="table-container sec-teal">
+        <h3 class="h3-teal">Formulario de captura de pedidos</h3>
+        <p class="subtitulo">Al validar, el sistema reparte cada producto entre lo que ya está en almacén (despacho directo) y lo que falta producir, y verifica los insumos de la receta.</p>
+
+        <div class="fila">
+            <div class="campo">
+                <label>Fecha de registro</label>
+                <input id="pFechaRegistro" type="text" disabled>
+            </div>
+            <div class="campo">
+                <label>Fecha solicitada de despacho <span class="req">*</span></label>
+                <input id="pFechaDespacho" type="date">
+            </div>
+            <div class="campo">
+                <label>Solicitante</label>
+                <input id="pSolicitante" type="text" placeholder="Usuario logueado por defecto">
+            </div>
+        </div>
+
+        <div class="fila">
+            <div class="campo">
+                <label>Vehículo (placa)</label>
+                <input id="pVehiculo" type="text" list="dlPlacas" placeholder="Placa del carro">
+                <datalist id="dlPlacas"></datalist>
+            </div>
+            <div class="campo">
+                <label>Chofer asignado</label>
+                <input id="pChofer" type="text" list="dlChoferes" placeholder="Chofer">
+                <datalist id="dlChoferes"></datalist>
+            </div>
+        </div>
+
+        <div class="campo" style="margin-top:8px;">
+            <label>Tipo de destino <span class="req">*</span></label>
+            <div class="radio-destino">
+                <label><input type="radio" name="destino" value="TIENDA" checked onchange="cambioDestino()"> Tienda</label>
+                <label><input type="radio" name="destino" value="REPARTO" onchange="cambioDestino()"> Reparto</label>
+                <label><input type="radio" name="destino" value="PROVINCIA" onchange="cambioDestino()"> Provincia</label>
+            </div>
+        </div>
+
+        <div class="campo oculto" id="campoDireccion">
+            <label>Dirección de entrega <span class="req">*</span></label>
+            <textarea id="pDireccion" placeholder="Dirección completa de entrega"></textarea>
+        </div>
+
+        <div class="campo" style="margin-top:10px;">
+            <label>Observaciones</label>
+            <input id="pObservaciones" type="text" placeholder="Opcional">
+        </div>
+
+        <h3 class="h3-teal" style="margin-top:22px;">Detalle de productos</h3>
+        <div class="fila">
+            <div class="campo" style="flex: 2 1 300px;">
+                <label>Producto terminado</label>
+                <select id="pProducto"></select>
+            </div>
+            <div class="campo" style="flex: 1 1 120px;">
+                <label>Cantidad (cajas) <span class="req">*</span></label>
+                <input id="pCantidad" type="number" min="1" step="1" placeholder="0">
+            </div>
+            <div class="campo" style="flex: 0 0 auto; align-self: end;">
+                <button class="btn btn-gris" onclick="agregarItem()">＋ Agregar</button>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Producto</th>
+                    <th class="num">Stock actual</th>
+                    <th class="num">Cantidad</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="tbItems"></tbody>
+        </table>
+
+        <div class="barra-botones">
+            <button class="btn btn-teal" id="btnValidar" onclick="crearPedido()">🔍 Validar / Generar pedido</button>
+        </div>
+
+        <div id="avisoPedido" class="panel-aviso oculto"></div>
+
+        <div id="resultadoPedido" class="oculto" style="margin-top:18px;">
+            <h3 class="h3-teal">Resultado de la evaluación</h3>
+            <div id="resumenPedido"></div>
+            <div class="barra-botones">
+                <button class="btn btn-azul" id="btnPdfResultado" onclick="descargarPdfUltimo()">⬇️ Descargar PDF</button>
+                <button class="btn btn-gris" onclick="reiniciarFormulario()">Nuevo pedido</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ PEDIDOS ============ -->
+    <div id="panelPedidos" class="table-container sec-azul oculto">
+        <h3>Registro general de pedidos</h3>
+        <div class="fila">
+            <div class="campo">
+                <label>Filtrar por estado</label>
+                <select id="fEstado" onchange="renderPedidos()">
+                    <option value="">Todos</option>
+                    <option value="PARA_DESPACHO">Para despacho</option>
+                    <option value="EN_PRODUCCION">En producción</option>
+                    <option value="INSUMOS_FALTANTES">Insumos faltantes</option>
+                    <option value="DESPACHADO">Despachado</option>
+                    <option value="CANCELADO">Cancelado</option>
+                </select>
+            </div>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>N° Pedido</th>
+                    <th>Fecha</th>
+                    <th>Destino</th>
+                    <th>Estado</th>
+                    <th class="num">Solicitado</th>
+                    <th class="num">Despacho</th>
+                    <th class="num">Producción</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="tbPedidos"></tbody>
+        </table>
+    </div>
+
+    <!-- ============ PRODUCCIÓN ============ -->
+    <div id="panelProduccion" class="table-container sec-verde oculto">
+        <h3>Consolidado de requerimientos de producción</h3>
+        <p class="subtitulo">Si cinco pedidos distintos piden el mismo producto, planta recibe un solo lote con la suma total, no cinco tareas aisladas.</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Producto</th>
+                    <th class="num">Cajas a producir</th>
+                    <th class="num">Pedidos</th>
+                </tr>
+            </thead>
+            <tbody id="tbConsolidado"></tbody>
+        </table>
+
+        <h3 class="h3-teal" style="margin-top:24px;">Registrar cajas atendidas</h3>
+        <p class="mini-info">Cuando la planta cierre un lote (el reporte ya sumó las cajas al stock), anota aquí cuántas cajas cubren pedidos pendientes.</p>
+        <div class="fila">
+            <div class="campo" style="flex: 2 1 260px;">
+                <label>Producto</label>
+                <select id="aProducto"></select>
+            </div>
+            <div class="campo" style="flex: 1 1 120px;">
+                <label>Cajas atendidas</label>
+                <input id="aCajas" type="number" min="1" step="1">
+            </div>
+            <div class="campo" style="flex: 0 0 auto; align-self: end;">
+                <button class="btn btn-verde" onclick="atenderProduccion()">✔ Atender</button>
+            </div>
+        </div>
+        <div id="avisoAtencion" class="panel-aviso oculto"></div>
+    </div>
+
+    <script src="/auth-client.js"></script>
+    <script>
+        'use strict';
+
+        if (!window.exigirModulo('almacen')) { /* redirige si no hay acceso */ }
+
+        let itemsArray = [];
+        let catalogo = [];
+        let ultimoPedidoId = null;
+
+        const ESTADOS_BADGE = {
+            PARA_DESPACHO: ['b-verde', 'PARA DESPACHO'],
+            EN_PRODUCCION: ['b-azul', 'EN PRODUCCIÓN'],
+            INSUMOS_FALTANTES: ['b-rojo', 'INSUMOS FALTANTES'],
+            DESPACHADO: ['b-verde', 'DESPACHADO'],
+            CANCELADO: ['b-gris', 'CANCELADO']
+        };
+
+        function esc(s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function mostrarTab(cual) {
+            document.getElementById('panelNuevo').classList.toggle('oculto', cual !== 'nuevo');
+            document.getElementById('panelPedidos').classList.toggle('oculto', cual !== 'pedidos');
+            document.getElementById('panelProduccion').classList.toggle('oculto', cual !== 'produccion');
+            document.getElementById('tabNuevo').classList.toggle('activa', cual === 'nuevo');
+            document.getElementById('tabPedidos').classList.toggle('activa', cual === 'pedidos');
+            document.getElementById('tabProduccion').classList.toggle('activa', cual === 'produccion');
+            if (cual === 'pedidos') cargarPedidos();
+            if (cual === 'produccion') cargarConsolidado();
+        }
+
+        function cambioDestino() {
+            const dest = document.querySelector('input[name="destino"]:checked').value;
+            const mostrar = dest === 'REPARTO' || dest === 'PROVINCIA';
+            document.getElementById('campoDireccion').classList.toggle('oculto', !mostrar);
+        }
+
+        function aviso(msg, ok) {
+            const el = document.getElementById('avisoPedido');
+            el.className = 'panel-aviso ' + (ok ? 'aviso-ok' : 'aviso-error');
+            el.textContent = msg;
+            el.classList.remove('oculto');
+        }
+
+        async function cargarCatalogo() {
+            try {
+                const res = await fetch('/api/pedidos/catalogo-pt');
+                const data = await res.json();
+                catalogo = (data && data.productos) || [];
+                const sel = document.getElementById('pProducto');
+                sel.innerHTML = '<option value="">-- Elige un producto --</option>' +
+                    catalogo.map(p =>
+                        `<option value="${esc(p.producto_key)}">${esc(p.nombre_producto)} (${Number(p.stock_cajas) || 0} cajas)</option>`
+                    ).join('');
+            } catch (e) { /* el formulario sigue con el selector vacío */ }
+        }
+
+        async function cargarLogistica() {
+            try {
+                const res = await fetch('/api/pedidos/logistica-opciones');
+                const data = await res.json();
+                document.getElementById('dlPlacas').innerHTML =
+                    ((data && data.placas) || []).map(p => `<option value="${esc(p)}">`).join('');
+                document.getElementById('dlChoferes').innerHTML =
+                    ((data && data.choferes) || []).map(c => `<option value="${esc(c)}">`).join('');
+            } catch (e) { /* sin sugerencias el campo sigue escribiéndose a mano */ }
+        }
+
+        function stockDe(key) {
+            const p = catalogo.find(x => x.producto_key === key);
+            return p ? Number(p.stock_cajas) || 0 : 0;
+        }
+
+        function agregarItem() {
+            const key = document.getElementById('pProducto').value;
+            const cant = parseInt(document.getElementById('pCantidad').value, 10);
+            if (!key) { alert('Elige un producto.'); return; }
+            if (!Number.isFinite(cant) || cant <= 0) { alert('La cantidad debe ser mayor a cero.'); return; }
+            const existente = itemsArray.find(i => i.producto_key === key);
+            if (existente) existente.cantidad += cant;
+            else itemsArray.push({ producto_key: key, cantidad: cant });
+            document.getElementById('pCantidad').value = '';
+            renderItems();
+        }
+
+        function quitarItem(key) {
+            itemsArray = itemsArray.filter(i => i.producto_key !== key);
+            renderItems();
+        }
+
+        function renderItems() {
+            const tb = document.getElementById('tbItems');
+            if (!itemsArray.length) {
+                tb.innerHTML = '<tr><td colspan="4" style="color:var(--texto2);">Sin productos agregados.</td></tr>';
+                return;
+            }
+            tb.innerHTML = itemsArray.map(i => {
+                const p = catalogo.find(x => x.producto_key === i.producto_key);
+                return `<tr>
+                    <td>${esc(p ? p.nombre_producto : i.producto_key)}</td>
+                    <td class="num">${stockDe(i.producto_key)}</td>
+                    <td class="num">${i.cantidad}</td>
+                    <td><button class="btn btn-gris btn-mini" onclick="quitarItem('${esc(i.producto_key)}')">✕</button></td>
+                </tr>`;
+            }).join('');
+        }
+
+        async function crearPedido() {
+            const btn = document.getElementById('btnValidar');
+            btn.disabled = true;
+            document.getElementById('resultadoPedido').classList.add('oculto');
+            try {
+                const body = {
+                    fecha_despacho: document.getElementById('pFechaDespacho').value,
+                    solicitante: document.getElementById('pSolicitante').value.trim(),
+                    vehiculo: document.getElementById('pVehiculo').value.trim(),
+                    chofer: document.getElementById('pChofer').value.trim(),
+                    tipo_destino: document.querySelector('input[name="destino"]:checked').value,
+                    direccion: document.getElementById('pDireccion').value.trim(),
+                    observaciones: document.getElementById('pObservaciones').value.trim(),
+                    items: itemsArray
+                };
+                const res = await fetch('/api/pedidos/crear', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) { aviso(data.mensaje || 'No se pudo registrar el pedido.', false); return; }
+                aviso(data.mensaje, true);
+                ultimoPedidoId = data.pedido.id;
+                renderResultado(data.pedido);
+            } catch (e) {
+                aviso('Sin conexión con el servidor.', false);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function renderResultado(pedido) {
+            const cont = document.getElementById('resultadoPedido');
+            cont.classList.remove('oculto');
+            const badge = ESTADOS_BADGE[pedido.estado] || ['b-gris', pedido.estado];
+            let html = `<p><span class="badge ${badge[0]}">${badge[1]}</span></p>`;
+            html += '<table><thead><tr><th>Producto</th><th class="num">Solicitado</th><th class="num">Despacho directo</th><th class="num">A producir</th></tr></thead><tbody>';
+            html += (pedido.items || []).map(i => `<tr>
+                <td>${esc(i.nombre_producto)}</td>
+                <td class="num">${i.cantidad_solicitada}</td>
+                <td class="num">${i.cantidad_despacho}</td>
+                <td class="num">${i.cantidad_produccion}</td>
+            </tr>`).join('');
+            html += `</tbody></table>`;
+            html += `<p class="mini-info">Totales: <b>${pedido.total_solicitado}</b> solicitado · <b>${pedido.total_despacho}</b> listos en almacén · <b>${pedido.total_produccion}</b> a producir.</p>`;
+            const ins = (pedido.insumos_faltantes || []);
+            if (ins.length) {
+                html += '<p style="margin:10px 0 4px;"><b style="color:#d6362b;">Insumos que impiden la producción:</b></p><ul class="faltantes-lista">';
+                html += ins.map(i => `<li>${esc(i.nombre_insumo)}: faltan ${Number(i.faltante).toLocaleString('es-PE')}</li>`).join('');
+                html += '</ul>';
+            } else if (Number(pedido.total_produccion) > 0) {
+                html += '<p class="mini-info" style="color:#248a3d;">Insumos verificados: la producción puede avanzar.</p>';
+            }
+            document.getElementById('resumenPedido').innerHTML = html;
+        }
+
+        async function descargarPdfUltimo() {
+            if (!ultimoPedidoId) return;
+            await descargarPdf(ultimoPedidoId);
+        }
+
+        async function descargarPdf(id) {
+            try {
+                const res = await fetch('/api/pedidos/' + id + '/pdf', { method: 'POST' });
+                if (!res.ok) { alert('No se pudo generar el PDF.'); return; }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'pedido-' + id + '.pdf';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            } catch (e) { alert('Sin conexión con el servidor.'); }
+        }
+
+        async function cargarPedidos() {
+            try {
+                const res = await fetch('/api/pedidos');
+                const data = await res.json();
+                renderPedidos((data && data.pedidos) || []);
+            } catch (e) {
+                document.getElementById('tbPedidos').innerHTML = '<tr><td colspan="8">Sin conexión.</td></tr>';
+            }
+        }
+
+        let pedidosCache = [];
+
+        function renderPedidos(pedidos) {
+            if (Array.isArray(pedidos)) pedidosCache = pedidos;
+            const filtro = document.getElementById('fEstado').value;
+            const lista = pedidosCache.filter(p => !filtro || p.estado === filtro);
+            const tb = document.getElementById('tbPedidos');
+            if (!lista.length) {
+                tb.innerHTML = '<tr><td colspan="8" style="color:var(--texto2);">Sin pedidos.</td></tr>';
+                return;
+            }
+            tb.innerHTML = lista.map(p => {
+                const badge = ESTADOS_BADGE[p.estado] || ['b-gris', p.estado];
+                const fecha = p.fecha_despacho || '—';
+                const despachar = (p.estado === 'PARA_DESPACHO' || p.estado === 'EN_PRODUCCION' || p.estado === 'INSUMOS_FALTANTES')
+                    ? `<button class="btn btn-verde btn-mini" onclick="despacharPedido(${p.id})">🚚 Despachar</button>` : '';
+                const cancelar = (p.estado !== 'CANCELADO' && p.estado !== 'DESPACHADO')
+                    ? `<button class="btn btn-rojo btn-mini" onclick="cancelarPedido(${p.id})">✖</button>` : '';
+                return `<tr>
+                    <td><b>${esc(p.numero_pedido)}</b><br><span style="font-size:11.5px;color:var(--texto2);">${esc(p.solicitante || '')} · ${esc(p.vehiculo || 'sin carro')}</span></td>
+                    <td>${esc(fecha)}</td>
+                    <td>${esc(p.tipo_destino)}</td>
+                    <td><span class="badge ${badge[0]}">${badge[1]}</span></td>
+                    <td class="num">${p.total_solicitado}</td>
+                    <td class="num">${p.total_despacho}</td>
+                    <td class="num">${p.total_produccion}</td>
+                    <td style="white-space:nowrap;">
+                        <button class="btn btn-azul btn-mini" onclick="descargarPdf(${p.id})">PDF</button>
+                        ${despachar} ${cancelar}
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        async function despacharPedido(id) {
+            if (!confirm('¿Registrar el despacho del pedido N° ' + id + '? Se descontarán las cajas del stock.')) return;
+            try {
+                const res = await fetch('/api/pedidos/' + id + '/despachar', { method: 'POST' });
+                const data = await res.json();
+                alert(data.mensaje || (data.success ? 'Despachado.' : 'No se pudo despachar.'));
+                cargarPedidos();
+            } catch (e) { alert('Sin conexión con el servidor.'); }
+        }
+
+        async function cancelarPedido(id) {
+            if (!confirm('¿Cancelar el pedido N° ' + id + '?')) return;
+            try {
+                const res = await fetch('/api/pedidos/' + id + '/cancelar', { method: 'POST' });
+                const data = await res.json();
+                alert(data.mensaje || (data.success ? 'Cancelado.' : 'No se pudo cancelar.'));
+                cargarPedidos();
+            } catch (e) { alert('Sin conexión con el servidor.'); }
+        }
+
+        async function cargarConsolidado() {
+            try {
+                const res = await fetch('/api/pedidos/consolidado-produccion');
+                const data = await res.json();
+                const lista = (data && data.consolidado) || [];
+                const tb = document.getElementById('tbConsolidado');
+                tb.innerHTML = lista.length
+                    ? lista.map(c => `<tr>
+                        <td>${esc(c.nombre_producto)}</td>
+                        <td class="num"><b>${c.total_pendiente}</b></td>
+                        <td class="num">${c.pedidos}</td>
+                    </tr>`).join('')
+                    : '<tr><td colspan="3" style="color:var(--texto2);">No hay producción pendiente de pedidos.</td></tr>';
+                const sel = document.getElementById('aProducto');
+                sel.innerHTML = lista.length
+                    ? lista.map(c => `<option value="${esc(c.producto_key)}">${esc(c.nombre_producto)} (${c.total_pendiente} cajas)</option>`).join('')
+                    : '<option value="">Sin pendientes</option>';
+            } catch (e) {
+                document.getElementById('tbConsolidado').innerHTML = '<tr><td colspan="3">Sin conexión.</td></tr>';
+            }
+        }
+
+        async function atenderProduccion() {
+            const producto_key = document.getElementById('aProducto').value;
+            const cajas = parseInt(document.getElementById('aCajas').value, 10);
+            if (!producto_key) { alert('Elige un producto.'); return; }
+            if (!Number.isFinite(cajas) || cajas <= 0) { alert('Ingresa las cajas atendidas.'); return; }
+            try {
+                const res = await fetch('/api/pedidos/atender-produccion', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ producto_key, cajas })
+                });
+                const data = await res.json();
+                const el = document.getElementById('avisoAtencion');
+                el.className = 'panel-aviso ' + (data.success ? 'aviso-ok' : 'aviso-error');
+                el.textContent = data.mensaje || 'No se pudo registrar.';
+                el.classList.remove('oculto');
+                document.getElementById('aCajas').value = '';
+                cargarConsolidado();
+            } catch (e) { alert('Sin conexión con el servidor.'); }
+        }
+
+        // Arranque
+        (function init() {
+            const hoy = new Date();
+            document.getElementById('pFechaRegistro').value =
+                hoy.toLocaleString('es-PE', { timeZone: 'America/Lima', dateStyle: 'long', timeStyle: 'short' });
+            const enUnDia = new Date(hoy.getTime() + 24 * 3600 * 1000);
+            document.getElementById('pFechaDespacho').value = enUnDia.toISOString().slice(0, 10);
+            try {
+                document.getElementById('pSolicitante').placeholder =
+                    localStorage.getItem('usuario_actual') || 'Usuario logueado';
+            } catch (e) { /* sin localStorage el placeholder queda genérico */ }
+            renderItems();
+            cargarCatalogo();
+            cargarLogistica();
+            window.registrarAutoRefresco(function () {
+                if (!document.getElementById('panelPedidos').classList.contains('oculto')) cargarPedidos();
+            }, 30000);
+        })();
+    </script>
+</body>
+</html>

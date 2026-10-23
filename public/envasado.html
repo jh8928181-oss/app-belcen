@@ -178,6 +178,7 @@
         .opcion-menu small { font-weight: 500; font-size: 13px; display: block; margin-top: 8px; opacity: 0.92; }
         .opc-verde { background: linear-gradient(145deg, #34c759, #28a745); }
         .opc-azul { background: linear-gradient(145deg, #0a84ff, #007bff); }
+        .opc-purp { background: linear-gradient(145deg, #af52de, #8e4ec6); }
 
         .tapa-box {
             background: rgba(0, 0, 0, 0.035); padding: 14px; border-radius: 14px;
@@ -258,6 +259,7 @@
             <div class="menu-opciones">
                 <button onclick="mostrarVista('reportar')" class="opcion-menu opc-verde">🖊️ REPORTAR PRODUCCIÓN<small>Registrar un nuevo reporte de producción</small></button>
                 <button onclick="mostrarVista('activa')" class="opcion-menu opc-azul">📊 VER PRODUCCIÓN EN CURSO<small>Producción activa del día en curso</small></button>
+                <button onclick="mostrarVista('pedidos')" class="opcion-menu opc-purp">📋 PEDIDOS POR PRODUCIR<small>Lo que los pedidos de venta necesitan que se elabore</small></button>
             </div>
         </div>
 
@@ -370,6 +372,36 @@
         </div>
         <p style="font-size:12px; color:#555;">Archiva en Auditoría TODAS las producciones cerradas (fecha, presentación, cant, UM, TN y obs), sin importar su fecha. Las que siguen en curso no se tocan.</p>
 
+        </div>
+
+        <!-- VISTA 3: PEDIDOS POR PRODUCIR -->
+        <div id="vistaPedidos" class="card sec-purp" style="display: none;">
+            <div style="text-align: left;">
+                <button onclick="mostrarMenu()" class="btn-volver">← Volver al menú</button>
+            </div>
+            <h3 class="h3-purp">PEDIDOS DE VENTA POR PRODUCIR</h3>
+            <p style="color: var(--texto2); font-size: 13px; margin-bottom: 12px;">
+                Solo lo que falta elaborar: si un pedido pide 100 cajas y el producto terminado tiene 50, aquí salen las 50 que faltan.
+                Varios pedidos del mismo producto salen sumados en una sola línea.
+            </p>
+            <div class="tabla-wrap tabla-card-movil">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>PRODUCTO</th>
+                            <th class="text-center">CAJAS A PRODUCIR</th>
+                            <th class="text-center">PEDIDOS</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaPedidosProducir">
+                        <tr><td colspan="3" class="text-center">Cargando pedidos...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="total-bar">
+                <span>TOTAL CAJAS POR PRODUCIR:</span>
+                <span id="totalCajasProducir">0</span>
+            </div>
         </div>
 
         <!-- PIE COMÚN -->
@@ -548,6 +580,7 @@
             document.getElementById('menuEnvasado').style.display = 'block';
             document.getElementById('vistaReportar').style.display = 'none';
             document.getElementById('vistaActiva').style.display = 'none';
+            document.getElementById('vistaPedidos').style.display = 'none';
             cargarProduccionActiva();
         }
 
@@ -555,7 +588,32 @@
             document.getElementById('menuEnvasado').style.display = 'none';
             document.getElementById('vistaReportar').style.display = vista === 'reportar' ? 'block' : 'none';
             document.getElementById('vistaActiva').style.display = vista === 'activa' ? 'block' : 'none';
+            document.getElementById('vistaPedidos').style.display = vista === 'pedidos' ? 'block' : 'none';
             if (vista === 'activa') cargarProduccionActiva();
+            if (vista === 'pedidos') cargarPedidosProducir();
+        }
+
+        // Pedidos de venta: solo la parte que el stock de producto terminado no
+        // cubre, consolidada por producto (5 pedidos del mismo = 1 línea con la suma).
+        async function cargarPedidosProducir() {
+            const tb = document.getElementById('tablaPedidosProducir');
+            try {
+                const res = await fetch('/api/pedidos/consolidado-produccion');
+                const data = await res.json();
+                const lista = (data && data.consolidado) || [];
+                const esc = (s) => String(s == null ? '' : s).replace(/</g, '&lt;');
+                tb.innerHTML = lista.length
+                    ? lista.map(c => `<tr>
+                        <td>${esc(c.nombre_producto || c.producto_key)}</td>
+                        <td class="text-center"><b>${Number(c.total_pendiente) || 0}</b></td>
+                        <td class="text-center">${Number(c.pedidos) || 0}</td>
+                    </tr>`).join('')
+                    : '<tr><td colspan="3" class="text-center">No hay pedidos pendientes de producción.</td></tr>';
+                const total = lista.reduce((a, c) => a + (Number(c.total_pendiente) || 0), 0);
+                document.getElementById('totalCajasProducir').textContent = total.toLocaleString('es-PE');
+            } catch (e) {
+                tb.innerHTML = '<tr><td colspan="3" class="text-center">Sin conexión.</td></tr>';
+            }
         }
 
         // La tapa ya no se adivina por el nombre del producto: sale de la
@@ -1167,7 +1225,11 @@
             document.getElementById('fechaCierreDia').value =
                 hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
         } catch (e) { console.error(e); }
-        registrarAutoRefresco(() => { cargarEstadoEnvasado(); cargarProduccionActiva(); }, 15000);
+        registrarAutoRefresco(() => {
+            cargarEstadoEnvasado();
+            cargarProduccionActiva();
+            if (document.getElementById('vistaPedidos').style.display !== 'none') cargarPedidosProducir();
+        }, 15000);
     </script>
 </body>
 </html>

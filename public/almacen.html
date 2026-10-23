@@ -724,6 +724,14 @@
         
         <form id="formSalida" class="grid-form" enctype="multipart/form-data">
             <div>
+                <label><b>🧾 Orden de Pedido (opcional):</b></label>
+                <select id="pedidoSalida" onchange="cargarPedidoEnSalida(this.value)">
+                    <option value="">-- Salida libre (sin pedido) --</option>
+                </select>
+                <small style="display:block; color:#555;">Si la salida despacha una orden PED-AAAA-NNNN, selecciónala: se cargan destino, transporte y productos pendientes, y la orden se descuenta al registrar.</small>
+            </div>
+
+            <div>
                 <label><b>Tipo de Salida:</b></label>
                 <select id="tipo_registro" name="tipo_registro">
                     <option value="CON GUIA">Con Guía de Remisión (Auto-lectura IA del documento)</option>
@@ -1267,7 +1275,13 @@
             document.querySelectorAll('.nav-btn, .tab-btn').forEach(b => {
                 b.classList.toggle('activo', b.dataset.vista === nombre);
             });
-            window.scrollTo(0, 0);
+            // El scroll se pide en el frame siguiente: si se lanza en el mismo
+            // tick en que la vista pasa de display:none a block, el navegador
+            // puede ignorarlo y la página se quedaba abajo (el formulario de
+            // Salidas no "subía").
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }));
         }
 
         let pendientesMap = {};
@@ -3041,6 +3055,65 @@
             cargarHistorialSalidas();
         }
 
+        // ---- Protocolo: salidas con órdenes de pedido (PED-AAAA-NNNN) ----
+        // El select solo ofrece pedidos con cajas aún por despachar; al elegir
+        // uno se rellena el formulario con sus datos de entrega y sus ítems
+        // pendientes. El servidor valida contra la orden antes de descontarla.
+        const EMPRESA_POR_DESTINO = { TIENDA: 'TIENDA', REPARTO: 'COBERTURA', PROVINCIA: 'PROVINCIA' };
+        let pedidosSalidaCache = [];
+
+        function pendientesDePedido(p) {
+            return (p.items || []).reduce((a, i) => a + Math.max(0, Number(i.cantidad_despacho) - Number(i.cantidad_despachada)), 0);
+        }
+
+        async function cargarPedidosParaSalida() {
+            try {
+                const res = await fetch('/api/pedidos');
+                const data = await res.json();
+                const sel = document.getElementById('pedidoSalida');
+                if (!sel) return;
+                const actual = sel.value;
+                pedidosSalidaCache = (data.pedidos || []).filter(p =>
+                    ['PARA_DESPACHO', 'EN_PRODUCCION', 'INSUMOS_FALTANTES'].indexOf(p.estado) !== -1 && pendientesDePedido(p) > 0
+                );
+                sel.innerHTML = '<option value="">-- Salida libre (sin pedido) --</option>' +
+                    pedidosSalidaCache.map(p =>
+                        `<option value="${p.id}">${p.numero_pedido} — ${p.tipo_destino} — ${pendientesDePedido(p)} caja(s) por despachar</option>`
+                    ).join('');
+                if (actual) sel.value = actual;
+            } catch (e) { console.error(e); }
+        }
+
+        async function cargarPedidoEnSalida(valor) {
+            if (!valor) return;
+            try {
+                const res = await fetch('/api/pedidos/' + valor);
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    alert('⚠️ ' + (data.mensaje || 'No se pudo cargar la orden de pedido.'));
+                    document.getElementById('pedidoSalida').value = '';
+                    return;
+                }
+                const p = data.pedido;
+                fijarEmpresaCliente(EMPRESA_POR_DESTINO[p.tipo_destino] || p.tipo_destino || '', false);
+                document.getElementById('destino').value = p.direccion || p.tipo_destino || '';
+                document.getElementById('chofer_licencia').value = p.chofer || '';
+                document.getElementById('placa').value = p.vehiculo || '';
+                if (p.fecha_despacho) document.getElementById('fecha_salida').value = String(p.fecha_despacho).substring(0, 10);
+                itemsDespachoArray = (p.items || [])
+                    .map(i => ({
+                        nombre: i.nombre_producto,
+                        cantidad: Math.max(0, Number(i.cantidad_despacho) - Number(i.cantidad_despachada)),
+                        producto_key: i.producto_key,
+                        articulo_id: null
+                    }))
+                    .filter(i => i.cantidad > 0);
+                renderTablaItems();
+                // El formulario "sube": siempre queda arriba en la vista
+                document.getElementById('formSalida').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } catch (e) { alert('Sin conexión con el servidor.'); }
+        }
+
         function fechaLocalISO(iso) {
             if (!iso) return '';
             const d = new Date(iso);
@@ -3172,6 +3245,10 @@
             const bar = document.getElementById('modoEdicionBar');
             bar.style.display = 'block';
             bar.innerHTML = `✏️ Editando despacho <b>${h.numero_guia || 'S/N'}</b> — <a href="javascript:void(0)" onclick="cancelarEdicion()" style="color:#856404;">Cancelar edición</a>`;
+            // Editar una salida existente no puede re-apuntarla a otra orden
+            const selPedido = document.getElementById('pedidoSalida');
+            selPedido.value = '';
+            selPedido.disabled = true;
             document.getElementById('formSalida').scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
 
@@ -3181,6 +3258,9 @@
             document.getElementById('modoEdicionBar').style.display = 'none';
             document.getElementById('formSalida').reset();
             document.getElementById('fecha_salida').valueAsDate = new Date();
+            const selPedido = document.getElementById('pedidoSalida');
+            selPedido.disabled = false;
+            selPedido.value = '';
             itemsDespachoArray = [];
             renderTablaItems();
         }
@@ -3242,6 +3322,8 @@
             const formData = new FormData(e.target);
             formData.append('usuario', localStorage.getItem('usuario_actual') || 'almacen_user');
             formData.append('items_json', JSON.stringify(itemsDespachoArray));
+            const pedidoSel = document.getElementById('pedidoSalida').value;
+            if (pedidoSel) formData.append('pedido_id', pedidoSel);
             const esEdicion = despachoEditando !== null;
             if (esEdicion) formData.append('despacho_id', despachoEditando);
 
@@ -3254,6 +3336,9 @@
                     cargarHistorialSalidas();
                     cargarProductoTerminado();
                     cargarInventarioAlmacen();
+                    cargarPedidosParaSalida();
+                    // El formulario vuelve a quedar arriba tras registrar
+                    document.getElementById('formSalida').scrollIntoView({ behavior: 'smooth', block: 'start' });
                 } else {
                     alert('❌ ' + (data.mensaje || 'Error.'));
                 }
@@ -3759,6 +3844,7 @@
         cargarProductoTerminado();
         cargarInventarioAlmacen();
         cargarHistorialSalidas();
+        cargarPedidosParaSalida();
         cargarInsumosServicio();
         cargarGuiasServicio();
         cargarAjustesPendientes();
@@ -3774,6 +3860,7 @@
             cargarAjustesPendientes();
             cargarPreingresos();
             cargarHistorialSalidas();
+            cargarPedidosParaSalida();
         }, 15000);
     </script>
 </body>

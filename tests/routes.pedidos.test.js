@@ -12,6 +12,10 @@
  *      despacho de pedido aparece en la pestaña Salidas, con guía o quede
  *      PENDIENTE REGULARIZAR).
  *   4. El consolidado suma varios pedidos del mismo producto en un solo lote.
+ *   5. Una salida del formulario de Almacén con pedido_id (protocolo de
+ *      salidas con órdenes): valida contra la orden —todo producto debe estar
+ *      en ella y no exceder lo pendiente— y descuenta pedidos_venta_items en
+ *      la misma transacción que descuenta stock.
  *
  * Las rutas viven en index.js y se alcanzan recorriendo la pila del app.
  */
@@ -452,5 +456,81 @@ describe('GET /api/pedidos/stock', () => {
     // El stock es lectura pura: ni transacción ni escritura.
     expect(transacciones()).toHaveLength(0);
     expect(sentencias().filter(s => /INSERT|UPDATE|DELETE/i.test(s))).toHaveLength(0);
+  });
+});
+
+describe('POST /api/salidas/registrar (protocolo: salidas con orden de pedido)', () => {
+  const stockOk = [
+    [/SELECT stock_cajas FROM producto_terminado WHERE producto_key = \$1/, filas({ stock_cajas: 100 })],
+    [/SELECT nombre_producto, stock_cajas FROM producto_terminado/, filas({ nombre_producto: 'Belini 1 Lt', stock_cajas: 100 })]
+  ];
+  const salidaCuerpo = (extra = {}) => Object.assign({
+    tipo_registro: 'CON GUIA',
+    numero_guia: 'G-778',
+    empresa: 'TIENDA',
+    items_json: JSON.stringify([{ nombre: 'Belini 1 Lt', cantidad: 10, producto_key: 'belini_1lt' }])
+  }, extra);
+
+  test('con pedido_id descuenta stock, anota la salida y baja la orden', async () => {
+    responder([
+      [SQL.pedidoForUpdate, filas({ id: 7, numero_pedido: 'PED-2026-0007', estado: 'PARA_DESPACHO' })],
+      [SQL.itemsDePedido, filas({ id: 71, pedido_id: 7, producto_key: 'belini_1lt', nombre_producto: 'Belini 1 Lt', cantidad_despacho: 50, cantidad_despachada: 0 })],
+      ...stockOk,
+      [SQL.reevaluar, filas({ total_despacho: 50, total_produccion: 0, despachada: 10, producida: 0 })]
+    ]);
+    const r = await invocar('post', '/api/salidas/registrar', { body: salidaCuerpo({ pedido_id: '7' }) });
+    expect(r.statusCode).toBe(200);
+    expect(r.cuerpo.success).toBe(true);
+    expect(r.cuerpo.pedido_estado).toBe('PARA_DESPACHO');
+    // La salida lleva el pedido en pedido_id (columna 17)
+    const paramsSalida = mockQuery.mock.calls.find(c => /INSERT INTO salidas_almacen/.test(String(c[0])))[1];
+    expect(paramsSalida).toHaveLength(17);
+    expect(paramsSalida[16]).toBe(7);
+    // Stock de PT: un solo descuento, y la orden se actualiza en la misma transacción
+    const paramsBaja = mockQuery.mock.calls.find(c => /stock_cajas = stock_cajas -/.test(String(c[0])))[1];
+    expect(paramsBaja).toEqual([10, 'belini_1lt']);
+    const paramsItems = mockQuery.mock.calls.find(c => /cantidad_despachada = cantidad_despachada \+/.test(String(c[0])))[1];
+    expect(paramsItems).toEqual([10, 71]);
+    expect(transacciones()).toEqual(['BEGIN', 'COMMIT']);
+  });
+
+  test('un producto que no está en la orden se rechaza sin registrar nada', async () => {
+    responder([
+      [SQL.pedidoForUpdate, filas({ id: 7, numero_pedido: 'PED-2026-0007', estado: 'PARA_DESPACHO' })],
+      [SQL.itemsDePedido, filas({ id: 71, pedido_id: 7, producto_key: 'belini_1lt', nombre_producto: 'Belini 1 Lt', cantidad_despacho: 50, cantidad_despachada: 0 })]
+    ]);
+    const r = await invocar('post', '/api/salidas/registrar', {
+      body: salidaCuerpo({ pedido_id: '7', items_json: JSON.stringify([{ nombre: 'Faisan 900 ml', cantidad: 5, producto_key: 'faisan_900ml' }]) })
+    });
+    expect(r.statusCode).toBe(400);
+    expect(r.cuerpo.mensaje).toContain('PED-2026-0007');
+    expect(sentencias().filter(s => /INSERT INTO salidas_almacen/.test(s))).toHaveLength(0);
+    expect(transacciones()).toEqual(['BEGIN', 'ROLLBACK']);
+  });
+
+  test('no deja despachar más de lo que falta en la orden', async () => {
+    responder([
+      [SQL.pedidoForUpdate, filas({ id: 7, numero_pedido: 'PED-2026-0007', estado: 'EN_PRODUCCION' })],
+      [SQL.itemsDePedido, filas({ id: 71, pedido_id: 7, producto_key: 'belini_1lt', nombre_producto: 'Belini 1 Lt', cantidad_despacho: 20, cantidad_despachada: 15 })]
+    ]);
+    const r = await invocar('post', '/api/salidas/registrar', {
+      body: salidaCuerpo({ pedido_id: '7', items_json: JSON.stringify([{ nombre: 'Belini 1 Lt', cantidad: 10, producto_key: 'belini_1lt' }]) })
+    });
+    expect(r.statusCode).toBe(400);
+    expect(r.cuerpo.mensaje).toMatch(/falta despachar 5 caja/);
+    expect(sentencias().filter(s => /INSERT INTO salidas_almacen/.test(s))).toHaveLength(0);
+    expect(transacciones()).toEqual(['BEGIN', 'ROLLBACK']);
+  });
+
+  test('sin pedido_id sigue siendo una salida libre que no toca órdenes', async () => {
+    responder(stockOk);
+    const r = await invocar('post', '/api/salidas/registrar', { body: salidaCuerpo() });
+    expect(r.statusCode).toBe(200);
+    expect(r.cuerpo.pedido_estado).toBeUndefined();
+    const paramsSalida = mockQuery.mock.calls.find(c => /INSERT INTO salidas_almacen/.test(String(c[0])))[1];
+    expect(paramsSalida[16]).toBeNull();
+    expect(sentencias().filter(s => /UPDATE pedidos_venta_items/.test(s))).toHaveLength(0);
+    expect(sentencias().filter(s => /FROM pedidos_venta WHERE/.test(s))).toHaveLength(0);
+    expect(transacciones()).toEqual(['BEGIN', 'COMMIT']);
   });
 });

@@ -3577,7 +3577,7 @@ app.post('/api/documento/leer', gIA, upload.single('archivo_documento'), async (
 app.post('/api/salidas/registrar', gAlmacen, upload.single('archivo_guia'), async (req, res) => {
     const client = await pool.connect();
     try {
-        const { tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, fecha_salida, usuario, items_json } = req.body;
+        const { tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, fecha_salida, usuario, items_json, pedido_id } = req.body;
         const items = JSON.parse(items_json || '[]');
         const despachoId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
@@ -3589,6 +3589,56 @@ app.post('/api/salidas/registrar', gAlmacen, upload.single('archivo_guia'), asyn
         const estadoGuia = tipo_registro === 'CON GUIA' ? 'REGULARIZADO' : 'PENDIENTE REGULARIZAR';
         const guiaFinal = numero_guia || 'S/N';
         const guia_url = req.file ? `/uploads/${req.file.filename}` : null;
+
+        // Protocolo de salidas con orden de pedido: si el formulario trae
+        // pedido_id, el despacho se valida contra la orden (todo ítem debe ser
+        // un producto de la orden y no puede superar lo que falta por despachar)
+        // y al cerrar la transacción se descuenta del pedido en pedidos_venta_items.
+        let pedido = null;
+        const itemsPedido = new Map();
+        const pedidoIdNum = parseInt(pedido_id, 10);
+        if (pedido_id) {
+            if (!Number.isFinite(pedidoIdNum)) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: 'Orden de pedido inválida.' });
+            }
+            const pedRes = await client.query('SELECT * FROM pedidos_venta WHERE id = $1 FOR UPDATE', [pedidoIdNum]);
+            if (!pedRes.rows.length) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, mensaje: 'La orden de pedido ya no existe.' });
+            }
+            pedido = pedRes.rows[0];
+            if (pedido.estado === 'CANCELADO' || pedido.estado === 'DESPACHADO') {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: `La orden ${pedido.numero_pedido} está ${pedido.estado}: no admite más salidas.` });
+            }
+            const itRes = await client.query('SELECT * FROM pedidos_venta_items WHERE pedido_id = $1', [pedidoIdNum]);
+            itRes.rows.forEach(i => itemsPedido.set(i.producto_key, i));
+            const cantidadesPorKey = new Map();
+            for (const item of items) {
+                const key = item.producto_key || null;
+                const nombre = (item.nombre || key || 'ítem').toString();
+                if (!key) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, mensaje: `La salida ligada a la orden solo admite productos del pedido; "${nombre}" es un insumo suelto.` });
+                }
+                cantidadesPorKey.set(key, (cantidadesPorKey.get(key) || 0) + (parseFloat(item.cantidad) || 0));
+            }
+            for (const [key, total] of cantidadesPorKey) {
+                const linea = itemsPedido.get(key);
+                const nombre = linea ? linea.nombre_producto : key;
+                if (!linea) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, mensaje: `El producto "${nombre}" no está en la orden ${pedido.numero_pedido}.` });
+                }
+                const pendiente = Number(linea.cantidad_despacho) - Number(linea.cantidad_despachada);
+                if (total > pendiente) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, mensaje: `La orden ${pedido.numero_pedido}: de "${nombre}" solo falta despachar ${pendiente} caja(s) y la salida trae ${total}.` });
+                }
+            }
+        }
+        const refDespacho = pedido ? 'Despacho pedido ' + pedido.numero_pedido : 'Despacho N° ' + despachoId;
 
         for (const item of items) {
             const idArticuloFinal = item.articulo_id ? parseInt(item.articulo_id) : null;
@@ -3630,7 +3680,7 @@ app.post('/api/salidas/registrar', gAlmacen, upload.single('archivo_guia'), asyn
                     cantidad, tipo_cambio: 'RESTA',
                     stock_anterior: stockAnterior, stock_nuevo: stockAnterior - cantidad,
                     usuario: usuarioResponsable(req, usuario),
-                    referencia: 'Despacho N° ' + despachoId + ' - guía ' + guiaFinal
+                    referencia: refDespacho + ' - guía ' + guiaFinal
                 });
             } else if (idArticuloFinal) {
                 const st = await client.query('SELECT nombre, stock FROM inventario WHERE id = $1', [idArticuloFinal]);
@@ -3644,7 +3694,7 @@ app.post('/api/salidas/registrar', gAlmacen, upload.single('archivo_guia'), asyn
                     cantidad, tipo_cambio: 'RESTA',
                     stock_anterior: stockAnterior, stock_nuevo: stockAnterior - cantidad,
                     usuario: usuarioResponsable(req, usuario),
-                    referencia: 'Despacho N° ' + despachoId + ' - guía ' + guiaFinal
+                    referencia: refDespacho + ' - guía ' + guiaFinal
                 });
             }
 
@@ -3656,18 +3706,39 @@ app.post('/api/salidas/registrar', gAlmacen, upload.single('archivo_guia'), asyn
 
             await client.query(`
                 INSERT INTO salidas_almacen 
-                (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, articulo_id, cantidad_salida, usuario_registro, estado_guia, guia_url, despacho_id, producto_key)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16);
+                (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, articulo_id, cantidad_salida, usuario_registro, estado_guia, guia_url, despacho_id, producto_key, pedido_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17);
             `, [
                 fecha_salida || new Date(), tipo_registro, guiaFinal, 
                 empresa || 'N/A', ruc || 'N/A', destino || 'N/A', 
                 chofer_licencia || 'N/A', placa || 'N/A', punto_partida || 'Almacén Principal', 
-                targetArticuloId, cantidad, usuario || 'almacen_user', estadoGuia, guia_url, despachoId, productoKeyFinal
+                targetArticuloId, cantidad, usuario || 'almacen_user', estadoGuia, guia_url, despachoId, productoKeyFinal,
+                pedido ? pedidoIdNum : null
             ]);
         }
 
+        // La salida también descuenta la orden de pedido: se anota en
+        // pedidos_venta_items y se reevalúa el estado (EN_PRODUCCION →
+        // DESPACHADO cuando ya se mandó todo lo asignado).
+        let pedidoEstado = null;
+        if (pedido) {
+            for (const item of items) {
+                const linea = itemsPedido.get(item.producto_key);
+                await client.query(
+                    'UPDATE pedidos_venta_items SET cantidad_despachada = cantidad_despachada + $1 WHERE id = $2',
+                    [parseFloat(item.cantidad), linea.id]
+                );
+            }
+            pedidoEstado = await reevaluarEstadoPedido(client, pedidoIdNum, pedido.estado);
+        }
+
         await client.query('COMMIT');
-        res.json({ success: true, mensaje: `Despacho de ${items.length} ítem(s) registrado correctamente.` });
+        const extra = pedido ? ` — orden ${pedido.numero_pedido}: ${pedidoEstado}` : '';
+        res.json({
+            success: true,
+            mensaje: `Despacho de ${items.length} ítem(s) registrado correctamente${extra}.`,
+            ...(pedido ? { pedido_estado: pedidoEstado } : {})
+        });
     } catch (err) {
         await client.query('ROLLBACK');
         console.error("Error al registrar salida:", err);

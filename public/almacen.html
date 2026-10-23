@@ -157,6 +157,11 @@
            ancho completo) y el historial debajo. Con dos columnas el formulario
            "se perdía" a un lado y el usuario no lo veía al abrir la pestaña. */
         #modulo-salidas .modulo-dos-col { grid-template-columns: 1fr !important; }
+        .barra-historial-salidas { max-width: 1100px; margin: 0 auto 14px; display: flex; justify-content: flex-end; }
+        .btn-ver-historial { background: rgba(120, 120, 128, 0.18); color: var(--texto); border: none; padding: 9px 16px; border-radius: 999px; cursor: pointer; font-weight: 800; font-size: 13px; font-family: inherit; box-shadow: var(--sombra); transition: filter 0.15s ease; }
+        .btn-ver-historial:hover { filter: brightness(0.96); }
+        .btn-ver-historial .flecha { display: inline-block; transition: transform 0.18s ease; }
+        .btn-ver-historial.abierto .flecha { transform: rotate(90deg); }
         .modulo-stock-pila { grid-template-columns: 1fr; }
 
         .tabbar {
@@ -719,6 +724,13 @@
     </section>
 
     <section class="modulo" id="modulo-salidas">
+    <!-- Botón compacto para abrir/cerrar el historial: no ocupa fila de más
+         y queda siempre visible arriba del formulario. -->
+    <div class="barra-historial-salidas">
+        <button type="button" id="btnToggleHistorial" class="btn-ver-historial" onclick="alternarHistorialSalidas()">
+            📜 Historial de Salidas <span class="flecha">▸</span>
+        </button>
+    </div>
     <div class="modulo-dos-col">
     <!-- 5. REGISTRO DE SALIDAS (PDF + MANUAL) -->
     <div class="table-container sec-rojo reveal">
@@ -828,8 +840,8 @@
         </form>
     </div>
 
-    <!-- 6. HISTORIAL DE SALIDAS AGRUPADO POR FECHA -->
-    <div class="table-container sec-gris reveal">
+    <!-- 6. HISTORIAL DE SALIDAS AGRUPADO POR FECHA (se abre con el botón) -->
+    <div class="table-container sec-gris reveal" id="seccionHistorialSalidas" style="display:none;">
         <h3 class="h3-gris">HISTORIAL DE SALIDAS REGISTRADAS</h3>
         
         <div class="fila-filtro-salida">
@@ -3046,7 +3058,21 @@
                 etiquetarTablas();
             }
 
+        // El historial vive detrás de un botón: cerrado no consume peticiones
+        // ni espacio; al abrirlo se carga (y el auto-refresh solo corre abierto).
+        let historialSalidasAbierto = false;
+
+        function alternarHistorialSalidas() {
+            historialSalidasAbierto = !historialSalidasAbierto;
+            const sec = document.getElementById('seccionHistorialSalidas');
+            const btn = document.getElementById('btnToggleHistorial');
+            sec.style.display = historialSalidasAbierto ? '' : 'none';
+            btn.classList.toggle('abierto', historialSalidasAbierto);
+            if (historialSalidasAbierto) cargarHistorialSalidas();
+        }
+
         async function cargarHistorialSalidas() {
+            if (!historialSalidasAbierto) return;
             try {
                 const res = await fetch('/api/salidas/historial');
                 historialSalidasGlobal = await res.json();

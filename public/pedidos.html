@@ -297,22 +297,20 @@
             <tbody id="tbConsolidado"></tbody>
         </table>
 
-        <h3 class="h3-teal" style="margin-top:24px;">Registrar cajas atendidas</h3>
-        <p class="mini-info">Cuando la planta cierre un lote (el reporte ya sumó las cajas al stock), anota aquí cuántas cajas cubren pedidos pendientes.</p>
-        <div class="fila">
-            <div class="campo" style="flex: 2 1 260px;">
-                <label>Producto</label>
-                <select id="aProducto"></select>
-            </div>
-            <div class="campo" style="flex: 1 1 120px;">
-                <label>Cajas atendidas</label>
-                <input id="aCajas" type="number" min="1" step="1">
-            </div>
-            <div class="campo" style="flex: 0 0 auto; align-self: end;">
-                <button class="btn btn-verde" onclick="atenderProduccion()">✔ Atender</button>
-            </div>
-        </div>
-        <div id="avisoAtencion" class="panel-aviso oculto"></div>
+        <h3 class="h3-teal" style="margin-top:24px;">Pedidos completados</h3>
+        <p class="mini-info">Sale solo cuando almacén ya despachó: número de pedido, producto, cantidad, guía y carro. Se refresca solo cada 30 segundos.</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>N° Pedido</th>
+                    <th>Producto</th>
+                    <th class="num">Cantidad</th>
+                    <th>Guía</th>
+                    <th>Carro</th>
+                </tr>
+            </thead>
+            <tbody id="tbCompletados"></tbody>
+        </table>
     </div>
 
     <!-- ============ STOCK ============ -->
@@ -380,7 +378,7 @@
             document.getElementById('tabProduccion').classList.toggle('activa', cual === 'produccion');
             document.getElementById('tabStock').classList.toggle('activa', cual === 'stock');
             if (cual === 'pedidos') cargarPedidos();
-            if (cual === 'produccion') cargarConsolidado();
+            if (cual === 'produccion') { cargarConsolidado(); cargarCompletados(); }
             if (cual === 'stock') cargarStock();
         }
 
@@ -597,9 +595,64 @@
                     body: JSON.stringify({ numero_guia: guia.trim() })
                 });
                 const data = await res.json();
-                alert(data.mensaje || (data.success ? 'Despachado.' : 'No se pudo despachar.'));
+                if (!data.success) {
+                    alert(data.mensaje || 'No se pudo despachar.');
+                    return;
+                }
+                // Mostrar pedidos completados en un modal limpio
+                const completados = data.completados || [];
+                if (completados.length) {
+                    mostrarModalCompletados(completados, p.numero_pedido || 'N° ' + id);
+                } else {
+                    alert(data.mensaje || 'Despachado.');
+                }
                 cargarPedidos();
+                cargarCompletados();
             } catch (e) { alert('Sin conexión con el servidor.'); }
+        }
+
+        function mostrarModalCompletados(completados, numeroPedido) {
+            const modal = document.createElement('div');
+            modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;';
+            modal.innerHTML = `
+                <div style="background:#fff;border-radius:16px;max-width:700px;width:100%;max-height:80vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,0.2);">
+                    <div style="padding:18px 20px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;">
+                        <h3 style="margin:0;font-size:17px;color:#1c1c1e;">✅ Pedido ${esc(numeroPedido)} completado</h3>
+                        <button onclick="this.closest('[style*=\"position:fixed\"]').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#888;line-height:1;">×</button>
+                    </div>
+                    <div style="padding:16px 20px;">
+                        <table style="width:100%;border-collapse:collapse;font-size:13.5px;">
+                            <thead>
+                                <tr style="border-bottom:2px solid #eee;">
+                                    <th style="text-align:left;padding:8px;">Producto</th>
+                                    <th style="text-align:right;padding:8px;">Cajas</th>
+                                    <th style="text-align:left;padding:8px;">Guía</th>
+                                    <th style="text-align:left;padding:8px;">Chofer</th>
+                                    <th style="text-align:left;padding:8px;">Carro</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${completados.map(c => `
+                                    <tr style="border-bottom:1px solid #f2f2f2;">
+                                        <td style="padding:10px 8px;">${esc(c.producto)}</td>
+                                        <td style="padding:10px 8px;text-align:right;font-weight:700;">${Number(c.cantidad) || 0}</td>
+                                        <td style="padding:10px 8px;">${esc(c.guia || '—')}</td>
+                                        <td style="padding:10px 8px;">${esc(c.chofer || '—')}</td>
+                                        <td style="padding:10px 8px;">${esc(c.vehiculo || '—')}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                        <div style="margin-top:16px;display:flex;justify-content:flex-end;">
+                            <button onclick="this.closest('[style*=\"position:fixed\"]').remove()" class="btn btn-teal">Cerrar</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            // Cerrar con ESC
+            const onEsc = (e) => { if (e.key === 'Escape') { modal.remove(); document.removeEventListener('keydown', onEsc); } };
+            document.addEventListener('keydown', onEsc);
         }
 
         async function cancelarPedido(id) {
@@ -625,34 +678,34 @@
                         <td class="num">${c.pedidos}</td>
                     </tr>`).join('')
                     : '<tr><td colspan="3" style="color:var(--texto2);">No hay producción pendiente de pedidos.</td></tr>';
-                const sel = document.getElementById('aProducto');
-                sel.innerHTML = lista.length
-                    ? lista.map(c => `<option value="${esc(c.producto_key)}">${esc(c.nombre_producto)} (${c.total_pendiente} cajas)</option>`).join('')
-                    : '<option value="">Sin pendientes</option>';
             } catch (e) {
                 document.getElementById('tbConsolidado').innerHTML = '<tr><td colspan="3">Sin conexión.</td></tr>';
             }
         }
 
-        async function atenderProduccion() {
-            const producto_key = document.getElementById('aProducto').value;
-            const cajas = parseInt(document.getElementById('aCajas').value, 10);
-            if (!producto_key) { alert('Elige un producto.'); return; }
-            if (!Number.isFinite(cajas) || cajas <= 0) { alert('Ingresa las cajas atendidas.'); return; }
+        async function cargarCompletados() {
             try {
-                const res = await fetch('/api/pedidos/atender-produccion', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ producto_key, cajas })
-                });
+                const res = await fetch('/api/pedidos/despachados');
                 const data = await res.json();
-                const el = document.getElementById('avisoAtencion');
-                el.className = 'panel-aviso ' + (data.success ? 'aviso-ok' : 'aviso-error');
-                el.textContent = data.mensaje || 'No se pudo registrar.';
-                el.classList.remove('oculto');
-                document.getElementById('aCajas').value = '';
-                cargarConsolidado();
-            } catch (e) { alert('Sin conexión con el servidor.'); }
+                const pedidos = (data && data.pedidos) || [];
+                const filas = [];
+                pedidos.forEach(p => {
+                    (p.items || []).forEach((it, idx) => {
+                        filas.push(`<tr>
+                            <td>${idx === 0 ? esc(p.numero_pedido || 'S/N') : ''}</td>
+                            <td>${esc(it.nombre_producto)}</td>
+                            <td class="num"><b>${Number(it.cantidad_despachada) || 0}</b></td>
+                            <td>${esc(p.numero_guia || '—')}</td>
+                            <td>${idx === 0 ? esc(p.carro || '—') : ''}</td>
+                        </tr>`);
+                    });
+                });
+                document.getElementById('tbCompletados').innerHTML = filas.length
+                    ? filas.join('')
+                    : '<tr><td colspan="5" style="color:var(--texto2);">Aún no hay pedidos despachados por almacén.</td></tr>';
+            } catch (e) {
+                document.getElementById('tbCompletados').innerHTML = '<tr><td colspan="5">Sin conexión.</td></tr>';
+            }
         }
 
         function estadoStock(actual, minimo) {
@@ -709,6 +762,7 @@
             window.registrarAutoRefresco(function () {
                 if (!document.getElementById('panelPedidos').classList.contains('oculto')) cargarPedidos();
                 if (!document.getElementById('panelStock').classList.contains('oculto')) cargarStock();
+                if (!document.getElementById('panelProduccion').classList.contains('oculto')) cargarCompletados();
             }, 30000);
         })();
     </script>

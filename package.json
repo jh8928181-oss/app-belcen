@@ -21,6 +21,7 @@
     "carga:stock-12oct": "node scripts/carga-stock-12oct.js",
     "carga:stock-14oct": "node scripts/carga-stock-14oct.js",
     "carga:stock-16oct": "node scripts/carga-stock-16oct.js",
+    "carga:stock-22oct": "node scripts/carga-stock-22oct.js",
     "create:users": "node scripts/create-users.js"
   },
   "keywords": [],

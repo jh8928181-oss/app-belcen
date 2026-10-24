@@ -8010,7 +8010,8 @@ app.post('/api/pedidos/:id/despachar', gAlmacen, async (req, res) => {
             return res.status(400).json({ success: false, mensaje: 'Este pedido ya despachó todo su stock asignado.' });
         }
 
-        const despachados = [];
+const despachados = [];
+        const completados = [];
         for (const item of pendientes) {
             const restante = Number(item.cantidad_despacho) - Number(item.cantidad_despachada);
             const st = await client.query(
@@ -8034,6 +8035,16 @@ app.post('/api/pedidos/:id/despachar', gAlmacen, async (req, res) => {
                 'UPDATE pedidos_venta_items SET cantidad_despachada = cantidad_despachada + $1 WHERE id = $2',
                 [restante, item.id]
             );
+            // Al despachar, las cajas salen de producción: completamos la producción
+            // del mismo ítem (no puede despacharse más de lo producido).
+            const pendienteProd = Number(item.cantidad_produccion) - Number(item.cantidad_producida);
+            const cubrirProd = Math.min(restante, pendienteProd);
+            if (cubrirProd > 0) {
+                await client.query(
+                    'UPDATE pedidos_venta_items SET cantidad_producida = cantidad_producida + $1 WHERE id = $2',
+                    [cubrirProd, item.id]
+                );
+            }
             await registrarHistorial(client, {
                 tipo: 'SALIDA',
                 origen: 'pedido_venta',
@@ -8046,16 +8057,12 @@ app.post('/api/pedidos/:id/despachar', gAlmacen, async (req, res) => {
                 usuario: usuarioResponsable(req, b.usuario),
                 referencia: `Despacho pedido ${pedido.numero_pedido}`
             });
-            // El despacho también es una salida de almacén: se registra en
-            // salidas_almacen para que aparezca en el historial de la pestaña
-            // Salidas. El descuento de stock ya se hizo arriba, aquí solo se
-            // anota el movimiento (no se vuelve a restar).
             await client.query(
                 `INSERT INTO salidas_almacen
                    (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino,
                     chofer_licencia, placa, punto_partida, articulo_id, cantidad_salida,
                     usuario_registro, estado_guia, guia_url, despacho_id, producto_key, pedido_id)
-                 VALUES (CURRENT_TIMESTAMP, $1, $2, $3, 'N/A', $4, $5, $6, 'Almacén Principal', NULL, $7, $8, $9, NULL, $10, $11, $12)`,
+                VALUES (CURRENT_TIMESTAMP, $1, $2, $3, 'N/A', $4, $5, $6, 'Almacén Principal', NULL, $7, $8, $9, NULL, $10, $11, $12)`,
                 [tipoRegistro, numeroGuia || 'S/N',
                  `${pedido.numero_pedido} — ${pedido.tipo_destino}`,
                  pedido.direccion || pedido.tipo_destino,
@@ -8064,16 +8071,30 @@ app.post('/api/pedidos/:id/despachar', gAlmacen, async (req, res) => {
                  usuarioResponsable(req, b.usuario),
                  estadoGuia, despachoId, item.producto_key, id]
             );
-            despachados.push({ producto_key: item.producto_key, nombre: st.rows[0].nombre_producto, cajas: restante });
+            despachados.push({
+                producto_key: item.producto_key,
+                nombre: st.rows[0].nombre_producto,
+                cajas: restante
+            });
+            completados.push({
+                numero_pedido: pedido.numero_pedido,
+                producto: st.rows[0].nombre_producto,
+                producto_key: item.producto_key,
+                cantidad: restante,
+                guia: numeroGuia || 'S/N',
+                chofer: pedido.chofer || 'N/A',
+                vehiculo: pedido.vehiculo || 'N/A'
+            });
         }
 
         const nuevoEstado = await reevaluarEstadoPedido(client, id, pedido.estado);
         await client.query('COMMIT');
         res.json({
             success: true,
-            mensaje: `Despacho del pedido ${pedido.numero_pedido} registrado (${nuevoEstado}).`,
+            mensaje: `Despacho del pedido ${pedido.numero_pedido} registrado (${nuevoEstado}). ${completados.length} pedidos completados.`,
             estado: nuevoEstado,
-            despachados
+            despachados,
+            completados
         });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
@@ -8133,6 +8154,44 @@ app.get('/api/pedidos/consolidado-produccion', async (req, res) => {
               ORDER BY total_pendiente DESC`
         );
         res.json({ success: true, consolidado: r.rows });
+    } catch (err) {
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+// Pedidos completados: la pestaña Producción lista sola lo que almacén ya
+// despachó (pedido, producto, cantidad, guía y carro salen de la salida
+// registrada). Incluye los pedidos despachados a medias, que también deben
+// mostrarse en cuanto almacén registró movimiento.
+app.get('/api/pedidos/despachados', async (req, res) => {
+    try {
+        const cab = await pool.query(
+            `SELECT p.id, p.numero_pedido, p.estado, p.vehiculo,
+                    (SELECT s.numero_guia FROM salidas_almacen s
+                      WHERE s.pedido_id = p.id ORDER BY s.id DESC LIMIT 1) AS numero_guia,
+                    COALESCE((SELECT s.placa FROM salidas_almacen s
+                                WHERE s.pedido_id = p.id AND s.placa IS NOT NULL
+                                  AND s.placa <> '' AND s.placa <> 'N/A'
+                                ORDER BY s.id DESC LIMIT 1), p.vehiculo) AS carro
+               FROM pedidos_venta p
+              WHERE p.estado = 'DESPACHADO'
+                 OR EXISTS (SELECT 1 FROM pedidos_venta_items i
+                             WHERE i.pedido_id = p.id AND i.cantidad_despachada > 0)
+              ORDER BY p.id DESC
+              LIMIT 50`
+        );
+        const ids = cab.rows.map(r => r.id);
+        const items = ids.length
+            ? (await pool.query(
+                `SELECT pedido_id, nombre_producto, cantidad_despachada
+                   FROM pedidos_venta_items
+                  WHERE pedido_id = ANY($1::int[]) AND cantidad_despachada > 0
+                  ORDER BY id`, [ids])).rows
+            : [];
+        const porPedido = new Map();
+        cab.rows.forEach(p => porPedido.set(p.id, { ...p, items: [] }));
+        items.forEach(i => { const p = porPedido.get(i.pedido_id); if (p) p.items.push(i); });
+        res.json({ success: true, pedidos: Array.from(porPedido.values()) });
     } catch (err) {
         res.status(500).json({ success: false, mensaje: err.message });
     }

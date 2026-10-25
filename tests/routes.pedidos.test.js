@@ -16,6 +16,8 @@
  *      salidas con órdenes): valida contra la orden —todo producto debe estar
  *      en ella y no exceder lo pendiente— y descuenta pedidos_venta_items en
  *      la misma transacción que descuenta stock.
+ *   6. Pedidos completados se arma sola desde lo que almacén despachó:
+ *      pedido, producto, cantidad, guía y carro salen de la salida registrada.
  *
  * Las rutas viven en index.js y se alcanzan recorriendo la pila del app.
  */
@@ -135,7 +137,9 @@ const SQL = {
   sumaDespachada: /SELECT COALESCE\(SUM\(cantidad_despachada\)/,
   consolidado: /FROM pedidos_venta_items i\s+JOIN pedidos_venta p ON p\.id = i\.pedido_id/,
   atencionFilas: /SELECT i\.id, i\.pedido_id, i\.cantidad_produccion/,
-  marcaProducida: /UPDATE pedidos_venta_items SET cantidad_producida/
+  marcaProducida: /UPDATE pedidos_venta_items SET cantidad_producida/,
+  despachadosCab: /SELECT p\.id, p\.numero_pedido, p\.estado, p\.vehiculo/,
+  despachadosItems: /SELECT pedido_id, nombre_producto, cantidad_despachada\s+FROM pedidos_venta_items/
 };
 
 /** Receta vigente con una sola línea de botella (1 por caja). */
@@ -432,6 +436,41 @@ describe('POST /api/pedidos/atender-produccion', () => {
     responder([]);
     const r = await invocar('post', '/api/pedidos/atender-produccion', { body: { producto_key: 'belini_1lt', cajas: 0 } });
     expect(r.statusCode).toBe(400);
+    expect(transacciones()).toHaveLength(0);
+  });
+});
+
+describe('GET /api/pedidos/despachados — pedidos completados', () => {
+  test('arma la lista sola desde lo que almacén despachó, con guía y carro', async () => {
+    responder([
+      [SQL.despachadosCab, filas(
+        { id: 41, numero_pedido: 'PED-2026-0041', estado: 'DESPACHADO', vehiculo: 'ABC-123', numero_guia: 'G-001', carro: 'ABC-123' },
+        { id: 42, numero_pedido: 'PED-2026-0042', estado: 'EN_PRODUCCION', vehiculo: 'XYZ-9', numero_guia: null, carro: 'XYZ-9' }
+      )],
+      [SQL.despachadosItems, filas(
+        { pedido_id: 41, nombre_producto: 'Belini 1 Lt', cantidad_despachada: 50 },
+        { pedido_id: 42, nombre_producto: 'B-1 1 Lt', cantidad_despachada: 12 }
+      )]
+    ]);
+    const r = await invocar('get', '/api/pedidos/despachados');
+    expect(r.statusCode).toBe(200);
+    expect(r.cuerpo.success).toBe(true);
+    expect(r.cuerpo.pedidos).toHaveLength(2);
+    expect(r.cuerpo.pedidos[0]).toMatchObject({ numero_pedido: 'PED-2026-0041', numero_guia: 'G-001', carro: 'ABC-123' });
+    expect(r.cuerpo.pedidos[0].items).toHaveLength(1);
+    expect(r.cuerpo.pedidos[0].items[0]).toMatchObject({ nombre_producto: 'Belini 1 Lt', cantidad_despachada: 50 });
+    // Un pedido despachado a medias (esperando producción) también aparece.
+    expect(r.cuerpo.pedidos[1]).toMatchObject({ estado: 'EN_PRODUCCION', numero_guia: null });
+    expect(transacciones()).toHaveLength(0);
+    expect(sentencias().filter(s => /INSERT|UPDATE|DELETE/i.test(s))).toHaveLength(0);
+  });
+
+  test('es lectura pura: sin pedidos no consulta renglones ni escribe', async () => {
+    responder([[SQL.despachadosCab, filas()]]);
+    const r = await invocar('get', '/api/pedidos/despachados');
+    expect(r.statusCode).toBe(200);
+    expect(r.cuerpo.pedidos).toEqual([]);
+    expect(sentencias().filter(s => SQL.despachadosItems.test(s))).toHaveLength(0);
     expect(transacciones()).toHaveLength(0);
   });
 });

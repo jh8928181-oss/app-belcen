@@ -310,10 +310,21 @@
                 padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
                 justify-content: flex-start; margin-bottom: 0;
                 box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.08);
+                /* Mas opaca que en escritorio: con 0.72 el texto de atras se
+                   leia por debajo de la barra y la volvia ilegible. */
+                background: rgba(255, 255, 255, 0.94);
             }
             .atajo {
                 flex-direction: column; align-items: center; justify-content: center;
                 gap: 3px; padding: 7px 6px; font-size: 10px;
+                /* border-radius: 999px (escritorio) convertia el boton activo
+                   en un circulo gigante que sobresalia de la barra; en movil
+                   se usa esquina redondeada tipica de tab bar. */
+                border-radius: 14px;
+            }
+            .atajo.activo {
+                background: var(--azul); color: #fff;
+                box-shadow: 0 2px 8px rgba(0, 123, 255, 0.35);
             }
             /* Los paneles ceden espacio parejo; min-width: 0 es lo que permite
                que el texto se recorte con puntos suspensivos en vez de
@@ -331,7 +342,14 @@
                 display: inline-flex; align-items: center; justify-content: center;
                 flex: 0 0 auto; min-width: 38px;
                 color: var(--azul); font-weight: 800; padding: 7px 10px;
+                font-size: 17px; line-height: 1;
+                /* Sin esto el navegador pintaba el boton "..." con el borde y
+                   el fondo gris nativo de <button>, distinto al resto de la barra. */
+                border: none; background: transparent; border-radius: 14px;
+                font-family: inherit; cursor: pointer;
+                -webkit-appearance: none; appearance: none;
             }
+            .atajos-mas[aria-expanded="true"] { background: rgba(0, 123, 255, 0.1); }
             .atajos-acciones {
                 position: absolute; bottom: calc(100% + 10px); right: 10px;
                 flex-direction: column; align-items: stretch; min-width: 190px;
@@ -396,12 +414,12 @@
 
         <!-- PANEL 1: VIGILANCIA -->
         <div class="tarjeta tarjeta-panel g1" id="panel-vigilancia">
-            <button class="panel-cabecera" id="btn-vigilancia" onclick="togglePanel('vigilancia')" aria-expanded="true" aria-controls="cuerpo-vigilancia">
+            <button class="panel-cabecera" id="btn-vigilancia" onclick="togglePanel('vigilancia')" aria-expanded="false" aria-controls="cuerpo-vigilancia">
                 <span class="panel-titulo">🛡️ VIGILANCIA — INGRESOS Y GUÍAS</span>
                 <span class="panel-contador" id="contadorVigilancia">0 ingresos</span>
                 <span class="panel-flecha">▼</span>
             </button>
-            <div class="panel-cuerpo abierto" id="cuerpo-vigilancia">
+            <div class="panel-cuerpo" id="cuerpo-vigilancia">
                 <div class="sub-bloque">
                     <h3 class="entradas">🛡️ INGRESOS REGISTRADOS POR VIGILANCIA</h3>
                     <input id="filtroEntradasVig" class="filtro" placeholder="🔍 Buscar por guía, proveedor, chofer, placa, producto o fecha...">
@@ -1475,6 +1493,7 @@ tbody.appendChild(tr);
                     btnToggle.setAttribute('aria-expanded', String(oculto));
                     const n = btnToggle.getAttribute('data-num') || '0';
                     btnToggle.innerHTML = (oculto ? '⏷' : '⏵') + ' Insumos (' + n + ')';
+                    recalcularPanelesAbiertos();
                 });
             });
 
@@ -1546,11 +1565,27 @@ tbody.appendChild(tr);
             if (btn) btn.setAttribute('aria-expanded', abierto ? 'true' : 'false');
         }
 
-        window.addEventListener('resize', function () {
-            document.querySelectorAll('.panel-cuerpo.abierto').forEach(function (c) {
-                c.style.maxHeight = c.scrollHeight + 'px';
+        // El contenido de cada panel llega de forma asíncrona y sigue creciendo
+        // después de abrirlo (tablas, contadores, detalle de insumos). Si el
+        // max-height no se vuelve a calcular, el panel queda cortado a media
+        // altura (p. ej. el reporte de refinería cortado en "Insumos usados").
+        // Se recalcula ante cualquier cambio de DOM dentro de un panel abierto.
+        let rafPaneles = 0;
+        function recalcularPanelesAbiertos() {
+            if (rafPaneles) return;
+            rafPaneles = requestAnimationFrame(function () {
+                rafPaneles = 0;
+                document.querySelectorAll('.panel-cuerpo.abierto').forEach(function (c) {
+                    c.style.maxHeight = c.scrollHeight + 'px';
+                });
             });
+        }
+        document.querySelectorAll('.panel-cuerpo').forEach(function (c) {
+            new MutationObserver(recalcularPanelesAbiertos)
+                .observe(c, { childList: true, subtree: true, characterData: true });
         });
+
+        window.addEventListener('resize', recalcularPanelesAbiertos);
 
         // Cambiar vista individual (Ingresos, Salidas o Servicios) en Almacén
         function verAlmacen(tipo) {
@@ -1688,12 +1723,8 @@ tbody.appendChild(tr);
             }
         });
 
-        // Primer panel abierto por defecto
-        const cuerpoVigilancia = document.getElementById('cuerpo-vigilancia');
-        if (cuerpoVigilancia) {
-            cuerpoVigilancia.classList.add('abierto');
-            cuerpoVigilancia.style.maxHeight = cuerpoVigilancia.scrollHeight + 'px';
-        }
+        // Los paneles arrancan cerrados (incluido Vigilancia): al entrar a
+        // Auditoría ya no se despliega el reporte de vigilancia por la fuerza.
 
         cargarEntradas();
         cargarSalidas();

@@ -84,6 +84,7 @@
         h4 { font-size: 14px; font-weight: 700; color: var(--texto); margin: 18px 0 4px; }
         .sub-titulo.entradas { color: #1e7e34; }
         .sub-titulo.salidas { color: #bd2130; }
+        .sub-titulo.servicios { color: #0e7490; }
         .sub-divisor { height: 1px; background: #e6e6eb; margin: 18px 0 0; border: none; }
         table + .sub-divisor { margin-top: 14px; }
 
@@ -105,6 +106,7 @@
         }
         th.green { background: rgba(30, 126, 52, 0.10); color: #1e7e34; }
         th.rosa { background: rgba(189, 33, 48, 0.10); color: #bd2130; }
+        th.teal { background: rgba(14, 116, 144, 0.10); color: #0e7490; }
         td { border-bottom: 1px solid #f0f0f3; }
         tbody tr:last-child td { border-bottom: none; }
         tbody tr:hover td { background: rgba(0, 0, 0, 0.02); }
@@ -437,9 +439,10 @@
             <div class="panel-cuerpo" id="cuerpo-almacen">
                 <div class="sub-bloque">
                     <h3 class="entradas">📦 ALMACÉN — CONFORMIDAD Y DESPACHOS</h3>
-                    <div class="seg-alm" role="tablist" aria-label="Ver ingresos o salidas">
+                    <div class="seg-alm" role="tablist" aria-label="Ver ingresos, salidas o servicios">
                         <button id="segAlmIng" class="activo" role="tab" aria-selected="true" onclick="verAlmacen('ingresos')">📥 INGRESOS</button>
                         <button id="segAlmSal" role="tab" aria-selected="false" onclick="verAlmacen('salidas')">📤 SALIDAS</button>
+                        <button id="segAlmSrv" role="tab" aria-selected="false" onclick="verAlmacen('servicios')">🧰 SERVICIOS</button>
                     </div>
                     <div class="vista-alm" id="vistaalm-ingresos">
                         <h4 class="sub-titulo entradas">📥 Conformidad de Ingresos — Registrada por Almacén</h4>
@@ -487,6 +490,25 @@
                                 </thead>
                                 <tbody id="tablaSalidas">
                                     <tr><td colspan="7" class="text-center">Cargando salidas...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="vista-alm oculta" id="vistaalm-servicios">
+                        <h4 class="sub-titulo servicios">🧰 Servicios de Soplado (SAUÑE / B&amp;M) — Botellas que Llegan</h4>
+                        <input id="filtroServicios" class="filtro" placeholder="🔍 Buscar por producto, proveedor o fecha...">
+                        <div class="tabla-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th class="teal">Proveedor</th>
+                                        <th class="teal">Producto</th>
+                                        <th class="teal text-center">Cantidad (Und)</th>
+                                        <th class="teal">Categoría</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tablaServicios">
+                                    <tr><td colspan="4" class="text-center">Cargando botellas de servicios...</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -723,6 +745,7 @@
         let proveedoresFiltro = []; // catálogo de la Base de Datos General
         let proveedoresFiltroOk = false;
         let salidasGlobal = [];
+        let serviciosGlobal = [];
         let informesGlobal = [];
         let refinadoActual = null;
         let historialCierresGlobal = [];
@@ -1091,6 +1114,45 @@
             } catch (err) {
                 console.error(err);
                 document.getElementById('tablaSalidas').innerHTML = '<tr><td colspan="7" class="text-center" style="color:red;">Error al cargar las salidas.</td></tr>';
+            }
+        }
+
+        // 🧰 SERVICIOS DE SOPLADO (botellas que llegan de SAUÑE / B&M)
+        function renderServicios() {
+            const tbody = document.getElementById('tablaServicios');
+            const q = (document.getElementById('filtroServicios').value || '').toLowerCase();
+            const filtradas = serviciosGlobal.filter(it =>
+                (it.producto || '').toLowerCase().includes(q) ||
+                (it.proveedor || '').toLowerCase().includes(q) ||
+                (it.categoria || '').toLowerCase().includes(q) ||
+                formatearFecha(it.fecha).toLowerCase().includes(q) ||
+                String(it.cantidad).toLowerCase().includes(q)
+            );
+            tbody.innerHTML = filtradas.length === 0 ? '<tr><td colspan="4" class="text-center sin-registros">No hay botellas de servicios que coincidan con la búsqueda.</td></tr>' : '';
+            filtradas.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><b>${escaparHTML(item.proveedor || 'SIN PROVEEDOR')}</b><br><small>${escaparHTML(formatearFecha(item.fecha))} · ${escaparHTML(item.tipo_doc === 'CONTROL' ? 'Control' : 'Guía')} ${escaparHTML(item.numero || 'S/N')}</small></td>
+                    <td>${escaparHTML(item.producto || 'N/D')}</td>
+                    <td class="text-center" style="color:#0e7490; font-weight:bold;">${item.cantidad}</td>
+                    <td>${escaparHTML(item.categoria || 'SIN CATEGORÍA')}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+            etiquetarTablas();
+        }
+
+        async function cargarServicios() {
+            try {
+                const res = await fetch('/api/auditoria/servicios');
+                if (!res.ok) throw new Error('Error del servidor.');
+                const datos = await res.json();
+                serviciosGlobal = Array.isArray(datos) ? datos : [];
+                renderServicios();
+                actualizarContadores();
+            } catch (err) {
+                console.error(err);
+                document.getElementById('tablaServicios').innerHTML = '<tr><td colspan="4" class="text-center" style="color:red;">Error al cargar los servicios.</td></tr>';
             }
         }
 
@@ -1490,19 +1552,23 @@ tbody.appendChild(tr);
             });
         });
 
-        // Cambiar vista individual (Ingresos o Salidas) en Almacén
+        // Cambiar vista individual (Ingresos, Salidas o Servicios) en Almacén
         function verAlmacen(tipo) {
-            const vistaIng = document.getElementById('vistaalm-ingresos');
-            const vistaSal = document.getElementById('vistaalm-salidas');
-            const segIng = document.getElementById('segAlmIng');
-            const segSal = document.getElementById('segAlmSal');
-            const esIngresos = tipo === 'ingresos';
-            if (vistaIng) vistaIng.classList.toggle('oculta', !esIngresos);
-            if (vistaSal) vistaSal.classList.toggle('oculta', esIngresos);
-            if (segIng) segIng.classList.toggle('activo', esIngresos);
-            if (segSal) segSal.classList.toggle('activo', !esIngresos);
-            if (segIng) segIng.setAttribute('aria-selected', esIngresos ? 'true' : 'false');
-            if (segSal) segSal.setAttribute('aria-selected', esIngresos ? 'false' : 'true');
+            const pestanas = [
+                { vista: 'vistaalm-ingresos', btn: 'segAlmIng', clave: 'ingresos' },
+                { vista: 'vistaalm-salidas', btn: 'segAlmSal', clave: 'salidas' },
+                { vista: 'vistaalm-servicios', btn: 'segAlmSrv', clave: 'servicios' }
+            ];
+            pestanas.forEach(p => {
+                const vista = document.getElementById(p.vista);
+                const btn = document.getElementById(p.btn);
+                const activa = tipo === p.clave;
+                if (vista) vista.classList.toggle('oculta', !activa);
+                if (btn) {
+                    btn.classList.toggle('activo', activa);
+                    btn.setAttribute('aria-selected', activa ? 'true' : 'false');
+                }
+            });
             const cuerpoAlm = document.getElementById('cuerpo-almacen');
             if (cuerpoAlm && cuerpoAlm.classList.contains('abierto')) {
                 cuerpoAlm.style.maxHeight = cuerpoAlm.scrollHeight + 'px';
@@ -1514,7 +1580,7 @@ tbody.appendChild(tr);
             const c1 = document.getElementById('contadorVigilancia');
             if (c1) c1.textContent = vigilanciaGlobal.length + (vigilanciaGlobal.length === 1 ? ' guía' : ' guías');
             const c2 = document.getElementById('contadorAlmacen');
-            if (c2) c2.textContent = entradasAlmGlobal.length + ' conformidades · ' + salidasGlobal.length + ' salidas';
+            if (c2) c2.textContent = entradasAlmGlobal.length + ' conformidades · ' + salidasGlobal.length + ' salidas · ' + serviciosGlobal.length + ' servicios';
             const c3 = document.getElementById('contadorProduccionCierre');
             if (c3) c3.textContent = informesGlobal.length + ' producciones · ' + historialCierresGlobal.length + ' cierres';
             const cSop = document.getElementById('contadorSoplado');
@@ -1631,6 +1697,7 @@ tbody.appendChild(tr);
 
         cargarEntradas();
         cargarSalidas();
+        cargarServicios();
         cargarProduccion();
         cargarSoplado();
         cargarRefinado();
@@ -1641,6 +1708,7 @@ tbody.appendChild(tr);
         document.getElementById('filtroEntradasAlm').addEventListener('input', renderEntradasAlm);
         document.getElementById('filtroProvIngresos').addEventListener('change', renderEntradasAlm);
         document.getElementById('filtroSalidas').addEventListener('input', renderSalidas);
+        document.getElementById('filtroServicios').addEventListener('input', renderServicios);
         document.getElementById('filtroProduccion').addEventListener('input', renderProduccion);
         document.getElementById('filtroRefinado').addEventListener('change', cargarRefinado);
         document.getElementById('filtroRefinadoTurno').addEventListener('change', cargarRefinado);
@@ -1649,6 +1717,7 @@ tbody.appendChild(tr);
         registrarAutoRefresco(() => {
             cargarEntradas();
             cargarSalidas();
+            cargarServicios();
             cargarProduccion();
             cargarRefinado();
             cargarHistorialCierresAud();

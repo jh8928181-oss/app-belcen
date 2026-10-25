@@ -4186,6 +4186,39 @@ app.get('/api/auditoria/salidas', gAuditoria, async (req, res) => {
     }
 });
 
+// --- AUDITORÍA: BOTELLAS QUE LLEGAN DE LOS SERVICIOS DE SOPLADO ---
+// Lo que Almacén registró en Servicios (guías y controles de SAUÑE / B&M),
+// una fila por producto con su cantidad en unidades y su categoría. Excluye
+// las guías documentales (las que traen controles ya vinculados): esas
+// botellas ya contaron al registrar el control y listarlas duplicaría el
+// total.
+app.get('/api/auditoria/servicios', gAuditoria, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT g.fecha, g.servicio, g.tipo_doc, g.numero,
+                   i.producto, i.cantidad, inv.categoria
+              FROM servicios_guias_items i
+              JOIN servicios_guias g ON g.id = i.guia_id
+         LEFT JOIN inventario inv ON inv.id = i.botella_id
+             WHERE g.tipo_doc = 'CONTROL'
+                OR COALESCE(array_length(g.controles_ids, 1), 0) = 0
+             ORDER BY g.fecha DESC NULLS LAST, g.id DESC, i.id
+             LIMIT 500
+        `);
+        res.json(result.rows.map(f => ({
+            fecha: f.fecha,
+            proveedor: f.servicio,
+            numero: f.numero,
+            tipo_doc: f.tipo_doc,
+            producto: f.producto,
+            cantidad: Number(f.cantidad) || 0,
+            categoria: f.categoria || 'BOTELLAS Y GALONERAS'
+        })));
+    } catch (err) {
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
 // --- AUDITORÍA: HISTORIAL DE MOVIMIENTOS DE INVENTARIO ---
 app.get('/api/auditoria/historial', gAuditoria, async (req, res) => {
     try {
@@ -5030,202 +5063,6 @@ app.post('/api/almacen/ajustes-pendientes/:id/aplicar', gAlmacen, async (req, re
         await client.query('ROLLBACK').catch(() => {});
         console.error('Error al aplicar ajuste pendiente:', err);
         res.status(500).json({ success: false, mensaje: 'Error al aplicar el ajuste: ' + err.message });
-    } finally {
-        client.release();
-    }
-});
-
-// --- TERCEROS (Opción 1: stock en tránsito). El tercero avisa lotes listos
-// y se jalan a la línea ANTES de su guía oficial. El pre-ingreso NO mueve
-// stock: habilita el consumo (lo que falte cae a ajustes pendientes, como
-// siempre). Al llegar la guía se vincula: ingresan las botellas, se saldan
-// los pendientes de ese artículo y queda la conciliación guía vs estimado.
-app.get('/api/terceros/preingresos', async (req, res) => {
-    try {
-        const solo = String(req.query.estado || 'TODOS').toUpperCase();
-        const result = await pool.query(
-            `SELECT * FROM terceros_preingresos
-              WHERE ($1 = 'TODOS' OR estado = $1)
-              ORDER BY fecha_registro DESC, id DESC LIMIT 200`,
-            [solo === 'PREINGRESO' ? 'PREINGRESO' : (solo === 'VINCULADO' ? 'VINCULADO' : 'TODOS')]
-        );
-        res.json({ success: true, preingresos: result.rows });
-    } catch (err) {
-        console.error('Error al listar pre-ingresos:', err);
-        if (err && err.code === '42P01') {
-            // Tabla aun no creada: la migracion esta pendiente de aplicar.
-            return res.json({ success: true, migracionPendiente: true, preingresos: [] });
-        }
-        res.status(500).json({ success: false, mensaje: 'Error al cargar pre-ingresos: ' + err.message });
-    }
-});
-
-app.post('/api/terceros/preingresos', gAlmacen, async (req, res) => {
-    const client = await pool.connect();
-    try {
-        const tercero = String((req.body && req.body.tercero) || '').trim().slice(0, 100);
-        const articuloId = parseInt(req.body && req.body.articulo_id, 10);
-        const estimada = Number(req.body && req.body.cantidad_estimada);
-        const observaciones = String((req.body && req.body.observaciones) || '').trim().slice(0, 250);
-        if (!tercero) {
-            return res.status(400).json({ success: false, mensaje: 'Indica el nombre del tercero.' });
-        }
-        if (!Number.isInteger(articuloId) || articuloId <= 0) {
-            return res.status(400).json({ success: false, mensaje: 'Selecciona la botella del inventario.' });
-        }
-        if (!(estimada > 0)) {
-            return res.status(400).json({ success: false, mensaje: 'La cantidad estimada debe ser mayor a 0.' });
-        }
-        await client.query('BEGIN');
-        const art = await client.query('SELECT id, nombre FROM inventario WHERE id = $1', [articuloId]);
-        if (!art.rows.length) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ success: false, mensaje: 'La botella ya no existe en el inventario.' });
-        }
-        const ins = await client.query(
-            `INSERT INTO terceros_preingresos (tercero, articulo_id, articulo_nombre, cantidad_estimada, observaciones, usuario_registro)
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-            [tercero, articuloId, art.rows[0].nombre, estimada, observaciones || null,
-             usuarioResponsable(req, req.body && req.body.usuario)]
-        );
-        const id = ins.rows[0].id;
-        const codigo = 'TERC-' + String(id).padStart(4, '0');
-        await client.query('UPDATE terceros_preingresos SET codigo = $1 WHERE id = $2', [codigo, id]);
-        await client.query('COMMIT');
-        res.status(201).json({
-            success: true,
-            mensaje: `Pre-ingreso ${codigo} registrado: ${estimada} de "${art.rows[0].nombre}" por ${tercero}. No mueve stock; producción ya puede consumir y lo que falte quedará en ajustes pendientes.`,
-            preingreso: { id, codigo, tercero, articulo_id: articuloId, articulo_nombre: art.rows[0].nombre, cantidad_estimada: estimada, estado: 'PREINGRESO' }
-        });
-    } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
-        console.error('Error al registrar pre-ingreso:', err);
-        if (err && err.code === '42P01') {
-            return res.status(500).json({ success: false, mensaje: 'Falta aplicar la migración de pre-ingresos: ejecuta "npm run migrate" en el servidor.' });
-        }
-        res.status(500).json({ success: false, mensaje: 'Error al registrar pre-ingreso: ' + err.message });
-    } finally {
-        client.release();
-    }
-});
-
-app.post('/api/terceros/preingresos/:id/vincular', gAlmacen, async (req, res) => {
-    const client = await pool.connect();
-    let terceroRef = '';
-    try {
-        const id = parseInt(req.params.id, 10);
-        const numeroGuia = String((req.body && req.body.numero_guia) || '').trim().slice(0, 50);
-        const cantGuia = Number(req.body && req.body.cantidad_guia);
-        if (!id) {
-            return res.status(400).json({ success: false, mensaje: 'Pre-ingreso inválido.' });
-        }
-        if (!numeroGuia) {
-            return res.status(400).json({ success: false, mensaje: 'Escribe el número de la guía oficial.' });
-        }
-        if (!(cantGuia > 0)) {
-            return res.status(400).json({ success: false, mensaje: 'La cantidad de la guía debe ser mayor a 0.' });
-        }
-        await client.query('BEGIN');
-        const pre = await client.query('SELECT * FROM terceros_preingresos WHERE id = $1 FOR UPDATE', [id]);
-        if (!pre.rows.length) {
-            await client.query('ROLLBACK');
-            return res.status(404).json({ success: false, mensaje: 'El pre-ingreso ya no existe.' });
-        }
-        const p = pre.rows[0];
-        terceroRef = p.tercero;
-        if (p.estado !== 'PREINGRESO') {
-            await client.query('ROLLBACK');
-            return res.status(409).json({ success: false, mensaje: `Ese pre-ingreso ya fue vinculado (guía ${p.numero_guia || '—'}).` });
-        }
-        const st = await client.query('SELECT nombre, stock FROM inventario WHERE id = $1 FOR UPDATE', [p.articulo_id]);
-        if (!st.rows.length) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ success: false, mensaje: 'La botella ya no existe en el inventario.' });
-        }
-        const stockAntes = Number(st.rows[0].stock) || 0;
-        const ing = await client.query(
-            'UPDATE inventario SET stock = stock + $1 WHERE id = $2 RETURNING stock',
-            [cantGuia, p.articulo_id]
-        );
-        await actualizarEstadoArticulo(client, st.rows[0].nombre, p.articulo_id);
-        await registrarHistorial(client, {
-            tipo: 'MOVIMIENTO', origen: 'tercero_guia',
-            producto: st.rows[0].nombre, articulo_id: p.articulo_id,
-            cantidad: cantGuia, tipo_cambio: 'SUMA',
-            stock_anterior: stockAntes, stock_nuevo: Number(ing.rows[0].stock),
-            usuario: usuarioResponsable(req, req.body && req.body.usuario),
-            referencia: `Ingreso de botellas por guía ${numeroGuia} de ${p.tercero} (pre-ingreso ${p.codigo})`
-        });
-        await client.query(
-            `UPDATE terceros_preingresos
-                SET estado = 'VINCULADO', cantidad_guia = $1, numero_guia = $2,
-                    usuario_vincula = $3, fecha_vinculacion = CURRENT_TIMESTAMP
-              WHERE id = $4`,
-            [cantGuia, numeroGuia, usuarioResponsable(req, req.body && req.body.usuario), id]
-        );
-        // Se saldan solos los pendientes de ese artículo, del más viejo al más
-        // nuevo, con la misma regla de aplicar: entero o nada, mientras alcance.
-        const pend = await client.query(
-            `SELECT id, cantidad_pendiente, articulo_nombre FROM ajustes_pendientes
-              WHERE articulo_id = $1 AND estado = 'PENDIENTE' ORDER BY id ASC`,
-            [p.articulo_id]
-        );
-        const saldadas = [];
-        const sinSaldar = [];
-        for (const q of pend.rows) {
-            const debe = Number(q.cantidad_pendiente) || 0;
-            if (!(debe > 0)) continue;
-            const disp = await client.query('SELECT stock FROM inventario WHERE id = $1', [p.articulo_id]);
-            const hay = Number(disp.rows[0].stock) || 0;
-            if (hay < debe) { sinSaldar.push(q.id); continue; }
-            const desc = await client.query(
-                'UPDATE inventario SET stock = stock - $1 WHERE id = $2 RETURNING stock',
-                [debe, p.articulo_id]
-            );
-            await actualizarEstadoArticulo(client, st.rows[0].nombre, p.articulo_id);
-            await registrarHistorial(client, {
-                tipo: 'SALIDA', origen: 'ajuste_pendiente',
-                producto: st.rows[0].nombre, articulo_id: p.articulo_id,
-                cantidad: debe, tipo_cambio: 'RESTA',
-                stock_anterior: hay, stock_nuevo: Number(desc.rows[0].stock),
-                usuario: usuarioResponsable(req, req.body && req.body.usuario),
-                referencia: `Ajuste pendiente saldado con guía ${numeroGuia} de ${p.tercero} (pre-ingreso ${p.codigo})`
-            });
-            await client.query(
-                `UPDATE ajustes_pendientes
-                    SET estado = 'APLICADA', cantidad_aplicada = $1,
-                        vinculo_tipo = 'GUIA', vinculo_ref = $2,
-                        aplicado_por = $3, fecha_aplicacion = CURRENT_TIMESTAMP
-                 WHERE id = $4`,
-                [debe, numeroGuia, usuarioResponsable(req, req.body && req.body.usuario), q.id]
-            );
-            saldadas.push(q.id);
-        }
-        const fin = await client.query('SELECT stock FROM inventario WHERE id = $1', [p.articulo_id]);
-        await client.query('COMMIT');
-        const estimada = Number(p.cantidad_estimada) || 0;
-        const diferencia = Math.round(((cantGuia - estimada) + Number.EPSILON) * 1000000) / 1000000;
-        const ein = (v) => { const n = Number(v); return Number.isInteger(n) ? String(n) : String(v); };
-        res.json({
-            success: true,
-            mensaje: `Guía ${numeroGuia} vinculada al pre-ingreso ${p.codigo}: ingresaron ${ein(cantGuia)} botellas. ` +
-                `Diferencia vs estimado: ${diferencia > 0 ? '+' : ''}${ein(diferencia)}. ` +
-                `Pendientes saldadas: ${saldadas.length}.` +
-                (sinSaldar.length ? ` Quedan ${sinSaldar.length} pendiente(s) sin stock.` : ' Sin pendientes restantes.'),
-            codigo: p.codigo,
-            ingresado: cantGuia,
-            diferencia_recepcion: diferencia,
-            stock_final: Number(fin.rows[0].stock),
-            pendientes_saldadas: saldadas,
-            pendientes_restantes: sinSaldar.length
-        });
-    } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
-        if (err && err.code === '23505') {
-            return res.status(409).json({ success: false, mensaje: `Esa guía ya fue vinculada para ${terceroRef || 'ese tercero'}. Revisa el número.` });
-        }
-        console.error('Error al vincular guía de tercero:', err);
-        res.status(500).json({ success: false, mensaje: 'Error al vincular guía: ' + err.message });
     } finally {
         client.release();
     }

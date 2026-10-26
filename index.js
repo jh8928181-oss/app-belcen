@@ -26,6 +26,15 @@ process.on('unhandledRejection', (reason) => {
     console.error('Rechazo no manejado:', reason);
 });
 
+// Un error no capturado dentro de un callback (p. ej. un socket que se cierra
+// a mitad de la respuesta tras un corte breve de red) no debe tumbar el
+// proceso: se registra y el servidor sigue atendiendo. Si el estado quedara
+// irreparable, Render lo reinicia igual; un parpadeo de red en cambio ya no
+// baja el ERP completo.
+process.on('uncaughtException', (err) => {
+    console.error('Excepción no capturada (el servidor sigue en pie):', err);
+});
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 // Límite explícito de subida: sin él una foto pesada revienta el proceso con
@@ -8155,6 +8164,21 @@ if (require.main === module) {
     app.listen(PORT, () => {
         console.log(`Servidor ejecutándose en http://localhost:${PORT}`);
     });
+
+    // Apagado ordenado en deploys/restarts de Render: se deja terminar lo que
+    // esté en vuelvo y se cierran las conexiones con Supabase. Si algo se
+    // queda colgado, a los 8 s el proceso sale igual.
+    function apagarSenal(senal) {
+        console.log(`${senal}: cerrando conexiones y servidor...`);
+        const fuerzaSalida = setTimeout(() => process.exit(0), 8000);
+        fuerzaSalida.unref();
+        Promise.resolve()
+            .then(() => pool.end())
+            .catch((err) => console.error('Error al cerrar el pool:', err))
+            .finally(() => process.exit(0));
+    }
+    process.once('SIGTERM', () => apagarSenal('SIGTERM'));
+    process.once('SIGINT', () => apagarSenal('SIGINT'));
 }
 
 // Los helpers de calculo se exportan para poder probarlos sin levantar el

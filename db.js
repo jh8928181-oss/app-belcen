@@ -70,14 +70,26 @@ function codigoPrimario(err) {
   return null;
 }
 
+// pg no le pone "code" al timeout de conexión ni al cierre súbito del socket:
+// se reconocen por el mensaje.
+function esTerminacionDeConexion(err) {
+  return /connection (terminated|timeout)/i.test(String((err && err.message) || ''));
+}
+
 function consultaNoEjecutada(err) {
+  // "Connection terminated due to connection timeout": el handshake nunca
+  // terminó, la consulta jamás llegó al servidor. Seguro reintentar.
+  if (err && /connection timeout/i.test(String(err.message || ''))) return true;
   const c = codigoPrimario(err);
   return !!c && (PG_NO_CONEXION.has(c) || RED_SEGURA.has(c));
 }
 
 function falloAmbiguoDeRed(err) {
   const c = err && err.code;
-  return !!c && RED_AMBIGUA.has(c);
+  if (c && RED_AMBIGUA.has(c)) return true;
+  // Socket muerto sin código: puede haberse cortado antes o después de
+  // emitir la consulta (ambiguo → solo lecturas).
+  return !c && esTerminacionDeConexion(err);
 }
 
 function esSoloLectura(sql) {
@@ -88,9 +100,11 @@ function esSoloLectura(sql) {
 }
 
 function reintentarUnaVez(operacion, puedeReintentar, descripcion) {
-  return operacion().catch((err) => {
+  return operacion().catch(async (err) => {
     if (!puedeReintentar(err)) throw err;
     console.warn(`⚠️ ${descripcion}: fallo de conexión (${codigoPrimario(err) || err.message}); reintento automático.`);
+    // Pausa corta: si fue un parpadeo de red, el segundo intento sale bien.
+    await new Promise((resolver) => setTimeout(resolver, 300));
     return operacion();
   });
 }
@@ -99,11 +113,11 @@ const conectarOriginal = pool.connect.bind(pool);
 pool.connect = function (...args) {
   // Estilo callback: se pasa tal cual, sin reintentos.
   if (typeof args[args.length - 1] === 'function') return conectarOriginal(...args);
-  // Conexión nueva: si falla, no se ejecutó ninguna consulta, se puede
-  // reintentar aunque el error sea ambiguo (ECONNRESET durante el handshake).
+  // Abrir una conexión no ejecuta consultas: se puede reintentar ante
+  // cualquier fallo de red/conexión sin riesgo de duplicar nada.
   return reintentarUnaVez(
     () => conectarOriginal(...args),
-    (err) => consultaNoEjecutada(err) || falloAmbiguoDeRed(err),
+    (err) => consultaNoEjecutada(err) || falloAmbiguoDeRed(err) || esTerminacionDeConexion(err),
     'pool.connect()'
   );
 };

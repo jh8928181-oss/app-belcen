@@ -542,20 +542,21 @@
                     }
 
                     // Sugerencias de colores alternativos (rojo, verde, etc.):
-                    // se resaltan las que alcanzan MAS cajas que la tapa por defecto.
+                    // solo informativas, todas neutras y SIN destacar una como
+                    // "mejor": la tapa que se usa es la de la receta del producto
+                    // (VEGA ROJO, TIMONEL VERDE, FAISAN Dorado), la que figura en
+                    // la columna "Tapa en cajas". Antes se resaltaba en verde la
+                    // que más cajas alcanzaba (Dorado), lo que inducía a error.
                     const defs = (p.sugerencias || []);
                     let sugerenciasHtml = '—';
                     if (defs.length) {
-                        const base = tapa ? Number(tapa.cajas_alcance || 0) : 0;
                         sugerenciasHtml = defs.map(s => {
-                            const mejor = Number(s.cajas_alcance || 0) > base;
                             const tag = String(s.nombre || '').toUpperCase().includes('ROJO') ? 'ROJO'
                                 : String(s.nombre || '').toUpperCase().includes('VERDE') ? 'VERDE'
                                 : String(s.nombre || '').toUpperCase().includes('CELESTE') ? 'CELESTE'
                                 : escaparTexto(s.nombre);
-                            return `<span style="display:inline-block; margin:1px 3px 1px 0; padding:1px 6px; border-radius:10px; font-size:11px; ` +
-                                (mejor ? 'background:#d4edda; color:#155724; font-weight:bold;' : 'background:#e9ecef; color:#495057;') +
-                                `">${tag}: ${Number(s.cajas_alcance || 0).toLocaleString('es-PE')} cajas</span>`;
+                            return `<span style="display:inline-block; margin:1px 3px 1px 0; padding:1px 6px; border-radius:10px; font-size:11px; background:#e9ecef; color:#495057;">` +
+                                `${tag}: ${Number(s.cajas_alcance || 0).toLocaleString('es-PE')} cajas</span>`;
                         }).join('');
                     }
 

@@ -183,6 +183,22 @@
         .tab-btn .tab-ico { font-size: 21px; line-height: 1; }
         .tab-btn.activo { color: var(--azul); }
 
+        /* ---------- Accesos rápidos (Pendientes): botones grandes ---------- */
+        .menu-alm { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin: 4px 0 6px; }
+        .menu-alm .opcion-menu {
+            flex: 1 1 260px; max-width: 420px; border: none; cursor: pointer;
+            color: #fff; font-weight: 800; font-size: 16px; letter-spacing: .3px;
+            padding: 22px 18px; border-radius: 16px; text-transform: uppercase;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+            transition: transform .15s ease, box-shadow .15s ease;
+        }
+        .menu-alm .opcion-menu:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22); }
+        .menu-alm .opcion-menu:active { transform: scale(0.98); }
+        .menu-alm .opcion-menu small { font-weight: 500; font-size: 13px; display: block; margin-top: 8px; opacity: .92; text-transform: none; }
+        .opc-ambar { background: linear-gradient(145deg, #ffb74d, #f59e0b); }
+        .opc-teal { background: linear-gradient(145deg, #20c997, #17a2b8); }
+        @media (max-width: 600px) { .menu-alm .opcion-menu { flex-basis: 100%; max-width: 100%; } }
+
         .tarjeta-header {
             display: flex; justify-content: space-between; align-items: center;
             border-bottom: 1px solid rgba(0, 0, 0, 0.09); padding-bottom: 12px; margin-bottom: 14px;
@@ -442,12 +458,18 @@
     </nav>
 
     <section class="modulo activo" id="modulo-pendientes">
+
+    <!-- ACCESOS RÁPIDOS: los dos botones grandes, arriba del todo -->
+    <div class="menu-alm reveal">
+        <button type="button" id="btnRegistroIngresoAlm" onclick="toggleFormRegistroIngreso()" class="opcion-menu opc-ambar">➕ REGISTRAR INGRESO<small>Cargar la mercadería que llega al almacén</small></button>
+        <button type="button" id="btnSopladoServicios" onclick="alternarPanelSoplado()" class="opcion-menu opc-teal">🔧 SERVICIOS EXTERNOS DE SOPLADO<small>Envíos, guías y controles de SAUÑE / B&amp;M</small></button>
+    </div>
+
     <!-- 1. PENDIENTES DE VIGILANCIA & CONFORMIDAD -->
     <div class="table-container sec-ambar reveal">
         <div class="tarjeta-header">
             <h3 class="h-ambar">NOTIFICACIONES Y PENDIENTES DE VIGILANCIA (CONFORMIDAD)</h3>
             <span id="pendientesContador" class="pend-chip">🔔 0 PENDIENTES</span>
-            <button type="button" id="btnRegistroIngresoAlm" onclick="toggleFormRegistroIngreso()" class="btn-agregar btn-agregar-ambar">➕ Registrar Ingreso</button>
         </div>
         <div class="tabla-wrap tabla-card-movil">
         <table>
@@ -620,6 +642,76 @@
                 <button type="button" id="almBtnPasoAtras" class="btn-paso btn-atras" onclick="wizardAlmAtras()" hidden>← Atrás</button>
                 <button type="button" id="almBtnPasoNext" class="btn-paso btn-next" onclick="wizardAlmNext()">Continuar</button>
             </footer>
+        </div>
+    </div>
+
+    <!-- 6B. SERVICIOS EXTERNOS DE SOPLADO (SAUÑE / B&M): se abre con el
+         botón grande de arriba y se cierra con "← Volver". -->
+    <div class="table-container sec-teal reveal" id="panelSopladoServicios" style="display:none;">
+        <div style="text-align:left; margin-bottom:6px;">
+            <button type="button" onclick="alternarPanelSoplado()" class="btn-ver-historial">← Volver</button>
+        </div>
+        <h3 class="h3-teal">🔧 SERVICIOS EXTERNOS DE SOPLADO</h3>
+        <p style="font-size:13px; color:#555;">Se envían <b>etiquetas y preformas en MILLARES</b>. La <b>guía</b> del servicio descuenta 1 a 1 y suma las botellas. El <b>control interno</b> no mueve stock: se vincula a su guía cuando el servicio la emite.</p>
+        <div class="caja-items">
+            <h4>📤 Envío de insumos al servicio</h4>
+            <form id="formEnvioServicio">
+                <div class="fila-agregar">
+                    <select id="envServicio" required>
+                        <option value="">-- Servicio --</option>
+                        <option value="SAUÑE">SAUÑE</option>
+                        <option value="B&M DYLPLAST">B&amp;M DYLPLAST</option>
+                    </select>
+                </div>
+                <div id="envLineas"></div>
+                <button type="button" onclick="agregarLineaEnvio()" class="btn-filtro" style="margin-bottom:12px;">＋ Agregar insumo</button>
+                <div><button type="submit" class="btn-agregar-item">Enviar al servicio</button></div>
+            </form>
+        </div>
+        <div class="caja-items">
+            <h4>📥 Guía / control interno del servicio</h4>
+            <form id="formGuiaServicio">
+                <div class="fila-agregar">
+                    <select id="guiaServicio" required>
+                        <option value="">-- Servicio --</option>
+                        <option value="SAUÑE">SAUÑE</option>
+                        <option value="B&M DYLPLAST">B&amp;M DYLPLAST</option>
+                    </select>
+                    <select id="guiaTipo" required>
+                        <option value="">-- Documento --</option>
+                        <option value="GUIA">Guía de remisión</option>
+                        <option value="CONTROL">Control interno</option>
+                    </select>
+                    <input type="text" id="guiaNumero" placeholder="N° guía / control" required>
+                    <input type="date" id="guiaFecha">
+                </div>
+                <div id="guiaLineas"></div>
+                <datalist id="listaBotellas"></datalist>
+                <button type="button" onclick="agregarLineaGuia()" class="btn-filtro" style="margin-bottom:12px;">＋ Agregar producto</button>
+                <div id="guiaControlesWrap" style="display:none; margin-bottom:12px;">
+                    <b>Vincular controles pendientes (opcional):</b>
+                    <div id="guiaControles"></div>
+                </div>
+                <button type="submit" class="btn-accion">Registrar llegada</button>
+                <span id="msgGuiaServicio" style="font-size:13px; font-weight:700;"></span>
+            </form>
+        </div>
+        <h4>Últimas guías y controles</h4>
+        <div class="tabla-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>SERVICIO</th>
+                        <th>DOCUMENTO</th>
+                        <th>PRODUCTO</th>
+                        <th class="text-center">CANTIDAD</th>
+                        <th class="text-center">FACTURA</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaGuiasServicio">
+                    <tr><td colspan="5" class="text-center">Cargando…</td></tr>
+                </tbody>
+            </table>
         </div>
     </div>
     </section>
@@ -877,72 +969,6 @@
                 </thead>
                 <tbody id="tablaAjustesPendientes">
                     <tr><td colspan="6" class="text-center">Cargando…</td></tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- 6B. SERVICIOS EXTERNOS DE SOPLADO (SAUÑE / B&M) -->
-    <div class="table-container sec-teal reveal">
-        <h3 class="h3-teal">🔧 SERVICIOS EXTERNOS DE SOPLADO</h3>
-        <p style="font-size:13px; color:#555;">Se envían <b>etiquetas y preformas en MILLARES</b>. La <b>guía</b> del servicio descuenta 1 a 1 y suma las botellas. El <b>control interno</b> no mueve stock: se vincula a su guía cuando el servicio la emite.</p>
-        <div class="caja-items">
-            <h4>📤 Envío de insumos al servicio</h4>
-            <form id="formEnvioServicio">
-                <div class="fila-agregar">
-                    <select id="envServicio" required>
-                        <option value="">-- Servicio --</option>
-                        <option value="SAUÑE">SAUÑE</option>
-                        <option value="B&M DYLPLAST">B&amp;M DYLPLAST</option>
-                    </select>
-                </div>
-                <div id="envLineas"></div>
-                <button type="button" onclick="agregarLineaEnvio()" class="btn-filtro" style="margin-bottom:12px;">＋ Agregar insumo</button>
-                <div><button type="submit" class="btn-agregar-item">Enviar al servicio</button></div>
-            </form>
-        </div>
-        <div class="caja-items">
-            <h4>📥 Guía / control interno del servicio</h4>
-            <form id="formGuiaServicio">
-                <div class="fila-agregar">
-                    <select id="guiaServicio" required>
-                        <option value="">-- Servicio --</option>
-                        <option value="SAUÑE">SAUÑE</option>
-                        <option value="B&M DYLPLAST">B&amp;M DYLPLAST</option>
-                    </select>
-                    <select id="guiaTipo" required>
-                        <option value="">-- Documento --</option>
-                        <option value="GUIA">Guía de remisión</option>
-                        <option value="CONTROL">Control interno</option>
-                    </select>
-                    <input type="text" id="guiaNumero" placeholder="N° guía / control" required>
-                    <input type="date" id="guiaFecha">
-                </div>
-                <div id="guiaLineas"></div>
-                <datalist id="listaBotellas"></datalist>
-                <button type="button" onclick="agregarLineaGuia()" class="btn-filtro" style="margin-bottom:12px;">＋ Agregar producto</button>
-                <div id="guiaControlesWrap" style="display:none; margin-bottom:12px;">
-                    <b>Vincular controles pendientes (opcional):</b>
-                    <div id="guiaControles"></div>
-                </div>
-                <button type="submit" class="btn-accion">Registrar llegada</button>
-                <span id="msgGuiaServicio" style="font-size:13px; font-weight:700;"></span>
-            </form>
-        </div>
-        <h4>Últimas guías y controles</h4>
-        <div class="tabla-wrap">
-            <table>
-                <thead>
-                    <tr>
-                        <th>SERVICIO</th>
-                        <th>DOCUMENTO</th>
-                        <th>PRODUCTO</th>
-                        <th class="text-center">CANTIDAD</th>
-                        <th class="text-center">FACTURA</th>
-                    </tr>
-                </thead>
-                <tbody id="tablaGuiasServicio">
-                    <tr><td colspan="5" class="text-center">Cargando…</td></tr>
                 </tbody>
             </table>
         </div>
@@ -1981,19 +2007,50 @@
             const abierto = w.style.display !== 'none';
             if (abierto) {
                 w.style.display = 'none';
-                if (btn) btn.textContent = '➕ Registrar Ingreso';
+                if (btn) btn.innerHTML = '➕ REGISTRAR INGRESO<small>Cargar la mercadería que llega al almacén</small>';
                 if (barra) barra.style.display = 'none';
             } else {
+                // Un solo panel a la vez: si el de soplado está abierto, se cierra.
+                cerrarPanelSoplado();
                 wizardAlmInit();
                 reiniciarFormularioAlmacen();
                 w.style.display = 'block';
-                if (btn) btn.textContent = '✖ Cerrar formulario';
+                if (btn) btn.innerHTML = '✖ CERRAR FORMULARIO<small>Vuelve a las tablas de pendientes</small>';
                 if (barra) barra.style.display = '';
                 // Inventario fresco: de aquí salen las categorías existentes y
                 // el matching de "¿este producto ya está?".
                 cargarInventarioAlmacen();
                 w.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
+        }
+
+        /* ---------- Panel "Servicios Externos de Soplado" (Pendientes) ---------- */
+        // Se abre/cierra con el botón grande y con "← Volver". Mismo patrón
+        // que toggleFormRegistroIngreso: despliega abajo y baja el scroll.
+        function alternarPanelSoplado() {
+            const p = document.getElementById('panelSopladoServicios');
+            const btn = document.getElementById('btnSopladoServicios');
+            if (!p) return;
+            if (p.style.display !== 'none') {
+                cerrarPanelSoplado();
+            } else {
+                // Un solo panel a la vez: si el wizard de ingreso está abierto, se cierra.
+                const w = document.getElementById('wizardIngresoAlm');
+                if (w && w.style.display !== 'none') toggleFormRegistroIngreso();
+                p.style.display = 'block';
+                // Estaba oculto: nunca cruzó el IntersectionObserver y quedaría
+                // con opacidad 0. Se fuerza visible.
+                p.classList.add('is-visible');
+                if (btn) btn.innerHTML = '✖ CERRAR SOPLOADO<small>Vuelve a las tablas de pendientes</small>';
+                p.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        function cerrarPanelSoplado() {
+            const p = document.getElementById('panelSopladoServicios');
+            const btn = document.getElementById('btnSopladoServicios');
+            if (p) p.style.display = 'none';
+            if (btn) btn.innerHTML = '🔧 SERVICIOS EXTERNOS DE SOPLADO<small>Envíos, guías y controles de SAUÑE / B&amp;M</small>';
         }
 
         function etiquetarTablas() {

@@ -645,6 +645,31 @@
         </div>
     </div>
 
+    <!-- 6A. AJUSTES PENDIENTES (lo que envasado no pudo descontar):
+         vive dentro de Pendientes; antes estaba fuera de cualquier sección y
+         salía en TODAS las pestañas (aparecía en Refinado, Stock, etc.). -->
+    <div class="table-container sec-ambar reveal">
+        <h3 class="h3-rojo">⚠️ AJUSTES PENDIENTES <span id="badgePendientes"></span></h3>
+        <p style="font-size:13px; color:#555;">Insumos que envasado no pudo descontar por falta de stock: el producto terminado sí se registró. Revisa el insumo, ajústalo para seguir trabajando y salda el pendiente vinculándolo al <b>reporte de soplado</b> o a la <b>guía</b> que lo traiga.</p>
+        <div class="tabla-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>FECHA</th>
+                        <th>INSUMO</th>
+                        <th class="text-center">DEBE</th>
+                        <th>ORIGEN</th>
+                        <th class="text-center">ESTADO</th>
+                        <th>VINCULAR Y APLICAR</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaAjustesPendientes">
+                    <tr><td colspan="6" class="text-center">Cargando…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <!-- 6B. SERVICIOS EXTERNOS DE SOPLADO (SAUÑE / B&M): se abre con el
          botón grande de arriba y se cierra con "← Volver". -->
     <div class="table-container sec-teal reveal" id="panelSopladoServicios" style="display:none;">
@@ -950,29 +975,6 @@
     </div>
     </div>
     </section>
-
-    <!-- 6A. AJUSTES PENDIENTES (lo que envasado no pudo descontar) -->
-    <div class="table-container sec-ambar reveal">
-        <h3 class="h3-rojo">⚠️ AJUSTES PENDIENTES <span id="badgePendientes"></span></h3>
-        <p style="font-size:13px; color:#555;">Insumos que envasado no pudo descontar por falta de stock: el producto terminado sí se registró. Revisa el insumo, ajústalo para seguir trabajando y salda el pendiente vinculándolo al <b>reporte de soplado</b> o a la <b>guía</b> que lo traiga.</p>
-        <div class="tabla-wrap">
-            <table>
-                <thead>
-                    <tr>
-                        <th>FECHA</th>
-                        <th>INSUMO</th>
-                        <th class="text-center">DEBE</th>
-                        <th>ORIGEN</th>
-                        <th class="text-center">ESTADO</th>
-                        <th>VINCULAR Y APLICAR</th>
-                    </tr>
-                </thead>
-                <tbody id="tablaAjustesPendientes">
-                    <tr><td colspan="6" class="text-center">Cargando…</td></tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
 
     <!-- 7. INVENTARIO (STOCK) DE INSUMOS DE REFINADO -->
     <section class="modulo" id="modulo-refinado">

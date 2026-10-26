@@ -200,6 +200,62 @@ describe('POST /api/soplado/registrar', () => {
     expect(insBlanco[1][0]).toBe('Botella 1 Lt (blanco)');
   });
 
+  test('etiquetada en el momento: descuenta la etiqueta, suma la terminada y NO crea blanco', async () => {
+    mundo.etiquetaArt = { id: 55, stock: 10 };
+    mundo.terminada = { id: 77, stock: 100 };
+
+    const res = await invocar('post', '/api/soplado/registrar', {
+      body: { ...cuerpoBase(), etiquetada: true }
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.cuerpo.mensaje).toMatch(/ETIQUETADA/);
+    expect(res.cuerpo.mensaje).toMatch(/3 MILL/);
+    // No se crea ni se mueve el rubro en blanco.
+    const insBlanco = mockQuery.mock.calls.find(c => /INSERT INTO inventario \(nombre, categoria, stock/.test(String(c[0])));
+    expect(insBlanco).toBeUndefined();
+    // La etiqueta se descuenta en MILLARES.
+    const descEtq = mockQuery.mock.calls.find(c =>
+      /UPDATE inventario SET stock = stock - \$1 WHERE id = \$2/.test(String(c[0])) && c[1][0] === 3);
+    expect(descEtq).toBeDefined();
+    // La botella terminada sube.
+    const sumaTerm = mockQuery.mock.calls.find(c =>
+      /UPDATE inventario SET stock = stock \+ \$1 WHERE id = \$2/.test(String(c[0])) && c[1][0] === 3000);
+    expect(sumaTerm).toBeDefined();
+  });
+
+  test('etiquetada sin stock de etiqueta se rechaza y no mueve nada', async () => {
+    mundo.etiquetaArt = { id: 55, stock: 1 }; // alcanza para 1000 uds, pide 3000
+    mundo.terminada = { id: 77, stock: 100 };
+
+    const res = await invocar('post', '/api/soplado/registrar', {
+      body: { ...cuerpoBase(), etiquetada: true }
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.cuerpo.mensaje).toMatch(/Alcanzan 1 MILL/);
+    // La preforma ya se había descontado en la misma transacción, pero el
+    // ROLLBACK la devuelve: no quedan movimientos de etiqueta ni reporte.
+    const movs = mockQuery.mock.calls.filter(c =>
+      (/UPDATE inventario SET stock|INSERT INTO reportes_soplado/.test(String(c[0]))) &&
+      !/WHERE LOWER\(nombre\)/.test(String(c[0])));
+    expect(movs).toHaveLength(0);
+  });
+
+  test('etiquetada en una botella sin etiqueta configurada (VEGA) se rechaza', async () => {
+    const res = await invocar('post', '/api/soplado/registrar', {
+      body: { ...cuerpoBase(), botella_tipo: 'soplado_vega_900ml', molde: 'Molde 900 ml', etiquetada: true }
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.cuerpo.mensaje).toMatch(/no tiene etiqueta configurada/);
+    // Solo quedó el descuento de preforma (revertido por el ROLLBACK).
+    const movs = mockQuery.mock.calls.filter(c =>
+      (/UPDATE inventario SET stock|INSERT INTO reportes_soplado/.test(String(c[0]))) &&
+      !/WHERE LOWER\(nombre\)/.test(String(c[0])));
+    expect(movs).toHaveLength(0);
+  });
+
   test('cada línea exige su propia marcha: manual parada no frena a la automática', async () => {
     mundo.marcha = { soplado_automatica: true, soplado_manual: false };
 

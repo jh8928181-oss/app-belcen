@@ -179,7 +179,7 @@
         <h3>REPORTE DE TURNO - LÍNEA AUTOMÁTICA</h3>
 
         <div class="info-receta">
-            ℹ️ Seleccione la preforma utilizada, el molde en la línea, la botella a producir y la cantidad. Salen <b>en blanco</b> (sin etiqueta) a su inventario; la etiqueta se descuenta al etiquetar.
+            ℹ️ Seleccione la preforma utilizada, el molde en la línea, la botella a producir y la cantidad. Si <b>reporta la etiqueta</b>, la botella sale terminada y se descuenta la etiqueta aquí mismo; si elige <b>en blanco</b>, se etiqueta luego en la sección de etiquetado.
         </div>
 
         <form id="formSoplado_A">
@@ -192,7 +192,7 @@
 
             <div>
                 <label><b>Seleccionar Botella a Producir:</b></label>
-                <select id="botella_tipo_A" name="botella_tipo" required>
+                <select id="botella_tipo_A" name="botella_tipo" required onchange="actualizarTextoEtiqueta('A')">
                     <option value="">-- Seleccione tipo de botella --</option>
                     <optgroup label="Línea Belini">
                         <option value="soplado_belini_200ml">Botella Belini x 200 ml</option>
@@ -213,6 +213,16 @@
                         <option value="soplado_vega_900ml">Botella VEGA x 900 ml</option>
                     </optgroup>
                 </select>
+            </div>
+
+            <div>
+                <label><b>Etiqueta de la botella:</b></label>
+                <select id="etiquetada_A" name="etiquetada" onchange="actualizarTextoEtiqueta('A')" required>
+                    <option value="">-- Reportar etiqueta --</option>
+                    <option value="true">ETIQUETADA — con su etiqueta (sale terminada)</option>
+                    <option value="false">EN BLANCO — sin etiqueta (etiquetar luego)</option>
+                </select>
+                <small id="etiquetaHint_A" style="display:block; color:#555; margin-top:4px;"></small>
             </div>
 
             <div>
@@ -247,7 +257,7 @@
         <h3>REPORTE DE TURNO - LÍNEA MANUAL</h3>
 
         <div class="info-receta">
-            ℹ️ Seleccione la preforma utilizada, el molde en la línea, la botella a producir y la cantidad. Salen <b>en blanco</b> (sin etiqueta) a su inventario; la etiqueta se descuenta al etiquetar.
+            ℹ️ Seleccione la preforma utilizada, el molde en la línea, la botella a producir y la cantidad. Si <b>reporta la etiqueta</b>, la botella sale terminada y se descuenta la etiqueta aquí mismo; si elige <b>en blanco</b>, se etiqueta luego en la sección de etiquetado.
         </div>
 
         <form id="formSoplado_M">
@@ -260,7 +270,7 @@
 
             <div>
                 <label><b>Seleccionar Botella a Producir:</b></label>
-                <select id="botella_tipo_M" name="botella_tipo" required>
+                <select id="botella_tipo_M" name="botella_tipo" required onchange="actualizarTextoEtiqueta('M')">
                     <option value="">-- Seleccione tipo de botella --</option>
                     <optgroup label="Línea Belini">
                         <option value="soplado_belini_200ml">Botella Belini x 200 ml</option>
@@ -281,6 +291,16 @@
                         <option value="soplado_vega_900ml">Botella VEGA x 900 ml</option>
                     </optgroup>
                 </select>
+            </div>
+
+            <div>
+                <label><b>Etiqueta de la botella:</b></label>
+                <select id="etiquetada_M" name="etiquetada" onchange="actualizarTextoEtiqueta('M')" required>
+                    <option value="">-- Reportar etiqueta --</option>
+                    <option value="true">ETIQUETADA — con su etiqueta (sale terminada)</option>
+                    <option value="false">EN BLANCO — sin etiqueta (etiquetar luego)</option>
+                </select>
+                <small id="etiquetaHint_M" style="display:block; color:#555; margin-top:4px;"></small>
             </div>
 
             <div>
@@ -494,6 +514,40 @@
         }
 
         const enviandoSoplado = {};
+
+        // Etiqueta que lleva cada botella (mismo mapa que usa el servidor):
+        // sirve para mostrarle al operador qué etiqueta se descontará.
+        const ETIQUETA_BOTELLA = {
+            soplado_belini_200ml: 'Etiqueta couche 90 gr x 200 ml B-1',
+            soplado_belini_500ml: 'Etiqueta couche 90 gr x 500 ml Belini',
+            soplado_belini_900ml: 'Etiqueta couche 90 gr x 900 ml Belini',
+            soplado_belini_1lt: 'Etiqueta couche 90 gr x 1 lt Belini',
+            soplado_belini_3lt: 'Etiqueta polipropileno blanco x 3 lt Belini',
+            soplado_b1_200ml: 'Etiqueta couche 90 gr x 200 ml B-1',
+            soplado_b1_500ml: 'Etiqueta couche 90 gr x 500 ml B-1',
+            soplado_b1_900ml: 'Etiqueta couche 90 gr x 900 ml B-1',
+            soplado_b1_1lt: 'Etiqueta couche 90 gr x 1 lt B-1',
+            soplado_b1_2lt: 'Etiqueta couche 90 gr x 2 lt B-1',
+            soplado_donlalo_800ml: 'Etiqueta couche 90gr x 800 ml Don Lalo',
+            soplado_vega_900ml: null
+        };
+
+        function actualizarTextoEtiqueta(suf) {
+            const selEtq = document.getElementById('etiquetada_' + suf);
+            const hint = document.getElementById('etiquetaHint_' + suf);
+            const botella = document.getElementById('botella_tipo_' + suf).value;
+            if (!hint) return;
+            if (!selEtq.value) { hint.textContent = ''; return; }
+            if (selEtq.value !== 'true') {
+                hint.textContent = 'Las botellas quedan en el rubro en blanco y se etiquetan luego.';
+                return;
+            }
+            const etq = ETIQUETA_BOTELLA[botella];
+            hint.textContent = etq
+                ? `Se descontará la etiqueta "${etq}" y la botella saldrá terminada.`
+                : '⚠️ Esta botella no tiene etiqueta configurada: debe registrarla en blanco.';
+        }
+
         function registrarEnLinea(suf) {
             const form = document.getElementById(suf === 'A' ? 'formSoplado_A' : 'formSoplado_M');
             form.addEventListener('submit', async (e) => {
@@ -506,9 +560,22 @@
                 const botella_tipo = document.getElementById('botella_tipo_' + suf).value;
                 const cantidad_producida = parseInt(document.getElementById('cantidad_producida_' + suf).value);
                 const molde_linea = document.getElementById('molde_linea_' + suf).value.trim();
+                const etiquetadaVal = document.getElementById('etiquetada_' + suf).value;
 
                 if (!preforma_nombre || !botella_tipo || isNaN(cantidad_producida) || cantidad_producida <= 0) {
                     alert('❌ Seleccione la preforma, el tipo de botella y una cantidad válida.');
+                    enviandoSoplado[suf] = false;
+                    if (btnEnviar) btnEnviar.disabled = false;
+                    return;
+                }
+                if (!etiquetadaVal) {
+                    alert('❌ Indique si la botella sale ETIQUETADA o EN BLANCO.');
+                    enviandoSoplado[suf] = false;
+                    if (btnEnviar) btnEnviar.disabled = false;
+                    return;
+                }
+                if (etiquetadaVal === 'true' && !ETIQUETA_BOTELLA[botella_tipo]) {
+                    alert('❌ Esta botella no tiene etiqueta configurada: regístrela EN BLANCO.');
                     enviandoSoplado[suf] = false;
                     if (btnEnviar) btnEnviar.disabled = false;
                     return;
@@ -528,6 +595,7 @@
                             preforma_nombre,
                             botella_tipo,
                             cantidad_producida,
+                            etiquetada: etiquetadaVal === 'true',
                             linea: LINEA_DE_SUF[suf],
                             molde: molde_linea,
                             usuario: localStorage.getItem('usuario_actual') || 'soplado_user'
@@ -538,6 +606,8 @@
                 if (res.ok && data.success) {
                     alert('✅ ' + data.mensaje);
                     form.reset();
+                    const hint = document.getElementById('etiquetaHint_' + suf);
+                    if (hint) hint.textContent = '';
                     cargarLineasSoplado();
                     cargarBlancos();
                     cargarTotalesSoplado();

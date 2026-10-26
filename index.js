@@ -1837,6 +1837,10 @@ app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
     const client = await pool.connect();
     try {
         const { preforma_nombre, botella_tipo, cantidad_producida, usuario, linea, molde } = req.body;
+        // Etiquetada en el momento: la botella sale terminada (con su marca) y
+        // se descuenta la etiqueta. Si no se reporta etiqueta, sale EN BLANCO
+        // y se etiqueta luego con /api/soplado/etiquetar.
+        const etiquetada = req.body.etiquetada === true || req.body.etiquetada === 'true';
         const cantidadBotellas = parseInt(cantidad_producida, 10);
         if (!cantidadBotellas || cantidadBotellas <= 0 || cantidadBotellas > 1000000) {
             return res.status(400).json({ success: false, mensaje: 'Cantidad producida inválida. Debe ser un número entero mayor a 0.' });
@@ -1865,7 +1869,7 @@ app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
         // ESA línea esté en marcha (sin fila registrada se permite, como antes).
         await exigirLineaEnMarcha(client, 'soplado_' + lineaVal.toLowerCase());
 
-        const { botellaNombre, blancoNombre, tamano } = mapaBotellaSoplado(botella_tipo);
+        const { botellaNombre, etiquetaNombre, blancoNombre, tamano } = mapaBotellaSoplado(botella_tipo);
 
         // El molde puesto en la línea define el tamaño de la botella: molde
         // de 800 ml → botella de 800 ml. Un molde viejo sin tamaño legible
@@ -1901,36 +1905,98 @@ app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
             referencia: 'Descuento por soplado de ' + cantidadBotellas + ' uds de ' + botellaNombre
         });
 
-        // 2. Las etiquetas NO se descuentan al soplar: salen en blanco y se
-        // descuentan al etiquetar (ver /api/soplado/etiquetar).
-
-        // 3. Sumar las botellas EN BLANCO a su artículo. Se crea solo si no
-        // existe: es el pequeño inventario de soplado.
-        let blRow = await client.query(
-            'SELECT id, stock FROM inventario WHERE LOWER(BTRIM(nombre)) = LOWER(BTRIM($1))',
-            [blancoNombre]
-        );
-        if (!blRow.rows.length) {
-            blRow = await client.query(
-                `INSERT INTO inventario (nombre, categoria, stock, unidad_medida, estado)
-                 VALUES ($1, $2, $3, $4, $5) RETURNING id, stock`,
-                [blancoNombre, 'BOTELLAS EN BLANCO', 0, 'UNIDADES', 'REALIZAR PEDIDO']
+        // 2. Destino de las botellas:
+        //   • ETIQUETADA (el operador reportó la etiqueta que va en la botella):
+        //     la botella sale TERMINADA con su marca y se descuenta la etiqueta
+        //     aquí mismo. No pasa por el rubro en blanco.
+        //   • SIN ETIQUETA: sale EN BLANCO y se etiqueta luego con
+        //     /api/soplado/etiquetar.
+        if (etiquetada) {
+            if (!etiquetaNombre) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({
+                    success: false,
+                    mensaje: `La botella "${botellaNombre}" no tiene etiqueta configurada. Registrela sin etiqueta (en blanco).`
+                });
+            }
+            // La etiqueta debe existir y alcanzar (stock en MILLARES).
+            const etRow = await client.query(
+                'SELECT id, stock FROM inventario WHERE LOWER(BTRIM(nombre)) = LOWER(BTRIM($1)) FOR UPDATE',
+                [etiquetaNombre]
             );
+            if (!etRow.rows.length) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: `La etiqueta "${etiquetaNombre}" no existe en el inventario.` });
+            }
+            const cantMill = cantidadBotellas / 1000;
+            const stockEtqAnterior = Number(etRow.rows[0].stock) || 0;
+            if (stockEtqAnterior < cantMill) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({
+                    success: false,
+                    mensaje: `Alcanzan ${stockEtqAnterior} MILL de "${etiquetaNombre}" y se necesitan ${cantMill}. Registre la producción sin etiqueta (en blanco).`
+                });
+            }
+            // La botella terminada debe existir en el inventario.
+            const finRow = await client.query(
+                'SELECT id, stock FROM inventario WHERE LOWER(BTRIM(nombre)) = LOWER(BTRIM($1))',
+                [botellaNombre]
+            );
+            if (!finRow.rows.length) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: `La botella terminada "${botellaNombre}" no existe en el inventario. Créala primero.` });
+            }
+            await client.query('UPDATE inventario SET stock = stock - $1 WHERE id = $2', [cantMill, etRow.rows[0].id]);
+            await actualizarEstadoArticulo(client, null, etRow.rows[0].id);
+            await registrarHistorial(client, {
+                tipo: 'PRODUCCION', origen: 'soplado',
+                producto: etiquetaNombre,
+                cantidad: cantMill, tipo_cambio: 'RESTA',
+                stock_anterior: stockEtqAnterior, stock_nuevo: stockEtqAnterior - cantMill,
+                usuario: usuarioResponsable(req, usuario),
+                referencia: 'Etiqueta al soplar: ' + cantidadBotellas + ' uds de ' + botellaNombre
+            });
+            const stockFinAnterior = Number(finRow.rows[0].stock) || 0;
+            await client.query('UPDATE inventario SET stock = stock + $1 WHERE id = $2', [cantidadBotellas, finRow.rows[0].id]);
+            await actualizarEstadoArticulo(client, null, finRow.rows[0].id);
+            await registrarHistorial(client, {
+                tipo: 'PRODUCCION', origen: 'soplado',
+                producto: botellaNombre, articulo_id: finRow.rows[0].id,
+                cantidad: cantidadBotellas, tipo_cambio: 'SUMA',
+                stock_anterior: stockFinAnterior, stock_nuevo: stockFinAnterior + cantidadBotellas,
+                usuario: usuarioResponsable(req, usuario),
+                referencia: 'Producción soplado etiquetada: ' + cantidadBotellas + ' uds ' + botellaNombre
+            });
+        } else {
+            // Sin etiqueta reportada: sumar las botellas EN BLANCO a su
+            // artículo. Se crea solo si no existe: es el pequeño inventario
+            // de soplado.
+            let blRow = await client.query(
+                'SELECT id, stock FROM inventario WHERE LOWER(BTRIM(nombre)) = LOWER(BTRIM($1))',
+                [blancoNombre]
+            );
+            if (!blRow.rows.length) {
+                blRow = await client.query(
+                    `INSERT INTO inventario (nombre, categoria, stock, unidad_medida, estado)
+                     VALUES ($1, $2, $3, $4, $5) RETURNING id, stock`,
+                    [blancoNombre, 'BOTELLAS EN BLANCO', 0, 'UNIDADES', 'REALIZAR PEDIDO']
+                );
+            }
+            const stockBlancoAnterior = Number(blRow.rows[0].stock) || 0;
+            await client.query(
+                'UPDATE inventario SET stock = stock + $1 WHERE id = $2',
+                [cantidadBotellas, blRow.rows[0].id]
+            );
+            await actualizarEstadoArticulo(client, null, blRow.rows[0].id);
+            await registrarHistorial(client, {
+                tipo: 'PRODUCCION', origen: 'soplado',
+                producto: blancoNombre, articulo_id: blRow.rows[0].id,
+                cantidad: cantidadBotellas, tipo_cambio: 'SUMA',
+                stock_anterior: stockBlancoAnterior, stock_nuevo: stockBlancoAnterior + cantidadBotellas,
+                usuario: usuarioResponsable(req, usuario),
+                referencia: 'Producción soplado en blanco: ' + cantidadBotellas + ' uds ' + blancoNombre
+            });
         }
-        const stockBlancoAnterior = Number(blRow.rows[0].stock) || 0;
-        await client.query(
-            'UPDATE inventario SET stock = stock + $1 WHERE id = $2',
-            [cantidadBotellas, blRow.rows[0].id]
-        );
-        await actualizarEstadoArticulo(client, null, blRow.rows[0].id);
-        await registrarHistorial(client, {
-            tipo: 'PRODUCCION', origen: 'soplado',
-            producto: blancoNombre, articulo_id: blRow.rows[0].id,
-            cantidad: cantidadBotellas, tipo_cambio: 'SUMA',
-            stock_anterior: stockBlancoAnterior, stock_nuevo: stockBlancoAnterior + cantidadBotellas,
-            usuario: usuarioResponsable(req, usuario),
-            referencia: 'Producción soplado en blanco: ' + cantidadBotellas + ' uds ' + blancoNombre
-        });
 
         // Guardar el reporte del día para la barra de estado y estadísticas
         if (conLinea) {
@@ -1963,7 +2029,10 @@ app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
             }
         }
         const lineaTxt = lineaVal === 'AUTOMATICA' ? 'línea automática' : 'línea manual';
-        res.json({ success: true, mensaje: `Producción de ${cantidadBotellas} unidades de ${botellaNombre} en blanco registrada en ${lineaTxt}${moldeVal ? ` (molde ${moldeVal})` : ''}. Se descontó la preforma "${preforma_nombre}". Las etiquetas se descuentan al etiquetar.` });
+        const msgFinal = etiquetada
+            ? `Producción de ${cantidadBotellas} unidades de ${botellaNombre} ETIQUETADA registrada en ${lineaTxt}${moldeVal ? ` (molde ${moldeVal})` : ''}. Se descontaron la preforma "${preforma_nombre}" y ${cantidadBotellas / 1000} MILL de la etiqueta "${etiquetaNombre}".`
+            : `Producción de ${cantidadBotellas} unidades de ${botellaNombre} en blanco registrada en ${lineaTxt}${moldeVal ? ` (molde ${moldeVal})` : ''}. Se descontó la preforma "${preforma_nombre}". Las etiquetas se descuentan al etiquetar.`;
+        res.json({ success: true, mensaje: msgFinal });
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Error al registrar soplado:', error);

@@ -994,9 +994,11 @@ app.put('/api/inventario/:id', requerirRolAdmin, async (req, res) => {
 });
 
 // --- SERVICIOS EXTERNOS DE SOPLADO (SAUÑE / B&M DYLPLAST) ---
-// Se les envian etiquetas y preformas (millares) y devuelven botellas por
-// guia o control interno. Tanto la GUIA como el CONTROL suman las botellas
-// al inventario; el CONTROL nace PENDIENTE de guia y la GUIA, de factura.
+// Se les envian etiquetas y preformas (millares): el ENVIO ya descuenta el
+// inventario al salir. Cuando llegan guia o control interno suman las
+// botellas y consumen primero el saldo enviado a ese servicio; del
+// inventario solo baja el excedente que el envio no cubre. El CONTROL nace
+// PENDIENTE de guia y la GUIA, de factura.
 const SERVICIOS_SOPLADO = ['SAUÑE', 'B&M DYLPLAST'];
 
 // Resuelve etiqueta y preforma para un producto via su receta activa.
@@ -1026,6 +1028,55 @@ async function resolverInsumosServicio(q, productoKey) {
         }
     }
     return out;
+}
+
+// Saldo disponible de lo enviado a un servicio: por articulo, lo enviado en
+// servicios_envios menos lo ya consumido por guias y controles registrados.
+// Devuelve Map<articulo_id, saldo> (negativo si se recibio mas de lo enviado).
+async function saldoEnvioServicio(q, servicio) {
+    const env = await q.query(
+        `SELECT articulo_id, COALESCE(SUM(cantidad), 0) AS enviado
+           FROM servicios_envios
+          WHERE servicio = $1
+          GROUP BY articulo_id`,
+        [servicio]
+    );
+    const con = await q.query(
+        `SELECT i.etiqueta_id AS articulo_id, COALESCE(SUM(i.cant_etiquetas), 0) AS consumido
+           FROM servicios_guias_items i
+           JOIN servicios_guias g ON g.id = i.guia_id
+          WHERE g.servicio = $1 AND i.etiqueta_id IS NOT NULL
+          GROUP BY i.etiqueta_id
+         UNION ALL
+         SELECT i.preforma_id, COALESCE(SUM(i.cant_preformas), 0)
+           FROM servicios_guias_items i
+           JOIN servicios_guias g ON g.id = i.guia_id
+          WHERE g.servicio = $1 AND i.preforma_id IS NOT NULL
+          GROUP BY i.preforma_id`,
+        [servicio]
+    );
+    const saldo = new Map();
+    for (const e of env.rows) saldo.set(e.articulo_id, Number(e.enviado) || 0);
+    for (const c of con.rows) {
+        if (!c.articulo_id) continue;
+        saldo.set(c.articulo_id, (saldo.get(c.articulo_id) || 0) - (Number(c.consumido) || 0));
+    }
+    return saldo;
+}
+
+// Reparte un consumo de insumos entre el saldo ya enviado al servicio y el
+// inventario: consume el saldo primero y devuelve el excedente (parte que
+// aun no se habia enviado y por tanto sale del inventario). Descuenta el
+// saldo usado del Map para que varias lineas del mismo documento no lo
+// consuman dos veces.
+function consumirSaldoEnvio(saldo, articuloId, cantidad) {
+    const disponible = Math.max(0, saldo.get(articuloId) || 0);
+    const desdeEnvio = Math.min(cantidad, disponible);
+    saldo.set(articuloId, (saldo.get(articuloId) || 0) - desdeEnvio);
+    return {
+        desdeEnvio,
+        excedente: Math.round(((cantidad - desdeEnvio) + Number.EPSILON) * 1000000) / 1000000
+    };
 }
 
 // Busca la botella que llega del servicio por nombre: exacto primero y, si no,
@@ -1065,7 +1116,7 @@ app.get('/api/servicios/panel', async (req, res) => {
                     COALESCE(SUM(i.cant_etiquetas), 0) AS entregado
                FROM servicios_guias_items i
                JOIN servicios_guias g ON g.id = i.guia_id
-              WHERE g.tipo_doc = 'GUIA' AND i.etiqueta_id IS NOT NULL
+              WHERE g.tipo_doc IN ('GUIA', 'CONTROL') AND i.etiqueta_id IS NOT NULL
               GROUP BY g.servicio, i.etiqueta_id, i.etiqueta_nombre
               UNION ALL
              SELECT g.servicio,
@@ -1073,7 +1124,7 @@ app.get('/api/servicios/panel', async (req, res) => {
                     COALESCE(SUM(i.cant_preformas), 0) AS entregado
                FROM servicios_guias_items i
                JOIN servicios_guias g ON g.id = i.guia_id
-              WHERE g.tipo_doc = 'GUIA' AND i.preforma_id IS NOT NULL
+              WHERE g.tipo_doc IN ('GUIA', 'CONTROL') AND i.preforma_id IS NOT NULL
               GROUP BY g.servicio, i.preforma_id, i.preforma_nombre`
         );
         const entregadoPor = {};
@@ -1324,6 +1375,9 @@ app.post('/api/servicios/guias', gAlmacen, async (req, res) => {
                 }
             }
             const esDocumental = controlesIds.length > 0;
+            // Saldo de lo que ya se envió a este servicio: las guías lo
+            // consumen antes de tocar el inventario (el envío ya lo descontó).
+            const saldoServicio = esDocumental ? null : await saldoEnvioServicio(client, servicio);
             for (const ln of lineas) {
                 if (!esDocumental) {
                     if ((!ln.etiqueta_id || !ln.preforma_id) && !ln.producto_key) {
@@ -1361,35 +1415,44 @@ app.post('/api/servicios/guias', gAlmacen, async (req, res) => {
                 ln.etiqueta_nombre = eRow.rows[0].nombre;
                 ln.preforma_nombre = pRow.rows[0].nombre;
                 ln.cantMill = cantMill;
-                if ((Number(eRow.rows[0].stock) || 0) < cantMill || (Number(pRow.rows[0].stock) || 0) < cantMill) {
+                // Lo enviado al servicio ya salió del inventario al registrar
+                // el envío: primero se consume ese saldo y solo el excedente
+                // (lo que nunca se envió) baja del inventario aquí.
+                const etqParte = consumirSaldoEnvio(saldoServicio, ln.etiqueta_id, cantMill);
+                const prefParte = consumirSaldoEnvio(saldoServicio, ln.preforma_id, cantMill);
+                if ((Number(eRow.rows[0].stock) || 0) < etqParte.excedente || (Number(pRow.rows[0].stock) || 0) < prefParte.excedente) {
                     await client.query('ROLLBACK');
-                    return res.status(400).json({ success: false, mensaje: `Stock insuficiente de etiqueta/preforma para "${ln.producto}" (${cantMill} MILLARES).` });
+                    return res.status(400).json({ success: false, mensaje: `Stock insuficiente de etiqueta/preforma para "${ln.producto}" (${Math.max(etqParte.excedente, prefParte.excedente)} MILLARES).` });
                 }
                 const stockBotAnt = Number(bRow.stock) || 0;
-                await client.query('UPDATE inventario SET stock = stock - $1 WHERE id = $2', [cantMill, ln.etiqueta_id]);
-                await client.query('UPDATE inventario SET stock = stock - $1 WHERE id = $2', [cantMill, ln.preforma_id]);
+                if (etqParte.excedente > 0) {
+                    await client.query('UPDATE inventario SET stock = stock - $1 WHERE id = $2', [etqParte.excedente, ln.etiqueta_id]);
+                    await actualizarEstadoArticulo(client, null, ln.etiqueta_id);
+                    await registrarHistorial(client, {
+                        tipo: 'SALIDA', origen: 'servicio_guia',
+                        producto: ln.etiqueta_nombre, articulo_id: ln.etiqueta_id,
+                        cantidad: etqParte.excedente, tipo_cambio: 'RESTA',
+                        stock_anterior: Number(eRow.rows[0].stock) || 0,
+                        stock_nuevo: (Number(eRow.rows[0].stock) || 0) - etqParte.excedente,
+                        usuario,
+                        referencia: `Guía ${numero} de ${servicio} (${ln.producto} x ${ln.cantidad})`
+                    });
+                }
+                if (prefParte.excedente > 0) {
+                    await client.query('UPDATE inventario SET stock = stock - $1 WHERE id = $2', [prefParte.excedente, ln.preforma_id]);
+                    await actualizarEstadoArticulo(client, null, ln.preforma_id);
+                    await registrarHistorial(client, {
+                        tipo: 'SALIDA', origen: 'servicio_guia',
+                        producto: ln.preforma_nombre, articulo_id: ln.preforma_id,
+                        cantidad: prefParte.excedente, tipo_cambio: 'RESTA',
+                        stock_anterior: Number(pRow.rows[0].stock) || 0,
+                        stock_nuevo: (Number(pRow.rows[0].stock) || 0) - prefParte.excedente,
+                        usuario,
+                        referencia: `Guía ${numero} de ${servicio} (${ln.producto} x ${ln.cantidad})`
+                    });
+                }
                 await client.query('UPDATE inventario SET stock = stock + $1 WHERE id = $2', [ln.cantidad, ln.botella_id]);
-                await actualizarEstadoArticulo(client, null, ln.etiqueta_id);
-                await actualizarEstadoArticulo(client, null, ln.preforma_id);
                 await actualizarEstadoArticulo(client, null, ln.botella_id);
-                await registrarHistorial(client, {
-                    tipo: 'SALIDA', origen: 'servicio_guia',
-                    producto: ln.etiqueta_nombre, articulo_id: ln.etiqueta_id,
-                    cantidad: cantMill, tipo_cambio: 'RESTA',
-                    stock_anterior: Number(eRow.rows[0].stock) || 0,
-                    stock_nuevo: (Number(eRow.rows[0].stock) || 0) - cantMill,
-                    usuario,
-                    referencia: `Guía ${numero} de ${servicio} (${ln.producto} x ${ln.cantidad})`
-                });
-                await registrarHistorial(client, {
-                    tipo: 'SALIDA', origen: 'servicio_guia',
-                    producto: ln.preforma_nombre, articulo_id: ln.preforma_id,
-                    cantidad: cantMill, tipo_cambio: 'RESTA',
-                    stock_anterior: Number(pRow.rows[0].stock) || 0,
-                    stock_nuevo: (Number(pRow.rows[0].stock) || 0) - cantMill,
-                    usuario,
-                    referencia: `Guía ${numero} de ${servicio} (${ln.producto} x ${ln.cantidad})`
-                });
                 await registrarHistorial(client, {
                     tipo: 'MOVIMIENTO', origen: 'servicio_guia',
                     producto: ln.producto, articulo_id: ln.botella_id,
@@ -1453,9 +1516,29 @@ app.post('/api/servicios/guias', gAlmacen, async (req, res) => {
         }
 
         // CONTROL: las botellas ingresan al inventario y el documento queda
-        // PENDIENTE de guia. Etiqueta/preforma solo se descuentan si la linea
-        // las trae (ambas o ninguna).
+        // PENDIENTE de guia. Etiqueta/preforma: si la linea no las trae se
+        // resuelven por receta (como en la GUIA); se consume primero el saldo
+        // enviado al servicio y del inventario solo baja el excedente. Sin
+        // insumos resolubles, el control solo suma las botellas.
+        const saldoServicioCtrl = await saldoEnvioServicio(client, servicio);
         for (const ln of lineas) {
+            if ((!ln.etiqueta_id || !ln.preforma_id) && !ln.producto_key) {
+                const pt = await client.query(
+                    'SELECT producto_key FROM producto_terminado WHERE LOWER(nombre_producto) = LOWER($1) LIMIT 1',
+                    [ln.producto]
+                );
+                if (pt.rows.length) ln.producto_key = pt.rows[0].producto_key;
+            }
+            if ((!ln.etiqueta_id || !ln.preforma_id) && ln.producto_key) {
+                const sugeridos = await resolverInsumosServicio(client, ln.producto_key);
+                // Solo se auto-rellena si la receta trae AMBOS insumos: si
+                // trae solo uno, se queda como vino (sin consumir) en vez de
+                // rechazar un control que antes se registraba sin insumos.
+                if (!ln.etiqueta_id && !ln.preforma_id && sugeridos.etiqueta && sugeridos.preforma) {
+                    ln.etiqueta_id = sugeridos.etiqueta.id;
+                    ln.preforma_id = sugeridos.preforma.id;
+                }
+            }
             if ((ln.etiqueta_id && !ln.preforma_id) || (!ln.etiqueta_id && ln.preforma_id)) {
                 await client.query('ROLLBACK');
                 return res.status(400).json({ success: false, mensaje: `En "${ln.producto}" elige etiqueta Y preforma, o ninguna de las dos.` });
@@ -1475,35 +1558,43 @@ app.post('/api/servicios/guias', gAlmacen, async (req, res) => {
                     await client.query('ROLLBACK');
                     return res.status(400).json({ success: false, mensaje: `La etiqueta o preforma de "${ln.producto}" no existe.` });
                 }
-                if ((Number(eRow.rows[0].stock) || 0) < cantMill || (Number(pRow.rows[0].stock) || 0) < cantMill) {
-                    await client.query('ROLLBACK');
-                    return res.status(400).json({ success: false, mensaje: `Stock insuficiente de etiqueta/preforma para "${ln.producto}" (${cantMill} MILLARES).` });
-                }
                 ln.etiqueta_nombre = eRow.rows[0].nombre;
                 ln.preforma_nombre = pRow.rows[0].nombre;
                 ln.cantMill = cantMill;
-                await client.query('UPDATE inventario SET stock = stock - $1 WHERE id = $2', [cantMill, ln.etiqueta_id]);
-                await client.query('UPDATE inventario SET stock = stock - $1 WHERE id = $2', [cantMill, ln.preforma_id]);
-                await actualizarEstadoArticulo(client, null, ln.etiqueta_id);
-                await actualizarEstadoArticulo(client, null, ln.preforma_id);
-                await registrarHistorial(client, {
-                    tipo: 'SALIDA', origen: 'servicio_control',
-                    producto: ln.etiqueta_nombre, articulo_id: ln.etiqueta_id,
-                    cantidad: cantMill, tipo_cambio: 'RESTA',
-                    stock_anterior: Number(eRow.rows[0].stock) || 0,
-                    stock_nuevo: (Number(eRow.rows[0].stock) || 0) - cantMill,
-                    usuario,
-                    referencia: `Control interno ${numero} de ${servicio} (${ln.producto} x ${ln.cantidad})`
-                });
-                await registrarHistorial(client, {
-                    tipo: 'SALIDA', origen: 'servicio_control',
-                    producto: ln.preforma_nombre, articulo_id: ln.preforma_id,
-                    cantidad: cantMill, tipo_cambio: 'RESTA',
-                    stock_anterior: Number(pRow.rows[0].stock) || 0,
-                    stock_nuevo: (Number(pRow.rows[0].stock) || 0) - cantMill,
-                    usuario,
-                    referencia: `Control interno ${numero} de ${servicio} (${ln.producto} x ${ln.cantidad})`
-                });
+                // El envío ya descontó estas insumos al salir: primero se
+                // consume ese saldo y solo el excedente baja del inventario.
+                const etqParte = consumirSaldoEnvio(saldoServicioCtrl, ln.etiqueta_id, cantMill);
+                const prefParte = consumirSaldoEnvio(saldoServicioCtrl, ln.preforma_id, cantMill);
+                if ((Number(eRow.rows[0].stock) || 0) < etqParte.excedente || (Number(pRow.rows[0].stock) || 0) < prefParte.excedente) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ success: false, mensaje: `Stock insuficiente de etiqueta/preforma para "${ln.producto}" (${Math.max(etqParte.excedente, prefParte.excedente)} MILLARES).` });
+                }
+                if (etqParte.excedente > 0) {
+                    await client.query('UPDATE inventario SET stock = stock - $1 WHERE id = $2', [etqParte.excedente, ln.etiqueta_id]);
+                    await actualizarEstadoArticulo(client, null, ln.etiqueta_id);
+                    await registrarHistorial(client, {
+                        tipo: 'SALIDA', origen: 'servicio_control',
+                        producto: ln.etiqueta_nombre, articulo_id: ln.etiqueta_id,
+                        cantidad: etqParte.excedente, tipo_cambio: 'RESTA',
+                        stock_anterior: Number(eRow.rows[0].stock) || 0,
+                        stock_nuevo: (Number(eRow.rows[0].stock) || 0) - etqParte.excedente,
+                        usuario,
+                        referencia: `Control interno ${numero} de ${servicio} (${ln.producto} x ${ln.cantidad})`
+                    });
+                }
+                if (prefParte.excedente > 0) {
+                    await client.query('UPDATE inventario SET stock = stock - $1 WHERE id = $2', [prefParte.excedente, ln.preforma_id]);
+                    await actualizarEstadoArticulo(client, null, ln.preforma_id);
+                    await registrarHistorial(client, {
+                        tipo: 'SALIDA', origen: 'servicio_control',
+                        producto: ln.preforma_nombre, articulo_id: ln.preforma_id,
+                        cantidad: prefParte.excedente, tipo_cambio: 'RESTA',
+                        stock_anterior: Number(pRow.rows[0].stock) || 0,
+                        stock_nuevo: (Number(pRow.rows[0].stock) || 0) - prefParte.excedente,
+                        usuario,
+                        referencia: `Control interno ${numero} de ${servicio} (${ln.producto} x ${ln.cantidad})`
+                    });
+                }
             }
             await client.query('UPDATE inventario SET stock = stock + $1 WHERE id = $2', [ln.cantidad, ln.botella_id]);
             await actualizarEstadoArticulo(client, null, ln.botella_id);

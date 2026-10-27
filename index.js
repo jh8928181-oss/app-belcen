@@ -429,42 +429,14 @@ app.post('/api/almacen/registrar-conforme', gAlmacen, upload.single('foto_guia')
             // llegan 867 → se saldan 100 y quedan 767.
             let saldadasGuia = 0;
             if (cantidadFisica > 0) {
-                const pendQ = await client.query(
-                    `SELECT id, cantidad_pendiente FROM ajustes_pendientes
-                      WHERE estado = 'PENDIENTE'
-                        AND (articulo_id = $1 OR (articulo_id IS NULL AND LOWER(BTRIM(articulo_nombre)) = LOWER(BTRIM($2))))
-                      ORDER BY id ASC`,
-                    [targetArticuloId, item.nombre]
-                );
-                for (const q of pendQ.rows) {
-                    const debe = Number(q.cantidad_pendiente) || 0;
-                    if (!(debe > 0)) continue;
-                    const dispQ = await client.query('SELECT stock FROM inventario WHERE id = $1', [targetArticuloId]);
-                    const hay = Number(dispQ.rows[0].stock) || 0;
-                    if (hay < debe) continue;
-                    const descQ = await client.query(
-                        'UPDATE inventario SET stock = stock - $1 WHERE id = $2 RETURNING stock',
-                        [debe, targetArticuloId]
-                    );
-                    await registrarHistorial(client, {
-                        tipo: 'SALIDA', origen: 'ajuste_pendiente',
-                        producto: item.nombre, articulo_id: targetArticuloId,
-                        cantidad: debe, tipo_cambio: 'RESTA',
-                        stock_anterior: hay, stock_nuevo: Number(descQ.rows[0].stock),
-                        usuario: usuarioResponsable(req, usuarioRegistro),
-                        referencia: `Ajuste pendiente saldado con ` + refDoc
-                    });
-                    await client.query(
-                        `UPDATE ajustes_pendientes
-                            SET estado = 'APLICADA', cantidad_aplicada = $1,
-                                vinculo_tipo = 'GUIA', vinculo_ref = $2,
-                                aplicado_por = $3, fecha_aplicacion = CURRENT_TIMESTAMP
-                         WHERE id = $4`,
-                        [debe, numero_guia || 'S/N', usuarioResponsable(req, usuarioRegistro), q.id]
-                    );
-                    saldadasGuia += 1;
-                }
-                if (saldadasGuia) await actualizarEstadoArticulo(client, item.nombre, targetArticuloId);
+                saldadasGuia = await regularizarAjustesPendientes(client, {
+                    articuloId: targetArticuloId,
+                    articuloNombre: item.nombre,
+                    usuario: usuarioResponsable(req, usuarioRegistro),
+                    vinculoTipo: 'GUIA',
+                    vinculoRef: numero_guia || 'S/N',
+                    referencia: `Ajuste pendiente saldado con ` + refDoc
+                });
                 totalSaldadas += saldadasGuia;
             }
 
@@ -1332,6 +1304,8 @@ app.post('/api/servicios/guias', gAlmacen, async (req, res) => {
 
         const usuario = usuarioResponsable(req, req.body.usuario);
         const detalle = [];
+        // Ajustes pendientes que se saldan solos al entrar las botellas.
+        let saldadasServicio = 0;
 
         if (tipoDoc === 'GUIA') {
             let controlesIds = [];
@@ -1424,6 +1398,16 @@ app.post('/api/servicios/guias', gAlmacen, async (req, res) => {
                     usuario,
                     referencia: `Ingreso de botellas por guía ${numero} de ${servicio}`
                 });
+                // Las botellas entraron: si ese artículo tenía un ajuste
+                // pendiente de envasado, se salda solo aquí mismo.
+                saldadasServicio += await regularizarAjustesPendientes(client, {
+                    articuloId: ln.botella_id,
+                    articuloNombre: ln.producto,
+                    usuario,
+                    vinculoTipo: 'GUIA',
+                    vinculoRef: numero,
+                    referencia: `Ajuste pendiente saldado con guía ${numero} de ${servicio}`
+                });
                 detalle.push(`${ln.producto} x ${ln.cantidad} (${cantMill} MILLARES)`);
             }
             if (esDocumental) {
@@ -1463,7 +1447,8 @@ app.post('/api/servicios/guias', gAlmacen, async (req, res) => {
             await client.query('COMMIT');
             const msgGuia = esDocumental
                 ? `Guía ${numero} registrada y vinculada a ${controlesIds.length} control(es): el stock ya ingresó con los controles.`
-                : `Guía ${numero} registrada: ${totalBotellas} botellas en ${lineas.length} producto(s): ${detalle.join('; ')}.`;
+                : `Guía ${numero} registrada: ${totalBotellas} botellas en ${lineas.length} producto(s): ${detalle.join('; ')}.`
+                + (saldadasServicio ? ` Se saldaron ${saldadasServicio} ajuste(s) pendiente(s) con este ingreso.` : '');
             return res.json({ success: true, mensaje: msgGuia });
         }
 
@@ -1530,6 +1515,16 @@ app.post('/api/servicios/guias', gAlmacen, async (req, res) => {
                 usuario,
                 referencia: `Ingreso de botellas por control interno ${numero} de ${servicio}`
             });
+            // El control también mete botellas: salda solo los ajustes
+            // pendientes de ese artículo que ahora alcanzan.
+            saldadasServicio += await regularizarAjustesPendientes(client, {
+                articuloId: ln.botella_id,
+                articuloNombre: ln.producto,
+                usuario,
+                vinculoTipo: 'AJUSTE',
+                vinculoRef: `CONTROL ${numero} (${servicio})`,
+                referencia: `Ajuste pendiente saldado con control interno ${numero} de ${servicio}`
+            });
             detalle.push(ln.etiqueta_id
                 ? `${ln.producto} x ${ln.cantidad} (${ln.cantMill} MILLARES)`
                 : `${ln.producto} x ${ln.cantidad}`);
@@ -1556,7 +1551,11 @@ app.post('/api/servicios/guias', gAlmacen, async (req, res) => {
             );
         }
         await client.query('COMMIT');
-        res.json({ success: true, mensaje: `Control interno ${numero} registrado (pendiente de guía): ${totalControl} botellas en ${lineas.length} producto(s) sumadas al inventario: ${detalle.join('; ')}.` });
+        res.json({
+            success: true,
+            mensaje: `Control interno ${numero} registrado (pendiente de guía): ${totalControl} botellas en ${lineas.length} producto(s) sumadas al inventario: ${detalle.join('; ')}.`
+                + (saldadasServicio ? ` Se saldaron ${saldadasServicio} ajuste(s) pendiente(s) con este ingreso.` : '')
+        });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         console.error('Error en guía de servicio:', err);
@@ -1911,6 +1910,8 @@ app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
         //     aquí mismo. No pasa por el rubro en blanco.
         //   • SIN ETIQUETA: sale EN BLANCO y se etiqueta luego con
         //     /api/soplado/etiquetar.
+        let saldadasSoplado = 0;
+        let idTerminada = null;
         if (etiquetada) {
             if (!etiquetaNombre) {
                 await client.query('ROLLBACK');
@@ -1967,6 +1968,9 @@ app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
                 usuario: usuarioResponsable(req, usuario),
                 referencia: 'Producción soplado etiquetada: ' + cantidadBotellas + ' uds ' + botellaNombre
             });
+            // El artículo terminado que entró: es el que se usará para
+            // regularizar los ajustes pendientes cuando ya exista el reporte.
+            idTerminada = finRow.rows[0].id;
         } else {
             // Sin etiqueta reportada: sumar las botellas EN BLANCO a su
             // artículo. Se crea solo si no existe: es el pequeño inventario
@@ -1998,19 +2002,38 @@ app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
             });
         }
 
-        // Guardar el reporte del día para la barra de estado y estadísticas
+        // Guardar el reporte del día para la barra de estado y estadísticas.
+        // Su id es el vínculo con el que se saldan los ajustes pendientes que
+        // esta producción regulariza (se registra ya validado el destino).
+        let reporteId = null;
         if (conLinea) {
-            await client.query(
+            const rep = await client.query(
                 `INSERT INTO reportes_soplado (preforma_nombre, botella_tipo, botella_nombre, cantidad_botellas, usuario_registro, linea, molde)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
                 [preforma_nombre, botella_tipo, botellaNombre, cantidadBotellas, usuario || 'soplado_user', lineaVal, moldeVal || null]
             );
+            reporteId = rep.rows[0] && rep.rows[0].id;
         } else {
-            await client.query(
+            const rep = await client.query(
                 `INSERT INTO reportes_soplado (preforma_nombre, botella_tipo, botella_nombre, cantidad_botellas, usuario_registro)
-                 VALUES ($1, $2, $3, $4, $5)`,
+                 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
                 [preforma_nombre, botella_tipo, botellaNombre, cantidadBotellas, usuario || 'soplado_user']
             );
+            reporteId = rep.rows[0] && rep.rows[0].id;
+        }
+
+        // Entraron botellas terminadas (etiquetadas): si envasado tenía un
+        // ajuste pendiente de este artículo, se salda solo aquí contra este
+        // reporte, sin que almacén tenga que vincularlo a mano.
+        if (etiquetada && idTerminada) {
+            saldadasSoplado = await regularizarAjustesPendientes(client, {
+                articuloId: idTerminada,
+                articuloNombre: botellaNombre,
+                usuario: usuarioResponsable(req, usuario),
+                vinculoTipo: 'SOPLADO',
+                vinculoRef: reporteId ? `#${reporteId}` : 'soplado',
+                referencia: `Ajuste pendiente saldado con reporte de soplado #${reporteId || 's/n'} (${cantidadBotellas} uds ${botellaNombre} etiquetadas)`
+            });
         }
 
         await client.query('COMMIT');
@@ -2032,7 +2055,10 @@ app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
         const msgFinal = etiquetada
             ? `Producción de ${cantidadBotellas} unidades de ${botellaNombre} ETIQUETADA registrada en ${lineaTxt}${moldeVal ? ` (molde ${moldeVal})` : ''}. Se descontaron la preforma "${preforma_nombre}" y ${cantidadBotellas / 1000} MILL de la etiqueta "${etiquetaNombre}".`
             : `Producción de ${cantidadBotellas} unidades de ${botellaNombre} en blanco registrada en ${lineaTxt}${moldeVal ? ` (molde ${moldeVal})` : ''}. Se descontó la preforma "${preforma_nombre}". Las etiquetas se descuentan al etiquetar.`;
-        res.json({ success: true, mensaje: msgFinal });
+        const avisoSaldados = saldadasSoplado
+            ? ` Se saldaron ${saldadasSoplado} ajuste(s) pendiente(s) de "${botellaNombre}" con esta producción.`
+            : '';
+        res.json({ success: true, mensaje: msgFinal + avisoSaldados });
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Error al registrar soplado:', error);
@@ -2139,12 +2165,23 @@ app.post('/api/soplado/etiquetar', gSoplado, async (req, res) => {
             usuario: quien,
             referencia: `Etiquetado en ${lineaTxt}: ${cant} uds ${botellaNombre}`
         });
+        // Entraron botellas terminadas: salda solo los ajustes pendientes
+        // de este artículo que ahora alcanzan.
+        const saldadasEtiquetado = await regularizarAjustesPendientes(client, {
+            articuloId: finRow.rows[0].id,
+            articuloNombre: botellaNombre,
+            usuario: quien,
+            vinculoTipo: 'SOPLADO',
+            vinculoRef: `ETIQUETADO ${lineaVal}`,
+            referencia: `Ajuste pendiente saldado con etiquetado en ${lineaTxt} (${cant} uds ${botellaNombre})`
+        });
 
         await client.query('COMMIT');
         res.json({
             success: true,
             mensaje: `Etiquetadas ${cant} de "${botellaNombre}" en ${lineaTxt}: se descontaron ${cant} en blanco` +
                 (stockEtq ? ` y ${cantMill} MILL de "${etiquetaNombre}"` : ' (sin etiqueta)') + '.'
+                + (saldadasEtiquetado ? ` Se saldaron ${saldadasEtiquetado} ajuste(s) pendiente(s) de "${botellaNombre}".` : '')
         });
     } catch (error) {
         await client.query('ROLLBACK').catch(() => {});
@@ -2386,6 +2423,89 @@ app.post('/api/linea-plan', gEnvasado, async (req, res) => {
         client.release();
     }
 });
+
+// --- FUNCIÓN AUXILIAR: AUTO-REGULARIZAR AJUSTES PENDIENTES ---
+// Cuando entra stock de un artículo (soplado etiquetado, etiquetado, guía o
+// control de servicio, ingreso de almacén), los ajustes PENDIENTES de ese
+// artículo que ahora alcanzan se saldan solos dentro de la MISMA transacción:
+// descuenta el stock, deja el rastro en el historial y marca el pendiente
+// APLICADA con su vínculo. Es el mismo camino que el aplicar manual, para que
+// almacén no tenga que vincular a mano lo que el reporte/guía ya trajo.
+//
+// Reglas:
+//  • No deja stock negativo: si el pendiente no alcanza, se salta (queda
+//    PENDIENTE hasta que entre más), igual que hace el aplicar manual.
+//  • Bloquea los pendientes (FOR UPDATE) ordenados por id para que dos
+//    entradas simultáneas del mismo artículo no lo salden dos veces.
+//  • Si el artículo todavía no existe en inventario no hace nada: el
+//    pendiente sigue esperando a que lo creen.
+// Devuelve cuántos pendientes saldó.
+async function regularizarAjustesPendientes(q, opciones) {
+    const articuloId = opciones && opciones.articuloId ? parseInt(opciones.articuloId, 10) : null;
+    const articuloNombre = String((opciones && opciones.articuloNombre) || '').trim();
+    const usuario = (opciones && opciones.usuario) || 'sistema';
+    const vinculoTipo = String((opciones && opciones.vinculoTipo) || 'AJUSTE').trim().toUpperCase();
+    const vinculoRef = String((opciones && opciones.vinculoRef) || 'AUTOMÁTICO').trim();
+    if (!articuloId && !articuloNombre) return 0;
+
+    const pend = await q.query(
+        `SELECT id, cantidad_pendiente FROM ajustes_pendientes
+          WHERE estado = 'PENDIENTE'
+            AND (($1::int IS NOT NULL AND articulo_id = $1)
+              OR ($2 <> '' AND articulo_id IS NULL AND LOWER(BTRIM(articulo_nombre)) = LOWER(BTRIM($2))))
+          ORDER BY id ASC
+          FOR UPDATE`,
+        [articuloId, articuloNombre]
+    );
+    if (!pend.rows.length) return 0;
+
+    // El artículo se resuelve por id o, si el pendiente se creó sin id, por
+    // su nombre exacto (mismo criterio del aplicar manual).
+    let idFinal = articuloId;
+    let nombreFinal = articuloNombre;
+    const st = idFinal
+        ? await q.query('SELECT id, nombre, stock FROM inventario WHERE id = $1 FOR UPDATE', [idFinal])
+        : await q.query(
+            'SELECT id, nombre, stock FROM inventario WHERE LOWER(BTRIM(nombre)) = LOWER(BTRIM($1)) FOR UPDATE',
+            [nombreFinal]
+        );
+    if (!st.rows.length) return 0;
+    idFinal = st.rows[0].id;
+    nombreFinal = st.rows[0].nombre;
+
+    let stock = Number(st.rows[0].stock) || 0;
+    let saldados = 0;
+    for (const p of pend.rows) {
+        const debe = Number(p.cantidad_pendiente) || 0;
+        if (!(debe > 0) || stock < debe) continue;
+        const desc = await q.query(
+            'UPDATE inventario SET stock = stock - $1 WHERE id = $2 RETURNING stock',
+            [debe, idFinal]
+        );
+        if (desc.rowCount !== 1) continue;
+        stock = Number(desc.rows[0].stock);
+        await actualizarEstadoArticulo(q, nombreFinal, idFinal);
+        await registrarHistorial(q, {
+            tipo: 'SALIDA', origen: 'ajuste_pendiente',
+            producto: nombreFinal, articulo_id: idFinal,
+            cantidad: debe, tipo_cambio: 'RESTA',
+            stock_anterior: stock + debe, stock_nuevo: stock,
+            usuario,
+            referencia: (opciones && opciones.referencia)
+                || `Ajuste pendiente saldado automáticamente con ${vinculoTipo} ${vinculoRef}`
+        });
+        await q.query(
+            `UPDATE ajustes_pendientes
+                SET estado = 'APLICADA', cantidad_aplicada = $1,
+                    vinculo_tipo = $2, vinculo_ref = $3,
+                    aplicado_por = $4, fecha_aplicacion = CURRENT_TIMESTAMP
+              WHERE id = $5`,
+            [debe, vinculoTipo, vinculoRef, usuario, p.id]
+        );
+        saldados += 1;
+    }
+    return saldados;
+}
 
 // --- FUNCIÓN AUXILIAR: RECALCULAR ESTADO DE ARTÍCULOS SEGÚN STOCK ---
 // Con id se actualiza por clave primaria (sin ambigüedad de nombres);
@@ -5055,6 +5175,45 @@ app.get('/api/almacen/ajustes-pendientes', async (req, res) => {
     } catch (err) {
         console.error('Error al listar ajustes pendientes:', err);
         res.status(500).json({ success: false, mensaje: 'Error al cargar pendientes: ' + err.message });
+    }
+});
+
+// Reintento automático: salda todos los pendientes cuyo artículo YA tiene
+// stock. Cubre los casos en que el orden no ayudó (el reporte de soplado o la
+// guía llegaron antes de que se creara el ajuste, o el ingreso se hizo con una
+// versión anterior sin auto-saldado). La pantalla de Ajustes Pendientes lo
+// llama al cargarla, así que un pendiente con stock disponible nunca espera a
+// que alguien lo vincule a mano.
+app.post('/api/almacen/ajustes-pendientes/regularizar', gAlmacen, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const pends = await client.query(
+            `SELECT DISTINCT articulo_id, articulo_nombre
+               FROM ajustes_pendientes
+              WHERE estado = 'PENDIENTE'
+                AND (articulo_id IS NOT NULL OR COALESCE(BTRIM(articulo_nombre), '') <> '')`
+        );
+        const usuario = usuarioResponsable(req, req.body && req.body.usuario);
+        let regularizados = 0;
+        for (const p of pends.rows) {
+            regularizados += await regularizarAjustesPendientes(client, {
+                articuloId: p.articulo_id ? parseInt(p.articulo_id, 10) : null,
+                articuloNombre: p.articulo_nombre,
+                usuario,
+                vinculoTipo: 'AJUSTE',
+                vinculoRef: 'AUTOMÁTICO',
+                referencia: 'Ajuste pendiente saldado automáticamente (el stock ya estaba disponible)'
+            });
+        }
+        await client.query('COMMIT');
+        res.json({ success: true, regularizados });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        console.error('Error al regularizar ajustes pendientes:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al regularizar: ' + err.message });
+    } finally {
+        client.release();
     }
 });
 

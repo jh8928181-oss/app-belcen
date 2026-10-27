@@ -564,7 +564,8 @@ describe('POST /api/almacen/registrar-conforme salda pendientes', () => {
     // 0 + 867 - 100 = 767 en stock.
     expect(verStock()).toBe(767);
     const aplicada = mockQuery.mock.calls.find(c => UPD_APLICADA.test(String(c[0])));
-    expect(aplicada[1]).toEqual([100, 'TV01-1', 'admin1', 7]);
+    // Params: [cantidad, vinculo_tipo, vinculo_ref, aplicado_por, id].
+    expect(aplicada[1]).toEqual([100, 'GUIA', 'TV01-1', 'admin1', 7]);
     expect(r.cuerpo.pendientes_saldados).toBe(1);
     expect(r.cuerpo.mensaje).toContain('Se saldaron 1 pendiente');
   });

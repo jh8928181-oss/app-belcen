@@ -650,7 +650,7 @@
          salía en TODAS las pestañas (aparecía en Refinado, Stock, etc.). -->
     <div class="table-container sec-ambar reveal">
         <h3 class="h3-rojo">⚠️ AJUSTES PENDIENTES <span id="badgePendientes"></span></h3>
-        <p style="font-size:13px; color:#555;">Insumos que envasado no pudo descontar por falta de stock: el producto terminado sí se registró. Revisa el insumo, ajústalo para seguir trabajando y salda el pendiente vinculándolo al <b>reporte de soplado</b> o a la <b>guía</b> que lo traiga.</p>
+        <p style="font-size:13px; color:#555;">Insumos que envasado no pudo descontar por falta de stock: el producto terminado sí se registró. <b>Cuando vuelve a entrar stock de ese insumo (reporte de soplado, etiquetado, guía o control), el pendiente se salda solo</b> contra el documento que lo trajo. Lo que queda aquí a la derecha es solo lo que aún no llega: revísalo y saldalo vinculándolo al <b>reporte de soplado</b> o a la <b>guía</b> correspondiente.</p>
         <div class="tabla-wrap">
             <table>
                 <thead>
@@ -3483,6 +3483,21 @@
             const tbody = document.getElementById('tablaAjustesPendientes');
             const badge = document.getElementById('badgePendientes');
             try {
+                // Antes de pintar: reintento automático. Si el stock de un
+                // pendiente ya entró (reporte de soplado, guía o control),
+                // el servidor lo salda solo y la tabla sale limpia.
+                try {
+                    const rReg = await fetch('/api/almacen/ajustes-pendientes/regularizar', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ usuario: localStorage.getItem('usuario_actual') || 'almacen_user' })
+                    });
+                    const dReg = await rReg.json().catch(() => null);
+                    if (rReg.ok && dReg && dReg.regularizados > 0) {
+                        // El stock cambió: refresca también el inventario.
+                        cargarInventarioAlmacen();
+                    }
+                } catch (eReg) { /* sin permiso o sin red: la tabla se pinta igual */ }
                 const res = await fetch('/api/almacen/ajustes-pendientes');
                 const data = await res.json();
                 const lista = data.pendientes || [];

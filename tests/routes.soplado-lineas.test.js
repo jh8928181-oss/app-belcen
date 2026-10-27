@@ -90,6 +90,9 @@ const mundo = {
   blanco: null,
   terminada: null,
   etiquetaArt: null,
+  // Ajustes pendientes del artículo que está por entrar (auto-saldado).
+  pendientes: [],
+  ajusteArt: null,
   lineas: []
 };
 
@@ -98,6 +101,26 @@ function usarMundo() {
     const q = String(sql);
     if (/information_schema\.columns/.test(q)) {
       return { rows: mundo.columnas.map(c => ({ column_name: c })) };
+    }
+    if (/SELECT id, cantidad_pendiente FROM ajustes_pendientes/.test(q)) {
+      return {
+        rows: mundo.pendientes.map(p => ({ id: p.id, cantidad_pendiente: p.cantidad_pendiente })),
+        rowCount: mundo.pendientes.length
+      };
+    }
+    if (/SELECT id, nombre, stock FROM inventario WHERE id = \$1 FOR UPDATE/.test(q)) {
+      return mundo.ajusteArt ? { rows: [{ ...mundo.ajusteArt }], rowCount: 1 } : { rows: [], rowCount: 0 };
+    }
+    if (/UPDATE inventario SET stock = stock - \$1 WHERE id = \$2 RETURNING stock/.test(q)) {
+      const stock = mundo.ajusteArt ? Number(mundo.ajusteArt.stock) || 0 : 0;
+      mundo.ajusteArt = mundo.ajusteArt
+        ? { ...mundo.ajusteArt, stock: stock - (Number(params[0]) || 0) }
+        : null;
+      return { rows: [{ stock: mundo.ajusteArt ? mundo.ajusteArt.stock : 0 }], rowCount: 1 };
+    }
+    if (/UPDATE ajustes_pendientes/.test(q)) return { rows: [], rowCount: 1 };
+    if (/INSERT INTO reportes_soplado/.test(q)) {
+      return { rows: [{ id: 42 }], rowCount: 1 };
     }
     if (/FROM estado_lineas WHERE area/.test(q)) {
       const area = String(params[0] || '');
@@ -144,6 +167,8 @@ beforeEach(() => {
   mundo.blanco = null;
   mundo.terminada = null;
   mundo.etiquetaArt = null;
+  mundo.pendientes = [];
+  mundo.ajusteArt = null;
   mundo.lineas = [
     { linea: 'AUTOMATICA', nombre: 'Línea automática', molde_actual: 'Molde 1 Lt' },
     { linea: 'MANUAL', nombre: 'Línea manual', molde_actual: null }
@@ -254,6 +279,54 @@ describe('POST /api/soplado/registrar', () => {
       (/UPDATE inventario SET stock|INSERT INTO reportes_soplado/.test(String(c[0]))) &&
       !/WHERE LOWER\(nombre\)/.test(String(c[0])));
     expect(movs).toHaveLength(0);
+  });
+
+  test('la producción etiquetada salda sola el ajuste pendiente del artículo', async () => {
+    // Envasado no pudo descontar 1000 botellas y quedaron PENDIENTE; al
+    // soplar con etiqueta entran las botellas y el pendiente se salda solo,
+    // vinculado a este reporte.
+    mundo.etiquetaArt = { id: 55, stock: 10 };
+    mundo.terminada = { id: 77, stock: 100 };
+    mundo.pendientes = [{ id: 8, cantidad_pendiente: 1000 }];
+    mundo.ajusteArt = { id: 77, nombre: 'Botella de 900 ml - B-1', stock: 4000 };
+
+    const res = await invocar('post', '/api/soplado/registrar', {
+      body: { ...cuerpoBase(), etiquetada: true }
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.cuerpo.mensaje).toMatch(/1 ajuste\(s\) pendiente\(s\)/);
+    // Descuenta el pendiente (1000 del artículo 77) y lo deja APLICADA.
+    const descAjuste = mockQuery.mock.calls.find(c =>
+      /UPDATE inventario SET stock = stock - \$1 WHERE id = \$2 RETURNING stock/.test(String(c[0])));
+    expect(descAjuste).toBeDefined();
+    expect(descAjuste[1]).toEqual([1000, 77]);
+    const updPend = mockQuery.mock.calls.find(c => /UPDATE ajustes_pendientes/.test(String(c[0])));
+    expect(updPend).toBeDefined();
+    expect(updPend[1][0]).toBe(1000);
+    expect(updPend[1][1]).toBe('SOPLADO');
+    expect(String(updPend[1][2])).toMatch(/^#/); // vinculado al reporte de soplado
+    // Quedó rastro del saldado en el historial (origen = ajuste_pendiente).
+    expect(mockQuery.mock.calls.some(c =>
+      /INSERT INTO historial_inventario/.test(String(c[0])) &&
+      String(c[1][1]) === 'ajuste_pendiente')).toBe(true);
+  });
+
+  test('sin stock alcanzable el pendiente sigue PENDIENTE (no se toca)', async () => {
+    mundo.etiquetaArt = { id: 55, stock: 10 };
+    mundo.terminada = { id: 77, stock: 100 };
+    mundo.pendientes = [{ id: 8, cantidad_pendiente: 9000 }];
+    mundo.ajusteArt = { id: 77, nombre: 'Botella de 900 ml - B-1', stock: 4000 };
+
+    const res = await invocar('post', '/api/soplado/registrar', {
+      body: { ...cuerpoBase(), etiquetada: true }
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.cuerpo.mensaje).not.toMatch(/ajuste\(s\) pendiente\(s\)/);
+    expect(mockQuery.mock.calls.some(c =>
+      /UPDATE inventario SET stock = stock - \$1 WHERE id = \$2 RETURNING stock/.test(String(c[0])))).toBe(false);
+    expect(mockQuery.mock.calls.some(c => /UPDATE ajustes_pendientes/.test(String(c[0])))).toBe(false);
   });
 
   test('cada línea exige su propia marcha: manual parada no frena a la automática', async () => {

@@ -323,3 +323,93 @@ describe('POST /api/almacen/ajustes-pendientes/:id/aplicar', () => {
     expect(mala.statusCode).toBe(400);
   });
 });
+
+// ---------------------------------------------------------------------------
+
+describe('POST /api/almacen/ajustes-pendientes/regularizar (automático)', () => {
+  // Dos pendientes del mismo artículo: 696 y 558.
+  const PENDS = [
+    { id: 8, cantidad_pendiente: '696' },
+    { id: 9, cantidad_pendiente: '558' }
+  ];
+
+  function baseRegularizar(stockInicial, pendientes = PENDS) {
+    let stock = Number(stockInicial);
+    mockQuery.mockImplementation(async (sql, params = []) => {
+      const texto = String(sql);
+      if (/^(BEGIN|COMMIT|ROLLBACK)$/i.test(texto.trim())) return { rows: [], rowCount: 0 };
+      if (/SELECT DISTINCT articulo_id/.test(texto)) {
+        return { rows: [{ articulo_id: 3, articulo_nombre: 'Botella Belini x 1 Lt' }], rowCount: 1 };
+      }
+      if (/SELECT id, cantidad_pendiente FROM ajustes_pendientes/.test(texto)) {
+        return { rows: pendientes.map(p => ({ ...p })), rowCount: pendientes.length };
+      }
+      if (SQL.selArticulo.test(texto)) {
+        return { rows: [{ id: 3, nombre: 'Botella Belini x 1 Lt', stock: String(stock) }], rowCount: 1 };
+      }
+      if (SQL.updateMenos.test(texto)) {
+        stock -= Number(params[0]) || 0;
+        return { rows: [{ stock: String(stock) }], rowCount: 1 };
+      }
+      if (SQL.updateEstado.test(texto)) return { rows: [], rowCount: 1 };
+      if (SQL.historial.test(texto)) return { rows: [], rowCount: 1 };
+      if (SQL.updPendiente.test(texto)) return { rows: [], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    });
+  }
+
+  test('saldan los pendientes que el stock actual alcanza y dejan los demás', async () => {
+    baseRegularizar('1000'); // 696 entra; de los 304 restantes no alcanzan los 558
+    const res = await invocar('post', '/api/almacen/ajustes-pendientes/regularizar', { body: {} });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.cuerpo.regularizados).toBe(1);
+    const desc = mockQuery.mock.calls.filter(c => SQL.updateMenos.test(String(c[0])));
+    expect(desc).toHaveLength(1);
+    expect(desc[0][1]).toEqual([696, 3]);
+    const upd = mockQuery.mock.calls.find(c => SQL.updPendiente.test(String(c[0])));
+    expect(upd[1][0]).toBe(696);
+    expect(upd[1][1]).toBe('AJUSTE');
+    expect(upd[1][2]).toBe('AUTOMÁTICO');
+    // Quedó rastro en el historial con origen de ajuste pendiente.
+    expect(mockQuery.mock.calls.some(c =>
+      /INSERT INTO historial_inventario/.test(String(c[0])) && String(c[1][1]) === 'ajuste_pendiente')).toBe(true);
+  });
+
+  test('con dos pendientes alcanzables salda ambos', async () => {
+    baseRegularizar('5000');
+    const res = await invocar('post', '/api/almacen/ajustes-pendientes/regularizar', { body: {} });
+    expect(res.statusCode).toBe(200);
+    expect(res.cuerpo.regularizados).toBe(2);
+    const desc = mockQuery.mock.calls.filter(c => SQL.updateMenos.test(String(c[0])));
+    expect(desc.map(c => c[1][0])).toEqual([696, 558]);
+  });
+
+  test('sin stock disponible no mueve nada y sigue habiendo pendientes', async () => {
+    baseRegularizar('100');
+    const res = await invocar('post', '/api/almacen/ajustes-pendientes/regularizar', { body: {} });
+    expect(res.statusCode).toBe(200);
+    expect(res.cuerpo.regularizados).toBe(0);
+    expect(mockQuery.mock.calls.some(c => SQL.updateMenos.test(String(c[0])))).toBe(false);
+    expect(mockQuery.mock.calls.some(c => SQL.updPendiente.test(String(c[0])))).toBe(false);
+  });
+
+  test('artículo que todavía no existe en inventario: no hace nada', async () => {
+    mockQuery.mockImplementation(async (sql) => {
+      const texto = String(sql);
+      if (/^(BEGIN|COMMIT|ROLLBACK)$/i.test(texto.trim())) return { rows: [], rowCount: 0 };
+      if (/SELECT DISTINCT articulo_id/.test(texto)) {
+        return { rows: [{ articulo_id: null, articulo_nombre: 'Insumo Fantasma' }], rowCount: 1 };
+      }
+      if (/SELECT id, cantidad_pendiente FROM ajustes_pendientes/.test(texto)) {
+        return { rows: [{ id: 10, cantidad_pendiente: '10' }], rowCount: 1 };
+      }
+      if (/FROM inventario WHERE LOWER/.test(texto)) return { rows: [], rowCount: 0 };
+      return { rows: [], rowCount: 0 };
+    });
+    const res = await invocar('post', '/api/almacen/ajustes-pendientes/regularizar', { body: {} });
+    expect(res.statusCode).toBe(200);
+    expect(res.cuerpo.regularizados).toBe(0);
+    expect(mockQuery.mock.calls.some(c => SQL.updateMenos.test(String(c[0])))).toBe(false);
+  });
+});

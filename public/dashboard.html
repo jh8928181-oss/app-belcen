@@ -999,6 +999,66 @@ lista.length + ' reportes · ' + totalTn.toFixed(2) + ' TM · ' + rango;
             }
         }
 
+        // Filas vivas de la tabla de PT: identidad por producto_key para
+        // actualizar solo el número y reordenar sin rehacer la tabla.
+        const filasPT = new Map();
+
+        // Flip defensivo: motion.js se carga con defer y este script corre
+        // durante el parseo, así que en el primer render puede no existir aún.
+        function flipFilas(tbody, mutar) {
+            if (typeof window.flipTabla === 'function') window.flipTabla(tbody, mutar);
+            else mutar();
+        }
+
+        function renderFilasPT(tbody, lista) {
+            const claves = new Set(lista.map(i => String(i.producto_key)));
+            for (const [key, tr] of Array.from(filasPT)) {
+                if (!claves.has(key)) { tr.remove(); filasPT.delete(key); }
+            }
+
+            const vacio = tbody.querySelector('tr[data-vacio]');
+            if (lista.length === 0) {
+                filasPT.forEach(tr => tr.remove());
+                filasPT.clear();
+                if (!vacio) {
+                    tbody.innerHTML = '<tr data-vacio><td colspan="2" class="text-center sin-registros">Sin stock de producto terminado.</td></tr>';
+                }
+                return;
+            }
+            if (vacio) vacio.remove();
+
+            // Quitar filas ajenas al render (p. ej. el "Cargando..." inicial).
+            Array.from(tbody.children).forEach(tr => {
+                if (tr.hasAttribute('data-vacio')) return;
+                if (tr.dataset.key && filasPT.has(tr.dataset.key)) return;
+                tr.remove();
+            });
+
+            const frag = document.createDocumentFragment();
+            lista.forEach(item => {
+                const key = String(item.producto_key);
+                let tr = filasPT.get(key);
+                if (!tr) {
+                    tr = document.createElement('tr');
+                    tr.dataset.key = key;
+                    const tdNombre = document.createElement('td');
+                    tdNombre.appendChild(document.createElement('b'));
+                    const tdStock = document.createElement('td');
+                    tdStock.appendChild(document.createElement('b'));
+                    tr.append(tdNombre, tdStock);
+                    filasPT.set(key, tr);
+                }
+                const nombre = String(item.nombre_producto);
+                const celdaNombre = tr.children[0].firstChild;
+                if (celdaNombre.textContent !== nombre) celdaNombre.textContent = nombre;
+                const stockTexto = formatearNumero(item.stock_cajas);
+                const celdaStock = tr.children[1].firstChild;
+                if (celdaStock.textContent !== stockTexto) celdaStock.textContent = stockTexto;
+                frag.appendChild(tr);
+            });
+            tbody.appendChild(frag);
+        }
+
         async function cargarProductoTerminado() {
             try {
                 const res = await fetch('/api/producto-terminado');
@@ -1007,12 +1067,12 @@ lista.length + ' reportes · ' + totalTn.toFixed(2) + ' TM · ' + rango;
                 // Solo se listan los productos con stock real: en 0 no hay nada
                 // que despachar y solo infla el conteo de presentaciones.
                 const lista = (Array.isArray(productos) ? productos : [])
-                    .filter(pt => Number(pt.stock_cajas) > 0);
+                    .filter(pt => Number(pt.stock_cajas) > 0)
+                    .sort((a, b) => Number(b.stock_cajas) - Number(a.stock_cajas) ||
+                        String(a.nombre_producto).localeCompare(String(b.nombre_producto)));
 
                 const tbody = document.getElementById('tablaProductoTerminado');
-                tbody.innerHTML = lista.length === 0
-                    ? '<tr><td colspan="2" class="text-center sin-registros">Sin stock de producto terminado.</td></tr>'
-                    : '';
+                flipFilas(tbody, () => renderFilasPT(tbody, lista));
 
                 // Solo producto y cantidad. Se quitaron ID, clave, stock minimo y
                 // estado: el minimo salia siempre en 0 porque la base no lo tiene
@@ -1020,15 +1080,10 @@ lista.length + ' reportes · ' + totalTn.toFixed(2) + ' TM · ' + rango;
                 let totalCajas = 0;
                 lista.forEach(pt => {
                     totalCajas += parseInt(pt.stock_cajas || 0, 10);
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td><b>${pt.nombre_producto}</b></td>
-                        <td><b>${formatearNumero(pt.stock_cajas)}</b></td>
-                    `;
-                    tbody.appendChild(tr);
                 });
-
-                document.getElementById('totalProductoTerminado').textContent = lista.length + ' presentaciones · Total: ' + formatearNumero(totalCajas) + ' cajas';
+                const textoTotal = lista.length + ' presentaciones · Total: ' + formatearNumero(totalCajas) + ' cajas';
+                const elTotal = document.getElementById('totalProductoTerminado');
+                if (elTotal.textContent !== textoTotal) elTotal.textContent = textoTotal;
             } catch (err) {
                 console.error(err);
                 document.getElementById('tablaProductoTerminado').innerHTML =
@@ -1061,7 +1116,7 @@ lista.length + ' reportes · ' + totalTn.toFixed(2) + ' TM · ' + rango;
         cargarProductoTerminado();
         registrarAutoRefresco(cargarInventario, 15000);
         registrarAutoRefresco(cargarEstadoProduccion, 10000);
-        registrarAutoRefresco(cargarProductoTerminado, 30000);
+        registrarAutoRefresco(cargarProductoTerminado, 5000);
     </script>
 </body>
 </html>

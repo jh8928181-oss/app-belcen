@@ -1259,6 +1259,10 @@
 
         let inventarioGlobal = [];
         let productoTerminadoGlobal = [];
+        // Filas vivas de la tabla de PT: identidad por producto_key para
+        // poder actualizar solo el número y reordenar sin rehacer la tabla.
+        const filasPT = new Map();
+        let ultimaFirmaPT = '';
         let itemsDespachoArray = [];
         let itemsPTModalArray = [];
         let ingresosGlobal = [];
@@ -2642,19 +2646,90 @@
             }
         }
 
+        // Flip defensivo: motion.js se carga con defer y este script corre
+        // durante el parseo, así que en el primer render puede no existir aún.
+        function flipFilas(tbody, mutar) {
+            if (typeof window.flipTabla === 'function') window.flipTabla(tbody, mutar);
+            else mutar();
+        }
+
+        // Render por identidad de fila: crea/actualiza/quita sin rehacer el
+        // tbody, para que flipTabla pueda medir y animar el cambio de lugar.
+        function renderFilasPT(tbody, lista) {
+            const claves = new Set(lista.map(i => String(i.producto_key)));
+            for (const [key, tr] of Array.from(filasPT)) {
+                if (!claves.has(key)) { tr.remove(); filasPT.delete(key); }
+            }
+
+            const vacio = tbody.querySelector('tr[data-vacio]');
+            if (lista.length === 0) {
+                filasPT.forEach(tr => tr.remove());
+                filasPT.clear();
+                if (!vacio) {
+                    tbody.innerHTML = '<tr data-vacio><td colspan="3" class="text-center">Sin stock disponible.</td></tr>';
+                }
+                return;
+            }
+            if (vacio) vacio.remove();
+
+            // Quitar filas ajenas al render (p. ej. el "Cargando..." inicial).
+            Array.from(tbody.children).forEach(tr => {
+                if (tr.hasAttribute('data-vacio')) return;
+                if (tr.dataset.key && filasPT.has(tr.dataset.key)) return;
+                tr.remove();
+            });
+
+            const frag = document.createDocumentFragment();
+            lista.forEach(item => {
+                const key = String(item.producto_key);
+                let tr = filasPT.get(key);
+                if (!tr) {
+                    tr = document.createElement('tr');
+                    tr.dataset.key = key;
+                    const tdNombre = document.createElement('td');
+                    tdNombre.appendChild(document.createElement('b'));
+                    const tdStock = document.createElement('td');
+                    tdStock.className = 'text-center celda-verde';
+                    const tdAccion = document.createElement('td');
+                    tdAccion.className = 'text-center';
+                    const btn = document.createElement('button');
+                    btn.className = 'btn-accion btn-ajustar';
+                    btn.textContent = 'Ajustar';
+                    btn.addEventListener('click', () => ajustarPT(tr._pt.id, tr._pt.nombre_producto, tr._pt.stock_cajas));
+                    tdAccion.appendChild(btn);
+                    tr.append(tdNombre, tdStock, tdAccion);
+                    filasPT.set(key, tr);
+                }
+                tr._pt = item;
+                const nombre = String(item.nombre_producto);
+                const celdaNombre = tr.children[0].firstChild;
+                if (celdaNombre.textContent !== nombre) celdaNombre.textContent = nombre;
+                const stockTexto = `${item.stock_cajas} CAJAS`;
+                if (tr.children[1].textContent !== stockTexto) tr.children[1].textContent = stockTexto;
+                frag.appendChild(tr);
+            });
+            tbody.appendChild(frag);
+        }
+
         async function cargarProductoTerminado() {
             try {
                 const res = await fetch('/api/producto-terminado');
                 const data = await res.json();
-                productoTerminadoGlobal = data.filter(item => item.stock_cajas > 0);
-                const tbody = document.getElementById('tablaProductoTerminado');
-                tbody.innerHTML = productoTerminadoGlobal.length === 0 ? `<tr><td colspan="3" class="text-center">Sin stock disponible.</td></tr>` : '';
-                productoTerminadoGlobal.forEach(item => {
-                    tbody.innerHTML += `<tr><td><b>${item.nombre_producto}</b></td><td class="text-center celda-verde">${item.stock_cajas} CAJAS</td><td class="text-center"><button onclick="ajustarPT(${item.id}, '${item.nombre_producto}', ${item.stock_cajas})" class="btn-accion btn-ajustar">Ajustar</button></td></tr>`;
-                    });
+                const lista = (Array.isArray(data) ? data : [])
+                    .filter(item => Number(item.stock_cajas) > 0)
+                    .sort((a, b) => Number(b.stock_cajas) - Number(a.stock_cajas) ||
+                        String(a.nombre_producto).localeCompare(String(b.nombre_producto)));
+                productoTerminadoGlobal = lista;
 
+                const tbody = document.getElementById('tablaProductoTerminado');
+                flipFilas(tbody, () => renderFilasPT(tbody, lista));
+
+                const firma = lista.map(i => String(i.producto_key)).join('|');
+                if (firma !== ultimaFirmaPT) {
+                    ultimaFirmaPT = firma;
                     etiquetarTablas();
-                    poblarSelectSalida();
+                }
+                poblarSelectSalida();
             } catch(e) { console.error(e); }
         }
 
@@ -2872,6 +2947,15 @@
 
         function poblarSelectSalida() {
             const select = document.getElementById('selectProductoSalida');
+            if (!select) return;
+            // Reconstruir el select en cada refresh tiraría la selección del
+            // usuario; solo se rehace si cambió el contenido real de las opciones.
+            const firma = productoTerminadoGlobal.map(pt => `${pt.producto_key}:${pt.stock_cajas}`).join('|')
+                + '#' + inventarioGlobal.map(ins => `${ins.id}:${ins.stock}`).join('|');
+            if (select.dataset.firma === firma) return;
+            select.dataset.firma = firma;
+
+            const valorPrevio = select.value;
             select.innerHTML = '<option value="">-- Seleccione producto o insumo --</option>';
             if (productoTerminadoGlobal.length > 0) {
                 const g1 = document.createElement('optgroup');
@@ -2894,6 +2978,9 @@
                     g2.appendChild(opt);
                 });
                 select.appendChild(g2);
+            }
+            if (valorPrevio && Array.from(select.options).some(o => o.value === valorPrevio)) {
+                select.value = valorPrevio;
             }
         }
 
@@ -3811,6 +3898,11 @@
             cargarHistorialSalidas();
             cargarPedidosParaSalida();
         }, 15000);
+
+        // La tabla de PT se mueve sola (producción la sube, las salidas la
+        // bajan) y hay que reordenarla apenas cambie: refresco propio más
+        // rápido que el bloque anterior, que no la incluía.
+        registrarAutoRefresco(cargarProductoTerminado, 5000);
     </script>
 </body>
 </html>

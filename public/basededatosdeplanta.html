@@ -216,6 +216,16 @@
 
         let inventarioGlobal = [];
         let ptGlobal = [];
+        // Filas vivas de la tabla de PT: identidad por producto_key para
+        // actualizar solo el número y reordenar sin rehacer la tabla.
+        const filasPT = new Map();
+
+        // Flip defensivo: motion.js se carga con defer y este script corre
+        // durante el parseo, así que en el primer render puede no existir aún.
+        function flipFilas(tbody, mutar) {
+            if (typeof window.flipTabla === 'function') window.flipTabla(tbody, mutar);
+            else mutar();
+        }
 
         function etiquetarTablas() {
             document.querySelectorAll('.tabla-card-movil table').forEach(tabla => {
@@ -253,32 +263,87 @@
                 });
                 etiquetarTablas();
 
-                const resPt = await fetch('/api/producto-terminado');
-                ptGlobal = await resPt.json();
-                const tbodyPt = document.getElementById('tablaProductoTerminado');
-                tbodyPt.innerHTML = '';
-
-                // Solo se lista lo que hay en almacén: un producto en 0 no es
-                // salida posible y solo ocupa sitio en una tabla de stock real.
-                const conStock = ptGlobal.filter(pt => Number(pt.stock_cajas) > 0);
-                if (!conStock.length) {
-                    tbodyPt.innerHTML = '<tr><td colspan="3" class="text-center sin-registros">Sin stock de producto terminado.</td></tr>';
-                }
-                conStock.forEach(pt => {
-                    tbodyPt.innerHTML += `
-                        <tr>
-                            <td><code>${pt.producto_key}</code></td>
-                            <td><b>${pt.nombre_producto}</b></td>
-                            <td class="text-center" style="color: #28a745; font-weight: bold; font-size: 16px;">${pt.stock_cajas} CAJAS</td>
-                        </tr>
-                    `;
-                });
-                etiquetarTablas();
+                await cargarProductoTerminadoPlanta();
 
             } catch (err) {
                 console.error("Error al cargar base de datos de planta:", err);
             }
             cargarInformes();
+        }
+
+        // Solo PT: sacado de cargarDatosPlanta para poder refrescarlo cada 5s
+        // sin volver a pedir inventario e informes.
+        async function cargarProductoTerminadoPlanta() {
+            try {
+                const resPt = await fetch('/api/producto-terminado');
+                ptGlobal = await resPt.json();
+
+                const conStock = (Array.isArray(ptGlobal) ? ptGlobal : [])
+                    .filter(pt => Number(pt.stock_cajas) > 0)
+                    .sort((a, b) => Number(b.stock_cajas) - Number(a.stock_cajas) ||
+                        String(a.nombre_producto).localeCompare(String(b.nombre_producto)));
+
+                const tbodyPt = document.getElementById('tablaProductoTerminado');
+                flipFilas(tbodyPt, () => renderFilasPT(tbodyPt, conStock));
+                etiquetarTablas();
+            } catch (err) {
+                console.error("Error al cargar producto terminado:", err);
+            }
+        }
+
+        function renderFilasPT(tbody, lista) {
+            const claves = new Set(lista.map(i => String(i.producto_key)));
+            for (const [key, tr] of Array.from(filasPT)) {
+                if (!claves.has(key)) { tr.remove(); filasPT.delete(key); }
+            }
+
+            const vacio = tbody.querySelector('tr[data-vacio]');
+            if (lista.length === 0) {
+                filasPT.forEach(tr => tr.remove());
+                filasPT.clear();
+                if (!vacio) {
+                    tbody.innerHTML = '<tr data-vacio><td colspan="3" class="text-center sin-registros">Sin stock de producto terminado.</td></tr>';
+                }
+                return;
+            }
+            if (vacio) vacio.remove();
+
+            // Quitar filas ajenas al render (p. ej. el "Cargando..." inicial).
+            Array.from(tbody.children).forEach(tr => {
+                if (tr.hasAttribute('data-vacio')) return;
+                if (tr.dataset.key && filasPT.has(tr.dataset.key)) return;
+                tr.remove();
+            });
+
+            const frag = document.createDocumentFragment();
+            lista.forEach(pt => {
+                const key = String(pt.producto_key);
+                let tr = filasPT.get(key);
+                if (!tr) {
+                    tr = document.createElement('tr');
+                    tr.dataset.key = key;
+                    const tdClave = document.createElement('td');
+                    const code = document.createElement('code');
+                    tdClave.appendChild(code);
+                    const tdNombre = document.createElement('td');
+                    tdNombre.appendChild(document.createElement('b'));
+                    const tdStock = document.createElement('td');
+                    tdStock.className = 'text-center';
+                    tdStock.style.color = '#28a745';
+                    tdStock.style.fontWeight = 'bold';
+                    tdStock.style.fontSize = '16px';
+                    tr.append(tdClave, tdNombre, tdStock);
+                    filasPT.set(key, tr);
+                }
+                const clave = String(pt.producto_key);
+                if (tr.children[0].firstChild.textContent !== clave) tr.children[0].firstChild.textContent = clave;
+                const nombre = String(pt.nombre_producto);
+                if (tr.children[1].firstChild.textContent !== nombre) tr.children[1].firstChild.textContent = nombre;
+                const stockTexto = `${pt.stock_cajas} CAJAS`;
+                if (tr.children[2].textContent !== stockTexto) tr.children[2].textContent = stockTexto;
+                frag.appendChild(tr);
+            });
+            tbody.appendChild(frag);
         }
 
         function buscarArticuloEnInventario(nombreBuscado) {
@@ -587,6 +652,9 @@ document.getElementById('informe_fecha').valueAsDate = new Date();
 cargarCatalogoRecetas();
         refrescarDatosPlanta();
         registrarAutoRefresco(refrescarDatosPlanta, 15000);
+        // La tabla de PT se reordena sola: refresco propio más rápido que el
+        // bloque anterior, que solo la alcanza cada 15s con todo lo demás.
+        registrarAutoRefresco(cargarProductoTerminadoPlanta, 5000);
     </script>
 </body>
 </html>

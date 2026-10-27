@@ -1602,7 +1602,7 @@ app.get('/api/producto-terminado', async (req, res) => {
                        ELSE 'STOCK SUFICIENTE'
                    END AS estado
             FROM producto_terminado 
-            ORDER BY nombre_producto ASC
+            ORDER BY stock_cajas DESC, nombre_producto ASC
         `);
         res.json(result.rows);
     } catch (err) {

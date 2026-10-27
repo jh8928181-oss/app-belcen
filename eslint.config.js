@@ -17,6 +17,9 @@ module.exports = [
       'migrations/**',
       'scripts/**',
       'check-*.js',
+      // Material local del video de lanzamiento (brag): incluye librerías
+      // vendorizadas minificadas. No es código de la app.
+      'brag-output/**',
       // Scripts ad-hoc locales con credenciales de BD escritas en el archivo.
       // No se versionan: ver .gitignore.
       'verify-*.js',

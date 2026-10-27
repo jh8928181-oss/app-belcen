@@ -12,3 +12,6 @@ Thumbs.db
 
 # Scripts ad-hoc locales con la DATABASE_URL escrita en el archivo.
 verify-*.js
+
+# Material local del video de lanzamiento (brag): no se versiona.
+brag-output/

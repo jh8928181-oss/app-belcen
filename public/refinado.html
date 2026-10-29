@@ -542,6 +542,17 @@
         }
 
         // --- FORMULARIO DE LOTE ---
+        // Escribe las observaciones del servidor SOLO si el usuario no las
+        // tocó: así el auto-refresco no pisa una nota a medio escribir.
+        function pintarObservaciones(valor) {
+            const el = document.getElementById('observaciones');
+            if (!el) return;
+            const escrito = (el.value || '').trim();
+            const enFoco = document.activeElement === el;
+            if (enFoco || (escrito && escrito !== String(valor || '').trim())) return;
+            el.value = valor || '';
+        }
+
         function limpiarFormLote() {
             document.getElementById('loteNumero').value = '';
             document.getElementById('loteHora').value = '';
@@ -600,6 +611,26 @@
         }
 
         // --- CARGAR REPORTE POR FECHA + TURNO ---
+        // Indica si el operario está capturando un lote (algo escrito en el
+        // formulario). Sirve para que el auto-refresco periódico NO borre lo que
+        // se está digitando: solo repinta lotes y totales, y deja el formulario.
+        function formLoteEnUso() {
+            // loteFecha viene prellena con hoy, así que solo cuenta como dato
+            // del operario si cambió la fecha por defecto.
+            const fecha = document.getElementById('loteFecha');
+            if (fecha && fecha.value && fecha.value !== hoyLocal()) return true;
+            const ids = ['loteNumero', 'loteHora', 'loteCantidad'];
+            const hayDato = ids.some(id => {
+                const el = document.getElementById(id);
+                return el && String(el.value || '').trim() !== '';
+            });
+            if (hayDato) return true;
+            // Se comprueba .value en JS: los inputs se crean sin atributo value,
+            // así que un selector :not([value=""]) los marcaría como llenos.
+            return Array.from(document.querySelectorAll('#tbodyInsumosLote input[data-k="cantidad"]:not([readonly])'))
+                .some(inp => String(inp.value || '').trim() !== '');
+        }
+
         async function cargarReporte() {
             const fecha = document.getElementById('fechaReporte').value || hoyLocal();
             document.getElementById('fechaReporte').value = fecha;
@@ -610,23 +641,30 @@
                 const res = await fetch('/api/refinado/reporte?fecha=' + fecha + '&turno=' + turno);
                 if (!res.ok) throw new Error('Error del servidor.');
                 const data = await res.json();
-                insumosBase = Array.isArray(data.insumosBase) ? data.insumosBase : [];
-                poblarTablaInsumosLote();
+                // Con el formulario en uso NO se repinta la tabla de insumos ni
+                // se limpia: solo se actualizan lotes y totales. Así el
+                // auto-refresco periódico no borra lo que se está digitando.
+                if (!formLoteEnUso()) {
+                    insumosBase = Array.isArray(data.insumosBase) ? data.insumosBase : [];
+                    poblarTablaInsumosLote();
+                }
                 const rep = data.reporte;
                 if (rep) {
                     lotesActuales = Array.isArray(rep.lotes) ? rep.lotes : [];
                     renderListaLotes();
-                    document.getElementById('observaciones').value = rep.observaciones || '';
+                    pintarObservaciones(rep.observaciones || '');
                     document.getElementById('fechaRef').textContent = formatearFechaReporte(rep.fecha_reporte) || fecha;
                     mostrarMensaje('✅ Reporte cargado — Turno ' + (rep.turno || turno) + ' (' + lotesActuales.length + ' lote(s), registrado por ' + (rep.usuario_registro || '-') + ').', true);
                 } else {
                     lotesActuales = [];
                     renderListaLotes();
-                    document.getElementById('observaciones').value = '';
+                    pintarObservaciones('');
                     document.getElementById('fechaRef').textContent = fecha;
                     mostrarMensaje('ℹ️ Sin reporte para ' + turno + '. El lote que guardes creará el reporte.', false);
                 }
-            limpiarFormLote();
+                // La limpieza solo aplica si el formulario está vacío; la del
+                // guardado usa limpiarFormLote() directo (tras guardar sí vacía).
+                if (!formLoteEnUso()) limpiarFormLote();
                 actualizarTotales();
             } catch (err) {
                 console.error(err);

@@ -1292,10 +1292,12 @@
         }
 
         /* ---------- Consulta de ingresos del día ---------- */
-        async function cargarIngresosHoy() {
+        async function cargarIngresosHoy(silencioso) {
             const tbody = document.getElementById('tablaIngresosHoy');
             const resumen = document.getElementById('resumenConsulta');
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center sin-registros">Cargando…</td></tr>';
+            // El refresco periódico llega en silencio: sin el aviso "Cargando…"
+            // para no vaciar la tabla cada 15 segundos ante los ojos del usuario.
+            if (!silencioso) tbody.innerHTML = '<tr><td colspan="6" class="text-center sin-registros">Cargando…</td></tr>';
             try {
                 const res = await fetch('/api/vigilancia/ingresos');
                 const data = await res.json();
@@ -1348,6 +1350,14 @@
         });
         actualizarEstadoWizard();
         mostrarMenu();
+        // Esta página no tenía NINGÚN auto-refresco. La vista de consulta ya se
+        // carga al abrirse (mostrarVista); mientras esté visible se actualiza
+        // sola: una fila registrada desde otra PC aparece sin F5. Al volver al
+        // menú mostrarMenu() la oculta y el intervalo deja de pedir.
+        registrarAutoRefresco(() => {
+            const vista = document.getElementById('vistaConsulta');
+            if (vista && vista.style.display !== 'none') cargarIngresosHoy(true);
+        }, 15000);
     </script>
 </body>
 </html>

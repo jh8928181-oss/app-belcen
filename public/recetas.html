@@ -332,11 +332,17 @@
                     unicos.set(p.producto_key, p.nombre_producto || p.producto_key);
                 });
                 recetasGlobal.forEach(r => { if (r.producto_key && !unicos.has(r.producto_key)) unicos.set(r.producto_key, r.nombre_producto || r.producto_key); });
-                sel.innerHTML = '<option value="">-- Seleccionar presentación --</option>' +
-                    Array.from(unicos.entries())
-                        .sort((a, b) => (a[1] || a[0]).localeCompare(b[1] || b[0]))
-                        .map(([k, v]) => `<option value="${escHTML(k)}">${escHTML(v || k)}</option>`)
-                        .join('');
+                const ordenado = Array.from(unicos.entries())
+                    .sort((a, b) => (a[1] || a[0]).localeCompare(b[1] || b[0]));
+                const firma = ordenado.map(([k]) => k).join('|');
+                // Solo se repuebla si cambió el catálogo (y sin pisar lo que se
+                // esté eligiendo): ver repoblarSelect en auth-client.js.
+                repoblarSelect(sel, firma, s => {
+                    s.innerHTML = '<option value="">-- Seleccionar presentación --</option>' +
+                        ordenado
+                            .map(([k, v]) => `<option value="${escHTML(k)}">${escHTML(v || k)}</option>`)
+                            .join('');
+                });
             } catch (err) {
                 console.error(err);
             }
@@ -976,6 +982,9 @@
         cargarRecetas();
         document.getElementById('filtroRecetas').addEventListener('input', renderRecetas);
         registrarAutoRefresco(cargarRecetas, 20000);
+        // El catálogo (productos + recetas alimenta el select "nuevo producto")
+        // también se refresca: una presentación creada en otra PC aparece sola.
+        registrarAutoRefresco(cargarDatosIniciales, 15000);
     </script>
 </body>
 </html>

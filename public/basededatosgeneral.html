@@ -1316,7 +1316,12 @@
             return ' <span class="badge badge-dia" title="Toda orden debería tener su factura">SIN FACTURA</span>';
         }
 
+        // La pestaña visible se registra aquí: el auto-refresco solo consulta
+        // la que se está mirando (ver refrescarPestanaActiva al final).
+        let pestanaActual = 'prov';
+
         function mostrarPestana(nombre) {
+            pestanaActual = nombre;
             document.getElementById('pestanaProv').classList.toggle('oculto', nombre !== 'prov');
             document.getElementById('pestanaOrden').classList.toggle('oculto', nombre !== 'orden');
             document.getElementById('pestanaStock').classList.toggle('oculto', nombre !== 'stock');
@@ -2836,7 +2841,29 @@
             }
         }
 
-        registrarAutoRefresco(cargarProveedores, 30000);
+        // Antes solo se refrescaban los proveedores (y las demás pestañas se
+        // quedaban congeladas hasta F5). Ahora refresca la pestaña ACTIVA cada
+        // 30s, con las mismas llamadas que usaría mostrarPestana: una orden o
+        // un precio cambiado en otra PC aparece sin recargar.
+        function refrescarPestanaActiva() {
+            const llamar = (fn) => {
+                try {
+                    const r = fn();
+                    if (r && typeof r.catch === 'function') r.catch(() => {});
+                } catch (e) { console.error(e); }
+            };
+            if (pestanaActual === 'prov') llamar(cargarProveedores);
+            else if (pestanaActual === 'orden') llamar(cargarOrdenes);
+            else if (pestanaActual === 'stock') { llamar(cargarStock); llamar(cargarMovimientos); }
+            else if (pestanaActual === 'precio') {
+                llamar(cargarPrecios);
+                llamar(cargarHistorialPrecios);
+                llamar(cargarResumenFacturas);
+                llamar(cargarFacturaOrdenes);
+            }
+            else if (pestanaActual === 'serv') llamar(cargarServiciosBD);
+        }
+        registrarAutoRefresco(refrescarPestanaActiva, 30000);
         // El contador de guias sin OC vive fuera de cualquier pestana.
         cargarNotificaciones().catch(() => {});
         registrarAutoRefresco(() => cargarNotificaciones().catch(() => {}), 60000);

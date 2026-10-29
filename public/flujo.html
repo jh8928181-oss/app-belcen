@@ -523,7 +523,6 @@
 
         let temporizadorGuardado = null;
         let guardandoAhora = false;
-        let autoRefrescoRegistrado = false;
 
         /* ---------------- avisos ---------------- */
 
@@ -618,14 +617,6 @@
             renderizar();
             aplicarBusqueda(busqueda);
             cargarMetricas();
-
-            // El autoguardado recarga el grafo con cargar(); registrar el
-            // intervalo aquí otra vez acumularía un setInterval y un listener
-            // de visibilitychange por cada guardado.
-            if (!autoRefrescoRegistrado) {
-                registrarAutoRefresco(cargarMetricas, INTERVALO_METRICAS);
-                autoRefrescoRegistrado = true;
-            }
         }
 
         function llenarSelectMetricas() {
@@ -2031,6 +2022,10 @@
         // Las etiquetas arrancan visibles, asi que el botón queda marcado.
         document.getElementById('btnEtiquetas').classList.add('activo');
 
+        // El intervalo se registra UNA vez, aquí. Antes vivía dentro de cargar():
+        // si el primer fetch fallaba, la página se quedaba sin refresco hasta F5
+        // (y el autoguardado que vuelve a llamar cargar() no lo re-registraba).
+        registrarAutoRefresco(cargarMetricas, INTERVALO_METRICAS);
         cargar().then(centrar);
     </script>
 </body>

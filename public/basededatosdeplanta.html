@@ -655,6 +655,9 @@ cargarCatalogoRecetas();
         // La tabla de PT se reordena sola: refresco propio más rápido que el
         // bloque anterior, que solo la alcanza cada 15s con todo lo demás.
         registrarAutoRefresco(cargarProductoTerminadoPlanta, 5000);
+        // Catálogo del simulador: una receta nueva creada en Recetas aparece
+        // aquí sin recargar (agregarProductosNuevosAlSimulador solo añade).
+        registrarAutoRefresco(cargarCatalogoRecetas, 15000);
     </script>
 </body>
 </html>

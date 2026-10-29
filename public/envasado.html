@@ -512,19 +512,18 @@
 
         async function poblarSelectsEnvasado() {
             await agregarPresentacionesDeRecetas();
-            const selForm = document.getElementById('presentacion');
             const opciones = PRESENTACIONES_ENVASADO
                 .map(p => `<option value="${escEnvasado(p.v)}">${escEnvasado(p.l)}</option>`)
                 .join('');
-            if (selForm) {
-                selForm.innerHTML = '<option value="">-- Seleccionar Presentación --</option>' + opciones;
-            }
-            const selMarcha = document.getElementById('marchaProducto');
-            if (selMarcha) {
-                const actual = selMarcha.value;
-                selMarcha.innerHTML = '<option value="">-- ¿Qué producción va a iniciar? --</option>' + opciones;
-                if (actual && PRESENTACIONES_ENVASADO.some(p => p.v === actual)) selMarcha.value = actual;
-            }
+            const firma = PRESENTACIONES_ENVASADO.map(p => p.v).join('|');
+            // repoblarSelect (auth-client.js) solo toca el DOM si cambió el
+            // catálogo, preserva lo elegido y no interfiere con el foco.
+            repoblarSelect(document.getElementById('presentacion'), firma, s => {
+                s.innerHTML = '<option value="">-- Seleccionar Presentación --</option>' + opciones;
+            });
+            repoblarSelect(document.getElementById('marchaProducto'), firma, s => {
+                s.innerHTML = '<option value="">-- ¿Qué producción va a iniciar? --</option>' + opciones;
+            });
         }
 
         // Cadena de producción: lo último cerrado es "En producción" y lo
@@ -1230,6 +1229,8 @@
             cargarProduccionActiva();
             if (document.getElementById('vistaPedidos').style.display !== 'none') cargarPedidosProducir();
         }, 15000);
+        // Catálogo de presentaciones (trae las recetas nuevas sin F5).
+        registrarAutoRefresco(poblarSelectsEnvasado, 15000);
     </script>
 </body>
 </html>

@@ -1114,8 +1114,10 @@ lista.length + ' reportes · ' + totalTn.toFixed(2) + ' TM · ' + rango;
         cargarInventario();
         cargarEstadoProduccion();
         cargarProductoTerminado();
-        registrarAutoRefresco(cargarInventario, 15000);
-        registrarAutoRefresco(cargarEstadoProduccion, 10000);
+        // El dashboard es la pantalla de monitoreo: todo a 5s (peor caso) para
+        // que lo que se registre en otra pantalla se vea casi sin recargar.
+        registrarAutoRefresco(cargarInventario, 5000);
+        registrarAutoRefresco(cargarEstadoProduccion, 5000);
         registrarAutoRefresco(cargarProductoTerminado, 5000);
     </script>
 </body>

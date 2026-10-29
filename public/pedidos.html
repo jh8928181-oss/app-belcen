@@ -401,10 +401,15 @@
                 const data = await res.json();
                 catalogo = (data && data.productos) || [];
                 const sel = document.getElementById('pProducto');
-                sel.innerHTML = '<option value="">-- Elige un producto --</option>' +
-                    catalogo.map(p =>
-                        `<option value="${esc(p.producto_key)}">${esc(p.nombre_producto)} (${Number(p.stock_cajas) || 0} cajas)</option>`
-                    ).join('');
+                const firma = catalogo.map(p => `${p.producto_key}:${Number(p.stock_cajas) || 0}`).join('|');
+                // Solo se repuebla si cambió el contenido (y sin pisar lo que
+                // el usuario esté eligiendo): ver repoblarSelect en auth-client.js.
+                repoblarSelect(sel, firma, s => {
+                    s.innerHTML = '<option value="">-- Elige un producto --</option>' +
+                        catalogo.map(p =>
+                            `<option value="${esc(p.producto_key)}">${esc(p.nombre_producto)} (${Number(p.stock_cajas) || 0} cajas)</option>`
+                        ).join('');
+                });
             } catch (e) { /* el formulario sigue con el selector vacío */ }
         }
 
@@ -762,8 +767,15 @@
             window.registrarAutoRefresco(function () {
                 if (!document.getElementById('panelPedidos').classList.contains('oculto')) cargarPedidos();
                 if (!document.getElementById('panelStock').classList.contains('oculto')) cargarStock();
-                if (!document.getElementById('panelProduccion').classList.contains('oculto')) cargarCompletados();
+                if (!document.getElementById('panelProduccion').classList.contains('oculto')) {
+                    cargarConsolidado();
+                    cargarCompletados();
+                }
             }, 30000);
+            // Catálogos del formulario: el stock de las opciones y las
+            // placas/choferes tenían que recargarse con F5.
+            registrarAutoRefresco(cargarCatalogo, 15000);
+            registrarAutoRefresco(cargarLogistica, 15000);
         })();
     </script>
 </body>

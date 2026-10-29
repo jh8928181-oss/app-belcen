@@ -81,4 +81,25 @@
             if (document.visibilityState === 'visible') ejecutar();
         });
     };
+
+    // Reconstruye un <select> solo si su contenido realmente cambió:
+    //  - misma firma de opciones => no toca el DOM (sin parpadeos)
+    //  - usuario con el foco en el select => no interfiere, se hará en el
+    //    siguiente tick (mientras elige no se le cierra el desplegable)
+    //  - preserva el valor seleccionado si sigue existiendo tras reconstruir
+    // `construir(select)` debe dejar el select completamente armado.
+    window.repoblarSelect = function (select, firma, construir) {
+        if (!select) return false;
+        if (select.dataset.firma === firma) return false;
+        if (select === document.activeElement || select.contains(document.activeElement)) return false;
+        var previo = select.value;
+        construir(select);
+        select.dataset.firma = firma;
+        if (previo && Array.prototype.some.call(select.options, function (o) {
+            return o.value === previo;
+        })) {
+            select.value = previo;
+        }
+        return true;
+    };
 })();

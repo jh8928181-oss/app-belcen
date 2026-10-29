@@ -751,6 +751,9 @@
         document.getElementById('loteFecha').value = hoyLocal();
         setTurnoUI();
         cargarReporte();
+        // Esta página no tenía NINGÚN auto-refresco: los reportes de otros
+        // turnos solo aparecían con F5.
+        registrarAutoRefresco(cargarReporte, 15000);
     </script>
 </body>
 </html>

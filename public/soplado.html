@@ -807,7 +807,17 @@
         cargarLineasSoplado();
         clonarOpcionesBotella();
         cargarBlancos();
-        registrarAutoRefresco(() => { cargarEstadoSoplado(); cargarTotalesSoplado(); }, 15000);
+        registrarAutoRefresco(() => {
+            cargarEstadoSoplado();
+            cargarTotalesSoplado();
+            // Tablas que solo se cargaban al abrir: el stock de preformas y los
+            // blancos los consume la línea, se tienen que ver mover solos.
+            // (poblarMoldes/clonarOpcionesBotella NO: son catálogos fijos del
+            // JS y al repoblar se perdería lo elegido y se apilarían listeners.)
+            cargarPreformas();
+            cargarLineasSoplado();
+            cargarBlancos();
+        }, 15000);
     </script>
 </body>
 </html>

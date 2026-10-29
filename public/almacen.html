@@ -3660,6 +3660,12 @@
         const escOpServ = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
         async function cargarInsumosServicio() {
+            // No repoblar si el usuario está eligiendo en uno de estos selects:
+            // se le cerraría el desplegable en la cara (se reintenta al próximo tick).
+            const selectes = document.querySelectorAll('#envLineas .linea-env select, #guiaLineas .linea-guia select');
+            const eligiendo = Array.from(selectes).some(sel =>
+                sel === document.activeElement || sel.contains(document.activeElement));
+            if (eligiendo) return;
             try {
                 const res = await fetch('/api/inventario');
                 if (!res.ok) throw new Error('Error del servidor.');
@@ -3897,6 +3903,11 @@
             cargarAjustesPendientes();
             cargarHistorialSalidas();
             cargarPedidosParaSalida();
+            // Estas tres solo se cargaban al abrir: en la misma pantalla el PT
+            // se movía cada 5s y las guías/servicios quedaban congeladas.
+            cargarGuiasServicio();
+            cargarInsumosServicio();
+            cargarInvRef();
         }, 15000);
 
         // La tabla de PT se mueve sola (producción la sube, las salidas la

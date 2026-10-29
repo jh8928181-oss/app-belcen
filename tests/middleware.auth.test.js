@@ -604,8 +604,8 @@ describe('permisoPorRuta', () => {
     expect(next).toHaveBeenCalled();
   });
 
-  test('MODULOS_PERMISO cubre los doce modulos', () => {
-    expect(MODULOS_PERMISO.slice().sort()).toEqual(['admin', 'almacen', 'auditoria', 'bdgeneral', 'bdplanta', 'dashboard', 'envasado', 'flujo', 'recetas', 'refinado', 'soplado', 'vigilancia'].sort());
+  test('MODULOS_PERMISO cubre los trece modulos', () => {
+    expect(MODULOS_PERMISO.slice().sort()).toEqual(['admin', 'almacen', 'auditoria', 'bdgeneral', 'bdplanta', 'dashboard', 'envasado', 'flujo', 'pedidos', 'recetas', 'refinado', 'soplado', 'vigilancia'].sort());
   });
 
   test('carga los permisos de la base cuando no vienen en cache', async () => {

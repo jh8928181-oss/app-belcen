@@ -166,7 +166,7 @@ function validarUsuarioBody(req, res, next) {
 /** Módulos que admin1 puede abrir o cerrar por usuario en el panel Usuarios. */
 const MODULOS_PERMISO = [
   'dashboard', 'almacen', 'soplado', 'envasado', 'refinado', 'auditoria',
-  'vigilancia', 'recetas', 'bdgeneral', 'bdplanta', 'flujo', 'admin'
+  'vigilancia', 'recetas', 'bdgeneral', 'bdplanta', 'flujo', 'admin', 'pedidos'
 ];
 
 /**
@@ -185,7 +185,9 @@ const REGLAS_MODULO = [
   [/^\/api\/servicios/, 'almacen'],
   [/^\/api\/producto-terminado/, 'almacen'],
   [/^\/api\/salidas/, 'almacen'],
-  [/^\/api\/pedidos/, 'almacen'],
+  // Pedidos es su propio módulo desde que se agregó al panel Usuarios:
+  // antes quedaba atado a 'almacen' y no se podía ajustar por separado.
+  [/^\/api\/pedidos/, 'pedidos'],
   [/^\/api\/soplado/, 'soplado'],
   [/^\/api\/produccion\/(reporte|iniciar|cerrar|eliminar)/, 'envasado'],
   [/^\/api\/produccion\/cierre/, 'auditoria'],

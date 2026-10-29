@@ -986,7 +986,7 @@
         </div>
 
         <div class="aviso-info" style="padding:10px 14px; border-radius:10px; background:rgba(23,162,184,0.09); color:#0a6ea8; border:1px solid rgba(23,162,184,0.2); font-size:13px; margin-top:12px;">
-            ℹ️ <b>Considerar stock de crudo del tanque más en línea</b> para la real disponibilidad de aceite crudo. Los <b>lotes</b> se reportan en el módulo <b>Refinado</b>. Use <b>🔧 Ajustar</b> para corregir la cantidad actual de cada insumo.
+            ℹ️ <b>Considerar stock de crudo del tanque más en línea</b> para la real disponibilidad de aceite crudo. Los <b>lotes</b> se reportan en el módulo <b>Refinado</b>. Use <b>📥 Ingreso</b> para sumar lo que llega (no pisa el stock actual) y <b>🔧 Ajustar</b> para corregir la cantidad actual de cada insumo.
         </div>
 
         <div class="tabla-wrap tabla-card-movil">
@@ -3515,7 +3515,10 @@
                     <td class="text-center"><b>${escInvRef(item.um || 'KG')}</b></td>
                     <td class="text-center"><b>${Number(item.stock) || 0}</b></td>
                     <td class="text-center"><span class="estado-cell">${invRefBadge(item.estado || 'STOCK SUFICIENTE')}</span></td>
-                    <td class="text-center"><button class="btn-ajustar-ref" data-nombre="${escInvRef(item.nombre || '')}" data-stock="${Number(item.stock) || 0}" style="border-radius:999px; padding:8px 14px; background:#0a6ea8; color:#fff; font-weight:bold; border:none; cursor:pointer;">🔧 Ajustar</button></td>
+                    <td class="text-center" style="white-space:nowrap;">
+                        <button class="btn-ingresar-ref" data-nombre="${escInvRef(item.nombre || '')}" data-stock="${Number(item.stock) || 0}" style="border-radius:999px; padding:8px 14px; background:#1e7e34; color:#fff; font-weight:bold; border:none; cursor:pointer; margin-right:6px;">📥 Ingreso</button>
+                        <button class="btn-ajustar-ref" data-nombre="${escInvRef(item.nombre || '')}" data-stock="${Number(item.stock) || 0}" style="border-radius:999px; padding:8px 14px; background:#0a6ea8; color:#fff; font-weight:bold; border:none; cursor:pointer;">🔧 Ajustar</button>
+                    </td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -3547,6 +3550,33 @@
             const btn = e.target.closest('.btn-ajustar-ref');
             if (!btn) return;
             ajustarStockRef(btn.dataset.nombre, Number(btn.dataset.stock));
+        });
+
+        let ingresarStockRefLock = false;
+        async function ingresarStockRef(nombre, stockActual) {
+            if (ingresarStockRefLock) return;
+            const entrada = prompt('📥 Ingreso de insumo de refinado:\n\n' + nombre + '\n\nStock actual: ' + stockActual + '\n\n¿Cuántas unidades ingresaron?', '');
+            if (entrada === null) return;
+            const cant = parseFloat(entrada);
+            if (isNaN(cant) || cant <= 0) { alert('❌ Ingrese una cantidad mayor a cero.'); return; }
+            ingresarStockRefLock = true;
+            try {
+                const res = await fetch('/api/almacen/stock-refinado/ingresar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nombre, cantidad: cant, usuario: localStorage.getItem('usuario_actual') || 'almacen1' })
+                });
+                const data = await res.json();
+                alert(data.mensaje || 'Respuesta del servidor.');
+                if (data.success) cargarInvRef();
+            } catch (err) { console.error(err); alert('❌ Error de conexión.'); }
+            finally { ingresarStockRefLock = false; }
+        }
+
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('.btn-ingresar-ref');
+            if (!btn) return;
+            ingresarStockRef(btn.dataset.nombre, Number(btn.dataset.stock));
         });
 
         async function cargarInvRef() {

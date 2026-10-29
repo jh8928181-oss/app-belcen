@@ -6050,6 +6050,58 @@ app.post('/api/almacen/stock-refinado/ajustar', requerirRolAlmacenInvRef, async 
     }
 });
 
+// Ingreso de insumo de refinado: SUMA la cantidad que llega al stock actual.
+// A diferencia del ajuste (que fija el stock a un valor), este botón sirve
+// para registrar la llegada de material (aceite crudo, tonsil, sal, tela…)
+// sin pisar lo que ya hay en el tanque/inventario.
+app.post('/api/almacen/stock-refinado/ingresar', requerirRolAlmacenInvRef, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { nombre, cantidad, referencia } = req.body || {};
+        const cantidadNueva = Number(cantidad);
+        if (!nombre || isNaN(cantidadNueva) || cantidadNueva <= 0) {
+            return res.status(400).json({ success: false, mensaje: 'Indique un insumo válido y una cantidad mayor a cero.' });
+        }
+        await client.query('BEGIN');
+        const actual = await client.query('SELECT id, nombre, stock FROM stock_insumos_refinado WHERE nombre = $1 FOR UPDATE', [String(nombre)]);
+        if (actual.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, mensaje: 'El insumo de refinado no existe.' });
+        }
+        const stockAnterior = Number(actual.rows[0].stock) || 0;
+        const stockFinal = stockAnterior + cantidadNueva;
+        await client.query(
+            `UPDATE stock_insumos_refinado
+             SET stock = $1::numeric,
+                 estado = CASE WHEN $1::numeric <= 0 THEN 'REALIZAR PEDIDO' ELSE 'STOCK SUFICIENTE' END,
+                 usuario_ajuste = $2,
+                 fecha_ajuste = CURRENT_TIMESTAMP
+             WHERE id = $3`,
+            [stockFinal, req.usuario, actual.rows[0].id]
+        );
+        await registrarHistorial(client, {
+            tipo: 'INGRESO',
+            origen: 'almacen',
+            producto: String(nombre),
+            articulo_id: actual.rows[0].id,
+            cantidad: cantidadNueva,
+            tipo_cambio: 'SUMA',
+            stock_anterior: stockAnterior,
+            stock_nuevo: stockFinal,
+            usuario: usuarioResponsable(req, req.body.usuario),
+            referencia: String(referencia || '').trim() || 'Ingreso de insumo de refinado'
+        });
+        await client.query('COMMIT');
+        res.json({ success: true, mensaje: `Ingreso registrado: +${cantidadNueva}. Stock de "${nombre}" = ${stockFinal}.` });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Error ingreso stock refinado:', err);
+        res.status(500).json({ success: false, mensaje: 'Error en el servidor: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
 // ================== BASE DE DATOS GENERAL: PROVEEDORES, OC/OS Y STOCK DE PROVEEDORES ==================
 // Base de Datos General. El unico bloque REAL de permisos de todo el modulo:
 // enforce:true hace que un rol fuera de esta lista reciba 403 de verdad, no solo

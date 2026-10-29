@@ -197,6 +197,7 @@
         .menu-alm .opcion-menu small { font-weight: 500; font-size: 13px; display: block; margin-top: 8px; opacity: .92; text-transform: none; }
         .opc-ambar { background: linear-gradient(145deg, #ffb74d, #f59e0b); }
         .opc-teal { background: linear-gradient(145deg, #20c997, #17a2b8); }
+        .opc-azul { background: linear-gradient(145deg, #2f9fe0, #0a6ea8); }
         @media (max-width: 600px) { .menu-alm .opcion-menu { flex-basis: 100%; max-width: 100%; } }
 
         .tarjeta-header {
@@ -459,10 +460,11 @@
 
     <section class="modulo activo" id="modulo-pendientes">
 
-    <!-- ACCESOS RÁPIDOS: los dos botones grandes, arriba del todo -->
+    <!-- ACCESOS RÁPIDOS: los botones grandes, arriba del todo -->
     <div class="menu-alm reveal">
         <button type="button" id="btnRegistroIngresoAlm" onclick="toggleFormRegistroIngreso()" class="opcion-menu opc-ambar">➕ REGISTRAR INGRESO<small>Cargar la mercadería que llega al almacén</small></button>
         <button type="button" id="btnSopladoServicios" onclick="alternarPanelSoplado()" class="opcion-menu opc-teal">🔧 SERVICIOS EXTERNOS DE SOPLADO<small>Envíos, guías y controles de SAUÑE / B&amp;M</small></button>
+        <button type="button" id="btnRefIngresos" onclick="alternarPanelRefinado()" class="opcion-menu opc-azul">🛢️ INSUMOS DE REFINADO<small>Registrar ingresos de aceite crudo, tonsil, sal, tela…</small></button>
     </div>
 
     <!-- 1. PENDIENTES DE VIGILANCIA & CONFORMIDAD -->
@@ -737,6 +739,30 @@
                     <tr><td colspan="5" class="text-center">Cargando…</td></tr>
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    <!-- 6C. INSUMOS DE REFINADO (ingresos): tercer botón grande, se cierra
+         con "← Volver". Suma al stock sin pisarlo (endpoint ingresar). -->
+    <div class="table-container sec-azul reveal" id="panelRefIngresos" style="display:none;">
+        <div style="text-align:left; margin-bottom:6px;">
+            <button type="button" onclick="alternarPanelRefinado()" class="btn-ver-historial">← Volver</button>
+        </div>
+        <h3 class="h-azul">🛢️ INGRESO DE INSUMOS DE REFINADO</h3>
+        <p style="font-size:13px; color:#555;">Registra la <b>llegada de material</b> (aceite crudo TK-1/TK-2, tonsil, ácido, soda, sal, mangas, tela…). La cantidad se <b>suma</b> al stock actual <b>sin pisarlo</b>. Para corregir una cifra use <b>🔧 Ajustar</b> en la tabla de Refinado.</p>
+        <div class="caja-items">
+            <h4>📥 Registrar ingreso</h4>
+            <form id="formIngresoRefinado">
+                <div class="fila-agregar">
+                    <select id="refInsumo" required>
+                        <option value="">-- Insumo --</option>
+                    </select>
+                    <input type="number" id="refCantidad" placeholder="Cantidad ingresada" min="0.000001" step="any" required>
+                    <input type="text" id="refReferencia" placeholder="Guía / factura / nota (opcional)">
+                </div>
+                <div><button type="submit" class="btn-agregar-item">Registrar ingreso</button></div>
+                <span id="msgIngresoRef" style="font-size:13px; font-weight:700;"></span>
+            </form>
         </div>
     </div>
     </section>
@@ -2016,8 +2042,9 @@
                 if (btn) btn.innerHTML = '➕ REGISTRAR INGRESO<small>Cargar la mercadería que llega al almacén</small>';
                 if (barra) barra.style.display = 'none';
             } else {
-                // Un solo panel a la vez: si el de soplado está abierto, se cierra.
+                // Un solo panel a la vez: si el de soplado o refinado están abiertos, se cierran.
                 cerrarPanelSoplado();
+                cerrarPanelRefinado();
                 wizardAlmInit();
                 reiniciarFormularioAlmacen();
                 w.style.display = 'block';
@@ -2043,6 +2070,7 @@
                 // Un solo panel a la vez: si el wizard de ingreso está abierto, se cierra.
                 const w = document.getElementById('wizardIngresoAlm');
                 if (w && w.style.display !== 'none') toggleFormRegistroIngreso();
+                cerrarPanelRefinado();
                 p.style.display = 'block';
                 // Estaba oculto: nunca cruzó el IntersectionObserver y quedaría
                 // con opacidad 0. Se fuerza visible.
@@ -2057,6 +2085,36 @@
             const btn = document.getElementById('btnSopladoServicios');
             if (p) p.style.display = 'none';
             if (btn) btn.innerHTML = '🔧 SERVICIOS EXTERNOS DE SOPLADO<small>Envíos, guías y controles de SAUÑE / B&amp;M</small>';
+        }
+
+        /* ---------- Panel "Insumos de Refinado" (Pendientes) ---------- */
+        // Tercer botón grande: mismo patrón que el panel de soplado. Al
+        // abrirse carga el stock fresco y llena el select de insumos.
+        async function alternarPanelRefinado() {
+            const p = document.getElementById('panelRefIngresos');
+            const btn = document.getElementById('btnRefIngresos');
+            if (!p) return;
+            if (p.style.display !== 'none') {
+                cerrarPanelRefinado();
+            } else {
+                // Un solo panel a la vez: cierra wizard y soplado.
+                const w = document.getElementById('wizardIngresoAlm');
+                if (w && w.style.display !== 'none') toggleFormRegistroIngreso();
+                cerrarPanelSoplado();
+                p.style.display = 'block';
+                p.classList.add('is-visible');
+                if (btn) btn.innerHTML = '✖ CERRAR INSUMOS<small>Vuelve a las tablas de pendientes</small>';
+                document.getElementById('msgIngresoRef').textContent = '';
+                await cargarInvRef();
+                p.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        function cerrarPanelRefinado() {
+            const p = document.getElementById('panelRefIngresos');
+            const btn = document.getElementById('btnRefIngresos');
+            if (p) p.style.display = 'none';
+            if (btn) btn.innerHTML = '🛢️ INSUMOS DE REFINADO<small>Registrar ingresos de aceite crudo, tonsil, sal, tela…</small>';
         }
 
         function etiquetarTablas() {
@@ -3586,6 +3644,7 @@
                 const data = await res.json();
                 if (!res.ok || !data.success) throw new Error((data && data.mensaje) || 'Error.');
                 renderInvRef(data.insumos);
+                poblarSelectRefInsumos(data.insumos);
                 msg.textContent = '✔ Stock actual · ajuste manual';
                 msg.style.color = '#1e7e34';
             } catch (err) {
@@ -3594,6 +3653,51 @@
                 msg.style.color = 'red';
             }
         }
+
+        // Llena el select del panel de ingreso de refinado con los insumos
+        // que existen en stock (se repuebla en cada carga, sin pisar lo elegido).
+        function poblarSelectRefInsumos(lista) {
+            const sel = document.getElementById('refInsumo');
+            if (!sel) return;
+            const elegido = sel.value;
+            sel.innerHTML = '<option value="">-- Insumo --</option>' +
+                (lista || []).map(i => {
+                    const nom = escInvRef((i && i.nombre) || '');
+                    return `<option value="${nom}">${nom} (${escInvRef((i && i.um) || '')}) — stock ${Number(i && i.stock) || 0}</option>`;
+                }).join('');
+            if (elegido) sel.value = elegido;
+        }
+
+        // Submit del panel de ingreso de refinado: suma la cantidad al stock.
+        let enviarIngresoRefLock = false;
+        document.addEventListener('submit', async (e) => {
+            if (e.target.id !== 'formIngresoRefinado') return;
+            e.preventDefault();
+            if (enviarIngresoRefLock) return;
+            const nombre = document.getElementById('refInsumo').value;
+            const cantidad = parseFloat(document.getElementById('refCantidad').value);
+            const referencia = document.getElementById('refReferencia').value;
+            const msg = document.getElementById('msgIngresoRef');
+            if (!nombre) { msg.textContent = '❌ Seleccione un insumo.'; msg.style.color = 'red'; return; }
+            if (isNaN(cantidad) || cantidad <= 0) { msg.textContent = '❌ Ingrese una cantidad mayor a cero.'; msg.style.color = 'red'; return; }
+            enviarIngresoRefLock = true;
+            try {
+                const res = await fetch('/api/almacen/stock-refinado/ingresar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nombre, cantidad, referencia, usuario: localStorage.getItem('usuario_actual') || 'almacen1' })
+                });
+                const data = await res.json();
+                msg.textContent = data.mensaje || 'Respuesta del servidor.';
+                msg.style.color = data.success ? '#1e7e34' : 'red';
+                if (data.success) {
+                    document.getElementById('refCantidad').value = '';
+                    document.getElementById('refReferencia').value = '';
+                    cargarInvRef();
+                }
+            } catch (err) { console.error(err); msg.textContent = '❌ Error de conexión.'; msg.style.color = 'red'; }
+            finally { enviarIngresoRefLock = false; }
+        });
 
         // ---- AJUSTES PENDIENTES (envasado sin stock) ----
         async function cargarAjustesPendientes() {

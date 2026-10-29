@@ -3,204 +3,249 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Módulo de Recetas - Corporación Belcen</title>
+    <title>Recetas de Producción - Corporación Belcen</title>
     <link rel="stylesheet" href="/motion.css">
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; background-color: #f4f6f9; padding: 20px; color: #333; }
-        .container { max-width: 1180px; margin: auto; }
-        .tarjeta { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 25px; }
-        h2 { color: #343a40; text-align: center; border-bottom: 2px solid #6f42c1; padding-bottom: 8px; margin-top: 0; }
-        h3 { color: #343a40; padding-bottom: 8px; margin-top: 0; border-bottom: 2px solid #007bff; }
-        h3.admin { border-bottom: 2px solid #6f42c1; color: #6f42c1; }
-        h3.crear { border-bottom: 2px solid #28a745; color: #1e7e34; }
-        h3.detalle { border-bottom: 2px solid #ffc107; color: #856404; }
-        h4 { margin: 18px 0 8px; font-size: 15px; color: #343a40; }
-        select, input, textarea { padding: 9px 12px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; box-sizing: border-box; width: 100%; }
-        textarea { resize: vertical; min-height: 60px; }
-        select:focus, input:focus, textarea:focus { outline: none; border-color: #6f42c1; box-shadow: 0 0 0 2px rgba(111,66,193,0.2); }
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th, td { border: 1px solid #dee2e6; padding: 10px; text-align: left; font-size: 14px; }
-        th { background-color: #343a40; color: white; }
+        :root {
+            --teal: #17a2b8;
+            --teal-dark: #138496;
+            --teal-darker: #117a8b;
+            --amber: #f59e0b;
+            --bg: #f4f6f9;
+            --card: #ffffff;
+            --ink: #0b1c30;
+            --ink-soft: #3f484c;
+            --muted: #6c757d;
+            --line: #e3e8ee;
+            --line-soft: #eef2f7;
+            --green: #2f9e44;
+            --green-bg: #e7f5ec;
+            --red: #dc3545;
+            --red-bg: #fdecea;
+            --grey-bg: #eef1f5;
+            --radius: 12px;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Inter, Arial, sans-serif;
+            margin: 0; background: var(--bg); color: var(--ink);
+            display: flex; flex-direction: column; min-height: 100vh;
+        }
+        .container { max-width: 1280px; margin: 0 auto; padding: 22px 20px 40px; width: 100%; flex: 1; }
+
+        /* ---------- Tarjetas ---------- */
+        .tarjeta {
+            background: var(--card); border-radius: var(--radius);
+            box-shadow: 0 1px 3px rgba(16, 34, 60, 0.06), 0 8px 24px rgba(16, 34, 60, 0.05);
+            padding: 22px 24px; margin-bottom: 22px; border: 1px solid var(--line-soft);
+        }
+        .cabecera-mod { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+        .cabecera-mod .titulo { display: flex; align-items: center; gap: 12px; }
+        .titulo .ico-caja {
+            width: 40px; height: 40px; border-radius: 10px; background: #e7f6fa;
+            display: flex; align-items: center; justify-content: center; font-size: 20px;
+            border: 1px solid #cfe9f0; flex: none;
+        }
+        h1.mod-titulo { font-size: 22px; margin: 0; color: var(--ink); letter-spacing: -0.01em; }
+        .mod-sub { margin: 3px 0 0; font-size: 13px; color: var(--muted); }
+        .chip-contador {
+            background: #e7f6fa; color: var(--teal-dark); border: 1px solid #cfe9f0;
+            border-radius: 999px; padding: 3px 11px; font-size: 12px; font-weight: 700; white-space: nowrap;
+        }
+
+        /* ---------- Botones ---------- */
+        .btn { border: none; border-radius: 9px; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 600; transition: background .15s, box-shadow .15s; }
+        .btn:disabled { opacity: .55; cursor: not-allowed; }
+        .btn-primario { background: var(--teal); color: #fff; padding: 10px 16px; box-shadow: 0 1px 2px rgba(23, 162, 184, .4); display: inline-flex; align-items: center; gap: 7px; }
+        .btn-primario:hover:not(:disabled) { background: var(--teal-dark); }
+        .btn-primario:active:not(:disabled) { background: var(--teal-darker); }
+        .btn-secundario { background: #fff; color: var(--ink-soft); border: 1px solid var(--line); padding: 9px 14px; }
+        .btn-secundario:hover:not(:disabled) { background: #f6f8fa; }
+        .btn-ghost { background: transparent; color: var(--ink-soft); padding: 8px 12px; }
+        .btn-ghost:hover:not(:disabled) { background: var(--grey-bg); }
+        .btn-peligro { background: var(--red); color: #fff; padding: 9px 14px; }
+        .btn-peligro:hover:not(:disabled) { background: #c82333; }
+        .btn-agregar { background: #fff; color: var(--teal-dark); border: 1px dashed var(--teal); padding: 9px 14px; }
+        .btn-agregar:hover { background: #eef9fb; }
+        .btn-mini { padding: 7px 12px; font-size: 12px; }
+
+        /* ---------- Chips / filtros ---------- */
+        .fila-filtros { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 18px 0 14px; }
+        .chips-resumen { display: flex; gap: 6px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 4px; }
+        .chip { border: none; background: transparent; border-radius: 7px; padding: 6px 12px; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer; display: flex; align-items: center; gap: 7px; font-family: inherit; }
+        .chip .num { background: var(--grey-bg); color: var(--ink-soft); border-radius: 999px; padding: 1px 8px; font-size: 11px; font-weight: 700; }
+        .chip:hover { background: #f4f7f9; }
+        .chip.chip-activo { background: var(--teal); color: #fff; }
+        .chip.chip-activo .num { background: rgba(255,255,255,.25); color: #fff; }
+        .buscador { position: relative; flex: 1; max-width: 340px; min-width: 200px; }
+        .buscador input { width: 100%; padding: 9px 12px 9px 34px; border: 1px solid var(--line); border-radius: 9px; font-size: 13px; font-family: inherit; background: #fff; }
+        .buscador input:focus { outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px rgba(23,162,184,.15); }
+        .buscador .lupa { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); font-size: 13px; opacity: .5; }
+
+        /* ---------- Tabla ---------- */
+        .tabla-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--line-soft); }
+        table { width: 100%; border-collapse: collapse; background: #fff; }
+        thead th {
+            text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .5px;
+            color: var(--muted); font-weight: 700; padding: 11px 14px; background: #fafbfd;
+            border-bottom: 1px solid var(--line); white-space: nowrap;
+        }
+        tbody td { padding: 12px 14px; font-size: 13px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; color: var(--ink-soft); }
+        tbody tr:last-child td { border-bottom: none; }
+        tbody tr:hover { background: #f7fbfd; }
+        .c-nombre b { color: var(--ink); font-size: 13.5px; }
+        .c-key { font-size: 11.5px; color: var(--muted); font-family: 'Consolas', monospace; }
+        .c-obs { font-size: 11.5px; color: #94a0ad; margin-top: 2px; }
         .text-center { text-align: center; }
-        .badge { padding: 4px 10px; border-radius: 4px; color: white; font-weight: bold; font-size: 12px; white-space: nowrap; }
-        .badge-activa { background: #28a745; }
-        .badge-borrador { background: #6c757d; }
-        .badge-ok { background: #28a745; }
-        .badge-falta { background: #dc3545; }
-        .badge-aviso { background: #ffc107; color: #000; }
-        .btn-accion { padding: 9px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px; }
-        .btn-accion:hover { background: #218838; }
-        .btn-primario { background: #6f42c1; }
-        .btn-primario:hover { background: #5a32a3; }
-        .btn-editar { background: #ffc107; color: #000; }
-        .btn-editar:hover { background: #e0a800; }
-        .btn-activar { background: #17a2b8; color: white; }
-        .btn-activar:hover { background: #138496; }
-        .btn-clonar { background: #007bff; color: white; }
-        .btn-clonar:hover { background: #0069d9; }
-        .btn-eliminar { background: #dc3545; color: white; }
-        .btn-eliminar:hover { background: #c82333; }
-        .logout { background-color: #dc3545; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px; }
-        .logout:hover { background-color: #c82333; }
-        .filtro { width: 100%; padding: 9px 12px; border: 1px solid #ced4da; border-radius: 4px; margin-top: 10px; font-size: 13px; box-sizing: border-box; }
-        .sin-registros { color: #888; font-style: italic; }
-        .botones-accion { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
-        .botones-accion button { border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; }
-        .aviso-info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-top: 12px; }
-        .aviso-warn { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-top: 12px; }
-        .aviso-error { background: #f8d7da; color: #842029; border: 1px solid #f5c2c7; padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-top: 12px; }
-        .tabla-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 8px; }
-        .grid-3cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-top: 15px; }
+
+        /* ---------- Badges ---------- */
+        .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+        .badge-activa { background: var(--green-bg); color: var(--green); border: 1px solid #bfe3cb; }
+        .badge-borrador { background: var(--grey-bg); color: var(--muted); border: 1px solid #dbe1e8; }
+        .badge-ok { background: var(--green-bg); color: var(--green); border: 1px solid #bfe3cb; }
+        .badge-falta { background: var(--red-bg); color: var(--red); border: 1px solid #f3c2c2; }
+        .badge-aviso { background: #fff5e0; color: #b07400; border: 1px solid #f4ddb0; }
+
+        /* ---------- Menú desplegable por fila ---------- */
+        .acciones-celda { position: relative; text-align: center; white-space: nowrap; }
+        .btn-editar-fila { background: #e7f6fa; color: var(--teal-dark); border: 1px solid #cfe9f0; padding: 7px 12px; border-radius: 8px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; }
+        .btn-editar-fila:hover { background: #d4eef5; }
+        .btn-menu { background: #fff; border: 1px solid var(--line); color: var(--ink-soft); width: 32px; height: 32px; border-radius: 8px; cursor: pointer; font-size: 16px; line-height: 1; margin-left: 6px; }
+        .btn-menu:hover { background: #f4f7f9; }
+        .menu-desplegable { position: absolute; right: 0; top: calc(100% + 4px); background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(16,34,60,.14); z-index: 40; min-width: 190px; overflow: hidden; display: none; text-align: left; }
+        .menu-desplegable.abierto { display: block; }
+        .menu-desplegable button { display: flex; align-items: center; gap: 9px; width: 100%; background: none; border: none; padding: 10px 14px; font-size: 13px; color: var(--ink-soft); cursor: pointer; font-family: inherit; text-align: left; }
+        .menu-desplegable button:hover { background: #f4f7f9; }
+        .menu-desplegable button.peligro { color: var(--red); border-top: 1px solid var(--line-soft); }
+        .menu-desplegable button.peligro:hover { background: var(--red-bg); }
+
+        /* ---------- Avisos ---------- */
+        .aviso-info { background: #e7f6fa; color: #0c5d6b; border: 1px solid #cfe9f0; padding: 11px 14px; border-radius: 9px; font-size: 12.5px; margin-top: 14px; }
+        .aviso-warn { background: #fff5e0; color: #8a5b00; border: 1px solid #f4ddb0; padding: 11px 14px; border-radius: 9px; font-size: 12.5px; margin-top: 12px; }
+        .aviso-error { background: var(--red-bg); color: #842029; border: 1px solid #f3c2c2; padding: 11px 14px; border-radius: 9px; font-size: 12.5px; margin-top: 12px; }
+        .sin-registros { color: var(--muted); font-style: italic; text-align: center; padding: 26px !important; }
+
+        /* ---------- Drawer lateral ---------- */
+        .drawer-overlay { position: fixed; inset: 0; background: rgba(11, 28, 48, .38); z-index: 90; opacity: 0; pointer-events: none; transition: opacity .2s; }
+        .drawer-overlay.visible { opacity: 1; pointer-events: auto; }
+        .drawer {
+            position: fixed; top: 0; right: 0; height: 100%; width: 620px; max-width: 100%;
+            background: #fff; z-index: 100; box-shadow: -12px 0 40px rgba(11,28,48,.18);
+            transform: translateX(100%); transition: transform .22s ease; display: flex; flex-direction: column;
+        }
+        .drawer.visible { transform: translateX(0); }
+        .drawer-cab { padding: 16px 20px; border-bottom: 1px solid var(--line); display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex: none; }
+        .drawer-cab h3 { margin: 0; font-size: 17px; color: var(--ink); }
+        .drawer-cab .sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+        .drawer-cerrar { background: #fff; border: 1px solid var(--line); border-radius: 8px; width: 32px; height: 32px; cursor: pointer; font-size: 15px; color: var(--ink-soft); flex: none; }
+        .drawer-cerrar:hover { background: #f4f7f9; }
+        .drawer-cuerpo { flex: 1; overflow-y: auto; padding: 18px 20px; }
+        .drawer-pie { padding: 13px 20px; border-top: 1px solid var(--line); background: #fafbfd; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; flex: none; }
+        .drawer-pie .izq, .drawer-pie .der { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
+
+        /* ---------- Formularios ---------- */
+        .grid-3cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
         .span-3 { grid-column: span 3; }
-        .btn-remover { background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; padding: 9px 12px; font-weight: bold; font-size: 14px; }
-        .btn-remover:hover { background: #c82333; }
-        .btn-agregar { background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; padding: 9px 14px; font-weight: bold; font-size: 14px; }
-        .btn-agregar:hover { background: #218838; }
-        .etiqueta-check { display: flex; align-items: center; gap: 8px; padding: 9px 0; font-size: 14px; cursor: pointer; }
+        label.bloque { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); font-weight: 700; margin-bottom: 5px; }
+        select, input[type=text], input[type=number], textarea {
+            width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px;
+            font-size: 13px; font-family: inherit; background: #fff; color: var(--ink);
+        }
+        select:focus, input:focus, textarea:focus { outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px rgba(23,162,184,.14); }
+        textarea { resize: vertical; min-height: 56px; }
+        .chip-info { font-size: 11.5px; color: var(--muted); margin-top: 5px; }
+
+        .seccion-titulo { font-size: 13px; font-weight: 700; color: var(--ink); margin: 20px 0 10px; display: flex; align-items: center; gap: 8px; }
+        .seccion-titulo .linea { flex: 1; height: 1px; background: var(--line-soft); }
+
+        /* ---------- Editor de líneas ---------- */
+        .fila-insumo { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 10px; background: #fafbfd; }
+        .fila-insumo .g-fila { display: grid; grid-template-columns: 120px 2fr 108px 92px; gap: 10px; align-items: end; }
+        .fila-insumo .g-fila-2 { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; margin-top: 10px; }
+        .etiqueta-mini { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: #94a0ad; font-weight: 700; margin-bottom: 4px; }
+        .stock-chip { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--grey-bg); color: var(--ink-soft); margin-top: 5px; }
+        .stock-chip.bajo { background: var(--red-bg); color: var(--red); }
+        .stock-chip.ok { background: var(--green-bg); color: var(--green); }
+        .etiqueta-check { display: flex; align-items: center; gap: 7px; font-size: 12.5px; cursor: pointer; color: var(--ink-soft); padding: 8px 0; }
         .etiqueta-check input { width: auto; margin: 0; }
-        .acciones-superior { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
-        .chip-info { font-size: 12px; color: #495057; }
-        .cabecera-lineas { display: none; }
-        .fila-insumo { border: 1px solid #dee2e6; border-radius: 8px; padding: 10px; margin-top: 10px; background: #fbfcfe; }
-        .fila-insumo .g-fila { display: grid; grid-template-columns: 130px 2fr 120px 110px 130px 1fr auto; gap: 8px; align-items: end; }
-        .fila-insumo .etiqueta-mini { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #8a93a3; font-weight: 700; margin-bottom: 3px; }
-        .stock-chip { display: inline-block; font-size: 11px; padding: 2px 7px; border-radius: 10px; background: #eef2f7; color: #495057; margin-top: 5px; }
-        .stock-chip.bajo { background: #f8d7da; color: #842029; }
-        .stock-chip.ok { background: #d4edda; color: #155724; }
-        .impacto-cajas { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; margin-top: 10px; }
-        .impacto-cajas > div { width: 130px; }
-        .lista-faltantes { margin: 8px 0 0 18px; font-size: 13px; }
+        .btn-remover { background: #fff; border: 1px solid #f3c2c2; color: var(--red); border-radius: 8px; cursor: pointer; padding: 9px 11px; font-size: 13px; }
+        .btn-remover:hover { background: var(--red-bg); }
+        .botones-agregar { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 4px; }
+
+        /* ---------- Impacto / diff ---------- */
+        .impacto-cajas { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin: 6px 0 12px; }
+        .impacto-cajas > div { width: 150px; }
+        .impacto-cajas > div.btn-celda { width: auto; }
+        .tabla-wrap.tabla-card-movil table { min-width: 560px; }
+        .lista-faltantes { margin: 6px 0 0 16px; font-size: 12.5px; }
         .chips-productos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-        .chips-productos span { background: #eef2f7; border: 1px solid #dee2e6; border-radius: 12px; padding: 4px 10px; font-size: 12px; color: #495057; }
-        .diff-fila { font-size: 13px; padding: 8px 0; border-bottom: 1px solid #eee; }
-        @media (max-width: 640px) {
-            body { padding: 10px; }
-            h2 { font-size: 18px; }
-            h3 { font-size: 16px; }
-            select, input, textarea { font-size: 16px; }
+        .chips-productos span { background: var(--grey-bg); border: 1px solid var(--line); border-radius: 12px; padding: 4px 10px; font-size: 12px; color: var(--ink-soft); }
+        .diff-fila { font-size: 12.5px; padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
+        .diff-fila:last-child { border-bottom: none; }
+
+        h4 { margin: 14px 0 8px; font-size: 13px; color: var(--ink); }
+
+        /* ---------- Footer ---------- */
+        .pie-pagina { border-top: 1px solid var(--line); background: #fff; padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+        .pie-pagina a.volver { display: inline-flex; align-items: center; gap: 7px; color: var(--ink-soft); text-decoration: none; font-size: 13px; font-weight: 600; }
+        .pie-pagina a.volver:hover { color: var(--teal-dark); }
+        .pie-pagina .marca { font-size: 11.5px; color: #94a0ad; }
+        .logout { background: #fff; border: 1px solid #f3c2c2; color: var(--red); padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; font-family: inherit; }
+        .logout:hover { background: var(--red-bg); }
+
+        @media (max-width: 720px) {
             .grid-3cols { grid-template-columns: 1fr !important; }
             .span-3 { grid-column: span 1 !important; }
-            .fila-insumo .g-fila { grid-template-columns: 1fr; }
+            .fila-insumo .g-fila, .fila-insumo .g-fila-2 { grid-template-columns: 1fr; }
+            .drawer { width: 100%; }
             .impacto-cajas > div { width: 100%; }
+            /* Tabla principal en tarjetas en móvil */
             .tabla-wrap.tabla-card-movil table { min-width: 0; border: none; }
             .tabla-wrap.tabla-card-movil thead { display: none; }
-            .tabla-wrap.tabla-card-movil tbody tr { display: block; border: 1px solid #dee2e6; border-radius: 12px; margin: 0 0 10px; padding: 6px 0; background: #fff; }
-            .tabla-wrap.tabla-card-movil td { display: block; text-align: left !important; padding: 6px 12px; }
-            .tabla-wrap.tabla-card-movil td::before { content: attr(data-label); display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #8a93a3; font-weight: 700; margin-bottom: 2px; }
-            .tabla-wrap.tabla-card-movil td:not([data-label]) { all: unset; display: block; text-align: center; padding: 10px; }
-            .tarjeta { padding: 16px; }
+            .tabla-wrap.tabla-card-movil tbody tr { display: block; border: 1px solid var(--line); border-radius: 12px; margin: 0 0 10px; padding: 6px 0; background: #fff; }
+            .tabla-wrap.tabla-card-movil tbody td { display: block; text-align: left !important; padding: 6px 14px; }
+            .tabla-wrap.tabla-card-movil tbody td::before { content: attr(data-label); display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: #94a0ad; font-weight: 700; margin-bottom: 2px; }
+            .tabla-wrap.tabla-card-movil tbody td:not([data-label]) { all: unset; display: block; text-align: center; padding: 10px; }
         }
     </style>
 </head>
 <body>
     <div class="container">
 
-        <!-- PANEL NUEVA RECETA -->
-        <div id="panelNueva" class="tarjeta" style="border-top: 5px solid #28a745; display: none;">
-            <div class="acciones-superior">
-                <h3 class="crear" style="border-bottom:none; padding-bottom:0; margin-bottom:0;">➕ NUEVA RECETA</h3>
-                <button onclick="cerrarPanelNueva()" class="btn-eliminar" style="border:none; border-radius:4px; cursor:pointer; padding:8px 14px; font-weight:bold;">✖ Cancelar</button>
-            </div>
-            <div class="grid-3cols">
-                <div>
-                    <label><b>Producto del catálogo:</b></label>
-                    <select id="nuevoProducto" style="margin-top:5px;"><option value="">-- Seleccionar presentación --</option></select>
-                    <div class="chip-info" style="margin-top:6px;">Producto_key se toma del catálogo. Para uno nuevo, escribe abajo.</div>
-                </div>
-                <div>
-                    <label><b>Producto nuevo (opcional):</b></label>
-                    <input id="nuevoProductoTexto" placeholder="Ej. B-1 2 lt" style="margin-top:5px;">
-                    <div class="chip-info" style="margin-top:6px;">Si lo llenas, se crea la receta para un producto que todavía no existe en el catálogo.</div>
-                </div>
-                <div>
-                    <label><b>Nombre legible (opcional):</b></label>
-                    <input id="nuevoNombreProducto" placeholder="Ej. Bidón B-1 2 litros" style="margin-top:5px;">
-                </div>
-                <div class="span-3" style="grid-column: span 3;">
-                    <label><b>Observaciones:</b></label>
-                    <textarea id="nuevasObservaciones" placeholder="Notas de la receta (opcional)" style="margin-top:5px;"></textarea>
-                </div>
-            </div>
-            <div style="margin-top: 15px;">
-                <label><b>Composición por caja:</b></label>
-                <div id="filasNueva"></div>
-                <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
-                    <button type="button" class="btn-agregar" onclick="agregarFila('filasNueva','insumo')">➕ Agregar insumo</button>
-                    <button type="button" class="btn-clonar" onclick="agregarFila('filasNueva','componente')" style="border:none; border-radius:4px; padding:9px 14px; font-weight:bold; cursor:pointer;">🧩 Agregar sub-receta</button>
-                </div>
-                <div class="chip-info" style="margin-top:8px;">Una sub-receta se produce con su propia receta: sus insumos se suman al total y no se descuentan por separado.</div>
-            </div>
-            <div style="margin-top: 18px; display:flex; gap:14px; align-items:center; flex-wrap:wrap;">
-                <button onclick="guardarNuevaReceta()" id="btnGuardarNueva" class="btn-accion">💾 CREAR RECETA</button>
-                <label class="etiqueta-check" title="Si el producto ya tiene receta activa, esta la reemplaza"><input type="checkbox" id="nuevaActivar" checked> ✅ Activar de inmediato para producción (Envasado)</label>
-            </div>
-        </div>
-
-        <!-- PANEL DETALLE / EDICION -->
-        <div id="panelDetalle" class="tarjeta" style="border-top: 5px solid #ffc107; display: none;">
-            <div class="acciones-superior">
-                <h3 class="detalle" style="border-bottom:none; padding-bottom:0; margin-bottom:0;">👁 RECETA #<span id="detId">—</span></h3>
-                <button onclick="cerrarPanelDetalle()" class="btn-eliminar" style="border:none; border-radius:4px; cursor:pointer; padding:8px 14px; font-weight:bold;">✖ Cerrar</button>
-            </div>
-            <div class="grid-3cols" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-top: 15px;">
-                <div>
-                    <label><b>Producto:</b></label>
-                    <div id="detProducto" style="margin-top:5px; font-weight:bold;">—</div>
-                </div>
-                <div>
-                    <label><b>Versión / Estado:</b></label>
-                    <div id="detVersion" style="margin-top:5px;">—</div>
-                </div>
-                <div>
-                    <label><b>Vigencia:</b></label>
-                    <div id="detVigencia" style="margin-top:5px;">—</div>
-                </div>
-                <div class="span-3">
-                    <label><b>Observaciones (editables):</b></label>
-                    <textarea id="detObservaciones" placeholder="Notas de la receta" style="margin-top:5px;"></textarea>
-                </div>
-            </div>
-            <div id="avisoEditor" class="aviso-warn" style="display:none;"></div>
-            <div style="margin-top: 15px;">
-                <label><b>Composición por caja:</b></label>
-                <div id="filasDetalle"></div>
-                <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
-                    <button type="button" class="btn-agregar" onclick="agregarFila('filasDetalle','insumo')">➕ Agregar insumo</button>
-                    <button type="button" class="btn-clonar" onclick="agregarFila('filasDetalle','componente')" style="border:none; border-radius:4px; padding:9px 14px; font-weight:bold; cursor:pointer;">🧩 Agregar sub-receta</button>
-                </div>
-            </div>
-            <div class="botones-accion" id="botonesAccionDetalle" style="justify-content:flex-start; margin-top: 18px;"></div>
-
-            <!-- IMPACTO -->
-            <div style="margin-top: 22px; border-top: 1px solid #eee; padding-top: 14px;">
-                <h4>🧮 Impacto en inventario</h4>
-                <div class="impacto-cajas">
-                    <div>
-                        <span class="etiqueta-mini">Cajas a producir</span>
-                        <input type="number" id="detCajas" value="1" min="1" step="1" onchange="calcularImpacto()">
-                    </div>
-                    <div style="width:auto;">
-                        <button class="btn-accion btn-primario" onclick="calcularImpacto()" style="border:none; border-radius:4px; padding:9px 16px; font-weight:bold; cursor:pointer;">🔄 Simular</button>
-                    </div>
-                </div>
-                <div id="detImpacto"></div>
-                <div id="detDiff" style="margin-top:14px;"></div>
-            </div>
-        </div>
-
         <!-- LISTADO DE RECETAS -->
-        <div class="tarjeta" style="border-top: 5px solid #6f42c1;">
-            <div class="acciones-superior">
-                <h3 class="admin" style="border-bottom:none; padding-bottom:0; margin-bottom:0;">🧪 RECETAS REGISTRADAS (<span id="totalRecetas">0</span>)</h3>
-                <button onclick="abrirPanelNueva()" class="btn-accion" style="background:#28a745; border:none; border-radius:6px; font-weight:bold; white-space:nowrap;">➕ NUEVA RECETA</button>
+        <div class="tarjeta">
+            <div class="cabecera-mod">
+                <div class="titulo">
+                    <div class="ico-caja">🧪</div>
+                    <div>
+                        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                            <h1 class="mod-titulo">Recetas de producción</h1>
+                            <span class="chip-contador"><span id="totalRecetas">0</span> recetas</span>
+                        </div>
+                        <p class="mod-sub">Formulaciones, proporciones de mezcla y consumo de insumos por caja de cada presentación.</p>
+                    </div>
+                </div>
+                <button onclick="abrirPanelNueva()" class="btn btn-primario">+ Nueva receta</button>
             </div>
-            <input id="filtroRecetas" class="filtro" placeholder="🔍 Buscar por producto, versión o estado...">
+
+            <div class="fila-filtros">
+                <div class="chips-resumen">
+                    <button type="button" class="chip chip-activo" data-filtro="" onclick="aplicarFiltroEstado(this)">Todas <span class="num" id="cntTodas">0</span></button>
+                    <button type="button" class="chip" data-filtro="activa" onclick="aplicarFiltroEstado(this)">Activas <span class="num" id="cntActivas">0</span></button>
+                    <button type="button" class="chip" data-filtro="borrador" onclick="aplicarFiltroEstado(this)">Borradores <span class="num" id="cntBorradores">0</span></button>
+                </div>
+                <div class="buscador">
+                    <span class="lupa">🔍</span>
+                    <input id="filtroRecetas" placeholder="Buscar por producto, versión o estado...">
+                </div>
+            </div>
+
             <div class="tabla-wrap tabla-card-movil">
                 <table>
                     <thead>
                         <tr>
                             <th>Producto</th>
-                            <th>Versión</th>
+                            <th class="text-center">Versión</th>
                             <th>Estado</th>
                             <th class="text-center">Líneas</th>
                             <th>Vigente desde</th>
@@ -213,17 +258,126 @@
                     </tbody>
                 </table>
             </div>
-            <div class="aviso-info">ℹ️ Puedes editar <b>cualquier</b> receta. Si la que editas está <b>activa</b>, los cambios se guardan en un <b>borrador</b>: la versión activa sigue rigiendo la producción hasta que actives el borrador.</div>
-        </div>
-
-        <div style="text-align: center; margin-top: 10px; padding: 15px; border-top: 1px solid #ddd;">
-            <a href="dashboard.html" style="display: inline-block; margin: 5px 10px; padding: 10px 18px; background: #17a2b8; color: white; border-radius: 8px; text-decoration: none; font-weight: bold;">🏠 Dashboard General</a>
-            <a href="basededatosdeplanta.html" style="display: inline-block; margin: 5px 10px; padding: 10px 18px; background: #6f42c1; color: white; border-radius: 8px; text-decoration: none; font-weight: bold;">🧮 Simulador de Insumos</a>
-            <a href="admin.html" style="display: inline-block; margin-bottom: 10px; color: #007bff; text-decoration: none; font-weight: bold;">← Volver a Administración de Usuarios</a>
-            <br>
-            <button class="logout" onclick="cerrarSesion()">🔒 Cerrar Sesión (Salir)</button>
+            <div class="aviso-info">ℹ️ Puedes editar <b>cualquier</b> receta. Si editas una <b>activa</b>, los cambios se guardan en un <b>borrador</b>: la versión activa sigue rigiendo la producción hasta que actives el borrador.</div>
         </div>
     </div>
+
+    <!-- ===== DRAWER: NUEVA RECETA / DETALLE ===== -->
+    <div id="drawerOverlay" class="drawer-overlay" onclick="cerrarDrawers()"></div>
+
+    <aside id="panelNueva" class="drawer" style="display:none;">
+        <div class="drawer-cab">
+            <div>
+                <h3>➕ Nueva receta</h3>
+                <div class="sub">Registra la composición por caja de una presentación.</div>
+            </div>
+            <button onclick="cerrarPanelNueva()" class="drawer-cerrar" title="Cerrar">✖</button>
+        </div>
+        <div class="drawer-cuerpo">
+            <div class="grid-3cols">
+                <div class="span-3">
+                    <label class="bloque">Producto del catálogo</label>
+                    <select id="nuevoProducto"><option value="">-- Seleccionar presentación --</option></select>
+                    <div class="chip-info">La clave del producto se toma del catálogo. Para uno nuevo, escríbelo abajo.</div>
+                </div>
+                <div class="span-3">
+                    <label class="bloque">Producto nuevo (opcional)</label>
+                    <input id="nuevoProductoTexto" placeholder="Ej. B-1 2 lt">
+                    <div class="chip-info">Si lo llenas, se crea la receta para un producto que todavía no existe en el catálogo.</div>
+                </div>
+                <div class="span-3">
+                    <label class="bloque">Nombre legible (opcional)</label>
+                    <input id="nuevoNombreProducto" placeholder="Ej. Bidón B-1 2 litros">
+                </div>
+                <div class="span-3">
+                    <label class="bloque">Observaciones</label>
+                    <textarea id="nuevasObservaciones" placeholder="Notas de la receta (opcional)"></textarea>
+                </div>
+            </div>
+
+            <div class="seccion-titulo"><span>Composición por caja</span><span class="linea"></span></div>
+            <div id="filasNueva"></div>
+            <div class="botones-agregar">
+                <button type="button" class="btn btn-agregar" onclick="agregarFila('filasNueva','insumo')">+ Agregar insumo</button>
+                <button type="button" class="btn btn-agregar" onclick="agregarFila('filasNueva','componente')">+ Agregar sub-receta</button>
+            </div>
+            <div class="chip-info">Una sub-receta se produce con su propia receta: sus insumos se suman al total y no se descuentan por separado.</div>
+
+            <label class="etiqueta-check" style="margin-top:14px;" title="Si el producto ya tiene receta activa, esta la reemplaza">
+                <input type="checkbox" id="nuevaActivar" checked> ✅ Activar de inmediato para producción (Envasado)
+            </label>
+        </div>
+        <div class="drawer-pie">
+            <div class="izq">
+                <button onclick="guardarNuevaReceta()" id="btnGuardarNueva" class="btn btn-primario">💾 Crear receta</button>
+            </div>
+            <div class="der">
+                <button onclick="cerrarPanelNueva()" class="btn btn-secundario">Cancelar</button>
+            </div>
+        </div>
+    </aside>
+
+    <aside id="panelDetalle" class="drawer" style="display:none;">
+        <div class="drawer-cab">
+            <div>
+                <h3>👁 Receta #<span id="detId">—</span></h3>
+                <div class="sub" id="detCabSub">—</div>
+            </div>
+            <button onclick="cerrarPanelDetalle()" class="drawer-cerrar" title="Cerrar">✖</button>
+        </div>
+        <div class="drawer-cuerpo">
+            <div class="grid-3cols">
+                <div>
+                    <label class="bloque">Producto</label>
+                    <div id="detProducto" style="font-weight:700; color:var(--ink);">—</div>
+                </div>
+                <div>
+                    <label class="bloque">Versión / Estado</label>
+                    <div id="detVersion">—</div>
+                </div>
+                <div>
+                    <label class="bloque">Vigencia</label>
+                    <div id="detVigencia">—</div>
+                </div>
+                <div class="span-3">
+                    <label class="bloque">Observaciones (editables)</label>
+                    <textarea id="detObservaciones" placeholder="Notas de la receta"></textarea>
+                </div>
+            </div>
+
+            <div id="avisoEditor" class="aviso-warn" style="display:none;"></div>
+
+            <div class="seccion-titulo"><span>Composición por caja</span><span class="linea"></span></div>
+            <div id="filasDetalle"></div>
+            <div class="botones-agregar">
+                <button type="button" class="btn btn-agregar" onclick="agregarFila('filasDetalle','insumo')">+ Agregar insumo</button>
+                <button type="button" class="btn btn-agregar" onclick="agregarFila('filasDetalle','componente')">+ Agregar sub-receta</button>
+            </div>
+
+            <div class="seccion-titulo" style="margin-top:24px;"><span>🧮 Impacto en inventario</span><span class="linea"></span></div>
+            <div class="impacto-cajas">
+                <div>
+                    <label class="bloque">Cajas a producir</label>
+                    <input type="number" id="detCajas" value="1" min="1" step="1" onchange="calcularImpacto()">
+                </div>
+                <div class="btn-celda">
+                    <button class="btn btn-secundario" onclick="calcularImpacto()" style="margin-bottom:2px;">🔄 Simular</button>
+                </div>
+            </div>
+            <div id="detImpacto"></div>
+            <div id="detDiff" style="margin-top:14px;"></div>
+        </div>
+        <div class="drawer-pie">
+            <div class="izq" id="botonesAccionDetalle"></div>
+        </div>
+    </aside>
+
+    <!-- PIE -->
+    <footer class="pie-pagina">
+        <a href="dashboard.html" class="volver">← Volver al Dashboard</a>
+        <span class="marca">Corporación Belcen S.A. • Módulo de Recetas</span>
+        <button class="logout" onclick="cerrarSesion()">🔒 Cerrar sesión</button>
+    </footer>
 
     <script src="/motion.js" defer></script>
     <script src="/auth-client.js"></script>
@@ -242,6 +396,7 @@
         let detalleReceta = null;
         let enviandoNueva = false;
         let enviandoEdicion = false;
+        let filtroEstado = '';
 
         function cerrarSesion() {
             if (confirm('¿Estás seguro de que deseas cerrar sesión?')) {
@@ -362,44 +517,101 @@
             }
         }
 
+        // Chips de resumen (Activas / Borradores / Total) + filtro por estado.
+        function aplicarFiltroEstado(btn) {
+            filtroEstado = btn.dataset.filtro || '';
+            document.querySelectorAll('.chips-resumen .chip').forEach(c => c.classList.toggle('chip-activo', c === btn));
+            renderRecetas();
+        }
+
         function renderRecetas() {
             const q = (document.getElementById('filtroRecetas').value || '').toLowerCase();
-            const filtrados = recetasGlobal.filter(r =>
-                (r.nombre_producto || r.producto_key || '').toLowerCase().includes(q) ||
-                String(r.version || '').toLowerCase().includes(q) ||
-                (r.activa ? 'activa' : 'borrador').includes(q)
-            );
+            document.getElementById('cntTodas').textContent = recetasGlobal.length;
+            document.getElementById('cntActivas').textContent = recetasGlobal.filter(r => r.activa).length;
+            document.getElementById('cntBorradores').textContent = recetasGlobal.filter(r => !r.activa).length;
             document.getElementById('totalRecetas').textContent = recetasGlobal.length;
+
+            const filtrados = recetasGlobal.filter(r => {
+                const coincideBusqueda =
+                    (r.nombre_producto || r.producto_key || '').toLowerCase().includes(q) ||
+                    String(r.version || '').toLowerCase().includes(q) ||
+                    (r.activa ? 'activa' : 'borrador').includes(q);
+                const coincideEstado = !filtroEstado ||
+                    (filtroEstado === 'activa' && r.activa) ||
+                    (filtroEstado === 'borrador' && !r.activa);
+                return coincideBusqueda && coincideEstado;
+            });
+
             const tbody = document.getElementById('tablaRecetas');
             tbody.innerHTML = filtrados.length === 0
                 ? '<tr><td colspan="7" class="text-center sin-registros">No hay recetas que coincidan con la búsqueda.</td></tr>'
                 : '';
             filtrados.forEach(r => {
                 const tr = document.createElement('tr');
-                const obs = r.observaciones ? `<div style="font-size:12px; color:#888;">${escHTML(r.observaciones)}</div>` : '';
+                const obs = r.observaciones ? `<div class="c-obs">${escHTML(r.observaciones)}</div>` : '';
                 const sub = Number(r.num_subrecetas) > 0
                     ? `<div class="chip-info">🧩 ${escHTML(r.num_subrecetas)} sub-receta(s)</div>`
                     : '';
+                // Por fila: un botón claro "Editar" + menú "⋯" con el resto de
+                // acciones (activar/desactivar, clonar, eliminar).
+                const opcionesMenu = `
+                    ${r.activa
+                        ? `<button onclick="menuAccion(()=>desactivarReceta(${r.id}))">⏸ Desactivar</button>`
+                        : `<button onclick="menuAccion(()=>activarReceta(${r.id}))">✅ Activar versión</button>`}
+                    <button onclick="menuAccion(()=>clonarReceta(${r.id}))">📋 Clonar para edición</button>
+                    ${r.activa ? '' : `<button class="peligro" onclick="menuAccion(()=>eliminarReceta(${r.id}, '${escHTML(String(r.nombre_producto || r.producto_key)).replace(/'/g, "\\'")}', ${r.version}))">🗑 Eliminar</button>`}`;
                 tr.innerHTML = `
-                    <td><b>${escHTML(r.nombre_producto || r.producto_key)}</b><div style="font-size:12px; color:#888;">${escHTML(r.producto_key)}</div>${obs}</td>
+                    <td class="c-nombre"><b>${escHTML(r.nombre_producto || r.producto_key)}</b><div class="c-key">${escHTML(r.producto_key)}</div>${obs}</td>
                     <td class="text-center"><b>v${escHTML(r.version)}</b></td>
                     <td>${badgeEstado(!!r.activa)}</td>
                     <td class="text-center">${escHTML(r.num_insumos)}${sub}</td>
                     <td>${escHTML(String(r.vigente_desde || '').substring(0, 10))}</td>
                     <td>${escHTML(r.created_by)}</td>
-                    <td class="text-center">
-                        <div class="botones-accion">
-                            <button onclick="abrirDetalle(${r.id})" style="background:#007bff; color:white;" title="Ver / editar">🔍</button>
-                            <button onclick="clonarReceta(${r.id})" style="background:#007bff; color:white;" title="Clonar para edición">📋</button>
-                            ${r.activa ? `<button onclick="desactivarReceta(${r.id})" style="background:#6c757d; color:white;" title="Desactivar">⏸</button>` : `<button onclick="activarReceta(${r.id})" style="background:#17a2b8; color:white;" title="Activar versión">✅</button>`}
-                            ${r.activa ? '' : `<button onclick="eliminarReceta(${r.id}, '${escHTML(String(r.nombre_producto || r.producto_key)).replace(/'/g, "\\'")}', ${r.version})" class="btn-comer" title="Eliminar"><span class="ico-papelera"><span class="tapa"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/></svg></span><span class="base"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></span></span><span class="texto-papelera"><span class="letra">D</span><span class="letra">e</span><span class="letra">l</span><span class="letra">e</span><span class="letra">t</span><span class="letra">e</span></span></button>`}
-                        </div>
+                    <td class="acciones-celda">
+                        <button class="btn-editar-fila" onclick="abrirDetalle(${r.id})">✏️ Editar</button>
+                        <button class="btn-menu" title="Más acciones" onclick="alternarMenu(this)">⋯</button>
+                        <div class="menu-desplegable">${opcionesMenu}</div>
                     </td>
                 `;
                 tbody.appendChild(tr);
             });
             etiquetarTablas();
         }
+
+        // Cierra cualquier menú "⋯" abierto; se llama al cerrar drawers y al hacer clic fuera.
+        function cerrarMenusAbiertos() {
+            document.querySelectorAll('.menu-desplegable.abierto').forEach(m => m.classList.remove('abierto'));
+        }
+        function alternarMenu(btn) {
+            const menu = btn.parentElement.querySelector('.menu-desplegable');
+            const yaAbierto = menu.classList.contains('abierto');
+            cerrarMenusAbiertos();
+            if (!yaAbierto) menu.classList.add('abierto');
+        }
+        // Ejecuta la acción del menú y lo cierra antes (evita que quede flotando).
+        function menuAccion(fn) { cerrarMenusAbiertos(); fn(); }
+        document.addEventListener('click', e => {
+            if (!e.target.closest('.acciones-celda')) cerrarMenusAbiertos();
+        });
+
+        // ---------- DRAWERS ----------
+        function mostrarDrawer(id) {
+            document.getElementById('drawerOverlay').classList.add('visible');
+            document.getElementById(id).style.display = 'flex';
+            requestAnimationFrame(() => document.getElementById(id).classList.add('visible'));
+        }
+        function ocultarDrawer(id) {
+            const d = document.getElementById(id);
+            d.classList.remove('visible');
+            document.getElementById('drawerOverlay').classList.remove('visible');
+            setTimeout(() => { d.style.display = 'none'; }, 220);
+        }
+        function cerrarDrawers() {
+            if (document.getElementById('panelDetalle').classList.contains('visible')) cerrarPanelDetalle();
+            if (document.getElementById('panelNueva').classList.contains('visible')) cerrarPanelNueva();
+            cerrarMenusAbiertos();
+        }
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarDrawers(); });
 
         // ---------- EDITOR DE LÍNEAS ----------
         function opcionesInventario(seleccionado) {
@@ -509,20 +721,22 @@
                         <span class="etiqueta-mini">Merma %</span>
                         <input type="number" step="any" min="0" max="99.999" class="f-merma" value="${num(l.merma_pct || 0)}" placeholder="0">
                     </div>
+                </div>
+                <div class="g-fila-2">
                     <div>
-                        <span class="etiqueta-mini">Stock seguridad</span>
-                        <input type="number" step="any" min="0" class="f-seguridad" value="${l.stock_minimo === '' || l.stock_minimo === null || l.stock_minimo === undefined ? '' : num(l.stock_minimo)}" placeholder="—">
+                        <span class="etiqueta-mini">Stock seguridad / Unidad</span>
+                        <div style="display:flex; gap:8px;">
+                            <input type="number" step="any" min="0" class="f-seguridad" value="${l.stock_minimo === '' || l.stock_minimo === null || l.stock_minimo === undefined ? '' : num(l.stock_minimo)}" placeholder="Stock mín." style="max-width:120px;">
+                            <input class="f-unidad" value="${escHTML(unidad0)}" placeholder="UNIDADES" ${(esSub || mult0 === 1000) ? 'disabled' : ''} title="Unidad del stock en inventario">
+                        </div>
                     </div>
                     <div>
-                        <span class="etiqueta-mini">Unidad / Notas</span>
-                        <div style="display:flex; gap:6px;">
-                            <input class="f-unidad" value="${escHTML(unidad0)}" placeholder="UNIDADES" ${(esSub || mult0 === 1000) ? 'disabled' : ''} style="max-width:110px;" title="Unidad del stock en inventario">
-                            <input class="f-notas" value="${escHTML(l.notas || '')}" placeholder="Notas">
-                        </div>
+                        <span class="etiqueta-mini">Notas</span>
+                        <input class="f-notas" value="${escHTML(l.notas || '')}" placeholder="Notas de la línea">
                         <label class="etiqueta-check"><input type="checkbox" class="f-oblig" ${l.obligatorio !== false ? 'checked' : ''}> Obligatorio</label>
                     </div>
                     <div>
-                        <button type="button" class="btn-remover" onclick="this.closest('.fila-insumo').remove()">🗑</button>
+                        <button type="button" class="btn-remover" onclick="this.closest('.fila-insumo').remove()" title="Quitar línea">🗑</button>
                     </div>
                 </div>
             </div>`;
@@ -587,14 +801,13 @@
 
         // ---------- NUEVA RECETA ----------
         function abrirPanelNueva() {
-            document.getElementById('panelNueva').style.display = 'block';
             document.getElementById('filasNueva').innerHTML = '';
             agregarFila('filasNueva', 'insumo');
-            document.getElementById('panelNueva').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            mostrarDrawer('panelNueva');
         }
 
         function cerrarPanelNueva() {
-            document.getElementById('panelNueva').style.display = 'none';
+            ocultarDrawer('panelNueva');
         }
 
         async function guardarNuevaReceta() {
@@ -681,6 +894,7 @@
                 detalleReceta = r;
 
                 document.getElementById('detId').textContent = r.id;
+                document.getElementById('detCabSub').textContent = (r.nombre_producto ? r.nombre_producto + ' (' + r.producto_key + ')' : r.producto_key);
                 document.getElementById('detProducto').textContent = (r.nombre_producto ? r.nombre_producto + ' (' + r.producto_key + ')' : r.producto_key);
                 document.getElementById('detVersion').innerHTML = `v${escHTML(r.version)} · ${badgeEstado(!!r.activa)} · Creado por ${escHTML(r.created_by)}`;
                 document.getElementById('detVigencia').textContent = `Desde ${String(r.vigente_desde || '').substring(0, 10) || '—'} hasta ${String(r.vigente_hasta || '').substring(0, 10) || 'vigente'}`;
@@ -709,16 +923,16 @@
                     aviso.innerHTML = 'ℹ️ Receta en estado <b>BORRADOR</b>. Edita lo que necesites y actívala cuando esté lista.';
                 }
 
+                // Jerarquía de acciones: primario "Guardar y activar", secundario
+                // "Guardar cambios", y a la derecha activar/desactivar según estado.
                 document.getElementById('botonesAccionDetalle').innerHTML = `
-                    <button onclick="guardarEdicionDetalle()" id="btnGuardarDetalle" class="btn-accion" style="border:none; border-radius:4px; padding:9px 16px; cursor:pointer; font-weight:bold;">💾 GUARDAR CAMBIOS</button>
-                    <button onclick="guardarYActivar()" id="btnGuardarActivar" class="btn-accion btn-activar" style="border:none; border-radius:4px; padding:9px 16px; cursor:pointer; font-weight:bold;">💾 GUARDAR Y ACTIVAR</button>
+                    <button onclick="guardarEdicionDetalle()" id="btnGuardarDetalle" class="btn btn-secundario">Guardar cambios</button>
+                    <button onclick="guardarYActivar()" id="btnGuardarActivar" class="btn btn-primario">💾 Guardar y activar</button>
                     ${r.activa
-                        ? `<button onclick="desactivarReceta(${r.id})" style="background:#6c757d; color:white; border:none; border-radius:4px; padding:9px 16px; cursor:pointer; font-weight:bold;">⏸ DESACTIVAR</button>`
-                        : `<button onclick="activarReceta(${r.id})" class="btn-activar" style="border:none; border-radius:4px; padding:9px 16px; cursor:pointer; font-weight:bold;">✅ ACTIVAR ESTA VERSIÓN</button>`}
-                    <button onclick="clonarReceta(${r.id})" class="btn-clonar" style="border:none; border-radius:4px; padding:9px 16px; cursor:pointer; font-weight:bold;">📋 CLONAR</button>`;
+                        ? `<button onclick="desactivarReceta(${r.id})" class="btn btn-ghost" style="margin-left:auto;">⏸ Desactivar</button>`
+                        : `<button onclick="activarReceta(${r.id})" class="btn btn-ghost" style="margin-left:auto;">✅ Activar esta versión</button>`}`;
 
-                document.getElementById('panelDetalle').style.display = 'block';
-                document.getElementById('panelDetalle').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                mostrarDrawer('panelDetalle');
                 await Promise.all([calcularImpacto(), cargarDiff()]);
             } catch (err) {
                 console.error(err);
@@ -729,7 +943,7 @@
         function cerrarPanelDetalle() {
             detalleId = null;
             detalleReceta = null;
-            document.getElementById('panelDetalle').style.display = 'none';
+            ocultarDrawer('panelDetalle');
         }
 
         function recolectarEdicion() {

@@ -6,170 +6,187 @@
     <title>Administración de Usuarios - Corporación Belcen</title>
     <link rel="stylesheet" href="/motion.css">
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; background-color: #f4f6f9; padding: 20px; }
-        .container { max-width: 1100px; margin: auto; }
-        .tarjeta { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 25px; }
-        h2 { color: #343a40; text-align: center; border-bottom: 2px solid #6f42c1; padding-bottom: 8px; margin-top: 0; }
-        h3 { color: #343a40; padding-bottom: 8px; margin-top: 0; border-bottom: 2px solid #007bff; }
-        h3.admin { border-bottom: 2px solid #6f42c1; color: #6f42c1; }
-        h3.crear { border-bottom: 2px solid #28a745; color: #1e7e34; }
-        select, input { padding: 9px 12px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; box-sizing: border-box; width: 100%; }
-        select:focus, input:focus { outline: none; border-color: #6f42c1; box-shadow: 0 0 0 2px rgba(111,66,193,0.2); }
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th, td { border: 1px solid #dee2e6; padding: 10px; text-align: left; font-size: 14px; }
-        th { background-color: #343a40; color: white; }
-        .text-center { text-align: center; }
-        .badge { padding: 4px 10px; border-radius: 4px; color: white; font-weight: bold; font-size: 12px; white-space: nowrap; }
-        .btn-accion { padding: 9px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px; }
-        .btn-accion:hover { background: #218838; }
-        .btn-editar { background: #ffc107; color: #000; }
-        .btn-editar:hover { background: #e0a800; }
-        .btn-eliminar { background: #dc3545; color: white; }
-        .btn-eliminar:hover { background: #c82333; }
-        .logout { background-color: #dc3545; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px; }
-        .logout:hover { background-color: #c82333; }
-        .filtro { width: 100%; padding: 9px 12px; border: 1px solid #ced4da; border-radius: 4px; margin-top: 10px; font-size: 13px; box-sizing: border-box; }
-        .sin-registros { color: #888; font-style: italic; }
-        .botones-accion { display: flex; gap: 6px; justify-content: center; }
-        .botones-accion button { border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold; }
-        .aviso-info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-top: 12px; }
-        .tabla-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 8px; }
-        .grid-3cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-top: 15px; }
+        :root {
+            --teal: #17a2b8;
+            --teal-dark: #138496;
+            --teal-darker: #117a8b;
+            --amber: #f59e0b;
+            --bg: #f4f6f9;
+            --card: #ffffff;
+            --ink: #0b1c30;
+            --ink-soft: #3f484c;
+            --muted: #6c757d;
+            --line: #e3e8ee;
+            --line-soft: #eef2f7;
+            --green: #2f9e44;
+            --green-bg: #e7f5ec;
+            --red: #dc3545;
+            --red-bg: #fdecea;
+            --grey-bg: #eef1f5;
+            --radius: 12px;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Inter, Arial, sans-serif;
+            margin: 0; background: var(--bg); color: var(--ink);
+            display: flex; flex-direction: column; min-height: 100vh;
+        }
+        .container { max-width: 1280px; margin: 0 auto; padding: 22px 20px 40px; width: 100%; flex: 1; }
+
+        /* ---------- Tarjetas ---------- */
+        .tarjeta {
+            background: var(--card); border-radius: var(--radius);
+            box-shadow: 0 1px 3px rgba(16, 34, 60, 0.06), 0 8px 24px rgba(16, 34, 60, 0.05);
+            padding: 22px 24px; margin-bottom: 22px; border: 1px solid var(--line-soft);
+        }
+        .cabecera-mod { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+        .cabecera-mod .titulo { display: flex; align-items: center; gap: 12px; }
+        .titulo .ico-caja {
+            width: 40px; height: 40px; border-radius: 10px; background: #e7f6fa;
+            display: flex; align-items: center; justify-content: center; font-size: 20px;
+            border: 1px solid #cfe9f0; flex: none;
+        }
+        h1.mod-titulo { font-size: 22px; margin: 0; color: var(--ink); letter-spacing: -0.01em; }
+        .mod-sub { margin: 3px 0 0; font-size: 13px; color: var(--muted); }
+        .chip-contador {
+            background: #e7f6fa; color: var(--teal-dark); border: 1px solid #cfe9f0;
+            border-radius: 999px; padding: 3px 11px; font-size: 12px; font-weight: 700; white-space: nowrap;
+        }
+
+        /* ---------- Botones ---------- */
+        .btn { border: none; border-radius: 9px; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 600; transition: background .15s, box-shadow .15s; }
+        .btn:disabled { opacity: .55; cursor: not-allowed; }
+        .btn-primario { background: var(--teal); color: #fff; padding: 10px 16px; box-shadow: 0 1px 2px rgba(23, 162, 184, .4); display: inline-flex; align-items: center; gap: 7px; }
+        .btn-primario:hover:not(:disabled) { background: var(--teal-dark); }
+        .btn-primario:active:not(:disabled) { background: var(--teal-darker); }
+        .btn-secundario { background: #fff; color: var(--ink-soft); border: 1px solid var(--line); padding: 9px 14px; }
+        .btn-secundario:hover:not(:disabled) { background: #f6f8fa; }
+        .btn-ghost { background: transparent; color: var(--ink-soft); padding: 8px 12px; }
+        .btn-ghost:hover:not(:disabled) { background: var(--grey-bg); }
+        .btn-peligro { background: var(--red); color: #fff; padding: 9px 14px; }
+        .btn-peligro:hover:not(:disabled) { background: #c82333; }
+        .btn-agregar { background: #fff; color: var(--teal-dark); border: 1px dashed var(--teal); padding: 9px 14px; }
+        .btn-agregar:hover { background: #eef9fb; }
+        .btn-mini { padding: 7px 12px; font-size: 12px; }
+
+        /* ---------- Filtros / buscador ---------- */
+        .fila-filtros { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 18px 0 14px; }
+        .buscador { position: relative; flex: 1; max-width: 340px; min-width: 200px; }
+        .buscador input { width: 100%; padding: 9px 12px 9px 34px; border: 1px solid var(--line); border-radius: 9px; font-size: 13px; font-family: inherit; background: #fff; }
+        .buscador input:focus { outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px rgba(23,162,184,.15); }
+        .buscador .lupa { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); font-size: 13px; opacity: .5; }
+
+        /* ---------- Formularios ---------- */
+        .grid-3cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
         .span-3 { grid-column: span 3; }
-        @media (max-width: 640px) {
-            body { padding: 10px; }
-            h2 { font-size: 18px; }
-            select, input { font-size: 16px; }
+        label.bloque { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); font-weight: 700; margin-bottom: 5px; }
+        select, input[type=text], input[type=password], input[type=email], input[type=tel], textarea {
+            width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px;
+            font-size: 13px; font-family: inherit; background: #fff; color: var(--ink);
+        }
+        select:focus, input:focus, textarea:focus { outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px rgba(23,162,184,.14); }
+        textarea { resize: vertical; min-height: 56px; }
+        .chip-info { font-size: 11.5px; color: var(--muted); margin-top: 5px; }
+        .dato-oc { border-top: 1px solid var(--line-soft); padding-top: 10px; margin-top: 10px; }
+
+        .seccion-titulo { font-size: 13px; font-weight: 700; color: var(--ink); margin: 20px 0 10px; display: flex; align-items: center; gap: 8px; }
+        .seccion-titulo .linea { flex: 1; height: 1px; background: var(--line-soft); }
+
+        /* ---------- Tabla ---------- */
+        .tabla-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--line-soft); }
+        table { width: 100%; border-collapse: collapse; background: #fff; }
+        thead th {
+            text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .5px;
+            color: var(--muted); font-weight: 700; padding: 11px 14px; background: #fafbfd;
+            border-bottom: 1px solid var(--line); white-space: nowrap;
+        }
+        tbody td { padding: 12px 14px; font-size: 13px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; color: var(--ink-soft); }
+        tbody tr:last-child td { border-bottom: none; }
+        tbody tr:hover { background: #f7fbfd; }
+        .text-center { text-align: center; }
+
+        /* ---------- Badges ---------- */
+        .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+        .badge-ok { background: var(--green-bg); color: var(--green); border: 1px solid #bfe3cb; }
+        .badge-aviso { background: #fff5e0; color: #b07400; border: 1px solid #f4ddb0; }
+
+        /* ---------- Avisos ---------- */
+        .aviso-info { background: #e7f6fa; color: #0c5d6b; border: 1px solid #cfe9f0; padding: 11px 14px; border-radius: 9px; font-size: 12.5px; margin-top: 14px; }
+
+        /* ---------- Drawer lateral ---------- */
+        .drawer-overlay { position: fixed; inset: 0; background: rgba(11, 28, 48, .38); z-index: 90; opacity: 0; pointer-events: none; transition: opacity .2s; }
+        .drawer-overlay.visible { opacity: 1; pointer-events: auto; }
+        .drawer {
+            position: fixed; top: 0; right: 0; height: 100%; width: 560px; max-width: 100%;
+            background: #fff; z-index: 100; box-shadow: -12px 0 40px rgba(11,28,48,.18);
+            transform: translateX(100%); transition: transform .22s ease; display: flex; flex-direction: column;
+        }
+        .drawer.visible { transform: translateX(0); }
+        .drawer-cab { padding: 16px 20px; border-bottom: 1px solid var(--line); display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex: none; }
+        .drawer-cab h3 { margin: 0; font-size: 17px; color: var(--ink); }
+        .drawer-cab .sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+        .drawer-cerrar { background: #fff; border: 1px solid var(--line); border-radius: 8px; width: 32px; height: 32px; cursor: pointer; font-size: 15px; color: var(--ink-soft); flex: none; }
+        .drawer-cerrar:hover { background: #f4f7f9; }
+        .drawer-cuerpo { flex: 1; overflow-y: auto; padding: 18px 20px; }
+        .drawer-pie { padding: 13px 20px; border-top: 1px solid var(--line); background: #fafbfd; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; flex: none; }
+        .drawer-pie .izq, .drawer-pie .der { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
+
+        /* ---------- Permisos (tabla de módulos) ---------- */
+        .modulo-fila { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
+        .modulo-fila:last-child { border-bottom: none; }
+        .modulo-nombre { font-weight: 600; color: var(--ink); }
+        .modulo-nombre .etiqueta-mini { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .3px; color: #94a0ad; font-weight: 500; margin-top: 2px; }
+        .checkboxes { display: flex; gap: 14px; align-items: center; }
+        .etiqueta-check { display: flex; align-items: center; gap: 7px; font-size: 12.5px; cursor: pointer; color: var(--ink-soft); white-space: nowrap; }
+        .etiqueta-check input { width: auto; margin: 0; accent-color: var(--teal); }
+
+        /* ---------- Footer ---------- */
+        .pie-pagina { border-top: 1px solid var(--line); background: #fff; padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+        .pie-pagina a.volver { display: inline-flex; align-items: center; gap: 7px; color: var(--ink-soft); text-decoration: none; font-size: 13px; font-weight: 600; }
+        .pie-pagina a.volver:hover { color: var(--teal-dark); }
+        .pie-pagina .marca { font-size: 11.5px; color: #94a0ad; }
+        .logout { background: #fff; border: 1px solid #f3c2c2; color: var(--red); padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; font-family: inherit; }
+        .logout:hover { background: var(--red-bg); }
+
+        @media (max-width: 720px) {
             .grid-3cols { grid-template-columns: 1fr !important; }
             .span-3 { grid-column: span 1 !important; }
+            .drawer { width: 100%; }
             .tabla-wrap.tabla-card-movil table { min-width: 0; border: none; }
             .tabla-wrap.tabla-card-movil thead { display: none; }
-            .tabla-wrap.tabla-card-movil tbody tr { display: block; border: 1px solid #dee2e6; border-radius: 12px; margin: 0 0 10px; padding: 6px 0; background: #fff; }
-            .tabla-wrap.tabla-card-movil td { display: block; text-align: left !important; padding: 6px 12px; }
-            .tabla-wrap.tabla-card-movil td::before { content: attr(data-label); display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #8a93a3; font-weight: 700; margin-bottom: 2px; }
-            .tabla-wrap.tabla-card-movil td:not([data-label]) { all: unset; display: block; text-align: center; padding: 10px; }
-            .tabla-wrap.tabla-card-movil .botones-accion { justify-content: flex-start; }
-            .tarjeta { padding: 16px; }
+            .tabla-wrap.tabla-card-movil tbody tr { display: block; border: 1px solid var(--line); border-radius: 12px; margin: 0 0 10px; padding: 6px 0; background: #fff; }
+            .tabla-wrap.tabla-card-movil tbody td { display: block; text-align: left !important; padding: 6px 14px; }
+            .tabla-wrap.tabla-card-movil tbody td::before { content: attr(data-label); display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: #94a0ad; font-weight: 700; margin-bottom: 2px; }
+            .tabla-wrap.tabla-card-movil tbody td:not([data-label]) { all: unset; display: block; text-align: center; padding: 10px; }
         }
     </style>
 </head>
 <body>
     <div class="container">
 
-        <!-- CERRAR / EDITAR USUARIO -->
-        <div id="panelEditar" class="tarjeta" style="border-top: 5px solid #ffc107; display: none;">
-            <h3 style="border-bottom: 2px solid #ffc107; color: #856404;">✏️ EDITAR USUARIO</h3>
-            <div class="grid-3cols" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-top: 15px;">
-                <div>
-                    <label><b>Usuario:</b></label>
-                    <input type="text" id="editUsuario" placeholder="Nombre de usuario" style="margin-top:5px;">
-                </div>
-                <div>
-                    <label><b>Contraseña (dejar vacío = no cambiar):</b></label>
-                    <input type="text" id="editPassword" placeholder="Nueva contraseña (mín. 6)" style="margin-top:5px;">
-                </div>
-                <div>
-                    <label><b>Rol:</b></label>
-                    <select id="editRol" style="margin-top:5px;"></select>
-                </div>
-            </div>
-            <!-- Solo lo ven roles que emiten OC/OS: los demas jamas llegan a una OC. -->
-            <div id="bloqueDatosOC">
-            <div class="grid-3cols" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-top: 15px;">
-                <div>
-                    <label><b>Nombre para la OC:</b></label>
-                    <input type="text" id="editNombre" placeholder="Nombre y apellido" style="margin-top:5px;">
-                </div>
-                <div>
-                    <label><b>Cargo:</b></label>
-                    <input type="text" id="editCargo" placeholder="Ej. Jefe de almacén" style="margin-top:5px;">
-                </div>
-                <div>
-                    <label><b>Celular:</b></label>
-                    <input type="tel" id="editCelular" placeholder="Ej. 987 654 321" style="margin-top:5px;">
-                </div>
-                <div>
-                    <label><b>Correo:</b></label>
-                    <input type="email" id="editEmail" placeholder="Ej. nombre@empresa.com" style="margin-top:5px;">
-                </div>
-            </div>
-            <div class="aviso-info" style="margin-top:12px;">ℹ️ Solo las cuentas con rol admin, auditoría o consulta_bd emiten OC/OS: únicamente en ese caso estos datos salen impresos en la OC que genera este usuario. Si los dejas vacíos, la OC mostrará un guion.</div>
-            </div>
-            <div style="display: flex; gap: 10px; margin-top: 18px;">
-                <button onclick="guardarEditarUsuario()" id="btnGuardarEditar" class="btn-editar" style="padding:9px 16px; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">💾 GUARDAR CAMBIOS</button>
-                <button onclick="cerrarPanelEditar()" class="btn-eliminar" style="border:none; border-radius:4px; cursor:pointer; padding:9px 16px; font-weight:bold;">✖ Cancelar</button>
-            </div>
-        </div>
-
-        <!-- PERMISOS POR MÓDULO -->
-        <div id="panelPermisos" class="tarjeta" style="border-top: 5px solid #0d6efd; display: none;">
-            <h3 style="border-bottom: 2px solid #0d6efd; color: #0d6efd;" id="permTitulo">🔑 Permisos</h3>
-            <p style="font-size:13px; color:#555;">Sin marcar nada, el usuario hereda todo lo de su rol. Desmarca <b>Ver</b> para cerrarle el módulo y <b>Editar</b> para dejarlo en solo lectura. Las cuentas administradoras no se restringen.</p>
-            <div class="tabla-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Módulo</th>
-                            <th class="text-center">Ver</th>
-                            <th class="text-center">Editar</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tablaPermisos"></tbody>
-                </table>
-            </div>
-            <div style="display: flex; gap: 10px; margin-top: 14px;">
-                <button onclick="guardarPermisos()" class="btn-accion">💾 GUARDAR PERMISOS</button>
-                <button onclick="cerrarPanelPermisos()" class="btn-eliminar" style="border:none; border-radius:4px; cursor:pointer; padding:9px 16px; font-weight:bold;">✖ Cancelar</button>
-            </div>
-        </div>
-
-        <!-- CREAR USUARIO -->
-        <div class="tarjeta reveal" style="border-top: 5px solid #28a745;">
-            <h3 class="crear">➕ CREAR NUEVO USUARIO</h3>
-            <form id="formCrearUsuario" class="grid-3cols" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-top: 15px;">
-                <div>
-                    <label><b>Usuario:</b></label>
-                    <input type="text" id="nuevoUsuario" placeholder="Ej. almacen1" style="margin-top:5px;" required>
-                </div>
-                <div>
-                    <label><b>Contraseña:</b></label>
-                    <input type="text" id="nuevaPassword" placeholder="Mínimo 6 caracteres" style="margin-top:5px;" required>
-                </div>
-                <div>
-                    <label><b>Rol:</b></label>
-                    <select id="nuevoRol" style="margin-top:5px;" required>
-                        <option value="">-- Seleccionar rol --</option>
-                    </select>
-                </div>
-                <div class="dato-oc" style="grid-column: span 3; margin-top: 2px;">
-                    <label><b>Datos que saldrán impresos en la OC <span style="font-weight:normal; color:#666;">(solo si el rol emite OC/OS)</span>:</b></label>
-                </div>
-                <div class="dato-oc">
-                    <label><b>Nombre:</b></label>
-                    <input type="text" id="nuevoNombre" placeholder="Nombre y apellido" style="margin-top:5px;">
-                </div>
-                <div class="dato-oc">
-                    <label><b>Cargo:</b></label>
-                    <input type="text" id="nuevoCargo" placeholder="Ej. Supervisor de producción" style="margin-top:5px;">
-                </div>
-                <div class="dato-oc">
-                    <label><b>Celular:</b></label>
-                    <input type="tel" id="nuevoCelular" placeholder="Ej. 987 654 321" style="margin-top:5px;">
-                </div>
-                <div class="dato-oc">
-                    <label><b>Correo:</b></label>
-                    <input type="email" id="nuevoEmail" placeholder="Ej. nombre@empresa.com" style="margin-top:5px;">
-                </div>
-                <div class="span-3" style="grid-column: span 3;">
-                    <button type="submit" class="btn-accion">👤 CREAR USUARIO</button>
-                </div>
-            </form>
-        </div>
-
         <!-- LISTADO DE USUARIOS -->
-        <div class="tarjeta reveal" style="border-top: 5px solid #6f42c1;">
-            <h3 class="admin">👥 USUARIOS REGISTRADOS (<span id="totalUsuarios">0</span>)</h3>
-            <input id="filtroUsuarios" class="filtro" placeholder="🔍 Buscar por usuario o rol...">
+        <div class="tarjeta">
+            <div class="cabecera-mod">
+                <div class="titulo">
+                    <div class="ico-caja">👥</div>
+                    <div>
+                        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                            <h1 class="mod-titulo">Administración de Usuarios</h1>
+                            <span class="chip-contador"><span id="totalUsuarios">0</span> usuarios</span>
+                        </div>
+                        <p class="mod-sub">Crea cuentas, asigna roles y controla qué módulos puede ver o editar cada usuario.</p>
+                    </div>
+                </div>
+                <button onclick="abrirPanelCrear()" class="btn btn-primario">+ Nuevo usuario</button>
+            </div>
+
+            <div class="fila-filtros">
+                <div class="buscador">
+                    <span class="lupa">🔍</span>
+                    <input id="filtroUsuarios" class="filtro" placeholder="Buscar por usuario, rol, nombre o cargo...">
+                </div>
+            </div>
+
             <div class="tabla-wrap tabla-card-movil">
                 <table>
                     <thead>
@@ -180,7 +197,7 @@
                             <th>Nombre</th>
                             <th>Cargo</th>
                             <th>Celular</th>
-                    <th>Correo</th>
+                            <th>Correo</th>
                             <th class="text-center">Acciones</th>
                         </tr>
                     </thead>
@@ -192,18 +209,165 @@
             <div class="aviso-info">ℹ️ No puedes eliminar tu propio usuario ni quitar el rol "admin" al último administrador.</div>
         </div>
 
-        <div style="text-align: center; margin-top: 10px; padding: 15px; border-top: 1px solid #ddd;">
-            <a href="recetas.html" style="display: inline-block; margin: 5px 10px; padding: 12px 20px; background: #6f42c1; color: white; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 15px;">🧪 MÓDULO DE RECETAS</a>
-            <a href="basededatosgeneral.html" style="display: inline-block; margin: 5px 10px; padding: 10px 18px; background: #17a2b8; color: white; border-radius: 8px; text-decoration: none; font-weight: bold;">🗄️ Base de Datos General</a>
-            <!-- El mapa de flujo es por usuario, no por rol: admin1 comparte rol
-                 'admin' con otras cuentas, asi que el enlace se muestra solo a
-                 esa cuenta. El 403 real lo pone el servidor. -->
-            <a href="flujo.html" id="linkFlujo" style="display: none; margin: 5px 10px; padding: 12px 20px; background: #0d6efd; color: white; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 15px;">🗺️ Mapa de Flujo de Trabajo</a>
-            <a href="dashboard.html" style="display: inline-block; margin-bottom: 10px; color: #007bff; text-decoration: none; font-weight: bold;">Volver al Dashboard General</a>
-            <br>
-            <button class="logout" onclick="cerrarSesion()">🔒 Cerrar Sesión (Salir)</button>
-        </div>
     </div>
+
+    <!-- ===== DRAWERS ===== -->
+    <div id="drawerOverlay" class="drawer-overlay" onclick="cerrarDrawers()"></div>
+
+    <!-- DRAWER: CREAR / EDITAR USUARIO -->
+    <aside id="panelCrearEditar" class="drawer" style="display:none;">
+        <div class="drawer-cab">
+            <div>
+                <h3 id="crearCabTitulo">➕ Crear usuario</h3>
+                <div class="sub" id="crearCabSub">Registra una nueva cuenta de acceso al ERP.</div>
+            </div>
+            <button onclick="cerrarPanelCrearEditar()" class="drawer-cerrar" title="Cerrar">✖</button>
+        </div>
+        <div class="drawer-cuerpo">
+            <form id="formCrearUsuario">
+                <div class="grid-3cols">
+                    <div class="span-3">
+                        <label class="bloque">Usuario</label>
+                        <input type="text" id="nuevoUsuario" placeholder="Ej. almacen1" required>
+                        <div class="chip-info">Entre 3 y 50 caracteres: letras, números y guión bajo.</div>
+                    </div>
+                    <div class="span-3">
+                        <label class="bloque">Contraseña</label>
+                        <input type="password" id="nuevaPassword" placeholder="Mínimo 6 caracteres" required>
+                        <div class="chip-info">Se requiere al crear; al editar, déjala vacía para no cambiarla.</div>
+                    </div>
+                    <div class="span-3">
+                        <label class="bloque">Rol</label>
+                        <select id="nuevoRol" required>
+                            <option value="">-- Seleccionar rol --</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="bloqueDatosOC" style="display:none;">
+                    <div class="seccion-titulo"><span>Datos para la OC</span><span class="linea"></span></div>
+                    <div class="grid-3cols">
+                        <div class="span-3">
+                            <label class="bloque">Nombre</label>
+                            <input type="text" id="nuevoNombre" placeholder="Nombre y apellido">
+                        </div>
+                        <div class="span-3">
+                            <label class="bloque">Cargo</label>
+                            <input type="text" id="nuevoCargo" placeholder="Ej. Jefe de almacén">
+                        </div>
+                        <div class="span-3">
+                            <label class="bloque">Celular</label>
+                            <input type="tel" id="nuevoCelular" placeholder="Ej. 987 654 321">
+                        </div>
+                        <div class="span-3">
+                            <label class="bloque">Correo</label>
+                            <input type="email" id="nuevoEmail" placeholder="Ej. nombre@empresa.com">
+                        </div>
+                    </div>
+                    <div class="chip-info" style="margin-top:8px;">Solo los roles admin, auditoría y consulta_bd emiten OC/OS: estos datos aparecen impresos en la orden de compra que genera el usuario.</div>
+                </div>
+            </form>
+        </div>
+        <div class="drawer-pie">
+            <div class="izq">
+                <button type="submit" form="formCrearUsuario" class="btn btn-primario" id="btnGuardarCrear">👤 Crear usuario</button>
+            </div>
+            <div class="der">
+                <button type="button" class="btn btn-secundario" onclick="cerrarPanelCrearEditar()">Cancelar</button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- DRAWER: EDITAR USUARIO (datos) -->
+    <aside id="panelEditar" class="drawer" style="display:none;">
+        <div class="drawer-cab">
+            <div>
+                <h3 id="editCabTitulo">✏️ Editar usuario</h3>
+                <div class="sub" id="editCabSub">—</div>
+            </div>
+            <button onclick="cerrarPanelEditar()" class="drawer-cerrar" title="Cerrar">✖</button>
+        </div>
+        <div class="drawer-cuerpo">
+            <form id="formEditarUsuario">
+                <input type="hidden" id="editUsuarioId">
+                <div class="grid-3cols">
+                    <div class="span-3">
+                        <label class="bloque">Usuario</label>
+                        <input type="text" id="editUsuario" placeholder="Nombre de usuario" required>
+                    </div>
+                    <div class="span-3">
+                        <label class="bloque">Contraseña (vacía = no cambiar)</label>
+                        <input type="password" id="editPassword" placeholder="Nueva contraseña (mín. 6)">
+                    </div>
+                    <div class="span-3">
+                        <label class="bloque">Rol</label>
+                        <select id="editRol" required></select>
+                    </div>
+                </div>
+                <div id="bloqueDatosOCE" style="display:none;">
+                    <div class="seccion-titulo"><span>Datos para la OC</span><span class="linea"></span></div>
+                    <div class="grid-3cols">
+                        <div class="span-3">
+                            <label class="bloque">Nombre</label>
+                            <input type="text" id="editNombre" placeholder="Nombre y apellido">
+                        </div>
+                        <div class="span-3">
+                            <label class="bloque">Cargo</label>
+                            <input type="text" id="editCargo" placeholder="Ej. Jefe de almacén">
+                        </div>
+                        <div class="span-3">
+                            <label class="bloque">Celular</label>
+                            <input type="tel" id="editCelular" placeholder="Ej. 987 654 321">
+                        </div>
+                        <div class="span-3">
+                            <label class="bloque">Correo</label>
+                            <input type="email" id="editEmail" placeholder="Ej. nombre@empresa.com">
+                        </div>
+                    </div>
+                    <div class="chip-info" style="margin-top:8px;">Solo los roles admin, auditoría y consulta_bd emiten OC/OS.</div>
+                </div>
+            </form>
+        </div>
+        <div class="drawer-pie">
+            <div class="izq">
+                <button type="button" class="btn btn-primario" onclick="guardarEditarUsuario()">💾 Guardar cambios</button>
+            </div>
+            <div class="der">
+                <button type="button" class="btn btn-secundario" onclick="cerrarPanelEditar()">Cancelar</button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- DRAWER: PERMISOS POR MÓDULO -->
+    <aside id="panelPermisos" class="drawer" style="display:none;">
+        <div class="drawer-cab">
+            <div>
+                <h3 id="permTitulo">🔑 Permisos por módulo</h3>
+                <div class="sub" id="permCabSub">—</div>
+            </div>
+            <button onclick="cerrarPanelPermisos()" class="drawer-cerrar" title="Cerrar">✖</button>
+        </div>
+        <div class="drawer-cuerpo">
+            <p style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">
+                Sin marcar nada, el usuario hereda todo lo de su rol. Desmarca <b>Ver</b> para cerrarle el módulo y <b>Editar</b> para dejarlo en solo lectura. Las cuentas administradoras no se restringen.
+            </p>
+            <div id="tablaPermisos"></div>
+        </div>
+        <div class="drawer-pie">
+            <div class="izq">
+                <button type="button" class="btn btn-primario" onclick="guardarPermisos()">💾 Guardar permisos</button>
+            </div>
+            <div class="der">
+                <button type="button" class="btn btn-secundario" onclick="cerrarPanelPermisos()">Cancelar</button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- PIE -->
+    <footer class="pie-pagina">
+        <a href="dashboard.html" class="volver">← Volver al Dashboard</a>
+        <span class="marca">Corporación Belcen S.A. • Administración de Usuarios</span>
+        <button class="logout" onclick="cerrarSesion()">🔒 Cerrar sesión</button>
+    </footer>
 
     <script src="/motion.js" defer></script>
     <script src="/auth-client.js"></script>
@@ -222,13 +386,8 @@
         // que la emitio, asi que a los demas roles no se les piden.
         const ROLES_EMITEN_OC = ['admin', 'auditoria', 'consulta_bd'];
 
-        function alternarDatosOC() {
-            const mostrarNuevo = ROLES_EMITEN_OC.includes(document.getElementById('nuevoRol').value);
-            document.querySelectorAll('#formCrearUsuario .dato-oc').forEach(el => { el.style.display = mostrarNuevo ? '' : 'none'; });
-            const mostrarEd = ROLES_EMITEN_OC.includes(document.getElementById('editRol').value);
-            document.getElementById('bloqueDatosOC').style.display = mostrarEd ? '' : 'none';
-        }
-
+        // Todos los modulos que el admin puede asignar por usuario. Incluye
+        // 'pedidos' como modulo independiente (antes estaba atado a almacen).
         const MODULOS = [
             ['dashboard', '🏠 Dashboard'], ['almacen', '📦 Almacén'], ['soplado', '🏭 Soplado'],
             ['envasado', '🧴 Envasado'], ['refinado', '🛢️ Refinado'], ['auditoria', '📋 Auditoría'],
@@ -237,29 +396,8 @@
             ['pedidos', '🛒 Pedidos']
         ];
 
-        // Solo admin1 ve el acceso al mapa de flujo (ver flujo.html).
-        if (localStorage.getItem('usuario_actual') === 'admin1') {
-            const link = document.getElementById('linkFlujo');
-            if (link) link.style.display = 'inline-block';
-        }
-        const COLORES_ROL = {
-            admin: '#dc3545',
-            supervisor: '#6f42c1',
-            produccion: '#28a745',
-            auditoria: '#343a40',
-            vigilancia: '#ffc107',
-            almacen: '#17a2b8',
-            soplado: '#28a745',
-            envasado: '#6f42c1',
-            refinado: '#117a8b',
-            invitado: '#6c757d',
-            consulta_bd: '#0d6efd'
-        };
-
         let usuariosGlobal = [];
-        let editarId = null;
-        let enviandoCrear = false;
-        let enviandoEditar = false;
+        let permisosEditandoId = null;
 
         function etiquetarTablas() {
             document.querySelectorAll('.tabla-card-movil table').forEach(tabla => {
@@ -274,13 +412,13 @@
             });
         }
 
-        function llenarSelectRoles() {
-            const selCrear = document.getElementById('nuevoRol');
-            const selEditar = document.getElementById('editRol');
-            ROLES.forEach(r => {
-                selCrear.innerHTML += `<option value="${r}">${r.toUpperCase()}</option>`;
-                selEditar.innerHTML += `<option value="${r}">${r.toUpperCase()}</option>`;
-            });
+        function alternarDatosOC() {
+            const sel = document.getElementById('nuevoRol');
+            const mostrarNuevo = sel && ROLES_EMITEN_OC.includes(sel.value);
+            document.getElementById('bloqueDatosOC').style.display = mostrarNuevo ? '' : 'none';
+            const selEd = document.getElementById('editRol');
+            const mostrarEd = selEd && ROLES_EMITEN_OC.includes(selEd.value);
+            document.getElementById('bloqueDatosOCE').style.display = mostrarEd ? '' : 'none';
         }
 
         function cerrarSesion() {
@@ -291,7 +429,12 @@
         }
 
         function badgeRol(rol) {
-            const color = COLORES_ROL[rol] || '#6c757d';
+            const colores = {
+                admin: '#dc3545', supervisor: '#6f42c1', produccion: '#28a745', auditoria: '#343a40',
+                vigilancia: '#ffc107', almacen: '#17a2b8', soplado: '#28a745', envasado: '#6f42c1',
+                refinado: '#117a8b', invitado: '#6c757d', consulta_bd: '#0d6efd'
+            };
+            const color = colores[rol] || '#6c757d';
             return `<span class="badge" style="background:${color};">${esc(rol).toUpperCase()}</span>`;
         }
 
@@ -308,8 +451,6 @@
             }
         }
 
-        // Los tres campos de la OC se escapan como todo lo que viene del
-        // servidor: un nombre con "<" rompería la tabla si se inserta tal cual.
         function esc(valor) {
             return String(valor == null ? '' : valor)
                 .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -341,9 +482,9 @@
                     <td>${esc(u.email) || '<span style="color:#999;">-</span>'}</td>
                     <td class="text-center">
                         <div class="botones-accion">
-                            <button onclick="abrirEditarUsuario(${u.id})" style="background:#ffc107; color:#000;" title="Editar">✏️</button>
-                            ${u.rol === 'admin' ? '' : `<button onclick="abrirPermisos(${u.id})" style="background:#0d6efd; color:#fff; border:none; border-radius:4px; cursor:pointer; padding:8px 10px; font-weight:bold;" title="Permisos por módulo">🔑</button>`}
-                            <button onclick="eliminarUsuario(${u.id}, '${String(u.usuario).replace(/'/g, "\\'")}')" class="btn-comer" title="Eliminar"><span class="ico-papelera"><span class="tapa"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/></svg></span><span class="base"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></span></span><span class="texto-papelera"><span class="letra">D</span><span class="letra">e</span><span class="letra">l</span><span class="letra">e</span><span class="letra">t</span><span class="letra">e</span></span></button>
+                            <button onclick="abrirEditarUsuario(${u.id})" class="btn btn-ghost" title="Editar datos">✏️ Editar</button>
+                            ${u.rol === 'admin' ? '' : `<button onclick="abrirPermisos(${u.id})" class="btn btn-ghost" title="Permisos por módulo">🔑 Permisos</button>`}
+                            <button onclick="eliminarUsuario(${u.id}, '${String(u.usuario).replace(/'/g, "\\'")}')" class="btn btn-peligro btn-mini" title="Eliminar">🗑</button>
                         </div>
                     </td>
                 `;
@@ -352,10 +493,38 @@
             etiquetarTablas();
         }
 
+        // ---------- DRAWERS ----------
+        function cerrarDrawers() {
+            cerrarPanelCrearEditar();
+            cerrarPanelEditar();
+            cerrarPanelPermisos();
+        }
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarDrawers(); });
+
+        function abrirPanelCrear() {
+            document.getElementById('formCrearUsuario').reset();
+            document.getElementById('crearCabTitulo').textContent = '➕ Crear usuario';
+            document.getElementById('crearCabSub').textContent = 'Registra una nueva cuenta de acceso al ERP.';
+            document.getElementById('btnGuardarCrear').textContent = '👤 Crear usuario';
+            document.getElementById('bloqueDatosOC').style.display = 'none';
+            const overlay = document.getElementById('drawerOverlay');
+            overlay.classList.add('visible');
+            document.getElementById('panelCrearEditar').style.display = 'flex';
+            requestAnimationFrame(() => document.getElementById('panelCrearEditar').classList.add('visible'));
+        }
+        function cerrarPanelCrearEditar() {
+            const d = document.getElementById('panelCrearEditar');
+            d.classList.remove('visible');
+            document.getElementById('drawerOverlay').classList.remove('visible');
+            setTimeout(() => { d.style.display = 'none'; }, 220);
+        }
+
         function abrirEditarUsuario(id) {
             const u = usuariosGlobal.find(x => x.id === id);
             if (!u) return;
-            editarId = id;
+            document.getElementById('editUsuarioId').value = u.id;
+            document.getElementById('editCabTitulo').textContent = '✏️ Editar usuario';
+            document.getElementById('editCabSub').textContent = esc(u.usuario) + ' · ' + (u.rol || '');
             document.getElementById('editUsuario').value = u.usuario;
             document.getElementById('editPassword').value = '';
             document.getElementById('editRol').value = u.rol || '';
@@ -364,18 +533,66 @@
             document.getElementById('editCelular').value = u.celular || '';
             document.getElementById('editEmail').value = u.email || '';
             alternarDatosOC();
-            document.getElementById('panelEditar').style.display = 'block';
-            document.getElementById('panelEditar').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            const overlay = document.getElementById('drawerOverlay');
+            overlay.classList.add('visible');
+            document.getElementById('panelEditar').style.display = 'flex';
+            requestAnimationFrame(() => document.getElementById('panelEditar').classList.add('visible'));
+        }
+        function cerrarPanelEditar() {
+            const d = document.getElementById('panelEditar');
+            d.classList.remove('visible');
+            document.getElementById('drawerOverlay').classList.remove('visible');
+            setTimeout(() => { d.style.display = 'none'; }, 220);
         }
 
-        function cerrarPanelEditar() {
-            editarId = null;
-            document.getElementById('panelEditar').style.display = 'none';
+        function abrirPermisos(id) {
+            const u = usuariosGlobal.find(x => x.id === id);
+            if (!u || u.rol === 'admin') return;
+            permisosEditandoId = id;
+            const perms = (u.permisos && typeof u.permisos === 'object') ? u.permisos : {};
+            document.getElementById('permTitulo').textContent = '🔑 Permisos de ' + esc(u.usuario);
+            document.getElementById('permCabSub').textContent = '(rol: ' + esc(u.rol) + ')';
+            const cont = document.getElementById('tablaPermisos');
+            cont.innerHTML = '';
+            MODULOS.forEach(([mod, etiqueta]) => {
+                const p = perms[mod] || {};
+                const ver = p.ver !== false;
+                const editar = p.editar !== false;
+                const fila = document.createElement('div');
+                fila.className = 'modulo-fila';
+                fila.innerHTML = `
+                    <div class="modulo-nombre">${esc(etiqueta)}<span class="etiqueta-mini">${mod}</span></div>
+                    <div class="checkboxes">
+                        <label class="etiqueta-check"><input type="checkbox" data-mod="${mod}" data-nivel="ver"${ver ? ' checked' : ''}> Ver</label>
+                        <label class="etiqueta-check"><input type="checkbox" data-mod="${mod}" data-nivel="editar"${editar ? ' checked' : ''}> Editar</label>
+                    </div>
+                `;
+                cont.appendChild(fila);
+            });
+            // Reglas: sin Ver -> sin Editar; con Editar -> con Ver.
+            cont.querySelectorAll('input[type=checkbox]').forEach(ch => {
+                ch.addEventListener('change', () => {
+                    const mod = ch.dataset.mod;
+                    const verBox = cont.querySelector(`input[data-mod="${mod}"][data-nivel="ver"]`);
+                    const edBox = cont.querySelector(`input[data-mod="${mod}"][data-nivel="editar"]`);
+                    if (ch.dataset.nivel === 'ver' && !ch.checked) edBox.checked = false;
+                    if (ch.dataset.nivel === 'editar' && ch.checked) verBox.checked = true;
+                });
+            });
+            const overlay = document.getElementById('drawerOverlay');
+            overlay.classList.add('visible');
+            document.getElementById('panelPermisos').style.display = 'flex';
+            requestAnimationFrame(() => document.getElementById('panelPermisos').classList.add('visible'));
+        }
+        function cerrarPanelPermisos() {
+            const d = document.getElementById('panelPermisos');
+            d.classList.remove('visible');
+            document.getElementById('drawerOverlay').classList.remove('visible');
+            setTimeout(() => { d.style.display = 'none'; }, 220);
         }
 
         document.getElementById('formCrearUsuario').addEventListener('submit', async (e) => {
             e.preventDefault();
-            if (enviandoCrear) return;
             const btn = e.submitter || document.querySelector('#formCrearUsuario button[type="submit"]');
             const usuario = document.getElementById('nuevoUsuario').value.trim();
             const password = document.getElementById('nuevaPassword').value;
@@ -398,8 +615,7 @@
                 return;
             }
 
-            enviandoCrear = true;
-            if (btn) btn.disabled = true;
+            btn.disabled = true;
             try {
                 const res = await fetch('/api/usuarios', {
                     method: 'POST',
@@ -410,6 +626,7 @@
                 if (res.ok && data.success) {
                     alert('✅ ' + data.mensaje);
                     document.getElementById('formCrearUsuario').reset();
+                    cerrarPanelCrearEditar();
                     cargarUsuarios();
                 } else {
                     alert('❌ ' + (data.mensaje || 'Error al crear el usuario.'));
@@ -418,14 +635,13 @@
                 console.error(err);
                 alert('Error de conexión con el servidor.');
             } finally {
-                enviandoCrear = false;
-                if (btn) btn.disabled = false;
+                btn.disabled = false;
             }
         });
 
         async function guardarEditarUsuario() {
-            if (enviandoEditar) return;
-            if (editarId === null) {
+            const id = document.getElementById('editUsuarioId').value;
+            if (!id) {
                 alert('❌ No hay un usuario en edición.');
                 return;
             }
@@ -450,11 +666,10 @@
                 return;
             }
 
-            enviandoEditar = true;
-            const btn = document.getElementById('btnGuardarEditar');
-            if (btn) btn.disabled = true;
+            const btn = document.querySelector('#panelEditar .btn-primario');
+            btn.disabled = true;
             try {
-                const res = await fetch('/api/usuarios/' + editarId + '/editar', {
+                const res = await fetch('/api/usuarios/' + id + '/editar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ usuario, rol, password, nombre, cargo, celular, email })
@@ -471,47 +686,8 @@
                 console.error(err);
                 alert('Error de conexión con el servidor.');
             } finally {
-                enviandoEditar = false;
-                if (btn) btn.disabled = false;
+                btn.disabled = false;
             }
-        }
-
-        let permisosEditandoId = null;
-
-        function abrirPermisos(id) {
-            const u = usuariosGlobal.find(x => x.id === id);
-            if (!u || u.rol === 'admin') return;
-            permisosEditandoId = id;
-            const perms = (u.permisos && typeof u.permisos === 'object') ? u.permisos : {};
-            document.getElementById('permTitulo').textContent = '🔑 Permisos de ' + u.usuario + ' (rol: ' + u.rol + ')';
-            const tb = document.getElementById('tablaPermisos');
-            tb.innerHTML = '';
-            MODULOS.forEach(([mod, etiqueta]) => {
-                const p = perms[mod] || {};
-                const ver = p.ver !== false;
-                const editar = p.editar !== false;
-                const tr = document.createElement('tr');
-                tr.innerHTML = `<td><b>${etiqueta}</b></td>`
-                    + `<td class="text-center"><input type="checkbox" data-mod="${mod}" data-nivel="ver"${ver ? ' checked' : ''}></td>`
-                    + `<td class="text-center"><input type="checkbox" data-mod="${mod}" data-nivel="editar"${editar ? ' checked' : ''}></td>`;
-                tb.appendChild(tr);
-            });
-            tb.querySelectorAll('input[type=checkbox]').forEach(ch => {
-                ch.addEventListener('change', () => {
-                    const mod = ch.dataset.mod;
-                    const verBox = tb.querySelector(`input[data-mod="${mod}"][data-nivel="ver"]`);
-                    const edBox = tb.querySelector(`input[data-mod="${mod}"][data-nivel="editar"]`);
-                    if (ch.dataset.nivel === 'ver' && !ch.checked) edBox.checked = false;
-                    if (ch.dataset.nivel === 'editar' && ch.checked) verBox.checked = true;
-                });
-            });
-            document.getElementById('panelPermisos').style.display = 'block';
-            document.getElementById('panelPermisos').scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-
-        function cerrarPanelPermisos() {
-            permisosEditandoId = null;
-            document.getElementById('panelPermisos').style.display = 'none';
         }
 
         async function guardarPermisos() {
@@ -528,7 +704,6 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ permisos: perms })
                 });
-                // Un 404 sin JSON = el servidor corre código viejo sin esta ruta.
                 let data = null;
                 try { data = await res.json(); } catch (e) { data = null; }
                 if (res.ok && data && data.success) {
@@ -564,14 +739,22 @@
             }
         }
 
+        // Inicializa select de roles (crear y editar)
+        function llenarSelectRoles() {
+            const selCrear = document.getElementById('nuevoRol');
+            const selEditar = document.getElementById('editRol');
+            ROLES.forEach(r => {
+                const opt = `<option value="${r}">${r.toUpperCase()}</option>`;
+                selCrear.innerHTML += opt;
+                selEditar.innerHTML += opt;
+            });
+        }
+
         llenarSelectRoles();
         document.getElementById('nuevoRol').addEventListener('change', alternarDatosOC);
         document.getElementById('editRol').addEventListener('change', alternarDatosOC);
-        alternarDatosOC();
-        cargarUsuarios();
-
         document.getElementById('filtroUsuarios').addEventListener('input', renderUsuarios);
-
+        cargarUsuarios();
         registrarAutoRefresco(cargarUsuarios, 15000);
     </script>
 </body>

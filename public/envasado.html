@@ -278,14 +278,14 @@
 
             <div>
                 <label><b>Presentación / Producto:</b></label>
-                <select id="presentacion" name="presentacion" onchange="verificarSeleccionTapa()" required>
+                <select id="presentacion" name="presentacion" onchange="verificarSeleccionTapa(); calcularTMEnvasado()" required>
                     <option value="">-- Seleccionar Presentación --</option>
                 </select>
             </div>
 
             <div>
                 <label><b>Cantidad Producida (Cajas):</b></label>
-                <input type="number" id="cantidad_cajas" name="cantidad_cajas" min="1" placeholder="Ej. 100" required>
+                <input type="number" id="cantidad_cajas" name="cantidad_cajas" min="1" placeholder="Ej. 100" required oninput="calcularTMEnvasado()">
             </div>
 
             <div>
@@ -619,6 +619,48 @@
         // receta vigente (si tiene linea seleccionable, ej. Faisan 900 ml).
         // El operario elige entre las tapas reales de inventario con su stock.
         let opcionesTapaActuales = null;
+
+        // Pesos por caja/unidad (kg) para calcular TM automáticamente según la
+        // presentación. Quedan fuera los productos que no están listados: el
+        // operario escribe el TM a mano en esos casos.
+        const PESO_POR_CAJA_ENVASADO = {
+          '1 lt': 11.6,
+          '900 ml': 10.6,
+          '800 ml': 9.6,
+          '500 ml': 6,
+          '200 ml': 5,
+          '2 lt': 12,
+          '3 lt': 12
+        };
+
+        function pesoPorCajaEnvasado(nombre) {
+          if (!nombre) return null;
+          const n = String(nombre).toLowerCase();
+          // Reglas simples por subcadena (orden tal como aparece en el select).
+          for (const clave of Object.keys(PESO_POR_CAJA_ENVASADO)) {
+            if (n.includes(clave)) return PESO_POR_CAJA_ENVASADO[clave];
+          }
+          // Casos especiales: "Balde" va antes o después de la marca según el producto.
+          if (n.includes('balde') && n.includes('belini')) return 18;
+          if (n.includes('balde') && n.includes('don lalo')) return 20;
+          return null; // peso manual: no se toca el campo
+        }
+
+        // Calcula TM = cajas * kg_por_caja / 1000 y lo deja en el campo.
+        // Si el producto no tiene peso definido (peso manual), deja el campo vacío
+        // para que el operario lo escriba a mano.
+        function calcularTMEnvasado() {
+          const presentacion = document.getElementById('presentacion').value;
+          const cajas = parseFloat(document.getElementById('cantidad_cajas').value || '0');
+          const inpTM = document.getElementById('toneladas');
+          if (!presentacion || !cajas || cajas <= 0) return;
+          const peso = pesoPorCajaEnvasado(presentacion);
+          if (peso === null) {
+            inpTM.value = ''; // peso manual: el operario lo escribe
+            return;
+          }
+          inpTM.value = ((cajas * peso) / 1000).toFixed(2);
+        }
 
         async function verificarSeleccionTapa() {
             const presentacion = document.getElementById('presentacion').value;

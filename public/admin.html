@@ -372,8 +372,7 @@
     <script src="/motion.js" defer></script>
     <script src="/auth-client.js"></script>
     <script>
-        const rolUsuario = localStorage.getItem('rol_actual') || localStorage.getItem('rol_usuario');
-        if (rolUsuario !== 'admin') {
+        if (!window.puede('admin', 'ver')) {
             alert('❌ Acceso no autorizado. Solo el administrador puede gestionar usuarios.');
             window.location.href = 'index.html';
         }

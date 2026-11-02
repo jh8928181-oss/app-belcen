@@ -76,6 +76,8 @@
             cursor: pointer; color: var(--texto2);
         }
         .pestana.activa { background: #0e869c; color: #fff; border-color: #0e869c; }
+        .pestana-teal { background: var(--teal); color: #fff; border-color: var(--teal); margin-left: auto; }
+        .pestana-teal:hover { background: #0e869c; }
 
         .fila { display: flex; gap: 12px; flex-wrap: wrap; }
         .campo { flex: 1 1 220px; }
@@ -139,6 +141,37 @@
         .subtitulo { font-size: 13px; color: var(--texto2); text-align: center; margin: -6px 0 14px; }
         .mini-info { font-size: 12px; color: var(--texto2); margin-top: 6px; }
         .faltantes-lista { margin: 8px 0 0; padding-left: 18px; font-size: 13px; color: #d6362b; }
+
+        /* ---------- Drawer "Ver pedidos" ---------- */
+        .drawer-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.42); z-index: 90; }
+        .drawer {
+            position: fixed; top: 0; right: 0; height: 100%; width: min(1040px, 96vw);
+            background: #fff; z-index: 100; box-shadow: -16px 0 44px rgba(0, 0, 0, 0.25);
+            display: flex; flex-direction: column;
+            transform: translateX(103%); transition: transform .25s ease;
+        }
+        .drawer.abierto { transform: translateX(0); }
+        .drawer-cab {
+            padding: 16px 20px; border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+            display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex: none;
+        }
+        .drawer-cab h3 { margin: 0; font-size: 18px; border: none; padding: 0; text-align: left; }
+        .drawer-cab .sub { font-size: 12.5px; color: var(--texto2); margin-top: 4px; max-width: 640px; }
+        .drawer-cerrar {
+            background: #e5e5ea; border: none; border-radius: 999px; width: 34px; height: 34px;
+            font-size: 16px; cursor: pointer; color: var(--texto); flex: none; line-height: 1;
+        }
+        .drawer-cerrar:hover { background: #d8d8de; }
+        .drawer-filtros { display: flex; gap: 12px; padding: 14px 20px 0; flex-wrap: wrap; align-items: flex-end; }
+        .drawer-filtros .campo { flex: 1 1 240px; min-width: 200px; }
+        .drawer-filtros .campo-ajuste { flex: 0 0 auto; min-width: 0; }
+        .drawer-cuerpo { flex: 1; overflow: auto; padding: 12px 20px 20px; }
+        .drawer-pie {
+            padding: 12px 20px; border-top: 1px solid rgba(0, 0, 0, 0.08);
+            display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+            font-size: 13px; color: var(--texto2); flex: none;
+        }
+        .vp-tabla td, .vp-tabla th { padding: 10px 8px; }
     </style>
 </head>
 <body>
@@ -152,6 +185,7 @@
         <button class="pestana" id="tabPedidos" onclick="mostrarTab('pedidos')">📋 Pedidos</button>
         <button class="pestana" id="tabProduccion" onclick="mostrarTab('produccion')">🏭 Producción (consolidado)</button>
         <button class="pestana" id="tabStock" onclick="mostrarTab('stock')">📦 Stock actual</button>
+        <button class="pestana pestana-teal" onclick="abrirVerPedidos()">📑 Ver pedidos</button>
     </div>
 
     <!-- ============ NUEVO PEDIDO ============ -->
@@ -344,6 +378,63 @@
             <tbody id="tbStockInsumos"></tbody>
         </table>
     </div>
+
+    <!-- ============ VER PEDIDOS (drawer lateral) ============ -->
+    <div id="drawerOverlay" class="drawer-overlay oculto" onclick="cerrarVerPedidos()"></div>
+    <aside id="panelVerPedidos" class="drawer" style="display:none;">
+        <div class="drawer-cab">
+            <div>
+                <h3>📑 Pedidos realizados</h3>
+                <div class="sub">Fecha de emisión, fecha a despachar, producto, cantidad, placa y chofer. Usa el PDF para imprimir la orden de pedido.</div>
+            </div>
+            <button class="drawer-cerrar" onclick="cerrarVerPedidos()" title="Cerrar">✖</button>
+        </div>
+        <div class="drawer-filtros">
+            <div class="campo">
+                <label>Buscar</label>
+                <input id="vpBuscar" type="text" placeholder="N° de orden, producto, placa, chofer, solicitante..." oninput="renderVerPedidos()">
+            </div>
+            <div class="campo">
+                <label>Estado</label>
+                <select id="vpEstado" onchange="renderVerPedidos()">
+                    <option value="">Todos</option>
+                    <option value="PARA_DESPACHO">Para despacho</option>
+                    <option value="EN_PRODUCCION">En producción</option>
+                    <option value="INSUMOS_FALTANTES">Insumos faltantes</option>
+                    <option value="DESPACHADO">Despachado</option>
+                    <option value="CANCELADO">Cancelado</option>
+                </select>
+            </div>
+            <div class="campo campo-ajuste">
+                <label>&nbsp;</label>
+                <button class="btn btn-teal" onclick="cargarVerPedidos()">🔄 Actualizar</button>
+            </div>
+        </div>
+        <div class="drawer-cuerpo">
+            <table>
+                <thead>
+                    <tr>
+                        <th>N° Orden</th>
+                        <th>Fecha emitida</th>
+                        <th>Fecha a despachar</th>
+                        <th>Producto</th>
+                        <th class="num">Cantidad</th>
+                        <th>Placa</th>
+                        <th>Chofer</th>
+                        <th>Estado</th>
+                        <th>PDF</th>
+                    </tr>
+                </thead>
+                <tbody id="tbVerPedidos">
+                    <tr><td colspan="9" style="color:var(--texto2);">Cargando pedidos...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="drawer-pie">
+            <span id="vpConteo">—</span>
+            <button class="btn btn-gris" onclick="cerrarVerPedidos()">Cerrar</button>
+        </div>
+    </aside>
 
     <script src="/auth-client.js"></script>
     <script>
@@ -549,6 +640,109 @@
             } catch (e) {
                 document.getElementById('tbPedidos').innerHTML = '<tr><td colspan="8">Sin conexión.</td></tr>';
             }
+        }
+
+        // ---------- Drawer "Ver pedidos" ----------
+        let vpPedidosCache = [];
+
+        function abrirVerPedidos() {
+            document.getElementById('drawerOverlay').classList.remove('oculto');
+            const d = document.getElementById('panelVerPedidos');
+            d.style.display = 'flex';
+            requestAnimationFrame(() => d.classList.add('abierto'));
+            cargarVerPedidos();
+        }
+
+        function cerrarVerPedidos() {
+            const d = document.getElementById('panelVerPedidos');
+            d.classList.remove('abierto');
+            document.getElementById('drawerOverlay').classList.add('oculto');
+            setTimeout(() => { d.style.display = 'none'; }, 250);
+        }
+
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && document.getElementById('panelVerPedidos').classList.contains('abierto')) {
+                cerrarVerPedidos();
+            }
+        });
+
+        async function cargarVerPedidos(silencioso) {
+            const tb = document.getElementById('tbVerPedidos');
+            // En el auto-refresco no se pone "Cargando...": la tabla parpadea y
+            // se pierde la posición de lectura del usuario.
+            if (!silencioso) tb.innerHTML = '<tr><td colspan="9" style="color:var(--texto2);">Cargando pedidos...</td></tr>';
+            try {
+                const res = await fetch('/api/pedidos');
+                const data = await res.json();
+                vpPedidosCache = (data && data.pedidos) || [];
+                renderVerPedidos();
+            } catch (e) {
+                if (!silencioso) {
+                    tb.innerHTML = '<tr><td colspan="9">Sin conexión con el servidor.</td></tr>';
+                    document.getElementById('vpConteo').textContent = '—';
+                }
+            }
+        }
+
+        function renderVerPedidos() {
+            const q = (document.getElementById('vpBuscar').value || '').toLowerCase().trim();
+            const est = document.getElementById('vpEstado').value;
+            const filas = [];
+            const idsVistos = new Set();
+            vpPedidosCache.forEach(p => {
+                if (est && p.estado !== est) return;
+                const items = (p.items && p.items.length) ? p.items : [{ nombre_producto: '—', cantidad_solicitada: 0 }];
+                const lineas = items.map(i => `${p.numero_pedido} ${p.solicitante || ''} ${p.vehiculo || ''} ${p.chofer || ''} ${i.nombre_producto || ''}`).join(' ').toLowerCase();
+                if (q && !lineas.includes(q)) return;
+                idsVistos.add(p.id);
+                const badge = ESTADOS_BADGE[p.estado] || ['b-gris', p.estado];
+                items.forEach((it, idx) => {
+                    filas.push(`<tr>
+                        <td>${idx === 0 ? `<b>${esc(p.numero_pedido || 'S/N')}</b>` : ''}</td>
+                        <td>${idx === 0 ? esc(formatearFecha(p.fecha_registro)) : ''}</td>
+                        <td>${idx === 0 ? esc(formatearFechaCorta(p.fecha_despacho)) : ''}</td>
+                        <td>${esc(it.nombre_producto || '—')}</td>
+                        <td class="num"><b>${Number(it.cantidad_solicitada) || 0}</b></td>
+                        <td>${idx === 0 ? esc(p.vehiculo || '—') : ''}</td>
+                        <td>${idx === 0 ? esc(p.chofer || '—') : ''}</td>
+                        <td>${idx === 0 ? `<span class="badge ${badge[0]}">${badge[1]}</span>` : ''}</td>
+                        <td>${idx === 0 ? `<button class="btn btn-azul btn-mini" onclick="descargarPdf(${p.id})">⬇️ PDF</button>` : ''}</td>
+                    </tr>`);
+                });
+            });
+            document.getElementById('tbVerPedidos').innerHTML = filas.length
+                ? filas.join('')
+                : '<tr><td colspan="9" style="color:var(--texto2);">Sin pedidos que coincidan con la búsqueda.</td></tr>';
+            const nPedidos = idsVistos.size;
+            document.getElementById('vpConteo').textContent =
+                `${filas.length} línea(s) de producto · ${nPedidos} pedido(s)`;
+        }
+
+        function formatearFecha(iso) {
+            if (!iso) return '—';
+            const txt = String(iso);
+            // fecha_despacho llega como timestamp (05:00Z = medianoche en Lima):
+            // se muestra solo el día, ya que el pedido se despacha en esa fecha.
+            const d = new Date(txt.replace(' ', 'T'));
+            if (isNaN(d)) {
+                const soloFecha = txt.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                return soloFecha ? `${soloFecha[3]}/${soloFecha[2]}/${soloFecha[1]}` : txt.slice(0, 10);
+            }
+            return d.toLocaleString('es-PE', {
+                timeZone: 'America/Lima',
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+            });
+        }
+
+        /** Solo día para la fecha a despachar (sin hora). */
+        function formatearFechaCorta(iso) {
+            if (!iso) return '—';
+            const d = new Date(String(iso).replace(' ', 'T'));
+            if (isNaN(d)) return formatearFecha(iso).slice(0, 10);
+            return d.toLocaleDateString('es-PE', {
+                timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: 'numeric'
+            });
         }
 
         let pedidosCache = [];
@@ -767,6 +961,7 @@
             window.registrarAutoRefresco(function () {
                 if (!document.getElementById('panelPedidos').classList.contains('oculto')) cargarPedidos();
                 if (!document.getElementById('panelStock').classList.contains('oculto')) cargarStock();
+                if (document.getElementById('panelVerPedidos').classList.contains('abierto')) cargarVerPedidos();
                 if (!document.getElementById('panelProduccion').classList.contains('oculto')) {
                     cargarConsolidado();
                     cargarCompletados();

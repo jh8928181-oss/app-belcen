@@ -430,6 +430,47 @@
                 scroll-behavior: auto !important;
             }
         }
+
+        /* ---------- Drawer "Ver pedidos" (vista de Salidas) ---------- */
+        .btn-ver-pedidos { background: #17a2b8; color: #fff; border: none; padding: 9px 16px; border-radius: 999px; cursor: pointer; font-weight: 800; font-size: 13px; font-family: inherit; box-shadow: var(--sombra); transition: filter 0.15s ease; }
+        .btn-ver-pedidos:hover { filter: brightness(0.94); }
+        .drawer-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.42); z-index: 90; }
+        .drawer {
+            position: fixed; top: 0; right: 0; height: 100%; width: min(1040px, 96vw);
+            background: #fff; z-index: 100; box-shadow: -16px 0 44px rgba(0, 0, 0, 0.25);
+            display: flex; flex-direction: column;
+            transform: translateX(103%); transition: transform 0.25s ease;
+        }
+        .drawer.abierto { transform: translateX(0); }
+        .drawer-cab {
+            padding: 16px 20px; border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+            display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex: none;
+        }
+        .drawer-cab h3 { margin: 0; font-size: 18px; border: none; padding: 0; text-align: left; }
+        .drawer-cab .sub { font-size: 12.5px; color: var(--texto2); margin-top: 4px; max-width: 640px; }
+        .drawer-cerrar {
+            background: #e5e5ea; border: none; border-radius: 999px; width: 34px; height: 34px;
+            font-size: 16px; cursor: pointer; color: var(--texto); flex: none; line-height: 1;
+        }
+        .drawer-cerrar:hover { background: #d8d8de; }
+        .drawer-filtros { display: flex; gap: 12px; padding: 14px 20px 0; flex-wrap: wrap; align-items: flex-end; }
+        .drawer-filtros .campo { flex: 1 1 240px; min-width: 200px; }
+        .drawer-filtros .campo-ajuste { flex: 0 0 auto; min-width: 0; }
+        .drawer-filtros label { font-size: 13px; font-weight: 700; color: var(--texto2); display: block; }
+        .drawer-cuerpo { flex: 1; overflow: auto; padding: 12px 20px 20px; }
+        .drawer-pie {
+            padding: 12px 20px; border-top: 1px solid rgba(0, 0, 0, 0.08);
+            display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+            font-size: 13px; color: var(--texto2); flex: none;
+        }
+        .vp-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+        .vp-btn-pdf { background: var(--azul); color: #fff; border: none; padding: 6px 12px; border-radius: 999px; cursor: pointer; font-weight: 800; font-size: 12.5px; font-family: inherit; }
+        .vp-btn-pdf:hover { filter: brightness(0.94); }
+        .vp-btn-actualizar { background: #17a2b8; color: #fff; border: none; padding: 11px 18px; border-radius: 999px; cursor: pointer; font-weight: 800; font-size: 14px; font-family: inherit; }
+        .vp-btn-actualizar:hover { filter: brightness(0.94); }
+        .vp-btn-cerrar { background: #e5e5ea; color: var(--texto); border: none; padding: 9px 18px; border-radius: 999px; cursor: pointer; font-weight: 800; font-size: 13px; font-family: inherit; }
+        .vp-btn-cerrar:hover { background: #d8d8de; }
+        .vp-campo-vacio { color: var(--texto2); }
     </style>
 </head>
 <body>
@@ -870,6 +911,7 @@
     <!-- Botón compacto para abrir/cerrar el historial: no ocupa fila de más
          y queda siempre visible arriba del formulario. -->
     <div class="barra-historial-salidas">
+        <button type="button" class="btn-ver-pedidos" onclick="abrirVerPedidos()">📑 Ver pedidos</button>
         <button type="button" id="btnToggleHistorial" class="btn-ver-historial" onclick="alternarHistorialSalidas()">
             📜 Historial de Salidas <span class="flecha">▸</span>
         </button>
@@ -1268,6 +1310,65 @@
             </div>
         </div>
     </div>
+
+    <!-- ============ DRAWER: VER PEDIDOS ============ -->
+    <div id="drawerOverlay" class="drawer-overlay" style="display:none;" onclick="cerrarVerPedidos()"></div>
+    <aside id="panelVerPedidos" class="drawer" style="display:none;">
+        <div class="drawer-cab">
+            <div>
+                <h3>📑 Pedidos realizados</h3>
+                <div class="sub">Fecha de emisión, fecha a despachar, producto, cantidad, placa y chofer. Usa el PDF para imprimir la orden de pedido.</div>
+            </div>
+            <button type="button" class="drawer-cerrar" onclick="cerrarVerPedidos()" title="Cerrar">✖</button>
+        </div>
+        <div class="drawer-filtros">
+            <div class="campo">
+                <label for="vpBuscar">Buscar</label>
+                <input type="text" id="vpBuscar" placeholder="N° de orden, producto, placa, chofer, solicitante..." oninput="renderVerPedidos()" style="max-width:none;">
+            </div>
+            <div class="campo">
+                <label for="vpEstado">Estado</label>
+                <select id="vpEstado" onchange="renderVerPedidos()" style="max-width:none;">
+                    <option value="">Todos</option>
+                    <option value="PARA_DESPACHO">Para despacho</option>
+                    <option value="EN_PRODUCCION">En producción</option>
+                    <option value="INSUMOS_FALTANTES">Insumos faltantes</option>
+                    <option value="DESPACHADO">Despachado</option>
+                    <option value="CANCELADO">Cancelado</option>
+                </select>
+            </div>
+            <div class="campo campo-ajuste">
+                <label>&nbsp;</label>
+                <button type="button" class="vp-btn-actualizar" onclick="cargarVerPedidos()">🔄 Actualizar</button>
+            </div>
+        </div>
+        <div class="drawer-cuerpo">
+            <div class="tabla-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>N° Orden</th>
+                            <th>Fecha emitida</th>
+                            <th>Fecha a despachar</th>
+                            <th>Producto</th>
+                            <th class="text-center">Cantidad</th>
+                            <th>Placa</th>
+                            <th>Chofer</th>
+                            <th>Estado</th>
+                            <th class="text-center">PDF</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbVerPedidos">
+                        <tr><td colspan="9" class="text-center">Cargando pedidos...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="drawer-pie">
+            <span id="vpConteo">—</span>
+            <button type="button" class="vp-btn-cerrar" onclick="cerrarVerPedidos()">Cerrar</button>
+        </div>
+    </aside>
 
     <script src="/motion.js" defer></script>
     <script src="/auth-client.js"></script>
@@ -3312,6 +3413,136 @@
             } catch (e) { alert('Sin conexión con el servidor.'); }
         }
 
+        // ---- Drawer "Ver pedidos": consulta general con PDF de la orden ----
+        // Mismo endpoint que el select de órdenes (/api/pedidos), pero sin el
+        // filtro de pendientes: aquí se ve todo, incluidos despachados y
+        // cancelados, con fecha de emisión, fecha a despachar, producto,
+        // cantidad, placa, chofer y el PDF de la orden de pedido.
+        const VP_ESTADOS_BADGE = {
+            PARA_DESPACHO: ['rgba(52,199,89,0.16)', '#1e8e3e', 'PARA DESPACHO'],
+            EN_PRODUCCION: ['rgba(10,132,255,0.15)', '#0a6ea8', 'EN PRODUCCIÓN'],
+            INSUMOS_FALTANTES: ['rgba(255,59,48,0.14)', '#c0281e', 'INSUMOS FALTANTES'],
+            DESPACHADO: ['rgba(52,199,89,0.16)', '#1e8e3e', 'DESPACHADO'],
+            CANCELADO: ['rgba(120,120,128,0.18)', '#495057', 'CANCELADO']
+        };
+        let vpPedidosCache = [];
+
+        function vpEsc(s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function abrirVerPedidos() {
+            document.getElementById('drawerOverlay').style.display = 'block';
+            const d = document.getElementById('panelVerPedidos');
+            d.style.display = 'flex';
+            requestAnimationFrame(() => d.classList.add('abierto'));
+            cargarVerPedidos();
+        }
+
+        function cerrarVerPedidos() {
+            const d = document.getElementById('panelVerPedidos');
+            d.classList.remove('abierto');
+            document.getElementById('drawerOverlay').style.display = 'none';
+            setTimeout(() => { d.style.display = 'none'; }, 250);
+        }
+
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && document.getElementById('panelVerPedidos').classList.contains('abierto')) {
+                cerrarVerPedidos();
+            }
+        });
+
+        async function cargarVerPedidos(silencioso) {
+            const tb = document.getElementById('tbVerPedidos');
+            // En el auto-refresco no se pone "Cargando...": la tabla parpadea y
+            // se pierde la posición de lectura del usuario.
+            if (!silencioso) tb.innerHTML = '<tr><td colspan="9" class="text-center">Cargando pedidos...</td></tr>';
+            try {
+                const res = await fetch('/api/pedidos');
+                const data = await res.json();
+                vpPedidosCache = (data && data.pedidos) || [];
+                renderVerPedidos();
+            } catch (e) {
+                if (!silencioso) {
+                    tb.innerHTML = '<tr><td colspan="9" class="text-center">Sin conexión con el servidor.</td></tr>';
+                    document.getElementById('vpConteo').textContent = '—';
+                }
+            }
+        }
+
+        function renderVerPedidos() {
+            const q = (document.getElementById('vpBuscar').value || '').toLowerCase().trim();
+            const est = document.getElementById('vpEstado').value;
+            const filas = [];
+            const idsVistos = new Set();
+            vpPedidosCache.forEach(p => {
+                if (est && p.estado !== est) return;
+                const items = (p.items && p.items.length) ? p.items : [{ nombre_producto: '—', cantidad_solicitada: 0 }];
+                const lineas = items.map(i => `${p.numero_pedido} ${p.solicitante || ''} ${p.vehiculo || ''} ${p.chofer || ''} ${i.nombre_producto || ''}`).join(' ').toLowerCase();
+                if (q && !lineas.includes(q)) return;
+                idsVistos.add(p.id);
+                const badge = VP_ESTADOS_BADGE[p.estado] || ['rgba(120,120,128,0.18)', '#495057', p.estado || '—'];
+                items.forEach((it, idx) => {
+                    filas.push(`<tr>
+                        <td>${idx === 0 ? `<b>${vpEsc(p.numero_pedido || 'S/N')}</b>` : ''}</td>
+                        <td>${idx === 0 ? vpEsc(vpFechaHora(p.fecha_registro)) : ''}</td>
+                        <td>${idx === 0 ? vpEsc(vpFechaCorta(p.fecha_despacho)) : ''}</td>
+                        <td>${vpEsc(it.nombre_producto || '—')}</td>
+                        <td class="text-center"><b>${Number(it.cantidad_solicitada) || 0}</b></td>
+                        <td>${idx === 0 ? vpEsc(p.vehiculo || '—') : ''}</td>
+                        <td>${idx === 0 ? vpEsc(p.chofer || '—') : ''}</td>
+                        <td>${idx === 0 ? `<span class="vp-badge" style="background:${badge[0]};color:${badge[1]};">${badge[2]}</span>` : ''}</td>
+                        <td class="text-center">${idx === 0 ? `<button type="button" class="vp-btn-pdf" onclick="descargarPdfPedido(${p.id}, '${vpEsc(p.numero_pedido || '')}')">⬇️ PDF</button>` : ''}</td>
+                    </tr>`);
+                });
+            });
+            document.getElementById('tbVerPedidos').innerHTML = filas.length
+                ? filas.join('')
+                : '<tr><td colspan="9" class="text-center">Sin pedidos que coincidan con la búsqueda.</td></tr>';
+            const nPedidos = idsVistos.size;
+            document.getElementById('vpConteo').textContent =
+                `${filas.length} línea(s) de producto · ${nPedidos} pedido(s)`;
+        }
+
+        /** Fecha y hora de emisión en zona Lima (fecha_registro es timestamp). */
+        function vpFechaHora(iso) {
+            if (!iso) return '—';
+            const d = new Date(String(iso).replace(' ', 'T'));
+            if (isNaN(d)) return String(iso).slice(0, 16).replace('T', ' ');
+            return d.toLocaleString('es-PE', {
+                timeZone: 'America/Lima',
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+            });
+        }
+
+        /** Solo el día para la fecha a despachar (llega como timestamp). */
+        function vpFechaCorta(iso) {
+            if (!iso) return '—';
+            const d = new Date(String(iso).replace(' ', 'T'));
+            if (isNaN(d)) return String(iso).slice(0, 10);
+            return d.toLocaleDateString('es-PE', {
+                timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: 'numeric'
+            });
+        }
+
+        async function descargarPdfPedido(id, numero) {
+            try {
+                const res = await fetch('/api/pedidos/' + id + '/pdf', { method: 'POST' });
+                if (!res.ok) { alert('No se pudo generar el PDF de la orden ' + (numero || id) + '.'); return; }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = (numero || ('pedido-' + id)) + '.pdf';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            } catch (e) { alert('Sin conexión con el servidor.'); }
+        }
+
         function fechaLocalISO(iso) {
             if (!iso) return '';
             const d = new Date(iso);
@@ -4042,6 +4273,9 @@
             cargarGuiasServicio();
             cargarInsumosServicio();
             cargarInvRef();
+            // El drawer de "Ver pedidos" solo se refresca si está abierto, y en
+            // silencio para no pisar la tabla ni la búsqueda del usuario.
+            if (document.getElementById('panelVerPedidos').classList.contains('abierto')) cargarVerPedidos(true);
         }, 15000);
 
         // La tabla de PT se mueve sola (producción la sube, las salidas la

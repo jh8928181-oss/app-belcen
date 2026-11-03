@@ -380,7 +380,11 @@ describe('GET /api/servicios', () => {
     ]);
     const res = await invocar('get', '/api/servicios/panel');
     expect(res.statusCode).toBe(200);
-    expect(res.cuerpo.servicios).toHaveLength(2);
+    // El panel arma un bloque por servicio de SERVICIOS_SOPLADO, aunque no
+    // tenga movimientos: si se suma uno nuevo hay que sumarlo aqui tambien.
+    expect(res.cuerpo.servicios.map(s => s.servicio)).toEqual(
+      ['SAUÑE', 'B&M DYLPLAST', 'SERVINDUSTRIAS EN GRASAS Y ACEITES SAC']
+    );
     const saune = res.cuerpo.servicios.find(s => s.servicio === 'SAUÑE');
     expect(saune.insumos[0].saldo).toBe(7);
     expect(res.cuerpo.guias).toHaveLength(1);

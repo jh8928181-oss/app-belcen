@@ -993,13 +993,17 @@ app.put('/api/inventario/:id', requerirRolAdmin, async (req, res) => {
     }
 });
 
-// --- SERVICIOS EXTERNOS DE SOPLADO (SAUÑE / B&M DYLPLAST) ---
+// --- SERVICIOS EXTERNOS DE SOPLADO (SAUÑE / B&M DYLPLAST / SERVINDUSTRIAS) ---
 // Se les envian etiquetas y preformas (millares): el ENVIO ya descuenta el
 // inventario al salir. Cuando llegan guia o control interno suman las
 // botellas y consumen primero el saldo enviado a ese servicio; del
 // inventario solo baja el excedente que el envio no cubre. El CONTROL nace
 // PENDIENTE de guia y la GUIA, de factura.
-const SERVICIOS_SOPLADO = ['SAUÑE', 'B&M DYLPLAST'];
+// Esta lista es la que arma los bloques del panel (dashboard, BD General y
+// auditoria la leen de /api/servicios/panel) y valida altas: si se agrega un
+// servicio nuevo hay que sumarlo aqui y al CHECK de servicios_envios y
+// servicios_guias (migracion servicio-servindustrias).
+const SERVICIOS_SOPLADO = ['SAUÑE', 'B&M DYLPLAST', 'SERVINDUSTRIAS EN GRASAS Y ACEITES SAC'];
 
 // Resuelve etiqueta y preforma para un producto via su receta activa.
 // Devuelve { etiqueta: {id, nombre, stock}, preforma: {...} } o faltantes.
@@ -1240,7 +1244,7 @@ app.post('/api/servicios/envios', gAlmacen, async (req, res) => {
             ? req.body.items
             : [{ articulo_id: req.body.articulo_id, cantidad: req.body.cantidad }];
         if (!SERVICIOS_SOPLADO.includes(servicio)) {
-            return res.status(400).json({ success: false, mensaje: 'Servicio inválido (SAUÑE o B&M DYLPLAST).' });
+            return res.status(400).json({ success: false, mensaje: `Servicio inválido. Opciones: ${SERVICIOS_SOPLADO.join(', ')}.` });
         }
         if (!items.length) {
             return res.status(400).json({ success: false, mensaje: 'Agrega al menos un insumo al envío.' });
@@ -1312,7 +1316,7 @@ app.post('/api/servicios/guias', gAlmacen, async (req, res) => {
         const numero = String(req.body.numero || '').trim();
         const fecha = req.body.fecha || null;
         if (!SERVICIOS_SOPLADO.includes(servicio)) {
-            return res.status(400).json({ success: false, mensaje: 'Servicio inválido (SAUÑE o B&M DYLPLAST).' });
+            return res.status(400).json({ success: false, mensaje: `Servicio inválido. Opciones: ${SERVICIOS_SOPLADO.join(', ')}.` });
         }
         if (tipoDoc !== 'GUIA' && tipoDoc !== 'CONTROL') {
             return res.status(400).json({ success: false, mensaje: 'Tipo de documento inválido (GUIA o CONTROL).' });

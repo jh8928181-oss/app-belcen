@@ -504,7 +504,7 @@
     <!-- ACCESOS RÁPIDOS: los botones grandes, arriba del todo -->
     <div class="menu-alm reveal">
         <button type="button" id="btnRegistroIngresoAlm" onclick="toggleFormRegistroIngreso()" class="opcion-menu opc-ambar">➕ REGISTRAR INGRESO<small>Cargar la mercadería que llega al almacén</small></button>
-        <button type="button" id="btnSopladoServicios" onclick="alternarPanelSoplado()" class="opcion-menu opc-teal">🔧 SERVICIOS EXTERNOS DE SOPLADO<small>Envíos, guías y controles de SAUÑE / B&amp;M</small></button>
+        <button type="button" id="btnSopladoServicios" onclick="alternarPanelSoplado()" class="opcion-menu opc-teal">🔧 SERVICIOS EXTERNOS DE SOPLADO<small>Envíos, guías y controles de servicios externos</small></button>
         <button type="button" id="btnRefIngresos" onclick="alternarPanelRefinado()" class="opcion-menu opc-azul">🛢️ INSUMOS DE REFINADO<small>Registrar ingresos de aceite crudo, tonsil, sal, tela…</small></button>
     </div>
 
@@ -713,8 +713,8 @@
         </div>
     </div>
 
-    <!-- 6B. SERVICIOS EXTERNOS DE SOPLADO (SAUÑE / B&M): se abre con el
-         botón grande de arriba y se cierra con "← Volver". -->
+    <!-- 6B. SERVICIOS EXTERNOS DE SOPLADO (SAUÑE / B&M / SERVINDUSTRIAS): se
+         abre con el botón grande de arriba y se cierra con "← Volver". -->
     <div class="table-container sec-teal reveal" id="panelSopladoServicios" style="display:none;">
         <div style="text-align:left; margin-bottom:6px;">
             <button type="button" onclick="alternarPanelSoplado()" class="btn-ver-historial">← Volver</button>
@@ -729,6 +729,7 @@
                         <option value="">-- Servicio --</option>
                         <option value="SAUÑE">SAUÑE</option>
                         <option value="B&M DYLPLAST">B&amp;M DYLPLAST</option>
+                        <option value="SERVINDUSTRIAS EN GRASAS Y ACEITES SAC">SERVINDUSTRIAS EN GRASAS Y ACEITES SAC</option>
                     </select>
                 </div>
                 <div id="envLineas"></div>
@@ -744,6 +745,7 @@
                         <option value="">-- Servicio --</option>
                         <option value="SAUÑE">SAUÑE</option>
                         <option value="B&M DYLPLAST">B&amp;M DYLPLAST</option>
+                        <option value="SERVINDUSTRIAS EN GRASAS Y ACEITES SAC">SERVINDUSTRIAS EN GRASAS Y ACEITES SAC</option>
                     </select>
                     <select id="guiaTipo" required>
                         <option value="">-- Documento --</option>
@@ -2185,7 +2187,7 @@
             const p = document.getElementById('panelSopladoServicios');
             const btn = document.getElementById('btnSopladoServicios');
             if (p) p.style.display = 'none';
-            if (btn) btn.innerHTML = '🔧 SERVICIOS EXTERNOS DE SOPLADO<small>Envíos, guías y controles de SAUÑE / B&amp;M</small>';
+            if (btn) btn.innerHTML = '🔧 SERVICIOS EXTERNOS DE SOPLADO<small>Envíos, guías y controles de servicios externos</small>';
         }
 
         /* ---------- Panel "Insumos de Refinado" (Pendientes) ---------- */

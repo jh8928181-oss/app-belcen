@@ -4074,6 +4074,7 @@
                     sp.innerHTML = '<option value="">-- Preforma a descontar --</option>' + opcionesPreformaServ;
                     se.value = ve; sp.value = vp;
                 });
+                actualizarRequeridoInsumosGuia();
                 if (!document.querySelectorAll('#envLineas .linea-env').length) agregarLineaEnvio();
                 if (!document.querySelectorAll('#guiaLineas .linea-guia').length) agregarLineaGuia();
             } catch (e) { console.error(e); }
@@ -4087,6 +4088,29 @@
                 <input type="number" min="0.01" step="0.01" placeholder="Millares" required>
                 <button type="button" onclick="this.parentElement.remove()" class="btn-filtro">✕</button>`;
             cont.appendChild(div);
+        }
+
+        // Etiqueta y preforma son OBLIGATORIAS en toda llegada: sin ellas el
+        // registro no puede descontar el saldo enviado al servicio, la columna
+        // ENTREGADO queda en 0 y el saldo nunca baja (asi le paso a
+        // SERVINDUSTRIAS con el control N-000337). La unica excepcion es una
+        // GUIA documental (la que vincula controles): ahi el stock ya ingreso
+        // con esos controles y el servidor no descuenta insumos.
+        function requiereInsumosGuia() {
+            const tipo = document.getElementById('guiaTipo').value;
+            const hayControles = !!document.querySelector('#guiaControles .chk-control:checked');
+            return !(tipo === 'GUIA' && hayControles);
+        }
+
+        function actualizarRequeridoInsumosGuia() {
+            const req = requiereInsumosGuia();
+            const msg = 'Elige la etiqueta y la preforma que consume esta llegada (usa 🔍 para sugerirlas).';
+            document.querySelectorAll('#guiaLineas .ln-etiqueta, #guiaLineas .ln-preforma').forEach(sel => {
+                sel.required = req;
+                // Validez propia: sin esto el navegador mostraria un aviso
+                // generico en ingles que no explica por que falta el insumo.
+                sel.setCustomValidity(req && !sel.value ? msg : '');
+            });
         }
 
         function agregarLineaGuia() {
@@ -4106,6 +4130,7 @@
                     <select class="ln-preforma"><option value="">-- Preforma a descontar --</option>${opcionesPreformaServ}</select>
                 </div>`;
             cont.appendChild(div);
+            actualizarRequeridoInsumosGuia();
         }
 
         async function sugerirInsumosGuia(btn) {
@@ -4117,6 +4142,9 @@
                 const data = await res.json();
                 if (data.etiqueta) row.querySelector('.ln-etiqueta').value = data.etiqueta.id;
                 if (data.preforma) row.querySelector('.ln-preforma').value = data.preforma.id;
+                // Asignar .value no dispara 'change': hay que reevaluar la
+                // validez o el formulario seguira bloqueado con el aviso.
+                actualizarRequeridoInsumosGuia();
                 if (!data.etiqueta || !data.preforma) {
                     alert('⚠️ No se encontró receta para ese producto. Elige etiqueta y preforma a mano.');
                 }
@@ -4129,6 +4157,7 @@
             const wrap = document.getElementById('guiaControlesWrap');
             const cont = document.getElementById('guiaControles');
             cont.innerHTML = '';
+            actualizarRequeridoInsumosGuia();
             if (tipo !== 'GUIA' || !servicio) { wrap.style.display = 'none'; return; }
             try {
                 const res = await fetch('/api/servicios/controles-pendientes?servicio=' + encodeURIComponent(servicio));
@@ -4250,6 +4279,11 @@
 
         document.getElementById('guiaServicio').addEventListener('change', cargarControlesGuia);
         document.getElementById('guiaTipo').addEventListener('change', cargarControlesGuia);
+        // Al marcar/desmarcar un control vinculado cambia si la guia es
+        // documental, y con eso si la linea exige etiqueta y preforma.
+        document.getElementById('guiaControles').addEventListener('change', actualizarRequeridoInsumosGuia);
+        // Elegir insumo (o usar el boton 🔍) quita la marca de falta.
+        document.getElementById('guiaLineas').addEventListener('change', actualizarRequeridoInsumosGuia);
 
         cargarPendientes();
         cargarRegistroIngresos();

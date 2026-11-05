@@ -4026,6 +4026,14 @@
 
         const escOpServ = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+        // Opciones de lo que esta EN el servicio (con su saldo): ahi es donde
+        // se descuenta, lo demas no sirve para esta llegada.
+        const opsSaldo = (lista) => (Array.isArray(lista) ? lista : []).map(p => {
+            const n = Number(p.stock);
+            const s = Number.isInteger(n) ? String(n) : n.toFixed(2);
+            return `<option value="${p.id}">${escOpServ(p.nombre)} (Saldo en servicio: ${s} MILL)</option>`;
+        }).join('');
+
         async function cargarInsumosServicio() {
             // No repoblar si el usuario está eligiendo en uno de estos selects:
             // se le cerraría el desplegable en la cara (se reintenta al próximo tick).
@@ -4052,9 +4060,14 @@
                     const s = Number.isInteger(n) ? String(n) : n.toFixed(2);
                     return `<option value="${p.id}">${escOpServ(p.nombre)} (Stock: ${s} MILLARES)</option>`;
                 }).join('');
+                // Opciones de lo que esta EN el servicio: ahi es donde se
+                // descuenta el saldo (lo demas no sirve para esta llegada).
                 opcionesEtiquetaServ = ops(etiquetas);
                 opcionesPreformaServ = ops(preformas);
                 opcionesInsumoEnvio = ops([...etiquetas, ...preformas]);
+                // En guia/control lo que se descuenta es lo que esta en el
+                // servicio elegido: si hay saldo ahi, se ofrecen solo esos.
+                await refrescarOpcionesServicioGuia();
                 const dl = document.getElementById('listaBotellas');
                 dl.innerHTML = '';
                 arr.filter(esBot).forEach(p => {
@@ -4077,6 +4090,22 @@
                 actualizarRequeridoInsumosGuia();
                 if (!document.querySelectorAll('#envLineas .linea-env').length) agregarLineaEnvio();
                 if (!document.querySelectorAll('#guiaLineas .linea-guia').length) agregarLineaGuia();
+            } catch (e) { console.error(e); }
+        }
+
+        // Ofrece en los selects de guia/control solo lo que esta en el
+        // servicio elegido (con su saldo), que es lo unico que se puede
+        // descontar. Si el servicio no tiene insumos, quedan los del
+        // inventario: ahi el registro toma el excedente del stock.
+        async function refrescarOpcionesServicioGuia() {
+            const svc = document.getElementById('guiaServicio').value;
+            if (!svc) return;
+            try {
+                const r = await fetch('/api/servicios/resolver?servicio=' + encodeURIComponent(svc));
+                const d = await r.json();
+                if (!d || !d.success) return;
+                if (Array.isArray(d.etiquetas) && d.etiquetas.length) opcionesEtiquetaServ = opsSaldo(d.etiquetas);
+                if (Array.isArray(d.preformas) && d.preformas.length) opcionesPreformaServ = opsSaldo(d.preformas);
             } catch (e) { console.error(e); }
         }
 
@@ -4137,16 +4166,30 @@
             const row = btn.closest('.linea-guia');
             const producto = (row.querySelector('.ln-producto').value || '').trim();
             if (!producto) { alert('❌ Escribe primero la botella que llegó.'); return; }
+            const svc = document.getElementById('guiaServicio').value;
             try {
-                const res = await fetch('/api/servicios/resolver?producto=' + encodeURIComponent(producto));
+                const res = await fetch('/api/servicios/resolver?producto=' + encodeURIComponent(producto)
+                    + (svc ? '&servicio=' + encodeURIComponent(svc) : ''));
                 const data = await res.json();
-                if (data.etiqueta) row.querySelector('.ln-etiqueta').value = data.etiqueta.id;
-                if (data.preforma) row.querySelector('.ln-preforma').value = data.preforma.id;
+                const se = row.querySelector('.ln-etiqueta'), sp = row.querySelector('.ln-preforma');
+                // Ofrecer solo lo que esta en el servicio: eso es lo unico
+                // que se puede descontar en esta llegada.
+                if (Array.isArray(data.etiquetas) && data.etiquetas.length) {
+                    se.innerHTML = '<option value="">-- Etiqueta a descontar --</option>' + opsSaldo(data.etiquetas);
+                }
+                if (Array.isArray(data.preformas) && data.preformas.length) {
+                    sp.innerHTML = '<option value="">-- Preforma a descontar --</option>' + opsSaldo(data.preformas);
+                }
+                if (data.etiqueta) se.value = data.etiqueta.id;
+                if (data.preforma) sp.value = data.preforma.id;
                 // Asignar .value no dispara 'change': hay que reevaluar la
                 // validez o el formulario seguira bloqueado con el aviso.
                 actualizarRequeridoInsumosGuia();
                 if (!data.etiqueta || !data.preforma) {
-                    alert('⚠️ No se encontró receta para ese producto. Elige etiqueta y preforma a mano.');
+                    const nE = (data.etiquetas || []).length, nP = (data.preformas || []).length;
+                    alert((nE || nP)
+                        ? `Hay ${nE} etiqueta(s) y ${nP} preforma(s) en el servicio: elige cuál descuenta en cada línea.`
+                        : 'Este servicio no tiene etiquetas ni preformas con saldo: elige en la lista y se descontará del inventario.');
                 }
             } catch (e) { console.error(e); alert('Error de conexión.'); }
         }
@@ -4277,7 +4320,12 @@
             }
         }
 
-        document.getElementById('guiaServicio').addEventListener('change', cargarControlesGuia);
+        // Cambiar de servicio cambia los insumos que se pueden descontar
+        // (lo enviado a ese servicio) y los controles pendientes.
+        document.getElementById('guiaServicio').addEventListener('change', () => {
+            cargarControlesGuia();
+            cargarInsumosServicio();
+        });
         document.getElementById('guiaTipo').addEventListener('change', cargarControlesGuia);
         // Al marcar/desmarcar un control vinculado cambia si la guia es
         // documental, y con eso si la linea exige etiqueta y preforma.

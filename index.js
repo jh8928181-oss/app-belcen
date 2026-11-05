@@ -1211,9 +1211,64 @@ app.get('/api/servicios/controles-pendientes', async (req, res) => {
     }
 });
 
-// Sugiere etiqueta y preforma para un producto via su receta activa.
+// Palabras de un nombre (sin acentos ni stop words) para comparar
+// "Botella de 1 Lt - B-1" con "Etiqueta couche 90 gr x 1 lt B-1".
+const STOPWORDS_SVC = new Set(['de', 'la', 'el', 'los', 'las', 'y', 'o', 'con', 'por', 'para', 'en', 'un', 'una', 'x']);
+function tokensSvc(s) {
+    return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .split(/[^a-z0-9]+/).filter(t => t && !STOPWORDS_SVC.has(t));
+}
+// Subcadena comun mas larga entre dos claves (son cortas: sirve para esto).
+function lcsSvc(a, b) {
+    let mejor = 0;
+    for (let i = 0; i < a.length; i++) {
+        for (let j = i + mejor + 1; j <= a.length; j++) {
+            if (b.includes(a.slice(i, j))) mejor = j - i;
+            else break;
+        }
+    }
+    return mejor;
+}
+// Medidas de un nombre ("1 lt", "90 gr", "800ml", "23.5 gr") para exigir que
+// la etiqueta/preforma sea del mismo tamano que el producto que llega.
+function medidasSvc(s) {
+    return (String(s || '').toLowerCase().match(/\d+(?:[.,]\d+)?\s*(?:lt|l|ml|gr|g|kg|cc)\b/g) || [])
+        .map(m => m.replace(/\s+/g, '').replace(',', '.'));
+}
+// Devuelve el UNICO insumo de la lista que coincide con el producto; si hay
+// empate (o ninguno) devuelve null y el usuario elige a mano de la lista.
+// Puntaje: palabras en comun (marca, medida) pesan mas que la subcadena, y
+// la medida tiene que calzar: si el producto dice "2 Lt" y solo hay etiqueta
+// de "1 Lt", no se elige sola.
+function elegirPorProducto(lista, nombre) {
+    if (!lista.length) return null;
+    if (lista.length === 1) return lista[0];
+    const refT = tokensSvc(nombre);
+    if (!refT.length) return null;
+    const refSet = new Set(refT);
+    const refMed = new Set(medidasSvc(nombre));
+    const refKey = refT.join('');
+    // mejorN arranca en 2: una subcadena de 1-2 caracteres es ruido, no match.
+    let mejor = null, mejorN = 2, empate = false;
+    for (const it of lista) {
+        const t = Array.from(new Set(tokensSvc(it.nombre)));
+        if (refMed.size && !medidasSvc(it.nombre).some(m => refMed.has(m))) continue;
+        const compartidos = t.filter(x => refSet.has(x)).length;
+        const n = compartidos * 100 + lcsSvc(refKey, t.join(''));
+        if (n > mejorN) { mejor = it; mejorN = n; empate = false; }
+        else if (n === mejorN) empate = true;
+    }
+    return (mejor && !empate) ? mejor : null;
+}
+
+// Sugiere etiqueta y preforma para un producto. Con `servicio` toma lo que
+// REALMENTE esta en ese servicio (saldo enviado - ya entregado), que es lo
+// unico que el panel descuenta, y devuelve tambien `etiquetas`/`preformas`
+// para que el formulario ofrezca solo eso. Sin servicio sigue resolviendo
+// por receta activa (compatibilidad con lo viejo).
 app.get('/api/servicios/resolver', async (req, res) => {
     try {
+        const servicio = String(req.query.servicio || '').trim().toUpperCase();
         let productoKey = String(req.query.producto_key || '').trim();
         const productoNombre = String(req.query.producto || '').trim();
         if (!productoKey && productoNombre) {
@@ -1223,11 +1278,40 @@ app.get('/api/servicios/resolver', async (req, res) => {
             );
             if (pt.rows.length) productoKey = pt.rows[0].producto_key;
         }
-        if (!productoKey) {
-            return res.json({ success: true, etiqueta: null, preforma: null });
+        const out = { success: true, etiqueta: null, preforma: null, etiquetas: [], preformas: [] };
+
+        // 1) Insumos que ya estan en el servicio: son los que se pueden descontar.
+        if (servicio && SERVICIOS_SOPLADO.includes(servicio)) {
+            const saldo = await saldoEnvioServicio(pool, servicio);
+            const inv = await pool.query(
+                `SELECT id, nombre, categoria FROM inventario
+                  WHERE UPPER(categoria) LIKE '%ETIQUETA%' OR UPPER(categoria) LIKE '%PREFORMA%'`
+            );
+            const disponibles = inv.rows
+                .map(r => ({
+                    id: r.id, nombre: r.nombre,
+                    categoria: String(r.categoria || '').toUpperCase(),
+                    stock: saldo.get(r.id) || 0
+                }))
+                .filter(r => r.stock > 0);
+            const esEtiq = r => r.categoria.includes('ETIQUETA');
+            const esPref = r => r.categoria === 'PREFORMAS Y SERVICIOS'
+                && !String(r.nombre || '').trim().toUpperCase().startsWith('SERVICIO');
+            out.etiquetas = disponibles.filter(esEtiq);
+            out.preformas = disponibles.filter(esPref);
+            const ref = productoNombre || productoKey;
+            out.etiqueta = elegirPorProducto(out.etiquetas, ref);
+            out.preforma = elegirPorProducto(out.preformas, ref);
+            // Si el servicio aun no tiene insumos cargados, se sigue resolviendo
+            // por receta: ahi el control toma el excedente del inventario.
+            if (out.etiquetas.length || out.preformas.length) return res.json(out);
         }
+
+        if (!productoKey) return res.json(out);
         const r = await resolverInsumosServicio(pool, productoKey);
-        res.json({ success: true, etiqueta: r.etiqueta, preforma: r.preforma });
+        out.etiqueta = r.etiqueta;
+        out.preforma = r.preforma;
+        res.json(out);
     } catch (err) {
         console.error('Error al resolver insumos:', err);
         res.status(500).json({ success: false, mensaje: 'Error al resolver insumos: ' + err.message });

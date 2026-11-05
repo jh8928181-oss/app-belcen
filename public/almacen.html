@@ -1388,6 +1388,10 @@
 
         let inventarioGlobal = [];
         let productoTerminadoGlobal = [];
+        // Todo el producto terminado (incluido el que esta en 0): sirve para
+        // empatar a mano los items que trae una guia leida, aunque el stock
+        // este agotado (ahi el que avisa falta de stock es el servidor).
+        let productoTerminadoTodo = [];
         // Filas vivas de la tabla de PT: identidad por producto_key para
         // poder actualizar solo el número y reordenar sin rehacer la tabla.
         const filasPT = new Map();
@@ -2876,7 +2880,11 @@
             try {
                 const res = await fetch('/api/producto-terminado');
                 const data = await res.json();
-                const lista = (Array.isArray(data) ? data : [])
+                // Todo el PT (incluido stock 0): con esto el despacho puede
+                // vincular solo un item aunque el producto este agotado
+                // (ahi quien avisa de stock es el servidor al registrar).
+                productoTerminadoTodo = Array.isArray(data) ? data : [];
+                const lista = productoTerminadoTodo
                     .filter(item => Number(item.stock_cajas) > 0)
                     .sort((a, b) => Number(b.stock_cajas) - Number(a.stock_cajas) ||
                         String(a.nombre_producto).localeCompare(String(b.nombre_producto)));
@@ -2891,6 +2899,7 @@
                     etiquetarTablas();
                 }
                 poblarSelectSalida();
+                refrescarVinculosDespacho();
             } catch(e) { console.error(e); }
         }
 
@@ -2990,6 +2999,7 @@
                 rellenarDatalistInsumos();
                 resolverItemsAlmPendientes();
                 aplicarFiltros();
+                refrescarVinculosDespacho();
             } catch(e) { console.error(e); }
         }
 
@@ -3217,6 +3227,7 @@
                         articulo_id: i.articulo_id || null,
                         cantidad_auto: i.cantidad_auto
                     }));
+                    autoVincularItemsDespacho();
                     renderTablaItems();
                     let mensaje;
                     if (esIA) {
@@ -3288,6 +3299,78 @@
             itemsDespachoArray[index].cantidad = isNaN(cant) ? null : cant;
         }
 
+        // --- Vinculo automatico del despacho -----------------------------
+        // El nombre que trae la guia (OCR/IA), el pedido o la edicion se
+        // empatá solo con el catalogo. Solo se pide a mano cuando el nombre
+        // no se puede leer sin lugar a dudas.
+        function vincularAutoItem(item, valor, nombre) {
+            if (valor.startsWith('PT:')) item.producto_key = valor.slice(3);
+            else item.articulo_id = parseInt(valor.slice(4), 10);
+            item.vinculado_auto = true;
+            item.vinculado_a = nombre;
+            return true;
+        }
+
+        function autoVincularItemDespacho(item) {
+            if (!item || item.producto_key || item.articulo_id) return false;
+            // Si el usuario ya tocó el selector (a mano, incluso para dejarlo
+            // vacío), no se lo vuelve a llenar solo.
+            if (item.vinculo_manual || item.mostrarVinculo) return false;
+            const claves = variantesNombreInv(item.nombre);
+            if (!claves.length) return false;
+            const empata = (nombre) => variantesNombreInv(nombre).some(k => claves.includes(k));
+
+            // 1) Igualdad exacta: primero producto terminado (lo que sale en el
+            //    despacho, con stock o agotado), despues insumo del inventario.
+            const pts = productoTerminadoTodo || [];
+            const pt = pts.find(p => Number(p.stock_cajas) > 0 && empata(p.nombre_producto))
+                || pts.find(p => empata(p.nombre_producto));
+            if (pt && pt.producto_key) return vincularAutoItem(item, 'PT:' + pt.producto_key, pt.nombre_producto);
+            const ins = (inventarioGlobal || []).find(i => empata(i.nombre));
+            if (ins) return vincularAutoItem(item, 'INS:' + ins.id, ins.nombre);
+
+            // 2) El nombre leido trae ruido alrededor ("10 CJS ACEITE DE SOYA
+            //    B-1 1 LT") pero contiene completo el de UN solo candidato (o
+            //    esta contenido en el): sigue siendo inequivoco. Con empate no
+            //    se adivina y la fila queda pidiendo el vinculo.
+            const base = claves[0];
+            if (base.length < 8) return false;
+            const cands = [];
+            const ver = (valor, nombre) => {
+                const k = variantesNombreInv(nombre)[0];
+                if (k && k.length >= 8 && (base.includes(k) || k.includes(base))) cands.push({ valor, nombre });
+            };
+            pts.forEach(p => { if (p.producto_key) ver('PT:' + p.producto_key, p.nombre_producto); });
+            (inventarioGlobal || []).forEach(i => ver('INS:' + i.id, i.nombre));
+            const vistos = new Set(cands.map(c => c.valor));
+            if (vistos.size === 1) return vincularAutoItem(item, cands[0].valor, cands[0].nombre);
+            return false;
+        }
+
+        // Devuelve true si algo cambio; el que llama repinta la tabla.
+        function autoVincularItemsDespacho() {
+            let cambio = false;
+            itemsDespachoArray.forEach(it => { if (autoVincularItemDespacho(it)) cambio = true; });
+            return cambio;
+        }
+
+        // Reintenta al cargar PT / inventario (la guia puede llegar antes que
+        // las listas). No pisa lo que el usuario este escribiendo: si el foco
+        // esta en la tabla, se repinta apenas lo suelta.
+        function refrescarVinculosDespacho() {
+            if (!autoVincularItemsDespacho()) return;
+            const foco = document.activeElement;
+            const tabla = document.getElementById('tablaItemsDespacho');
+            if (foco && tabla && tabla.contains(foco)) {
+                tabla.addEventListener('focusout', function h() {
+                    tabla.removeEventListener('focusout', h);
+                    renderTablaItems();
+                }, { once: true });
+                return;
+            }
+            renderTablaItems();
+        }
+
         function vincularItem(index, valor) {
             const item = itemsDespachoArray[index];
             if (!item) return;
@@ -3295,20 +3378,39 @@
             item.articulo_id = null;
             if (valor && valor.startsWith('PT:')) item.producto_key = valor.replace('PT:', '');
             else if (valor && valor.startsWith('INS:')) item.articulo_id = valor.replace('INS:', '');
+            // Decision manual: no se vuelve a autocompletar este renglon.
+            item.vinculo_manual = true;
+            item.vinculado_auto = false;
+            item.vinculado_a = null;
+            item.mostrarVinculo = false;
             renderTablaItems();
         }
 
-        function opcionesVinculoItem() {
+        function mostrarVinculoItem(index) {
+            const item = itemsDespachoArray[index];
+            if (!item) return;
+            item.mostrarVinculo = true;
+            renderTablaItems();
+        }
+
+        function opcionesVinculoItem(valorActual, textoActual) {
             const base = document.getElementById('selectProductoSalida');
+            const val = valorActual || '';
             if (!base) return '<option value="">-- Vincular producto --</option>';
             let html = '<option value="">-- Vincular producto --</option>';
+            let visto = false;
             base.querySelectorAll('optgroup').forEach(g => {
-                html += `<optgroup label="${escOpServ(g.label)}">`;
+                let interno = '';
                 g.querySelectorAll('option').forEach(o => {
-                    html += `<option value="${escOpServ(o.value)}">${escOpServ(o.textContent)}</option>`;
+                    const sel = o.value === val ? ' selected' : '';
+                    if (sel) visto = true;
+                    interno += `<option value="${escOpServ(o.value)}"${sel}>${escOpServ(o.textContent)}</option>`;
                 });
-                html += '</optgroup>';
+                if (interno) html += `<optgroup label="${escOpServ(g.label)}">${interno}</optgroup>`;
             });
+            // Producto agotado (o insumo fuera del select): se ofrece igual
+            // para que el valor actual se siga viendo seleccionado.
+            if (val && !visto) html += `<option value="${escOpServ(val)}" selected>${escOpServ(textoActual || val)}</option>`;
             return html;
         }
 
@@ -3318,10 +3420,19 @@
             itemsDespachoArray.forEach((item, idx) => {
                 const marcaRevisar = (item.cantidad === null || item.cantidad === undefined || isNaN(parseFloat(item.cantidad))) ? ' <span class="diff-alerta">⚠️ indicar cantidad</span>' : '';
                 const valCant = (item.cantidad !== null && item.cantidad !== undefined && !isNaN(parseFloat(item.cantidad))) ? item.cantidad : '';
-                const sinVinculo = (!item.producto_key && !item.articulo_id)
-                    ? `<div style="margin-top:6px;"><span class="diff-alerta">⚠️ sin producto</span> <select onchange="vincularItem(${idx}, this.value)" style="max-width:230px;">${opcionesVinculoItem()}</select></div>`
-                    : '';
-                tbody.innerHTML += `<tr><td><b>${item.nombre}</b>${marcaRevisar}${sinVinculo}</td><td class="text-center"><input type="number" min="0.01" step="any" class="input-cant-item" value="${valCant}" oninput="cambiarCantidadItem(${idx}, this.value)"></td><td class="text-center"><button type="button" onclick="quitarItem(${idx})" class="btn-x">X</button></td></tr>`;
+                const hayVinculo = !!(item.producto_key || item.articulo_id);
+                const valorVinculo = item.producto_key ? 'PT:' + item.producto_key : (item.articulo_id ? 'INS:' + item.articulo_id : '');
+                let bloqueVinculo;
+                if (!hayVinculo) {
+                    bloqueVinculo = `<div style="margin-top:6px;"><span class="diff-alerta">⚠️ sin producto</span> <select onchange="vincularItem(${idx}, this.value)" style="max-width:230px;">${opcionesVinculoItem('', '')}</select></div>`;
+                } else if (item.mostrarVinculo) {
+                    bloqueVinculo = `<div style="margin-top:6px;"><select onchange="vincularItem(${idx}, this.value)" style="max-width:260px;">${opcionesVinculoItem(valorVinculo, item.vinculado_a || item.nombre)}</select></div>`;
+                } else if (item.vinculado_auto) {
+                    bloqueVinculo = `<div style="margin-top:6px;"><span style="color:#1e8e3e;font-weight:600;">✔ Vinculado automático: ${escOpServ(item.vinculado_a || item.nombre)}</span> <button type="button" onclick="mostrarVinculoItem(${idx})" class="btn-accion" style="margin-left:6px;padding:1px 8px;font-size:11px;">Cambiar</button></div>`;
+                } else {
+                    bloqueVinculo = '';
+                }
+                tbody.innerHTML += `<tr><td><b>${item.nombre}</b>${marcaRevisar}${bloqueVinculo}</td><td class="text-center"><input type="number" min="0.01" step="any" class="input-cant-item" value="${valCant}" oninput="cambiarCantidadItem(${idx}, this.value)"></td><td class="text-center"><button type="button" onclick="quitarItem(${idx})" class="btn-x">X</button></td></tr>`;
                 });
                 etiquetarTablas();
             }
@@ -3409,6 +3520,7 @@
                         articulo_id: null
                     }))
                     .filter(i => i.cantidad > 0);
+                autoVincularItemsDespacho();
                 renderTablaItems();
                 // El formulario "sube": siempre queda arriba en la vista
                 document.getElementById('formSalida').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -3670,6 +3782,7 @@
                 producto_key: f.producto_key || null,
                 articulo_id: f.articulo_id ? parseInt(f.articulo_id) : null
             }));
+            autoVincularItemsDespacho();
             renderTablaItems();
             despachoEditando = despachoId;
             document.getElementById('btnRegistrarDespacho').textContent = '💾 GUARDAR CAMBIOS DEL DESPACHO';

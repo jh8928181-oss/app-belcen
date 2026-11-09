@@ -3951,6 +3951,20 @@ app.post('/api/documento/leer', gIA, upload.single('archivo_documento'), async (
 });
 
 // --- SALIDAS DE ALMACÉN ---
+
+// Límites de las columnas de texto de salidas_almacen: la cabecera la
+// llena el lector de guías (OCR/IA) con el texto crudo del documento y un
+// campo largo reventaba el INSERT con "value too long for type character
+// varying(150)" (destino y punto_partida son los más largos de una guía).
+// La migración ensanchó las columnas; este corte es la red de seguridad
+// para que ningún texto inesperado vuelva a tumbar el registro completo.
+const LIM_SALIDA = { tipo_registro: 30, numero_guia: 150, empresa: 250, ruc: 30, destino: 500, chofer_licencia: 300, placa: 50, punto_partida: 500, usuario: 50 };
+function cortarSalida(campo, valor) {
+    const s = valor === null || valor === undefined ? '' : String(valor);
+    const max = LIM_SALIDA[campo] || 500;
+    return s.length > max ? s.slice(0, max) : s;
+}
+
 app.post('/api/salidas/registrar', gAlmacen, upload.single('archivo_guia'), async (req, res) => {
     const client = await pool.connect();
     try {
@@ -4086,10 +4100,10 @@ app.post('/api/salidas/registrar', gAlmacen, upload.single('archivo_guia'), asyn
                 (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, articulo_id, cantidad_salida, usuario_registro, estado_guia, guia_url, despacho_id, producto_key, pedido_id)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17);
             `, [
-                fecha_salida || new Date(), tipo_registro, guiaFinal, 
-                empresa || 'N/A', ruc || 'N/A', destino || 'N/A', 
-                chofer_licencia || 'N/A', placa || 'N/A', punto_partida || 'Almacén Principal', 
-                targetArticuloId, cantidad, usuario || 'almacen_user', estadoGuia, guia_url, despachoId, productoKeyFinal,
+                fecha_salida || new Date(), cortarSalida('tipo_registro', tipo_registro), cortarSalida('numero_guia', guiaFinal),
+                cortarSalida('empresa', empresa || 'N/A'), cortarSalida('ruc', ruc || 'N/A'), cortarSalida('destino', destino || 'N/A'),
+                cortarSalida('chofer_licencia', chofer_licencia || 'N/A'), cortarSalida('placa', placa || 'N/A'), cortarSalida('punto_partida', punto_partida || 'Almacén Principal'),
+                targetArticuloId, cantidad, cortarSalida('usuario', usuario || 'almacen_user'), estadoGuia, guia_url, despachoId, productoKeyFinal,
                 pedido ? pedidoIdNum : null
             ]);
         }
@@ -4128,7 +4142,7 @@ app.post('/api/salidas/registrar', gAlmacen, upload.single('archivo_guia'), asyn
 app.post('/api/salidas/regularizar', gAlmacen, async (req, res) => {
     try {
         const { salida_id, nuevo_numero_guia } = req.body;
-        await pool.query(`UPDATE salidas_almacen SET numero_guia = $1, estado_guia = 'REGULARIZADO' WHERE id = $2`, [nuevo_numero_guia, salida_id]);
+        await pool.query(`UPDATE salidas_almacen SET numero_guia = $1, estado_guia = 'REGULARIZADO' WHERE id = $2`, [cortarSalida('numero_guia', nuevo_numero_guia), salida_id]);
         res.json({ success: true, mensaje: 'Guía regularizada con éxito.' });
     } catch (err) {
         console.error("Error al regularizar guía:", err);
@@ -4332,10 +4346,10 @@ app.post('/api/salidas/editar', gAlmacen, upload.single('archivo_guia'), async (
                 (fecha_salida, tipo_registro, numero_guia, empresa, ruc, destino, chofer_licencia, placa, punto_partida, articulo_id, cantidad_salida, usuario_registro, estado_guia, guia_url, despacho_id, producto_key)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16);
             `, [
-                fecha_salida || new Date(), tipo_registro, guiaFinal,
-                empresa || 'N/A', ruc || 'N/A', destino || 'N/A',
-                chofer_licencia || 'N/A', placa || 'N/A', punto_partida || 'Almacén Principal',
-                targetArticuloId, cantidad, usuario || 'almacen_user', estadoGuia, guia_url, despacho_id, productoKeyFinal
+                fecha_salida || new Date(), cortarSalida('tipo_registro', tipo_registro), cortarSalida('numero_guia', guiaFinal),
+                cortarSalida('empresa', empresa || 'N/A'), cortarSalida('ruc', ruc || 'N/A'), cortarSalida('destino', destino || 'N/A'),
+                cortarSalida('chofer_licencia', chofer_licencia || 'N/A'), cortarSalida('placa', placa || 'N/A'), cortarSalida('punto_partida', punto_partida || 'Almacén Principal'),
+                targetArticuloId, cantidad, cortarSalida('usuario', usuario || 'almacen_user'), estadoGuia, guia_url, despacho_id, productoKeyFinal
             ]);
         }
 
@@ -8368,12 +8382,12 @@ const despachados = [];
                     chofer_licencia, placa, punto_partida, articulo_id, cantidad_salida,
                     usuario_registro, estado_guia, guia_url, despacho_id, producto_key, pedido_id)
                 VALUES (CURRENT_TIMESTAMP, $1, $2, $3, 'N/A', $4, $5, $6, 'Almacén Principal', NULL, $7, $8, $9, NULL, $10, $11, $12)`,
-                [tipoRegistro, numeroGuia || 'S/N',
-                 `${pedido.numero_pedido} — ${pedido.tipo_destino}`,
-                 pedido.direccion || pedido.tipo_destino,
-                 pedido.chofer || 'N/A', pedido.vehiculo || 'N/A',
+                [cortarSalida('tipo_registro', tipoRegistro), cortarSalida('numero_guia', numeroGuia || 'S/N'),
+                 cortarSalida('empresa', `${pedido.numero_pedido} — ${pedido.tipo_destino}`),
+                 cortarSalida('destino', pedido.direccion || pedido.tipo_destino),
+                 cortarSalida('chofer_licencia', pedido.chofer || 'N/A'), cortarSalida('placa', pedido.vehiculo || 'N/A'),
                  restante,
-                 usuarioResponsable(req, b.usuario),
+                 cortarSalida('usuario', usuarioResponsable(req, b.usuario)),
                  estadoGuia, despachoId, item.producto_key, id]
             );
             despachados.push({

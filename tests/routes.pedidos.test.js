@@ -572,4 +572,23 @@ describe('POST /api/salidas/registrar (protocolo: salidas con orden de pedido)',
     expect(sentencias().filter(s => /FROM pedidos_venta WHERE/.test(s))).toHaveLength(0);
     expect(transacciones()).toEqual(['BEGIN', 'COMMIT']);
   });
+
+  test('una cabecera larga se recorta en vez de reventar el INSERT', async () => {
+    // La guía se lee con OCR/IA y puede traer texto larguísimo (direcciones,
+    // bloques de "Datos del Destinatario"). Antes eso moría en Postgres con
+    // "value too long for type character varying(150)" y se perdía el
+    // despacho entero; ahora el servidor recorta a los límites de columna.
+    responder(stockOk);
+    const largo = 'INVERSIONES ZONA NORTE S.A.C. - REGISTRO ÚNICO DE CONTRIBUYENTES '.repeat(20);
+    const r = await invocar('post', '/api/salidas/registrar', {
+      body: salidaCuerpo({ destino: largo, punto_partida: largo, chofer_licencia: largo })
+    });
+    expect(r.statusCode).toBe(200);
+    expect(r.cuerpo.success).toBe(true);
+    const p = mockQuery.mock.calls.find(c => /INSERT INTO salidas_almacen/.test(String(c[0])))[1];
+    expect(p[5]).toHaveLength(500);   // destino
+    expect(p[6]).toHaveLength(300);   // chofer_licencia
+    expect(p[8]).toHaveLength(500);   // punto_partida
+    expect(transacciones()).toEqual(['BEGIN', 'COMMIT']);
+  });
 });

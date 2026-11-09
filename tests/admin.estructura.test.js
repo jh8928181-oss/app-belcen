@@ -154,7 +154,9 @@ describe('admin.html datos de contacto para la OC', () => {
     // son los unicos cuyo login puede quedar como emisor de una OC.
     expect(js).toContain("['admin', 'auditoria', 'consulta_bd']");
     expect(html).toContain('id="bloqueDatosOC"');
-    expect(html).toContain('class="dato-oc"');
+    // El rediseño agrupó los campos en el bloque de creación y en el de
+    // edición (antes eran divs sueltos con clase dato-oc).
+    expect(html).toContain('id="bloqueDatosOCE"');
     const fuente = vm.runInContext('abrirEditarUsuario.toString()', ejecutarScript());
     expect(fuente).toContain('alternarDatosOC');
   });

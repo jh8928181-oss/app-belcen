@@ -68,6 +68,7 @@
         .g3 .panel-cabecera { border-left: 5px solid #ffc107; background: linear-gradient(90deg, rgba(255,193,7,0.09), transparent 45%); }
         .g4 .panel-cabecera { border-left: 5px solid #17a2b8; background: linear-gradient(90deg, rgba(23,162,184,0.07), transparent 45%); }
         .g5 .panel-cabecera { border-left: 5px solid #6f42c1; background: linear-gradient(90deg, rgba(111,66,193,0.06), transparent 45%); }
+        .g6 .panel-cabecera { border-left: 5px solid #fd7e14; background: linear-gradient(90deg, rgba(253,126,20,0.08), transparent 45%); }
         .panel-titulo { flex: 1 1 auto; }
         .panel-contador {
             font-size: 12px; font-weight: 600; color: var(--texto2);
@@ -699,6 +700,66 @@
                             </thead>
                             <tbody id="tablaHistorialInventario">
                                 <tr><td colspan="7" class="text-center sin-registros">Cargando…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- HISTORIAL DE PRODUCTO TERMINADO -->
+        <div class="tarjeta tarjeta-panel g6" id="panel-productoterminado">
+            <button class="panel-cabecera" id="btn-productoterminado" onclick="togglePanel('productoterminado')" aria-expanded="false" aria-controls="cuerpo-productoterminado">
+                <span class="panel-titulo">🏁 PRODUCTO TERMINADO — STOCK Y MOVIMIENTOS</span>
+                <span class="panel-contador" id="contadorPT">0 productos</span>
+                <span class="panel-flecha">▼</span>
+            </button>
+            <div class="panel-cuerpo" id="cuerpo-productoterminado">
+                <div class="sub-bloque">
+                    <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:6px;">
+                        <select id="filtroPTProducto" class="filtro" style="max-width:280px;" onchange="cargarProductoTerminado()">
+                            <option value="">TODOS LOS PRODUCTOS</option>
+                        </select>
+                        <input type="date" id="filtroPTDesde" class="filtro" style="max-width:180px;" onchange="cargarProductoTerminado()" title="Desde">
+                        <input type="date" id="filtroPTHasta" class="filtro" style="max-width:180px;" onchange="cargarProductoTerminado()" title="Hasta">
+                        <input id="filtroPTQ" class="filtro" placeholder="🔍 Buscar producto, guía, usuario..." oninput="cargarProductoTerminado()">
+                    </div>
+
+                    <div class="sub-titulo salidas" style="margin:12px 0 4px;">Stock actual en cajas por presentación.</div>
+                    <div class="tabla-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Producto</th>
+                                    <th class="text-center">Cajas en stock</th>
+                                    <th class="text-center">Mínimo</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tablaStockPTAud">
+                                <tr><td colspan="4" class="text-center sin-registros">Cargando…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="sub-titulo salidas" style="margin:18px 0 4px;">Qué movió cada stock: la producción que lo subió y la salida —con su guía— que lo bajó.</div>
+                    <div class="tabla-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Tipo</th>
+                                    <th>Producto</th>
+                                    <th class="text-center">Cantidad</th>
+                                    <th class="text-center">Stock anterior → nuevo</th>
+                                    <th>Guía</th>
+                                    <th>Salida / Pedido</th>
+                                    <th>Detalle</th>
+                                    <th>Usuario</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tablaPTMovimientos">
+                                <tr><td colspan="9" class="text-center sin-registros">Cargando…</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1345,6 +1406,103 @@ tbody.appendChild(tr);
             }
         }
 
+        // ---------- PRODUCTO TERMINADO: stock actual + qué lo movió ----------
+        // El stock sale de producto_terminado y los movimientos del historial
+        // (producción que suma, salida con guía que resta, ajustes). La
+        // referencia ya viene desarmada en guía / salida / pedido / producción.
+        let ptGlobal = { stock: [], movimientos: [] };
+
+        function badgeEstadoPT(estado) {
+            if (estado === 'SIN STOCK') return '<span class="badge badge-pedido">SIN STOCK</span>';
+            if (estado === 'BAJO') return '<span class="badge badge-vig">BAJO DEL MÍNIMO</span>';
+            return '<span class="badge badge-alm">STOCK SUFICIENTE</span>';
+        }
+
+        function pintarStockPT(stock) {
+            const tb = document.getElementById('tablaStockPTAud');
+            tb.innerHTML = stock.length === 0
+                ? '<tr><td colspan="4" class="text-center sin-registros">Sin productos terminados dados de alta.</td></tr>'
+                : stock.map(p => `
+                    <tr>
+                        <td>${escaparHTML(p.nombre_producto)}</td>
+                        <td class="text-center"><b>${Number(p.stock_cajas) || 0}</b></td>
+                        <td class="text-center">${(p.stock_minimo === null || p.stock_minimo === undefined) ? '—' : Number(p.stock_minimo)}</td>
+                        <td>${badgeEstadoPT(p.estado)}</td>
+                    </tr>`).join('');
+
+            // El selector de producto se pinta con el catálogo actual y sin
+            // perder lo que el usuario ya había elegido.
+            const sel = document.getElementById('filtroPTProducto');
+            const elegido = sel.value;
+            sel.innerHTML = '<option value="">TODOS LOS PRODUCTOS</option>' +
+                stock.map(p => `<option value="${escaparHTML(p.producto_key)}">${escaparHTML(p.nombre_producto)}</option>`).join('');
+            if (elegido) sel.value = elegido;
+        }
+
+        function pintarMovimientosPT(movs) {
+            const tb = document.getElementById('tablaPTMovimientos');
+            tb.innerHTML = movs.length === 0
+                ? '<tr><td colspan="9" class="text-center sin-registros">No hay movimientos para los filtros actuales.</td></tr>'
+                : '';
+            movs.forEach(m => {
+                const esResta = String(m.tipo_cambio || '').toUpperCase() === 'RESTA';
+                const signo = esResta ? '-' : '+';
+                const color = esResta ? '#bd2130' : '#1e7e34';
+                const cant = (m.cantidad === null || m.cantidad === undefined) ? 0 : Number(m.cantidad);
+                const mostrarCant = Number.isInteger(cant) ? cant : cant.toFixed(2);
+                const ant = (m.stock_anterior === null || m.stock_anterior === undefined) ? '—' : Number(m.stock_anterior);
+                const nuevo = (m.stock_nuevo === null || m.stock_nuevo === undefined) ? '—' : Number(m.stock_nuevo);
+                const salidaPedido = m.salida
+                    ? `<b>Salida</b> ${escaparHTML(m.salida)}`
+                    : (m.pedido ? `<b>Pedido</b> ${escaparHTML(m.pedido)}` : '—');
+                // En salidas la guía y la salida ya ocupan su columna; el
+                // detalle queda para producción y ajustes.
+                const detalle = m.produccion || ((m.salida || m.pedido) ? '' : (m.referencia || ''));
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><b>${formatearFecha(m.fecha)}</b></td>
+                    <td>${badgeHistorial(m.tipo)}</td>
+                    <td>${escaparHTML(m.producto || 'N/D')}</td>
+                    <td class="text-center" style="color:${color}; font-weight:bold;">${signo}${mostrarCant}</td>
+                    <td class="text-center">${ant} → ${nuevo}</td>
+                    <td>${m.guia ? escaparHTML(m.guia) : '—'}</td>
+                    <td>${salidaPedido}</td>
+                    <td>${detalle ? escaparHTML(detalle) : '—'}</td>
+                    <td>${escaparHTML(m.usuario || 'sistema')}</td>
+                `;
+                tb.appendChild(tr);
+            });
+            etiquetarTablas();
+        }
+
+        async function cargarProductoTerminado() {
+            const params = new URLSearchParams();
+            const producto = (document.getElementById('filtroPTProducto') || {}).value || '';
+            const desde = (document.getElementById('filtroPTDesde') || {}).value || '';
+            const hasta = (document.getElementById('filtroPTHasta') || {}).value || '';
+            const q = (document.getElementById('filtroPTQ') || {}).value || '';
+            if (producto) params.set('producto', producto);
+            if (desde) params.set('desde', desde);
+            if (hasta) params.set('hasta', hasta);
+            if (q.trim()) params.set('q', q.trim());
+            try {
+                const res = await fetch('/api/auditoria/producto-terminado?' + params.toString());
+                if (!res.ok) throw new Error('Error del servidor.');
+                const data = await res.json();
+                ptGlobal = {
+                    stock: Array.isArray(data.stock) ? data.stock : [],
+                    movimientos: Array.isArray(data.movimientos) ? data.movimientos : []
+                };
+                pintarStockPT(ptGlobal.stock);
+                pintarMovimientosPT(ptGlobal.movimientos);
+                actualizarContadores();
+            } catch (err) {
+                console.error(err);
+                document.getElementById('tablaPTMovimientos').innerHTML =
+                    '<tr><td colspan="9" class="text-center" style="color:red;">Error al cargar el historial de producto terminado.</td></tr>';
+            }
+        }
+
         function buscarCierrePorFechaAud() {
             const fechaBuscada = document.getElementById('filtroFechaCierre').value;
             if (!fechaBuscada) {
@@ -1644,6 +1802,13 @@ tbody.appendChild(tr);
                 const nIns = lotes.reduce((s, l) => s + (Array.isArray(l.insumos) ? l.insumos.length : 0), 0);
                 a4.textContent = nIns + lotes.length;
             }
+
+            // Historial de producto terminado
+            const cPT = document.getElementById('contadorPT');
+            if (cPT) {
+                cPT.textContent = ptGlobal.stock.length + (ptGlobal.stock.length === 1 ? ' producto' : ' productos')
+                    + ' · ' + ptGlobal.movimientos.length + (ptGlobal.movimientos.length === 1 ? ' movimiento' : ' movimientos');
+            }
         }
 
         // Barra de atajos dinámica
@@ -1686,7 +1851,8 @@ tbody.appendChild(tr);
                     cargarSoplado(),
                     cargarRefinado(),
                     cargarHistorialCierresAud(),
-                    cargarHistorialInventario()
+                    cargarHistorialInventario(),
+                    cargarProductoTerminado()
                 ]);
             } finally {
                 document.querySelectorAll('.refresh-ico').forEach(ico => ico.classList.remove('animando'));
@@ -1734,6 +1900,7 @@ tbody.appendChild(tr);
         cargarRefinado();
         cargarHistorialCierresAud();
         cargarHistorialInventario();
+        cargarProductoTerminado();
 
         document.getElementById('filtroEntradasVig').addEventListener('input', renderVigilancia);
         document.getElementById('filtroEntradasAlm').addEventListener('input', renderEntradasAlm);
@@ -1753,6 +1920,7 @@ tbody.appendChild(tr);
             cargarRefinado();
             cargarHistorialCierresAud();
             cargarHistorialInventario();
+            cargarProductoTerminado();
             // El botón refrescarTodo() ya lo traía: el intervalo lo había dejado fuera.
             cargarSoplado();
         }, 15000);

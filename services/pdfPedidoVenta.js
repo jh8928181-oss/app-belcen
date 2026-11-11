@@ -167,14 +167,13 @@ function generarPDFPedidoVenta(datos) {
         .text(`ESTADO: ${estado.texto}`, MARGEN + 6, y + 5, { width: ancho - 12 });
       y += 28;
 
-      // Datos de logística
+      // Datos del pedido: para quién es, quién lo emitió y dónde se entrega.
+      // Chofer y placa ya no se piden en Pedidos, así que no van en el papel.
       doc.font('Helvetica-Bold').fontSize(9).fillColor('#1A202C').text('DATOS DEL PEDIDO', MARGEN, y);
       y = doc.y + 4;
       doc.font('Helvetica').fontSize(8.5);
       y = etiquetaValor(doc, y, 'FECHA DE REGISTRO:', datos.fecha_registro_larga || datos.fecha_registro, ancho);
       y = etiquetaValor(doc, y, 'SOLICITANTE:', datos.solicitante, ancho);
-      y = etiquetaValor(doc, y, 'VEHÍCULO (PLACA):', datos.vehiculo, ancho);
-      y = etiquetaValor(doc, y, 'CHOFER:', datos.chofer, ancho);
       y = etiquetaValor(doc, y, 'DESTINO:', datos.tipo_destino, ancho);
       y = etiquetaValor(doc, y, 'DIRECCIÓN DE ENTREGA:', datos.direccion, ancho);
       y = etiquetaValor(doc, y, 'OBSERVACIONES:', datos.observaciones, ancho);

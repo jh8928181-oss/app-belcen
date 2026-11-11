@@ -138,7 +138,7 @@ const SQL = {
   consolidado: /FROM pedidos_venta_items i\s+JOIN pedidos_venta p ON p\.id = i\.pedido_id/,
   atencionFilas: /SELECT i\.id, i\.pedido_id, i\.cantidad_produccion/,
   marcaProducida: /UPDATE pedidos_venta_items SET cantidad_producida/,
-  despachadosCab: /SELECT p\.id, p\.numero_pedido, p\.estado, p\.vehiculo/,
+  despachadosCab: /SELECT p\.id, p\.numero_pedido, p\.estado/,
   despachadosItems: /SELECT pedido_id, nombre_producto, cantidad_despachada\s+FROM pedidos_venta_items/
 };
 
@@ -441,11 +441,11 @@ describe('POST /api/pedidos/atender-produccion', () => {
 });
 
 describe('GET /api/pedidos/despachados — pedidos completados', () => {
-  test('arma la lista sola desde lo que almacén despachó, con guía y carro', async () => {
+  test('arma la lista sola desde lo que almacén despachó, con la guía', async () => {
     responder([
       [SQL.despachadosCab, filas(
-        { id: 41, numero_pedido: 'PED-2026-0041', estado: 'DESPACHADO', vehiculo: 'ABC-123', numero_guia: 'G-001', carro: 'ABC-123' },
-        { id: 42, numero_pedido: 'PED-2026-0042', estado: 'EN_PRODUCCION', vehiculo: 'XYZ-9', numero_guia: null, carro: 'XYZ-9' }
+        { id: 41, numero_pedido: 'PED-2026-0041', estado: 'DESPACHADO', numero_guia: 'G-001' },
+        { id: 42, numero_pedido: 'PED-2026-0042', estado: 'EN_PRODUCCION', numero_guia: null }
       )],
       [SQL.despachadosItems, filas(
         { pedido_id: 41, nombre_producto: 'Belini 1 Lt', cantidad_despachada: 50 },
@@ -456,7 +456,10 @@ describe('GET /api/pedidos/despachados — pedidos completados', () => {
     expect(r.statusCode).toBe(200);
     expect(r.cuerpo.success).toBe(true);
     expect(r.cuerpo.pedidos).toHaveLength(2);
-    expect(r.cuerpo.pedidos[0]).toMatchObject({ numero_pedido: 'PED-2026-0041', numero_guia: 'G-001', carro: 'ABC-123' });
+    // Chofer y placa ya no se piden en Pedidos: la lista no los trae.
+    expect(r.cuerpo.pedidos[0]).toMatchObject({ numero_pedido: 'PED-2026-0041', numero_guia: 'G-001' });
+    expect(r.cuerpo.pedidos[0].carro).toBeUndefined();
+    expect(r.cuerpo.pedidos[0].vehiculo).toBeUndefined();
     expect(r.cuerpo.pedidos[0].items).toHaveLength(1);
     expect(r.cuerpo.pedidos[0].items[0]).toMatchObject({ nombre_producto: 'Belini 1 Lt', cantidad_despachada: 50 });
     // Un pedido despachado a medias (esperando producción) también aparece.

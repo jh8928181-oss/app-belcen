@@ -4642,6 +4642,78 @@ app.get('/api/auditoria/historial', gAuditoria, async (req, res) => {
     }
 });
 
+// --- AUDITORÍA: HISTORIAL DE PRODUCTO TERMINADO ---
+// El stock vive en producto_terminado y cada cambio queda anotado en
+// historial_inventario con producto_key (los movimientos de insumos traen
+// articulo_id y jamás producto_key, así que con eso se separan solos).
+// La referencia guarda el detalle como frase:
+//   "Despacho N° <despacho> - guía <guía>"   → salida manual de almacén
+//   "Despacho pedido <orden> - guía <guía>"  → despacho de una orden
+//   "Producción de <n> cajas - <presentación>"
+// Aquí se abre en columnas para que se vea la guía, la salida y la orden
+// sin tener que leer la frase completa.
+function detalleMovimientoPT(referencia) {
+    const texto = String(referencia || '');
+    const corte = texto.indexOf(' - guía ');
+    const guia = corte >= 0 ? texto.slice(corte + 8).trim() : '';
+    const base = corte >= 0 ? texto.slice(0, corte) : texto;
+    let m = base.match(/^Despacho N° (.+)$/);
+    if (m) return { guia, salida: m[1].trim(), pedido: '', produccion: '' };
+    m = base.match(/^Despacho pedido (.+)$/);
+    if (m) return { guia, salida: '', pedido: m[1].trim(), produccion: '' };
+    m = base.match(/^Producción de (.+)$/);
+    if (m) return { guia: '', salida: '', pedido: '', produccion: m[1].trim() };
+    return { guia, salida: '', pedido: '', produccion: '' };
+}
+
+app.get('/api/auditoria/producto-terminado', gAuditoria, async (req, res) => {
+    try {
+        const { desde, hasta, q, producto } = req.query;
+        const params = [];
+        const filtros = ['h.producto_key IS NOT NULL'];
+
+        // null en vez de cadena vacía: un ::timestamp sobre '' revienta la
+        // consulta si Postgres reordena el OR.
+        params.push(String(desde || '').trim() || null);
+        filtros.push(`$${params.length} IS NULL OR h.fecha >= $${params.length}::timestamp`);
+
+        params.push(String(hasta || '').trim() || null);
+        filtros.push(`$${params.length} IS NULL OR h.fecha <= ($${params.length}::timestamp + interval '1 day')`);
+
+        const busqueda = String(q || '').trim();
+        params.push('%' + busqueda + '%');
+        filtros.push(`$${params.length} = '' OR LOWER(h.producto) LIKE LOWER($${params.length})`
+            + ` OR LOWER(COALESCE(h.usuario, '')) LIKE LOWER($${params.length})`
+            + ` OR LOWER(COALESCE(h.referencia, '')) LIKE LOWER($${params.length})`);
+
+        params.push(String(producto || '').trim() || null);
+        filtros.push(`$${params.length} IS NULL OR h.producto_key = $${params.length}`);
+
+        const stock = await pool.query(`
+            SELECT producto_key, nombre_producto, stock_cajas, stock_minimo,
+                   CASE WHEN stock_cajas <= 0 THEN 'SIN STOCK'
+                        WHEN stock_minimo > 0 AND stock_cajas <= stock_minimo THEN 'BAJO'
+                        ELSE 'OK' END AS estado
+              FROM producto_terminado
+             ORDER BY nombre_producto`);
+        const movimientos = await pool.query(`
+            SELECT h.id, h.fecha, h.tipo, h.origen, h.producto, h.producto_key, h.cantidad,
+                   h.tipo_cambio, h.stock_anterior, h.stock_nuevo, h.usuario, h.referencia
+              FROM historial_inventario h
+             WHERE ${filtros.join(' AND ')}
+             ORDER BY h.fecha DESC, h.id DESC
+             LIMIT 500`, params);
+
+        res.json({
+            stock: stock.rows,
+            movimientos: movimientos.rows.map(m => Object.assign({}, m, detalleMovimientoPT(m.referencia)))
+        });
+    } catch (err) {
+        console.error('Error al obtener historial de producto terminado:', err);
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
 // --- FUNCIONES AUXILIARES DE PRODUCCIÓN ---
 function detectarProductoTipo(presentacion) {
     const p = presentacion.toLowerCase();
@@ -8273,32 +8345,6 @@ app.get('/api/pedidos/stock', async (req, res) => {
     }
 });
 
-app.get('/api/pedidos/logistica-opciones', async (req, res) => {
-    try {
-        const placas = await pool.query(
-            `SELECT DISTINCT placa FROM (
-                SELECT placa FROM salidas_almacen WHERE placa IS NOT NULL AND TRIM(placa) <> ''
-                UNION
-                SELECT placa FROM ingresos_vigilancia WHERE placa IS NOT NULL AND TRIM(placa) <> ''
-             ) t ORDER BY placa`
-        );
-        const choferes = await pool.query(
-            `SELECT DISTINCT chofer FROM (
-                SELECT chofer_licencia AS chofer FROM salidas_almacen WHERE chofer_licencia IS NOT NULL AND TRIM(chofer_licencia) <> ''
-                UNION
-                SELECT chofer FROM ingresos_vigilancia WHERE chofer IS NOT NULL AND TRIM(chofer) <> ''
-             ) t ORDER BY chofer`
-        );
-        res.json({
-            success: true,
-            placas: placas.rows.map(r => r.placa),
-            choferes: choferes.rows.map(r => r.chofer)
-        });
-    } catch (err) {
-        res.status(500).json({ success: false, mensaje: err.message });
-    }
-});
-
 app.post('/api/pedidos/:id/despachar', gAlmacen, async (req, res) => {
     const id = parseInt(req.params.id, 10);
     if (!Number.isFinite(id)) return res.status(400).json({ success: false, mensaje: 'Id inválido.' });
@@ -8374,7 +8420,9 @@ const despachados = [];
                 stock_anterior: stock,
                 stock_nuevo: stock - restante,
                 usuario: usuarioResponsable(req, b.usuario),
-                referencia: `Despacho pedido ${pedido.numero_pedido}`
+                // La guía va en la referencia: es lo que Auditoría usa para
+                // mostrar junto a cada baja de stock qué salida la causó.
+                referencia: `Despacho pedido ${pedido.numero_pedido} - guía ${numeroGuia || 'S/N'}`
             });
             await client.query(
                 `INSERT INTO salidas_almacen
@@ -8400,9 +8448,7 @@ const despachados = [];
                 producto: st.rows[0].nombre_producto,
                 producto_key: item.producto_key,
                 cantidad: restante,
-                guia: numeroGuia || 'S/N',
-                chofer: pedido.chofer || 'N/A',
-                vehiculo: pedido.vehiculo || 'N/A'
+                guia: numeroGuia || 'S/N'
             });
         }
 
@@ -8479,19 +8525,15 @@ app.get('/api/pedidos/consolidado-produccion', async (req, res) => {
 });
 
 // Pedidos completados: la pestaña Producción lista sola lo que almacén ya
-// despachó (pedido, producto, cantidad, guía y carro salen de la salida
+// despachó (pedido, producto, cantidad y guía salen de la salida
 // registrada). Incluye los pedidos despachados a medias, que también deben
 // mostrarse en cuanto almacén registró movimiento.
 app.get('/api/pedidos/despachados', async (req, res) => {
     try {
         const cab = await pool.query(
-            `SELECT p.id, p.numero_pedido, p.estado, p.vehiculo,
+            `SELECT p.id, p.numero_pedido, p.estado,
                     (SELECT s.numero_guia FROM salidas_almacen s
-                      WHERE s.pedido_id = p.id ORDER BY s.id DESC LIMIT 1) AS numero_guia,
-                    COALESCE((SELECT s.placa FROM salidas_almacen s
-                                WHERE s.pedido_id = p.id AND s.placa IS NOT NULL
-                                  AND s.placa <> '' AND s.placa <> 'N/A'
-                                ORDER BY s.id DESC LIMIT 1), p.vehiculo) AS carro
+                      WHERE s.pedido_id = p.id ORDER BY s.id DESC LIMIT 1) AS numero_guia
                FROM pedidos_venta p
               WHERE p.estado = 'DESPACHADO'
                  OR EXISTS (SELECT 1 FROM pedidos_venta_items i

@@ -169,11 +169,33 @@ describe('GET /api/auditoria/producto-terminado — stock y movimientos', () => 
     expect(select[0]).toMatch(/h\.producto_key = /);
     // Los movimientos de insumos traen articulo_id: no deben colarse.
     expect(select[0]).not.toMatch(/articulo_id/);
+    // Cada filtro va entre paréntesis: sin ellos el OR de la búsqueda
+    // tendría más precedencia que el AND y el resto de filtros se cae.
+    expect(select[0]).toMatch(/\(h\.producto_key IS NOT NULL\)/);
+    expect(select[0]).toMatch(/\(h\.producto_key = \$\d+\)/);
+    expect(select[0]).toMatch(/\(\$\d+ = '' OR LOWER\(h\.producto\)/);
     const escribes = mockQuery.mock.calls.filter(c => /^\s*(INSERT|UPDATE|DELETE)/i.test(String(c[0])));
     expect(escribes).toHaveLength(0);
     // Los cuatro filtros viajan como parámetros, nunca interpolados.
     const params = mockQuery.mock.calls.find(c => String(c[0]).includes('FROM historial_inventario h'))[1];
     expect(params).toEqual(['2026-11-01', '2026-11-30', '%belini%', 'b1_1lt']);
+  });
+
+  test('sin filtros no se manda ningún parámetro de fecha', async () => {
+    responder();
+
+    const res = await invocar('get', '/api/auditoria/producto-terminado', { query: {} });
+
+    expect(res.statusCode).toBe(200);
+    const select = sqlDe('FROM historial_inventario h');
+    expect(select).toHaveLength(1);
+    // Un "$1 IS NULL" sin tramo que le dé tipo hace fallar la consulta en
+    // Postgres de verdad: sin fechas no debe haber parámetro ni comparación.
+    expect(select[0]).not.toMatch(/\$1 IS NULL/);
+    expect(select[0]).not.toMatch(/::timestamp/);
+    const params = mockQuery.mock.calls.find(c => String(c[0]).includes('FROM historial_inventario h'))[1];
+    // Solo la búsqueda (que sí infiere tipo por el literal '').
+    expect(params).toEqual(['%%']);
   });
 
   test('un error de base responde 500 sin romper', async () => {

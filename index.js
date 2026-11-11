@@ -4615,24 +4615,44 @@ app.get('/api/auditoria/historial', gAuditoria, async (req, res) => {
     try {
         const { tipo, desde, hasta, q } = req.query;
         const params = [];
+        // Cada filtro entre paréntesis: se unen con AND y un OR sin cerrar
+        // tendría más precedencia, con lo que el resto de filtros quedaba
+        // colgado (la búsqueda vacía "%%" devolvía todo sin filtrar).
         const filtros = [];
 
-        filtros.push(`$1 = '' OR tipo = $1`);
-        params.push(String(tipo || '').trim());
+        const tipoS = String(tipo || '').trim();
+        if (tipoS) {
+            params.push(tipoS);
+            filtros.push(`(tipo = $${params.length})`);
+        }
 
-        filtros.push(`$2 = '' OR fecha >= $2::timestamp`);
-        params.push(String(desde || '').trim());
-
-        filtros.push(`$3 = '' OR fecha <= ($3::timestamp + interval '1 day')`);
-        params.push(String(hasta || '').trim());
+        // Solo se agrega el parámetro si hay valor: Postgres no infiere el
+        // tipo de un "$1" que solo se usa en comparación y responde
+        // "could not determine data type of parameter $1"; y un ::timestamp
+        // sobre '' revienta con "invalid input syntax for type timestamp".
+        const desdeS = String(desde || '').trim();
+        if (desdeS) {
+            params.push(desdeS);
+            filtros.push(`(fecha >= $${params.length}::timestamp)`);
+        }
+        const hastaS = String(hasta || '').trim();
+        if (hastaS) {
+            params.push(hastaS);
+            filtros.push(`(fecha <= ($${params.length}::timestamp + interval '1 day'))`);
+        }
 
         const busqueda = String(q || '').trim();
-        filtros.push(`$4 = '' OR LOWER(producto) LIKE LOWER($4) OR LOWER(COALESCE(usuario,'')) LIKE LOWER($4) OR LOWER(COALESCE(referencia,'')) LIKE LOWER($4)`);
-        params.push('%' + busqueda + '%');
+        if (busqueda) {
+            params.push('%' + busqueda + '%');
+            filtros.push(`(LOWER(producto) LIKE LOWER($${params.length})`
+                + ` OR LOWER(COALESCE(usuario,'')) LIKE LOWER($${params.length})`
+                + ` OR LOWER(COALESCE(referencia,'')) LIKE LOWER($${params.length}))`);
+        }
 
+        const where = filtros.length ? `WHERE ${filtros.join(' AND ')}` : '';
         const result = await pool.query(`
             SELECT * FROM historial_inventario
-            WHERE ${filtros.join(' AND ')}
+            ${where}
             ORDER BY fecha DESC, id DESC
             LIMIT 500
         `, params);
@@ -4670,24 +4690,37 @@ app.get('/api/auditoria/producto-terminado', gAuditoria, async (req, res) => {
     try {
         const { desde, hasta, q, producto } = req.query;
         const params = [];
-        const filtros = ['h.producto_key IS NOT NULL'];
+        // Cada filtro va entre paréntesis: se unen con AND, y un OR sin
+        // cerrar tendría más precedencia y dejaría el resto de filtros
+        // colgando (la búsqueda "%%" lo dejaba todo en verdadero).
+        const filtros = ['(h.producto_key IS NOT NULL)'];
 
-        // null en vez de cadena vacía: un ::timestamp sobre '' revienta la
-        // consulta si Postgres reordena el OR.
-        params.push(String(desde || '').trim() || null);
-        filtros.push(`$${params.length} IS NULL OR h.fecha >= $${params.length}::timestamp`);
-
-        params.push(String(hasta || '').trim() || null);
-        filtros.push(`$${params.length} IS NULL OR h.fecha <= ($${params.length}::timestamp + interval '1 day')`);
+        // El filtro de fechas se arma solo cuando hay valor: un parámetro
+        // que solo aparece en "$1 IS NULL" no le da Postgres tipo que inferir
+        // y responde "could not determine data type of parameter $1". Sin
+        // valor no hay parámetro, y la consulta queda sin ese tramo.
+        const desdeS = String(desde || '').trim();
+        if (desdeS) {
+            params.push(desdeS);
+            filtros.push(`(h.fecha >= $${params.length}::timestamp)`);
+        }
+        const hastaS = String(hasta || '').trim();
+        if (hastaS) {
+            params.push(hastaS);
+            filtros.push(`(h.fecha <= ($${params.length}::timestamp + interval '1 day'))`);
+        }
 
         const busqueda = String(q || '').trim();
         params.push('%' + busqueda + '%');
-        filtros.push(`$${params.length} = '' OR LOWER(h.producto) LIKE LOWER($${params.length})`
+        filtros.push(`($${params.length} = '' OR LOWER(h.producto) LIKE LOWER($${params.length})`
             + ` OR LOWER(COALESCE(h.usuario, '')) LIKE LOWER($${params.length})`
-            + ` OR LOWER(COALESCE(h.referencia, '')) LIKE LOWER($${params.length})`);
+            + ` OR LOWER(COALESCE(h.referencia, '')) LIKE LOWER($${params.length}))`);
 
-        params.push(String(producto || '').trim() || null);
-        filtros.push(`$${params.length} IS NULL OR h.producto_key = $${params.length}`);
+        const productoS = String(producto || '').trim();
+        if (productoS) {
+            params.push(productoS);
+            filtros.push(`(h.producto_key = $${params.length})`);
+        }
 
         const stock = await pool.query(`
             SELECT producto_key, nombre_producto, stock_cajas, stock_minimo,

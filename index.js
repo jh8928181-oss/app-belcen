@@ -8335,6 +8335,10 @@ app.post('/api/pedidos/crear', gAlmacen, async (req, res) => {
             const qprod = qsol - sPT;
             const nombre = pt.rows.length ? pt.rows[0].nombre_producto : (receta.nombre_producto || linea.producto_key);
             let cobertura = [];
+            // Cajas que alcanza a producir el stock real: manda el insumo más
+            // justo (el cuello de botella). Sin faltantes se toma el pedido
+            // completo.
+            let cajasPosibles = qprod;
             if (qprod > 0) {
                 if (!receta) {
                     await client.query('ROLLBACK');
@@ -8342,8 +8346,10 @@ app.post('/api/pedidos/crear', gAlmacen, async (req, res) => {
                 }
                 const requeridos = await calcularInsumosProduccion(linea.producto_key, qprod, client);
                 cobertura = evaluarCobertura(requeridos, qprod).filter(c => c.obligatorio);
+                const sinStock = cobertura.filter(c => !c.alcanza);
+                if (sinStock.length) cajasPosibles = Math.min(...sinStock.map(c => c.cajas_posibles));
             }
-            evaluadas.push({ ...linea, nombre, stockPT, sPT, qprod, cobertura });
+            evaluadas.push({ ...linea, nombre, stockPT, sPT, qprod, cobertura, cajasPosibles });
         }
 
         const totalSolicitado = evaluadas.reduce((a, e) => a + e.cantidad, 0);
@@ -8351,6 +8357,26 @@ app.post('/api/pedidos/crear', gAlmacen, async (req, res) => {
         const totalProduccion = evaluadas.reduce((a, e) => a + e.qprod, 0);
         const hayFaltantes = evaluadas.some(e => e.cobertura.some(c => !c.alcanza));
         const estado = totalProduccion === 0 ? 'PARA_DESPACHO' : (hayFaltantes ? 'INSUMOS_FALTANTES' : 'EN_PRODUCCION');
+
+        // Aviso de cobertura: qué insumos faltan y cuántas cajas llega a
+        // producir con lo que hay en stock (ej.: piden 1000 y con lo disponible
+        // solo alcanza para 900). Se arma antes del INSERT porque sale de lo
+        // ya evaluado y viaja en la respuesta junto al pedido.
+        const coberturaAviso = evaluadas
+            .filter(e => e.cobertura.some(c => !c.alcanza))
+            .map(e => ({
+                producto_key: e.producto_key,
+                nombre: e.nombre,
+                cajas_solicitadas: e.qprod,
+                cajas_posibles: e.cajasPosibles,
+                faltantes: e.cobertura.filter(c => !c.alcanza).map(c => ({
+                    nombre: c.nombre,
+                    unidad: c.unidad,
+                    requerido: c.solicitado,
+                    disponible: c.disponible,
+                    faltante: Math.max(0, Number(c.solicitado) - Number(c.disponible))
+                }))
+            }));
         const solicitante = String(b.solicitante || '').trim() || usuarioResponsable(req, null);
         const fechaDespacho = b.fecha_despacho ? String(b.fecha_despacho).trim() : null;
         if (fechaDespacho && !/^\d{4}-\d{2}-\d{2}$/.test(fechaDespacho)) {
@@ -8388,9 +8414,21 @@ app.post('/api/pedidos/crear', gAlmacen, async (req, res) => {
         }
         await client.query('COMMIT');
         const [pedido] = await armarPedidoDesdeBase('id = $1', [pedidoId]);
+        let mensaje = `Pedido ${numero} registrado con estado ${estado}.`;
+        if (coberturaAviso.length) {
+            const porLinea = coberturaAviso.map(c => {
+                const falta = c.faltantes
+                    .map(f => `${f.nombre}: ${Number(f.faltante).toLocaleString('es-PE')}${f.unidad ? ' ' + f.unidad : ''}`)
+                    .join(', ');
+                return `con el stock disponible alcanza para producir ${Number(c.cajas_posibles).toLocaleString('es-PE')} de ${Number(c.cajas_solicitadas).toLocaleString('es-PE')} cajas de «${c.nombre}» (falta ${falta})`;
+            });
+            mensaje += ` Faltan insumos: ${porLinea.join('; ')}.`;
+        }
         res.json({
             success: true,
-            mensaje: `Pedido ${numero} registrado con estado ${estado}.`,
+            advertencia: coberturaAviso.length > 0,
+            mensaje,
+            cobertura: coberturaAviso,
             pedido
         });
     } catch (err) {

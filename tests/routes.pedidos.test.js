@@ -286,6 +286,10 @@ describe('POST /api/pedidos/crear evaluación', () => {
     expect(paramsInsumo[3]).toBe('Botella Belini x 1 lt');
     expect(paramsInsumo[4]).toBe(70);
     expect(paramsInsumo[7]).toBe('OK');
+    // Sin faltantes no hay aviso de cobertura.
+    expect(r.cuerpo.advertencia).toBe(false);
+    expect(r.cuerpo.cobertura).toEqual([]);
+    expect(r.cuerpo.mensaje).not.toMatch(/Faltan insumos/);
   });
 
   test('insumos insuficientes: INSUMOS_FALTANTES con el faltante exacto', async () => {
@@ -315,6 +319,47 @@ describe('POST /api/pedidos/crear evaluación', () => {
     expect(paramsInsumo[5]).toBe(10);   // disponible
     expect(paramsInsumo[6]).toBe(60);   // faltante
     expect(paramsInsumo[7]).toBe('FALTANTE');
+    // El aviso dice cuántas cajas alcanza a producir el stock disponible:
+    // hay 10 botellas y la receta lleva 1 por caja, sobre 70 cajas a producir.
+    expect(r.cuerpo.advertencia).toBe(true);
+    expect(r.cuerpo.mensaje).toMatch(/Faltan insumos/);
+    expect(r.cuerpo.mensaje).toMatch(/alcanza para producir 10 de 70 cajas de «Aceite Belini 1 Lt»/);
+    expect(r.cuerpo.cobertura).toHaveLength(1);
+    expect(r.cuerpo.cobertura[0].cajas_solicitadas).toBe(70);
+    expect(r.cuerpo.cobertura[0].cajas_posibles).toBe(10);
+    expect(r.cuerpo.cobertura[0].faltantes[0].nombre).toBe('Botella Belini x 1 lt');
+    expect(r.cuerpo.cobertura[0].faltantes[0].faltante).toBe(60);
+  });
+
+  test('el cuello de botella manda: con dos insumos se toma el mínimo de cajas posibles', async () => {
+    const { base, insumos } = recetaCon(100);            // botellas: alcanzan 100 cajas
+    insumos.push({
+      ...insumos[0],
+      id: 12, insumo_id: 202, nombre_inventario: 'Tapa Belini', categoria_inventario: 'TAPAS',
+      stock_actual: 65                                    // tapas: solo alcanzan 65 cajas
+    });
+    responder([
+      [SQL.ptItem, filas({ producto_key: 'belini_1lt', nombre_producto: 'Aceite Belini 1 Lt', stock_cajas: 0 })],
+      [SQL.recetaVigente, filas(base)],
+      [SQL.recetaPorId, filas(base)],
+      [SQL.recetaInsumos, filas(...insumos)],
+      [SQL.insertPedido, filas({ id: 44 })],
+      [SQL.listaPedidos, filas({
+        id: 44, numero_pedido: 'PED-2026-0044', estado: 'INSUMOS_FALTANTES',
+        total_solicitado: 100, total_despacho: 0, total_produccion: 100
+      })],
+      [SQL.listaItemsAny, filas()],
+      [SQL.listaFaltantes, filas()]
+    ]);
+    const r = await invocar('post', '/api/pedidos/crear', {
+      body: crearCuerpo({ items: [{ producto_key: 'belini_1lt', cantidad: 100 }] })
+    });
+    expect(r.statusCode).toBe(200);
+    expect(r.cuerpo.advertencia).toBe(true);
+    expect(r.cuerpo.cobertura).toHaveLength(1);
+    expect(r.cuerpo.cobertura[0].cajas_posibles).toBe(65);   // min(100 botellas, 65 tapas)
+    expect(r.cuerpo.cobertura[0].faltantes.map(f => f.nombre)).toEqual(['Tapa Belini']);
+    expect(r.cuerpo.mensaje).toMatch(/alcanza para producir 65 de 100 cajas/);
   });
 });
 

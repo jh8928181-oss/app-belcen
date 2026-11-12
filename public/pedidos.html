@@ -553,9 +553,11 @@
                 });
                 const data = await res.json();
                 if (!res.ok || !data.success) { aviso(data.mensaje || 'No se pudo registrar el pedido.', false); return; }
-                aviso(data.mensaje, true);
+                // Si faltan insumos, el aviso sale en rojo aunque el pedido se
+                // haya registrado: es una alerta de stock, no un éxito simple.
+                aviso(data.mensaje, !data.advertencia);
                 ultimoPedidoId = data.pedido.id;
-                renderResultado(data.pedido);
+                renderResultado(data.pedido, data.cobertura);
             } catch (e) {
                 aviso('Sin conexión con el servidor.', false);
             } finally {
@@ -563,7 +565,7 @@
             }
         }
 
-        function renderResultado(pedido) {
+        function renderResultado(pedido, cobertura) {
             const cont = document.getElementById('resultadoPedido');
             cont.classList.remove('oculto');
             const badge = ESTADOS_BADGE[pedido.estado] || ['b-gris', pedido.estado];
@@ -577,13 +579,30 @@
             </tr>`).join('');
             html += `</tbody></table>`;
             html += `<p class="mini-info">Totales: <b>${pedido.total_solicitado}</b> solicitado · <b>${pedido.total_despacho}</b> listos en almacén · <b>${pedido.total_produccion}</b> a producir.</p>`;
-            const ins = (pedido.insumos_faltantes || []);
-            if (ins.length) {
-                html += '<p style="margin:10px 0 4px;"><b style="color:#d6362b;">Insumos que impiden la producción:</b></p><ul class="faltantes-lista">';
-                html += ins.map(i => `<li>${esc(i.nombre_insumo)}: faltan ${Number(i.faltante).toLocaleString('es-PE')}</li>`).join('');
+            const num = n => Number(n).toLocaleString('es-PE');
+            // Cobertura calculada al crear: cuántas cajas da el stock y qué
+            // insumo es el que manda (el cuello de botella).
+            const cob = Array.isArray(cobertura) ? cobertura : [];
+            if (cob.length) {
+                html += '<p style="margin:10px 0 4px;"><b style="color:#d6362b;">Faltan insumos — producción limitada por stock:</b></p><ul class="faltantes-lista">';
+                html += cob.map(c => {
+                    const falta = (c.faltantes || [])
+                        .map(f => `${esc(f.nombre)}: ${num(f.faltante)}${f.unidad ? ' ' + esc(String(f.unidad).toLowerCase()) : ''}`)
+                        .join(', ');
+                    return `<li><b>${esc(c.nombre)}</b>: alcanza para <b>${num(c.cajas_posibles)}</b> de <b>${num(c.cajas_solicitadas)}</b> cajas` +
+                        (falta ? `<br><span class="mini-info" style="color:#d6362b;">Falta: ${falta}</span>` : '') +
+                        '</li>';
+                }).join('');
                 html += '</ul>';
-            } else if (Number(pedido.total_produccion) > 0) {
-                html += '<p class="mini-info" style="color:#248a3d;">Insumos verificados: la producción puede avanzar.</p>';
+            } else {
+                const ins = (pedido.insumos_faltantes || []);
+                if (ins.length) {
+                    html += '<p style="margin:10px 0 4px;"><b style="color:#d6362b;">Insumos que impiden la producción:</b></p><ul class="faltantes-lista">';
+                    html += ins.map(i => `<li>${esc(i.nombre_insumo)}: faltan ${Number(i.faltante).toLocaleString('es-PE')}</li>`).join('');
+                    html += '</ul>';
+                } else if (Number(pedido.total_produccion) > 0) {
+                    html += '<p class="mini-info" style="color:#248a3d;">Insumos verificados: la producción puede avanzar.</p>';
+                }
             }
             document.getElementById('resumenPedido').innerHTML = html;
         }

@@ -429,6 +429,14 @@ describe('POST /api/pedidos/atender-produccion', () => {
       .map(c => String(c[0]))
       .filter(s => /UPDATE pedidos_venta_items SET cantidad_producida/.test(s));
     expect(updates).toHaveLength(2);
+    // Cada caja cubierta sube tambien cantidad_despacho: ya esta en almacén
+    // y pasa a ser despachable (el despacho resta de esa columna).
+    updates.forEach(u => expect(u).toContain('cantidad_despacho = cantidad_despacho + $1'));
+    // Cubierto todo lo pedido, el pedido sale de EN_PRODUCCION: queda PRODUCIDO.
+    const estados = mockQuery.mock.calls
+      .map(c => [String(c[0]), c[1]])
+      .filter(([s]) => SQL.updateEstado.test(s));
+    expect(estados.map(e => e[1])).toEqual([['PRODUCIDO', 5], ['PRODUCIDO', 8]]);
     expect(transacciones()).toEqual(['BEGIN', 'COMMIT']);
   });
 
@@ -474,6 +482,55 @@ describe('GET /api/pedidos/despachados — pedidos completados', () => {
     expect(r.statusCode).toBe(200);
     expect(r.cuerpo.pedidos).toEqual([]);
     expect(sentencias().filter(s => SQL.despachadosItems.test(s))).toHaveLength(0);
+    expect(transacciones()).toHaveLength(0);
+  });
+});
+
+describe('GET /api/pedidos/lista-despacho — lista de almacén', () => {
+  const cabecera = /SELECT p\.id, p\.numero_pedido, p\.estado, p\.solicitante, p\.fecha_despacho/;
+  const renglones = /SELECT pedido_id, producto_key, nombre_producto, cantidad_despacho, cantidad_despachada\s+FROM pedidos_venta_items/;
+
+  test('separa por cliente y fecha de despacho, con las cajas que faltan salir', async () => {
+    responder([
+      [cabecera, filas(
+        { id: 6, numero_pedido: 'PED-2026-0006', estado: 'PRODUCIDO', solicitante: 'admin1', fecha_despacho: new Date('2026-11-10T00:00:00Z'), tipo_destino: 'TIENDA', direccion: null, numero_guia: null },
+        { id: 7, numero_pedido: 'PED-2026-0007', estado: 'EN_PRODUCCION', solicitante: 'admin1', fecha_despacho: new Date('2026-11-10T00:00:00Z'), tipo_destino: 'REPARTO', direccion: 'Av. Principal 123', numero_guia: 'G-001' },
+        { id: 8, numero_pedido: 'PED-2026-0008', estado: 'PARA_DESPACHO', solicitante: 'vendedor2', fecha_despacho: new Date('2026-11-12T00:00:00Z'), tipo_destino: 'TIENDA', direccion: null, numero_guia: null }
+      )],
+      [renglones, filas(
+        { pedido_id: 6, producto_key: 'donlalo_800ml', nombre_producto: 'Don Lalo 800 ml', cantidad_despacho: 800, cantidad_despachada: 0 },
+        { pedido_id: 7, producto_key: 'belini_1lt', nombre_producto: 'Belini 1 Lt', cantidad_despacho: 50, cantidad_despachada: 20 },
+        { pedido_id: 8, producto_key: 'belini_1lt', nombre_producto: 'Belini 1 Lt', cantidad_despacho: 10, cantidad_despachada: 0 }
+      )]
+    ]);
+    const r = await invocar('get', '/api/pedidos/lista-despacho');
+    expect(r.statusCode).toBe(200);
+    expect(r.cuerpo.success).toBe(true);
+    // Dos grupos: admin1 con fecha 10/11 (2 pedidos) y vendedor2 con 12/11.
+    expect(r.cuerpo.grupos).toHaveLength(2);
+    const g1 = r.cuerpo.grupos[0];
+    expect(g1).toMatchObject({ cliente: 'admin1', fecha_despacho: '2026-11-10' });
+    expect(g1.pedidos.map(p => p.numero_pedido)).toEqual(['PED-2026-0006', 'PED-2026-0007']);
+    // Por despachar = cantidad_despacho - cantidad_despachada.
+    expect(g1.pedidos[0].cajas).toBe(800);
+    expect(g1.pedidos[0].items[0].pendiente).toBe(800);
+    expect(g1.pedidos[1].cajas).toBe(30);
+    expect(g1.cajas).toBe(830);
+    expect(r.cuerpo.grupos[1]).toMatchObject({ cliente: 'vendedor2', fecha_despacho: '2026-11-12', cajas: 10 });
+    expect(r.cuerpo.total_pedidos).toBe(3);
+    expect(r.cuerpo.total_cajas).toBe(840);
+    // Es lectura pura.
+    expect(transacciones()).toHaveLength(0);
+    expect(sentencias().filter(s => /INSERT|UPDATE|DELETE/i.test(s))).toHaveLength(0);
+  });
+
+  test('sin pedidos por despachar la lista sale vacía, sin renglones', async () => {
+    responder([[cabecera, filas()]]);
+    const r = await invocar('get', '/api/pedidos/lista-despacho');
+    expect(r.statusCode).toBe(200);
+    expect(r.cuerpo.grupos).toEqual([]);
+    expect(r.cuerpo.total_cajas).toBe(0);
+    expect(sentencias().filter(s => renglones.test(s))).toHaveLength(0);
     expect(transacciones()).toHaveLength(0);
   });
 });

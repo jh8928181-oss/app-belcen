@@ -402,6 +402,28 @@
                 <span>TOTAL CAJAS POR PRODUCIR:</span>
                 <span id="totalCajasProducir">0</span>
             </div>
+
+            <h3 class="h3-purp" style="margin-top:22px;">✅ PEDIDOS CUMPLIDOS (YA PRODUCIDOS)</h3>
+            <p style="color: var(--texto2); font-size: 13px; margin-bottom: 12px;">
+                La producción cubrió todo lo pedido: esas cajas están en almacén y siguen en la lista de despacho de almacén hasta que salgan con guía.
+                Desaparecen del cuadro de arriba porque ya no queda nada por elaborar.
+            </p>
+            <div class="tabla-wrap tabla-card-movil">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>N° PEDIDO</th>
+                            <th>CLIENTE</th>
+                            <th>PRODUCTO</th>
+                            <th class="text-center">CAJAS PRODUCIDAS</th>
+                            <th>FECHA DESPACHO</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaPedidosCumplidos">
+                        <tr><td colspan="5" class="text-center">Cargando pedidos...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <!-- PIE COMÚN -->
@@ -612,6 +634,33 @@
                 document.getElementById('totalCajasProducir').textContent = total.toLocaleString('es-PE');
             } catch (e) {
                 tb.innerHTML = '<tr><td colspan="3" class="text-center">Sin conexión.</td></tr>';
+            }
+            cargarPedidosCumplidos();
+        }
+
+        // Pedidos que la producción ya cubrió: salen del cuadro de arriba (no
+        // queda nada por elaborar) y quedan acá como cumplidos, esperando que
+        // almacén los saque con guía. Mismo dato que Pedidos muestra como
+        // PRODUCIDO, con cliente y fecha de despacho.
+        async function cargarPedidosCumplidos() {
+            const tb = document.getElementById('tablaPedidosCumplidos');
+            if (!tb) return;
+            try {
+                const res = await fetch('/api/pedidos/despachados');
+                const data = await res.json();
+                const lista = ((data && data.pedidos) || []).filter(p => p.estado === 'PRODUCIDO');
+                const esc = (s) => String(s == null ? '' : s).replace(/</g, '&lt;');
+                tb.innerHTML = lista.length
+                    ? lista.map(p => `<tr>
+                        <td><b>${esc(p.numero_pedido || 'S/N')}</b></td>
+                        <td>${esc(p.solicitante || '—')}</td>
+                        <td>${esc((p.items || []).map(i => i.nombre_producto).filter(Boolean).join(' · ') || '—')}</td>
+                        <td class="text-center"><b>${Number(p.total_produccion) || 0}</b></td>
+                        <td>${esc(String(p.fecha_despacho || '').substring(0, 10) || '—')}</td>
+                    </tr>`).join('')
+                    : '<tr><td colspan="5" class="text-center">Sin pedidos cumplidos todavía.</td></tr>';
+            } catch (e) {
+                tb.innerHTML = '<tr><td colspan="5" class="text-center">Sin conexión.</td></tr>';
             }
         }
 

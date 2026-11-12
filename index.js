@@ -4896,6 +4896,8 @@ async function aplicarMovimientosProduccion(client, req, { producto_tipo, presen
     // contra un reporte de soplado o una guía de ingreso.
     const desglose = [];
     const pendientes = [];
+    // Pedidos que esperan este producto: se rellena al sumar cajas de PT.
+    let atencion = { atendidos: [], sin_destino: 0 };
     for (const insumo of obligatorios) {
         const fila = stockPorId.get(insumo.insumo_id);
         const stockActual = fila ? Number(fila.stock || 0) : 0;
@@ -4960,9 +4962,14 @@ async function aplicarMovimientosProduccion(client, req, { producto_tipo, presen
             usuario: usuarioResponsable(req, usuario),
             referencia: 'Producción de ' + cajas + ' cajas - ' + presentacion
         });
+        // Aviso a Pedidos: esas cajas cubren los pedidos que esperan este
+        // producto (cantidad_producida) y quedan en almacén para despachar
+        // (cantidad_despacho). Sin esto el pedido nunca sale de EN_PRODUCCION.
+        // Va aparte del desglose: ese JSON es el detalle de insumos del reporte.
+        atencion = await atenderProduccionAPedidos(client, producto_tipo, cajas);
     }
 
-    return { desglose, pendientes };
+    return { desglose, pendientes, atencion };
 }
 
 app.post('/api/produccion/reporte', gProduccion, async (req, res) => {
@@ -8170,8 +8177,16 @@ app.get('/api/refinado/historial', requerirRolRefinado, async (req, res) => {
 
 const TIPOS_DESTINO = ['TIENDA', 'REPARTO', 'PROVINCIA'];
 
-/** Estado del pedido tras despachar/atender producción: DESPACHADO solo si ya no queda nada. */
+/**
+ * Estado del pedido tras despachar o atender producción. Tres estados:
+ *   EN_PRODUCCION → PRODUCIDO (Envasado cubrió todo lo pedido: cajas en almacén)
+ *   PRODUCIDO → DESPACHADO (salió con guía: despachada >= total_despacho + total_produccion).
+ * total_despacho solo cuenta lo que ya estaba en almacén al crear; lo producido
+ * se suma a cantidad_despacho de cada línea, así que el total que debe salir es
+ * la suma de ambos. CANCELADO nunca se toca.
+ */
 async function reevaluarEstadoPedido(client, pedidoId, estadoActual) {
+    if (estadoActual === 'CANCELADO') return estadoActual;
     const t = await client.query(
         `SELECT total_despacho, total_produccion,
                 (SELECT COALESCE(SUM(cantidad_despachada), 0) FROM pedidos_venta_items WHERE pedido_id = $1) AS despachada,
@@ -8181,15 +8196,60 @@ async function reevaluarEstadoPedido(client, pedidoId, estadoActual) {
     );
     if (!t.rows.length) return estadoActual;
     const r = t.rows[0];
-    const despachoOk = Number(r.despachada) >= Number(r.total_despacho);
-    const produccionOk = Number(r.total_produccion) === 0 || Number(r.producida) >= Number(r.total_produccion);
-    let nuevo = estadoActual;
-    if (despachoOk && produccionOk) nuevo = 'DESPACHADO';
-    else if (estadoActual !== 'INSUMOS_FALTANTES' && Number(r.total_produccion) > 0) nuevo = 'EN_PRODUCCION';
+    const despachada = Number(r.despachada) || 0;
+    const totalDespacho = Number(r.total_despacho) || 0;
+    const totalProduccion = Number(r.total_produccion) || 0;
+    const producida = Number(r.producida) || 0;
+    let nuevo;
+    if (despachada >= totalDespacho + totalProduccion) nuevo = 'DESPACHADO';
+    else if (totalProduccion > 0 && producida >= totalProduccion) nuevo = 'PRODUCIDO';
+    else if (totalProduccion === 0) nuevo = 'PARA_DESPACHO';
+    else nuevo = estadoActual === 'INSUMOS_FALTANTES' ? 'INSUMOS_FALTANTES' : 'EN_PRODUCCION';
     if (nuevo !== estadoActual) {
         await client.query('UPDATE pedidos_venta SET estado = $1 WHERE id = $2', [nuevo, pedidoId]);
     }
     return nuevo;
+}
+
+/**
+ * Reparte cajas recién producidas contra los pedidos que las esperan, en orden
+ * de llegada. Cada caja cubierta se anota en cantidad_producida Y en
+ * cantidad_despacho de la misma línea: esas cajas ya están en almacén y pasan a
+ * ser despachables (el despacho usa cantidad_despacho - cantidad_despachada).
+ * Corre dentro de la transacción del llamador: no abre ni cierra nada.
+ * @returns {{atendidos: {numero_pedido: string, cajas: number}[], sin_destino: number}}
+ */
+async function atenderProduccionAPedidos(client, productoKey, cajas) {
+    const filas = (await client.query(
+        `SELECT i.id, i.pedido_id, i.cantidad_produccion, i.cantidad_producida, p.numero_pedido, p.estado
+           FROM pedidos_venta_items i
+           JOIN pedidos_venta p ON p.id = i.pedido_id
+          WHERE i.producto_key = $1
+            AND p.estado IN ('EN_PRODUCCION', 'INSUMOS_FALTANTES')
+            AND i.cantidad_produccion > i.cantidad_producida
+          ORDER BY p.id
+          FOR UPDATE OF i`,
+        [productoKey]
+    )).rows;
+    let resto = cajas;
+    const atendidos = [];
+    const pedidosTocados = new Map();
+    for (const fila of filas) {
+        if (resto <= 0) break;
+        const pendiente = Number(fila.cantidad_produccion) - Number(fila.cantidad_producida);
+        const cubrir = Math.min(resto, pendiente);
+        await client.query(
+            'UPDATE pedidos_venta_items SET cantidad_producida = cantidad_producida + $1, cantidad_despacho = cantidad_despacho + $1 WHERE id = $2',
+            [cubrir, fila.id]
+        );
+        resto -= cubrir;
+        atendidos.push({ numero_pedido: fila.numero_pedido, cajas: cubrir });
+        pedidosTocados.set(fila.pedido_id, fila.estado);
+    }
+    for (const [pedidoId, estado] of pedidosTocados) {
+        await reevaluarEstadoPedido(client, pedidoId, estado);
+    }
+    return { atendidos, sin_destino: resto };
 }
 
 async function armarPedidoDesdeBase(filtroSql, params) {
@@ -8433,16 +8493,9 @@ const despachados = [];
                 'UPDATE pedidos_venta_items SET cantidad_despachada = cantidad_despachada + $1 WHERE id = $2',
                 [restante, item.id]
             );
-            // Al despachar, las cajas salen de producción: completamos la producción
-            // del mismo ítem (no puede despacharse más de lo producido).
-            const pendienteProd = Number(item.cantidad_produccion) - Number(item.cantidad_producida);
-            const cubrirProd = Math.min(restante, pendienteProd);
-            if (cubrirProd > 0) {
-                await client.query(
-                    'UPDATE pedidos_venta_items SET cantidad_producida = cantidad_producida + $1 WHERE id = $2',
-                    [cubrirProd, item.id]
-                );
-            }
+            // No se toca cantidad_producida al despachar: la producción se
+            // anota al cerrar el reporte de envasado (atenderProduccionAPedidos).
+            // Contarla también aquí duplicaría las cajas atendidas al pedido.
             await registrarHistorial(client, {
                 tipo: 'SALIDA',
                 origen: 'pedido_venta',
@@ -8557,35 +8610,120 @@ app.get('/api/pedidos/consolidado-produccion', async (req, res) => {
     }
 });
 
-// Pedidos completados: la pestaña Producción lista sola lo que almacén ya
-// despachó (pedido, producto, cantidad y guía salen de la salida
-// registrada). Incluye los pedidos despachados a medias, que también deben
-// mostrarse en cuanto almacén registró movimiento.
+// Pedidos completados: la pestaña Producción lista solo lo que ya cumplió —
+// PRODUCIDO (Envasado cubrió todo lo pedido, cajas en almacén) o DESPACHADO
+// (salió con guía), más los despachados a medias. Trae cliente y fecha de
+// despacho para que Pedidos y la lista de despacho de almacén hablen igual.
 app.get('/api/pedidos/despachados', async (req, res) => {
     try {
         const cab = await pool.query(
-            `SELECT p.id, p.numero_pedido, p.estado,
+            `SELECT p.id, p.numero_pedido, p.estado, p.solicitante, p.fecha_despacho,
+                    p.tipo_destino, p.total_solicitado, p.total_despacho, p.total_produccion,
                     (SELECT s.numero_guia FROM salidas_almacen s
                       WHERE s.pedido_id = p.id ORDER BY s.id DESC LIMIT 1) AS numero_guia
                FROM pedidos_venta p
-              WHERE p.estado = 'DESPACHADO'
+              WHERE p.estado IN ('DESPACHADO', 'PRODUCIDO')
                  OR EXISTS (SELECT 1 FROM pedidos_venta_items i
                              WHERE i.pedido_id = p.id AND i.cantidad_despachada > 0)
               ORDER BY p.id DESC
               LIMIT 50`
         );
         const ids = cab.rows.map(r => r.id);
+        // Los PRODUCIDO aún no despachan una caja, pero sus ítems deben salir
+        // igual: sin ellos no se ve qué producto cubrió la producción.
         const items = ids.length
             ? (await pool.query(
                 `SELECT pedido_id, nombre_producto, cantidad_despachada
                    FROM pedidos_venta_items
-                  WHERE pedido_id = ANY($1::int[]) AND cantidad_despachada > 0
+                  WHERE pedido_id = ANY($1::int[])
+                    AND (cantidad_despachada > 0 OR EXISTS (SELECT 1 FROM pedidos_venta p2 WHERE p2.id = pedido_id AND p2.estado = 'PRODUCIDO'))
                   ORDER BY id`, [ids])).rows
             : [];
         const porPedido = new Map();
         cab.rows.forEach(p => porPedido.set(p.id, { ...p, items: [] }));
         items.forEach(i => { const p = porPedido.get(i.pedido_id); if (p) p.items.push(i); });
         res.json({ success: true, pedidos: Array.from(porPedido.values()) });
+    } catch (err) {
+        res.status(500).json({ success: false, mensaje: err.message });
+    }
+});
+
+// Lista de despacho de almacén: lo que todavía puede salir de la bodega,
+// agrupado por cliente (pedido para quién) y fecha de despacho. Va ANTES de
+// /:id, o Express lo captura como id y responde 400.
+app.get('/api/pedidos/lista-despacho', async (req, res) => {
+    try {
+        const cab = await pool.query(
+            `SELECT p.id, p.numero_pedido, p.estado, p.solicitante, p.fecha_despacho,
+                    p.tipo_destino, p.direccion,
+                    (SELECT s.numero_guia FROM salidas_almacen s
+                      WHERE s.pedido_id = p.id ORDER BY s.id DESC LIMIT 1) AS numero_guia
+               FROM pedidos_venta p
+              WHERE p.estado <> 'CANCELADO'
+                AND EXISTS (SELECT 1 FROM pedidos_venta_items i
+                             WHERE i.pedido_id = p.id AND i.cantidad_despacho > i.cantidad_despachada)
+              ORDER BY COALESCE(NULLIF(TRIM(p.solicitante), ''), 'SIN CLIENTE'),
+                       p.fecha_despacho NULLS LAST,
+                       p.id`
+        );
+        const ids = cab.rows.map(r => r.id);
+        const items = ids.length
+            ? (await pool.query(
+                `SELECT pedido_id, producto_key, nombre_producto, cantidad_despacho, cantidad_despachada
+                   FROM pedidos_venta_items
+                  WHERE pedido_id = ANY($1::int[])
+                  ORDER BY id`, [ids])).rows
+            : [];
+        const porPedido = new Map();
+        items.forEach(i => {
+            const pendiente = Number(i.cantidad_despacho) - Number(i.cantidad_despachada);
+            if (pendiente <= 0) return;
+            if (!porPedido.has(i.pedido_id)) porPedido.set(i.pedido_id, []);
+            porPedido.get(i.pedido_id).push({ ...i, pendiente });
+        });
+        // fecha_despacho llega como Date de pg: en UTC sigue siendo el mismo
+        // día (Lima es UTC-5), así que sirve tanto para agrupar como para pintar.
+        const diaDe = (v) => {
+            if (!v) return '';
+            if (v instanceof Date) return isNaN(v.getTime()) ? '' : v.toISOString().slice(0, 10);
+            const s = String(v);
+            return s.length >= 10 ? s.slice(0, 10) : '';
+        };
+        const grupos = [];
+        const porGrupo = new Map();
+        let totalCajas = 0;
+        for (const p of cab.rows) {
+            const lineas = porPedido.get(p.id) || [];
+            if (!lineas.length) continue;
+            const cliente = String(p.solicitante || '').trim() || 'SIN CLIENTE';
+            const dia = diaDe(p.fecha_despacho);
+            const clave = cliente + '§' + dia;
+            if (!porGrupo.has(clave)) {
+                porGrupo.set(clave, { cliente, fecha_despacho: dia || null, pedidos: [], cajas: 0 });
+                grupos.push(porGrupo.get(clave));
+            }
+            const g = porGrupo.get(clave);
+            const cajas = lineas.reduce((a, l) => a + l.pendiente, 0);
+            g.pedidos.push({
+                id: p.id,
+                numero_pedido: p.numero_pedido,
+                estado: p.estado,
+                tipo_destino: p.tipo_destino,
+                direccion: p.direccion,
+                numero_guia: p.numero_guia,
+                fecha_despacho: dia || null,
+                cajas,
+                items: lineas
+            });
+            g.cajas += cajas;
+            totalCajas += cajas;
+        }
+        res.json({
+            success: true,
+            grupos,
+            total_pedidos: grupos.reduce((a, g) => a + g.pedidos.length, 0),
+            total_cajas: totalCajas
+        });
     } catch (err) {
         res.status(500).json({ success: false, mensaje: err.message });
     }
@@ -8614,43 +8752,15 @@ app.post('/api/pedidos/atender-produccion', gEnvasado, async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        const filas = (await client.query(
-            `SELECT i.id, i.pedido_id, i.cantidad_produccion, i.cantidad_producida, p.numero_pedido, p.estado
-               FROM pedidos_venta_items i
-               JOIN pedidos_venta p ON p.id = i.pedido_id
-              WHERE i.producto_key = $1
-                AND p.estado IN ('EN_PRODUCCION', 'INSUMOS_FALTANTES')
-                AND i.cantidad_produccion > i.cantidad_producida
-              ORDER BY p.id
-              FOR UPDATE OF i`,
-            [producto_key]
-        )).rows;
-        let resto = cajas;
-        const atendidos = [];
-        const pedidosTocados = new Map();
-        for (const fila of filas) {
-            if (resto <= 0) break;
-            const pendiente = Number(fila.cantidad_produccion) - Number(fila.cantidad_producida);
-            const cubrir = Math.min(resto, pendiente);
-            await client.query(
-                'UPDATE pedidos_venta_items SET cantidad_producida = cantidad_producida + $1 WHERE id = $2',
-                [cubrir, fila.id]
-            );
-            resto -= cubrir;
-            atendidos.push({ numero_pedido: fila.numero_pedido, cajas: cubrir });
-            pedidosTocados.set(fila.pedido_id, fila.estado);
-        }
-        for (const [pedidoId, estado] of pedidosTocados) {
-            await reevaluarEstadoPedido(client, pedidoId, estado);
-        }
+        const { atendidos, sin_destino } = await atenderProduccionAPedidos(client, producto_key, cajas);
         await client.query('COMMIT');
         res.json({
             success: true,
-            mensaje: resto > 0
-                ? `Se atendieron ${cajas - resto} de ${cajas} cajas; ${resto} no tienen pedido pendiente.`
+            mensaje: sin_destino > 0
+                ? `Se atendieron ${cajas - sin_destino} de ${cajas} cajas; ${sin_destino} no tienen pedido pendiente.`
                 : `${cajas} cajas atendidas contra pedidos pendientes.`,
             atendidos,
-            sin_destino: resto
+            sin_destino
         });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});

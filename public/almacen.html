@@ -913,7 +913,7 @@
     <!-- Botón compacto para abrir/cerrar el historial: no ocupa fila de más
          y queda siempre visible arriba del formulario. -->
     <div class="barra-historial-salidas">
-        <button type="button" class="btn-ver-pedidos" onclick="abrirVerPedidos()">📑 Ver pedidos</button>
+        <button type="button" class="btn-ver-pedidos" onclick="abrirVerPedidos()">🚚 Lista de despacho</button>
         <button type="button" id="btnToggleHistorial" class="btn-ver-historial" onclick="alternarHistorialSalidas()">
             📜 Historial de Salidas <span class="flecha">▸</span>
         </button>
@@ -1313,31 +1313,20 @@
         </div>
     </div>
 
-    <!-- ============ DRAWER: VER PEDIDOS ============ -->
+    <!-- ============ DRAWER: LISTA DE DESPACHO ============ -->
     <div id="drawerOverlay" class="drawer-overlay" style="display:none;" onclick="cerrarVerPedidos()"></div>
     <aside id="panelVerPedidos" class="drawer" style="display:none;">
         <div class="drawer-cab">
             <div>
-                <h3>📑 Pedidos realizados</h3>
-                <div class="sub">Fecha de emisión, fecha a despachar, producto, cantidad, placa y chofer. Usa el PDF para imprimir la orden de pedido.</div>
+                <h3>🚚 Lista de despacho</h3>
+                <div class="sub">Lo que almacén tiene que sacar, separado por cliente (pedido para quién) y fecha de despacho. La guía se registra al hacer la salida; el PDF imprime la orden de pedido.</div>
             </div>
             <button type="button" class="drawer-cerrar" onclick="cerrarVerPedidos()" title="Cerrar">✖</button>
         </div>
         <div class="drawer-filtros">
             <div class="campo">
                 <label for="vpBuscar">Buscar</label>
-                <input type="text" id="vpBuscar" placeholder="N° de orden, producto, placa, chofer, solicitante..." oninput="renderVerPedidos()" style="max-width:none;">
-            </div>
-            <div class="campo">
-                <label for="vpEstado">Estado</label>
-                <select id="vpEstado" onchange="renderVerPedidos()" style="max-width:none;">
-                    <option value="">Todos</option>
-                    <option value="PARA_DESPACHO">Para despacho</option>
-                    <option value="EN_PRODUCCION">En producción</option>
-                    <option value="INSUMOS_FALTANTES">Insumos faltantes</option>
-                    <option value="DESPACHADO">Despachado</option>
-                    <option value="CANCELADO">Cancelado</option>
-                </select>
+                <input type="text" id="vpBuscar" placeholder="Cliente, N° de orden, producto..." oninput="renderVerPedidos()" style="max-width:none;">
             </div>
             <div class="campo campo-ajuste">
                 <label>&nbsp;</label>
@@ -1350,18 +1339,15 @@
                     <thead>
                         <tr>
                             <th>N° Orden</th>
-                            <th>Fecha emitida</th>
-                            <th>Fecha a despachar</th>
                             <th>Producto</th>
-                            <th class="text-center">Cantidad</th>
-                            <th>Placa</th>
-                            <th>Chofer</th>
+                            <th class="text-center">Por despachar</th>
                             <th>Estado</th>
+                            <th>Guía</th>
                             <th class="text-center">PDF</th>
                         </tr>
                     </thead>
                     <tbody id="tbVerPedidos">
-                        <tr><td colspan="9" class="text-center">Cargando pedidos...</td></tr>
+                        <tr><td colspan="6" class="text-center">Cargando pedidos...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -3486,7 +3472,7 @@
                 if (!sel) return;
                 const actual = sel.value;
                 pedidosSalidaCache = (data.pedidos || []).filter(p =>
-                    ['PARA_DESPACHO', 'EN_PRODUCCION', 'INSUMOS_FALTANTES'].indexOf(p.estado) !== -1 && pendientesDePedido(p) > 0
+                    ['PARA_DESPACHO', 'EN_PRODUCCION', 'INSUMOS_FALTANTES', 'PRODUCIDO'].indexOf(p.estado) !== -1 && pendientesDePedido(p) > 0
                 );
                 sel.innerHTML = '<option value="">-- Salida libre (sin pedido) --</option>' +
                     pedidosSalidaCache.map(p =>
@@ -3527,19 +3513,19 @@
             } catch (e) { alert('Sin conexión con el servidor.'); }
         }
 
-        // ---- Drawer "Ver pedidos": consulta general con PDF de la orden ----
-        // Mismo endpoint que el select de órdenes (/api/pedidos), pero sin el
-        // filtro de pendientes: aquí se ve todo, incluidos despachados y
-        // cancelados, con fecha de emisión, fecha a despachar, producto,
-        // cantidad, placa, chofer y el PDF de la orden de pedido.
+        // ---- Drawer "Lista de despacho": lo que almacén tiene que sacar ----
+        // Endpoint propio (/api/pedidos/lista-despacho): solo pedidos con cajas
+        // por despachar, agrupados por cliente (pedido para quién) y fecha de
+        // despacho, con la guía que ya tenga registrada y el PDF de la orden.
         const VP_ESTADOS_BADGE = {
             PARA_DESPACHO: ['rgba(52,199,89,0.16)', '#1e8e3e', 'PARA DESPACHO'],
             EN_PRODUCCION: ['rgba(10,132,255,0.15)', '#0a6ea8', 'EN PRODUCCIÓN'],
             INSUMOS_FALTANTES: ['rgba(255,59,48,0.14)', '#c0281e', 'INSUMOS FALTANTES'],
+            PRODUCIDO: ['rgba(255,149,0,0.16)', '#b25600', 'PRODUCIDO'],
             DESPACHADO: ['rgba(52,199,89,0.16)', '#1e8e3e', 'DESPACHADO'],
             CANCELADO: ['rgba(120,120,128,0.18)', '#495057', 'CANCELADO']
         };
-        let vpPedidosCache = [];
+        let vpGruposCache = [];
 
         function vpEsc(s) {
             return String(s == null ? '' : s)
@@ -3571,15 +3557,15 @@
             const tb = document.getElementById('tbVerPedidos');
             // En el auto-refresco no se pone "Cargando...": la tabla parpadea y
             // se pierde la posición de lectura del usuario.
-            if (!silencioso) tb.innerHTML = '<tr><td colspan="9" class="text-center">Cargando pedidos...</td></tr>';
+            if (!silencioso) tb.innerHTML = '<tr><td colspan="6" class="text-center">Cargando pedidos...</td></tr>';
             try {
-                const res = await fetch('/api/pedidos');
+                const res = await fetch('/api/pedidos/lista-despacho');
                 const data = await res.json();
-                vpPedidosCache = (data && data.pedidos) || [];
+                vpGruposCache = (data && data.grupos) || [];
                 renderVerPedidos();
             } catch (e) {
                 if (!silencioso) {
-                    tb.innerHTML = '<tr><td colspan="9" class="text-center">Sin conexión con el servidor.</td></tr>';
+                    tb.innerHTML = '<tr><td colspan="6" class="text-center">Sin conexión con el servidor.</td></tr>';
                     document.getElementById('vpConteo').textContent = '—';
                 }
             }
@@ -3587,58 +3573,47 @@
 
         function renderVerPedidos() {
             const q = (document.getElementById('vpBuscar').value || '').toLowerCase().trim();
-            const est = document.getElementById('vpEstado').value;
             const filas = [];
-            const idsVistos = new Set();
-            vpPedidosCache.forEach(p => {
-                if (est && p.estado !== est) return;
-                const items = (p.items && p.items.length) ? p.items : [{ nombre_producto: '—', cantidad_solicitada: 0 }];
-                const lineas = items.map(i => `${p.numero_pedido} ${p.solicitante || ''} ${p.vehiculo || ''} ${p.chofer || ''} ${i.nombre_producto || ''}`).join(' ').toLowerCase();
-                if (q && !lineas.includes(q)) return;
-                idsVistos.add(p.id);
-                const badge = VP_ESTADOS_BADGE[p.estado] || ['rgba(120,120,128,0.18)', '#495057', p.estado || '—'];
-                items.forEach((it, idx) => {
-                    filas.push(`<tr>
-                        <td>${idx === 0 ? `<b>${vpEsc(p.numero_pedido || 'S/N')}</b>` : ''}</td>
-                        <td>${idx === 0 ? vpEsc(vpFechaHora(p.fecha_registro)) : ''}</td>
-                        <td>${idx === 0 ? vpEsc(vpFechaCorta(p.fecha_despacho)) : ''}</td>
-                        <td>${vpEsc(it.nombre_producto || '—')}</td>
-                        <td class="text-center"><b>${Number(it.cantidad_solicitada) || 0}</b></td>
-                        <td>${idx === 0 ? vpEsc(p.vehiculo || '—') : ''}</td>
-                        <td>${idx === 0 ? vpEsc(p.chofer || '—') : ''}</td>
-                        <td>${idx === 0 ? `<span class="vp-badge" style="background:${badge[0]};color:${badge[1]};">${badge[2]}</span>` : ''}</td>
-                        <td class="text-center">${idx === 0 ? `<button type="button" class="vp-btn-pdf" onclick="descargarPdfPedido(${p.id}, '${vpEsc(p.numero_pedido || '')}')">⬇️ PDF</button>` : ''}</td>
-                    </tr>`);
+            let nPedidos = 0;
+            let nCajas = 0;
+            vpGruposCache.forEach(g => {
+                const pedidos = (g.pedidos || []).filter(p => {
+                    if (!q) return true;
+                    const lineas = [p.numero_pedido, g.cliente, p.numero_guia || '', p.tipo_destino || '']
+                        .concat((p.items || []).map(i => i.nombre_producto || ''))
+                        .join(' ').toLowerCase();
+                    return lineas.includes(q);
+                });
+                if (!pedidos.length) return;
+                const cajasGrupo = pedidos.reduce((a, p) => a + (Number(p.cajas) || 0), 0);
+                nPedidos += pedidos.length;
+                nCajas += cajasGrupo;
+                // El separador que pide almacén: cliente (pedido para quién) y
+                // fecha de despacho, con el total de lo que sale en ese grupo.
+                filas.push(`<tr>
+                    <td colspan="6" style="background:#fbfbfd;font-weight:800;color:var(--texto);border-top:2px solid rgba(0,0,0,0.08);">
+                        👤 ${vpEsc(g.cliente)} &nbsp;·&nbsp; 📅 ${vpEsc(g.fecha_despacho || 'Sin fecha')} &nbsp;·&nbsp; ${pedidos.length} pedido(s) · ${cajasGrupo} caja(s)
+                    </td>
+                </tr>`);
+                pedidos.forEach(p => {
+                    const badge = VP_ESTADOS_BADGE[p.estado] || ['rgba(120,120,128,0.18)', '#495057', p.estado || '—'];
+                    (p.items || []).forEach((it, idx) => {
+                        filas.push(`<tr>
+                            <td>${idx === 0 ? `<b>${vpEsc(p.numero_pedido || 'S/N')}</b><br><span style="font-size:11.5px;color:var(--texto2);">${vpEsc(p.tipo_destino || '')}</span>` : ''}</td>
+                            <td>${vpEsc(it.nombre_producto || '—')}</td>
+                            <td class="text-center"><b>${Number(it.pendiente) || 0}</b></td>
+                            <td>${idx === 0 ? `<span class="vp-badge" style="background:${badge[0]};color:${badge[1]};">${badge[2]}</span>` : ''}</td>
+                            <td>${idx === 0 ? vpEsc(p.numero_guia || '—') : ''}</td>
+                            <td class="text-center">${idx === 0 ? `<button type="button" class="vp-btn-pdf" onclick="descargarPdfPedido(${p.id}, '${vpEsc(p.numero_pedido || '')}')">⬇️ PDF</button>` : ''}</td>
+                        </tr>`);
+                    });
                 });
             });
             document.getElementById('tbVerPedidos').innerHTML = filas.length
                 ? filas.join('')
-                : '<tr><td colspan="9" class="text-center">Sin pedidos que coincidan con la búsqueda.</td></tr>';
-            const nPedidos = idsVistos.size;
+                : '<tr><td colspan="6" class="text-center">No hay cajas por despachar que coincidan con la búsqueda.</td></tr>';
             document.getElementById('vpConteo').textContent =
-                `${filas.length} línea(s) de producto · ${nPedidos} pedido(s)`;
-        }
-
-        /** Fecha y hora de emisión en zona Lima (fecha_registro es timestamp). */
-        function vpFechaHora(iso) {
-            if (!iso) return '—';
-            const d = new Date(String(iso).replace(' ', 'T'));
-            if (isNaN(d)) return String(iso).slice(0, 16).replace('T', ' ');
-            return d.toLocaleString('es-PE', {
-                timeZone: 'America/Lima',
-                day: '2-digit', month: '2-digit', year: 'numeric',
-                hour: '2-digit', minute: '2-digit'
-            });
-        }
-
-        /** Solo el día para la fecha a despachar (llega como timestamp). */
-        function vpFechaCorta(iso) {
-            if (!iso) return '—';
-            const d = new Date(String(iso).replace(' ', 'T'));
-            if (isNaN(d)) return String(iso).slice(0, 10);
-            return d.toLocaleDateString('es-PE', {
-                timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: 'numeric'
-            });
+                `${nPedidos} pedido(s) · ${nCajas} caja(s) por despachar`;
         }
 
         async function descargarPdfPedido(id, numero) {

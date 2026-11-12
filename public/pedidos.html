@@ -281,6 +281,7 @@
                     <option value="PARA_DESPACHO">Para despacho</option>
                     <option value="EN_PRODUCCION">En producción</option>
                     <option value="INSUMOS_FALTANTES">Insumos faltantes</option>
+                    <option value="PRODUCIDO">Producido (listo en almacén)</option>
                     <option value="DESPACHADO">Despachado</option>
                     <option value="CANCELADO">Cancelado</option>
                 </select>
@@ -319,13 +320,16 @@
         </table>
 
         <h3 class="h3-teal" style="margin-top:24px;">Pedidos completados</h3>
-        <p class="mini-info">Sale solo cuando almacén ya despachó: número de pedido, producto, cantidad y guía. Se refresca solo cada 30 segundos.</p>
+        <p class="mini-info">Pedidos que ya cumplieron: <b>PRODUCIDO</b> (Envasado cubrió todo lo pedido: cajas listas en almacén) y <b>DESPACHADO</b> (salió con guía), con su cliente y su fecha de despacho. Se refresca solo cada 30 segundos.</p>
         <table>
             <thead>
                 <tr>
                     <th>N° Pedido</th>
+                    <th>Cliente</th>
+                    <th>Fecha despacho</th>
                     <th>Producto</th>
-                    <th class="num">Cantidad</th>
+                    <th class="num">Cajas</th>
+                    <th>Estado</th>
                     <th>Guía</th>
                 </tr>
             </thead>
@@ -387,6 +391,7 @@
                     <option value="PARA_DESPACHO">Para despacho</option>
                     <option value="EN_PRODUCCION">En producción</option>
                     <option value="INSUMOS_FALTANTES">Insumos faltantes</option>
+                    <option value="PRODUCIDO">Producido (listo en almacén)</option>
                     <option value="DESPACHADO">Despachado</option>
                     <option value="CANCELADO">Cancelado</option>
                 </select>
@@ -434,6 +439,7 @@
             PARA_DESPACHO: ['b-verde', 'PARA DESPACHO'],
             EN_PRODUCCION: ['b-azul', 'EN PRODUCCIÓN'],
             INSUMOS_FALTANTES: ['b-rojo', 'INSUMOS FALTANTES'],
+            PRODUCIDO: ['b-ambar', 'PRODUCIDO'],
             DESPACHADO: ['b-verde', 'DESPACHADO'],
             CANCELADO: ['b-gris', 'CANCELADO']
         };
@@ -728,7 +734,9 @@
             tb.innerHTML = lista.map(p => {
                 const badge = ESTADOS_BADGE[p.estado] || ['b-gris', p.estado];
                 const fecha = p.fecha_despacho || '—';
-                const despachar = (p.estado === 'PARA_DESPACHO' || p.estado === 'EN_PRODUCCION' || p.estado === 'INSUMOS_FALTANTES')
+                // PRODUCIDO = Envasado cubrió todo: las cajas están en almacén
+                // y solo falta que almacén las saque con guía.
+                const despachar = (p.estado === 'PARA_DESPACHO' || p.estado === 'EN_PRODUCCION' || p.estado === 'INSUMOS_FALTANTES' || p.estado === 'PRODUCIDO')
                     ? `<button class="btn btn-verde btn-mini" onclick="despacharPedido(${p.id})">🚚 Despachar</button>` : '';
                 const cancelar = (p.estado !== 'CANCELADO' && p.estado !== 'DESPACHADO')
                     ? `<button class="btn btn-rojo btn-mini" onclick="cancelarPedido(${p.id})">✖</button>` : '';
@@ -852,22 +860,28 @@
                 const res = await fetch('/api/pedidos/despachados');
                 const data = await res.json();
                 const pedidos = (data && data.pedidos) || [];
-                const filas = [];
-                pedidos.forEach(p => {
-                    (p.items || []).forEach((it, idx) => {
-                        filas.push(`<tr>
-                            <td>${idx === 0 ? esc(p.numero_pedido || 'S/N') : ''}</td>
-                            <td>${esc(it.nombre_producto)}</td>
-                            <td class="num"><b>${Number(it.cantidad_despachada) || 0}</b></td>
-                            <td>${esc(p.numero_guia || '—')}</td>
-                        </tr>`);
-                    });
+                const filas = pedidos.map(p => {
+                    const badge = ESTADOS_BADGE[p.estado] || ['b-gris', p.estado];
+                    const productos = (p.items || []).map(i => i.nombre_producto).filter(Boolean).join(' · ') || '—';
+                    const despachadas = (p.items || []).reduce((a, i) => a + (Number(i.cantidad_despachada) || 0), 0);
+                    // Un PRODUCIDO todavía no sacó cajas: muestra lo que produjo
+                    // Envasado, que ya está listo en almacén para despachar.
+                    const cajas = p.estado === 'PRODUCIDO' ? (Number(p.total_produccion) || 0) : despachadas;
+                    return `<tr>
+                        <td><b>${esc(p.numero_pedido || 'S/N')}</b></td>
+                        <td>${esc(p.solicitante || '—')}</td>
+                        <td>${esc(formatearFechaCorta(p.fecha_despacho))}</td>
+                        <td>${esc(productos)}</td>
+                        <td class="num"><b>${cajas}</b></td>
+                        <td><span class="badge ${badge[0]}">${badge[1]}</span></td>
+                        <td>${esc(p.numero_guia || '—')}</td>
+                    </tr>`;
                 });
                 document.getElementById('tbCompletados').innerHTML = filas.length
                     ? filas.join('')
-                    : '<tr><td colspan="4" style="color:var(--texto2);">Aún no hay pedidos despachados por almacén.</td></tr>';
+                    : '<tr><td colspan="7" style="color:var(--texto2);">Aún no hay pedidos completados (producidos ni despachados).</td></tr>';
             } catch (e) {
-                document.getElementById('tbCompletados').innerHTML = '<tr><td colspan="4">Sin conexión.</td></tr>';
+                document.getElementById('tbCompletados').innerHTML = '<tr><td colspan="7">Sin conexión.</td></tr>';
             }
         }
 

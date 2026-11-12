@@ -214,54 +214,57 @@ describe('A1. La marcha de envasado es solo muestreo: no bloquea el registro', (
 // ---------------------------------------------------------------------------
 
 /**
+ * Camino feliz de /api/produccion/reporte: receta vigente, insumos, stock y
+ * COMMIT. El producto "Aceite de Soya Belini 1 Lt" resuelve a belini_1lt por
+ * el catalogo fijo de detectarProductoTipo, asi que la receta se busca por
+ * producto_key y su id debe existir para obtenerRecetaPorId.
+ * Vive a nivel de modulo: lo comparten E1 (EN_CURSO) y D1 (atencion de pedidos).
+ */
+function escenarioReporte() {
+  mockQuery.mockImplementation(async (sql) => {
+    const t = String(sql);
+    if (/FROM estado_lineas/.test(t)) return { rows: [{ estado: 'EN MARCHA' }], rowCount: 1 };
+    if (/FROM recetas\s*WHERE producto_key = \$1 AND activa/.test(t)) {
+      return { rows: [{ id: 11, producto_key: 'belini_1lt', activa: true, nombre_producto: 'Aceite de Soya Belini 1 Lt' }], rowCount: 1 };
+    }
+    if (/FROM recetas WHERE id = \$1/.test(t)) {
+      return { rows: [{ id: 11, producto_key: 'belini_1lt', nombre_producto: 'Aceite de Soya Belini 1 Lt' }], rowCount: 1 };
+    }
+    // Una linea con insumo real: el motor de expansion la convierte en hoja.
+    if (/FROM receta_insumos/.test(t)) {
+      return {
+        rows: [{
+          id: 77, receta_id: 11, orden: 1, insumo_id: 3, cantidad_por_caja: 1,
+          unidad_medida: 'UNIDADES', notas: null, seleccionable: false,
+          componente_receta_id: null, nombre_inventario: 'Preforma 1 Lt',
+          unidad_inventario: 'UNIDADES', categoria_inventario: 'INSUMOS', stock_actual: 900
+        }],
+        rowCount: 1
+      };
+    }
+    if (/FROM inventario WHERE id = ANY/.test(t)) {
+      return { rows: [{ id: 3, nombre: 'Preforma 1 Lt', stock_actual: 900, stock: 900, nombre_inventario: 'Preforma 1 Lt' }], rowCount: 1 };
+    }
+    if (/DELETE FROM reportes_produccion WHERE estado = 'EN_CURSO'/.test(t)) return { rows: [], rowCount: 1 };
+    if (/INSERT INTO reportes_produccion/.test(t)) return { rows: [{ id: 42 }], rowCount: 1 };
+    if (/FROM producto_terminado WHERE producto_key/.test(t)) return { rows: [{ id: 1, stock_cajas: 700 }], rowCount: 1 };
+    if (/INSERT INTO producto_terminado/.test(t)) return { rows: [], rowCount: 1 };
+    if (/UPDATE inventario SET stock = stock - \$1 WHERE id = \$2 RETURNING stock/.test(t)) {
+      return { rows: [{ stock: 400 }], rowCount: 1 };
+    }
+    return { rows: [], rowCount: 0 };
+  });
+}
+
+// ---------------------------------------------------------------------------
+
+/**
  * E1. Al reportar directo un producto que ya estaba EN_CURSO (caso "Continuar
  *     con este": se abre la produccion y luego se reporta directo), la fila
  *     EN_CURSO quedaba huérfana y el indicador de "en produccion" seguia
  *     apuntando al producto anterior. Ahora el reporte la borra por su clave.
  */
 describe('E1. El reporte directo limpia la EN_CURSO del mismo producto', () => {
-
-  /**
-   * Camino feliz de /api/produccion/reporte: receta vigente, insumos, stock y
-   * COMMIT. El producto "Aceite de Soya Belini 1 Lt" resuelve a belini_1lt por
-   * el catalogo fijo de detectarProductoTipo, asi que la receta se busca por
-   * producto_key y su id debe existir para obtenerRecetaPorId.
-   */
-  function escenarioReporte() {
-    mockQuery.mockImplementation(async (sql) => {
-      const t = String(sql);
-      if (/FROM estado_lineas/.test(t)) return { rows: [{ estado: 'EN MARCHA' }], rowCount: 1 };
-      if (/FROM recetas\s*WHERE producto_key = \$1 AND activa/.test(t)) {
-        return { rows: [{ id: 11, producto_key: 'belini_1lt', activa: true, nombre_producto: 'Aceite de Soya Belini 1 Lt' }], rowCount: 1 };
-      }
-      if (/FROM recetas WHERE id = \$1/.test(t)) {
-        return { rows: [{ id: 11, producto_key: 'belini_1lt', nombre_producto: 'Aceite de Soya Belini 1 Lt' }], rowCount: 1 };
-      }
-      // Una linea con insumo real: el motor de expansion la convierte en hoja.
-      if (/FROM receta_insumos/.test(t)) {
-        return {
-          rows: [{
-            id: 77, receta_id: 11, orden: 1, insumo_id: 3, cantidad_por_caja: 1,
-            unidad_medida: 'UNIDADES', notas: null, seleccionable: false,
-            componente_receta_id: null, nombre_inventario: 'Preforma 1 Lt',
-            unidad_inventario: 'UNIDADES', categoria_inventario: 'INSUMOS', stock_actual: 900
-          }],
-          rowCount: 1
-        };
-      }
-      if (/FROM inventario WHERE id = ANY/.test(t)) {
-        return { rows: [{ id: 3, nombre: 'Preforma 1 Lt', stock_actual: 900, stock: 900, nombre_inventario: 'Preforma 1 Lt' }], rowCount: 1 };
-      }
-      if (/DELETE FROM reportes_produccion WHERE estado = 'EN_CURSO'/.test(t)) return { rows: [], rowCount: 1 };
-      if (/INSERT INTO reportes_produccion/.test(t)) return { rows: [{ id: 42 }], rowCount: 1 };
-      if (/FROM producto_terminado WHERE producto_key/.test(t)) return { rows: [{ id: 1, stock_cajas: 700 }], rowCount: 1 };
-      if (/INSERT INTO producto_terminado/.test(t)) return { rows: [], rowCount: 1 };
-      if (/UPDATE inventario SET stock = stock - \$1 WHERE id = \$2 RETURNING stock/.test(t)) {
-        return { rows: [{ stock: 400 }], rowCount: 1 };
-      }
-      return { rows: [], rowCount: 0 };
-    });
-  }
 
   test('borra la EN_CURSO del mismo producto_key que se reporta', async () => {
     escenarioReporte();
@@ -294,6 +297,53 @@ describe('E1. El reporte directo limpia la EN_CURSO del mismo producto', () => {
     const iCommit = orden.findIndex(s => /^COMMIT$/i.test(String(s).trim()));
     expect(iBorra).toBeGreaterThanOrEqual(0);
     expect(iCommit).toBeGreaterThan(iBorra);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('D1. Cerrar la producción avisa a los pedidos que esperaban ese producto', () => {
+
+  test('cubre producida y despacho en la misma linea, y el pedido queda PRODUCIDO', async () => {
+    escenarioReporte();
+    // Un pedido real esperando 651 cajas de belini_1lt (PED-2026-0006).
+    const base = mockQuery.getMockImplementation();
+    mockQuery.mockImplementation(async (sql) => {
+      const t = String(sql);
+      if (/SELECT i\.id, i\.pedido_id, i\.cantidad_produccion/.test(t)) {
+        return {
+          rows: [{ id: 91, pedido_id: 6, cantidad_produccion: 651, cantidad_producida: 0, numero_pedido: 'PED-2026-0006', estado: 'EN_PRODUCCION' }],
+          rowCount: 1
+        };
+      }
+      if (/SELECT total_despacho, total_produccion/.test(t)) {
+        return { rows: [{ total_despacho: 149, total_produccion: 651, despachada: 0, producida: 651 }], rowCount: 1 };
+      }
+      return base(sql);
+    });
+
+    const res = await invocar('post', '/api/produccion/reporte', {
+      rol: 'produccion',
+      body: { presentacion: 'Aceite de Soya Belini 1 Lt', cantidad_cajas: 700, lote: '0900' }
+    });
+
+    expect(res.cuerpo.success).toBe(true);
+    // Las 700 cajas cubren las 651 que faltaban: se anota en cantidad_producida
+    // Y en cantidad_despacho (esas cajas ya estan en almacén y se pueden despachar).
+    const cubiertas = sqlDe('UPDATE pedidos_venta_items SET cantidad_producida');
+    expect(cubiertas).toHaveLength(1);
+    expect(String(cubiertas[0].sql)).toContain('cantidad_despacho = cantidad_despacho + $1');
+    expect(cubiertas[0].params).toEqual([651, 91]);
+    // Cubierto todo lo pedido, el pedido sale de EN_PRODUCCION.
+    const estados = sqlDe('UPDATE pedidos_venta SET estado');
+    expect(estados).toHaveLength(1);
+    expect(estados[0].params).toEqual(['PRODUCIDO', 6]);
+    // La atencion corre dentro de la misma transaccion del reporte.
+    const orden = registro().map(c => c.sql);
+    const iCubre = orden.findIndex(s => /UPDATE pedidos_venta_items SET cantidad_producida/.test(s));
+    const iCommit = orden.findIndex(s => /^COMMIT$/i.test(String(s).trim()));
+    expect(iCubre).toBeGreaterThanOrEqual(0);
+    expect(iCommit).toBeGreaterThan(iCubre);
   });
 });
 

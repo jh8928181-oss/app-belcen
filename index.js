@@ -3252,6 +3252,13 @@ function fusionarItemsSalidas({ itemsTabla = [], itemsIA = [], pts = [], invs = 
 }
 
 // Extrae las direcciones de partida y llegada de la guía SUNAT (bloque antes de "Punto de ...")
+// Línea que es cabecera de guía, no dirección: bloque del destinatario
+// ("Datos del Destinatario :X - REGISTRO ÚNICO DE CONTRIBUYENTES N° 20545678901"),
+// una RUC o la continuación del mismo. El filtro de ":" sin "-" no las
+// descartaba (vienen con ambos), se pegaban a la dirección real y terminaban
+// en la BD como punto_partida/destino, desde donde salen impresas en la guía.
+const ES_CABECERA_GUIA = /Datos del|Destinatario|REGISTRO\s*[UÚ]?\s*NICO\s*DE\s*CONTRIBUYENTES|\b\d{11}\b/i;
+
 // Una dirección queda terminada cuando su último segmento con guion es una
 // palabra suelta: la localidad ("JR. LAS BEGONIAS 123 - SAN MARTIN - LIMA") o
 // el país ("AV. LOS CIPRESES 450 - LURIGANCHO - PERU"). El patrón anterior
@@ -3298,6 +3305,7 @@ function extraerDireccionSUNAT(lineas) {
         const l = lineas[i].replace(/^Venta\s+/i, '').trim();
         if (l.length < 8 || !/[A-ZÁÉÍÓÚÑÜ]/.test(l)) continue;
         if (/^\d{1,2}\/\d{1,2}\/\d{4}\s*$/.test(l)) continue;
+        if (ES_CABECERA_GUIA.test(l)) continue;
         if (/[:]/.test(l) && !/-/.test(l)) continue;
         buf = buf ? buf + ' ' + l : l;
         if (finAddr.test(buf)) {
@@ -3327,7 +3335,7 @@ function extraerDireccionSUNAT(lineas) {
 // se parten por el ancla de nuestra planta (la llegada es la nuestra).
 function direccionesTabla(lineas) {
     const res = { partida: '', llegada: '' };
-    const esAlto = l => /^(Dist|Prov|Dep|N[°º]|Fecha|RUC|N[uú]\.?mero|Conductor|Licencia|DNI|Principal|Secundario|Bienes|Indicador|Datos|Veh|Transport|Motivo|Tipo|Observaciones|Orden|Pedido|Condiciones|Factura|Comprob|Marca|Placa|Razon|Direcci[oó]n|Firma|Recib|V°B|DESPACHADO|Representaci)/i.test(l)
+    const esAlto = l => /^(Dist|Prov|Dep|N[°º]|Fecha|RUC|N[uú]\.?mero|Conductor|Licencia|DNI|Principal|Secundario|Bienes|Indicador|Datos|Destinatario|Veh|Transport|Motivo|Tipo|Observaciones|Orden|Pedido|Condiciones|Factura|Comprob|Marca|Placa|Razon|Direcci[oó]n|Firma|Recib|V°B|DESPACHADO|Representaci)/i.test(l)
         || /^\d{1,2}\s+(ENE|FEB|MAR|ABR|MAY|JUN|JUL|AGO|SET|SEP|OCT|NOV|DIC)\b/i.test(l)
         || /^\s*Punto de (Partida|Llegada)\b/i.test(l);
     const esDist = l => /^(Dist|Prov|Dep)\b/i.test(l);
@@ -3448,7 +3456,7 @@ function parsearCabeceraSUNAT(textoPdf) {
     if (tab.llegada) res.destino = tab.llegada;
     // 2. Escáner general solo si trae direcciones limpias (sin cabecera).
     const dirs = extraerDireccionSUNAT(lineas);
-    const limpia = s => s && !/R\.?\s*U\.?\s*C\.?|GU[IÍ]A/i.test(s);
+    const limpia = s => s && !/R\.?\s*U\.?\s*C\.?|GU[IÍ]A|Datos del|Destinatario|CONTRIBUYENTES/i.test(s);
     if (!res.punto_partida && limpia(dirs.partida)) res.punto_partida = dirs.partida;
     if (!res.destino && limpia(dirs.llegada)) res.destino = dirs.llegada;
     if (!res.punto_partida) {
@@ -3484,6 +3492,18 @@ function parsearCabeceraSUNAT(textoPdf) {
             if (dir) res.destino = dir[1].trim();
         }
     }
+
+    // Última barrera: si una variante de formato igual logró meter la cabecera
+    // del destinatario como dirección, se corta el prefijo hasta el RUC (lo que
+    // sigue ya es la dirección). Sin RUC no hay forma de saber dónde empieza la
+    // dirección: se descarta el valor — basura en la BD sale impresa en la guía.
+    const depurarDireccion = v => {
+        if (!v || !/^\s*Datos del\s+[Dd]estinatario/i.test(v)) return v;
+        const corte = v.search(/\b\d{11}\b/);
+        return corte >= 0 ? v.slice(corte + 11).trim() : '';
+    };
+    res.punto_partida = depurarDireccion(res.punto_partida);
+    res.destino = depurarDireccion(res.destino);
 
     let pm = textoPdf.match(/[Nn][°ºoóO0]?\.?\s*(?:úmero de placa del veh[ií]culo|umero de placa del vehiculo)[^\w]*:?\s*([A-Z]{2,3}[-–\s]?\d{3,4})/i);
     if (!pm) pm = textoPdf.match(/Numero de placa[:\s]*([A-Z]{2,3}\s?\d{3,4})/i);

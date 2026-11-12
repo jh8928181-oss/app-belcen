@@ -178,6 +178,66 @@ describe('parsearCabeceraSUNAT', () => {
     expect(res.destino).toBe('AV. LA CULTURA 701 MERCADO DE PRODUCTORE');
     expect(res.placa).toBe('BJP776');
   });
+
+  // Caso real que contaminaba: "Datos del Destinatario" cae ENTRE "Fecha de
+  // inicio de Traslado" y las direcciones. Traía ":" y "-", así que el filtro
+  // del escáner no la descartaba, se pegaba a la dirección de planta y esa
+  // basura terminaba en la BD como punto_partida (y de ahí, impresa en la guía).
+  const PDF_CABECERA_DENTRO = [
+    'GUIA DE REMISION ELECTRONICA',
+    'N° T001-0005658',
+    'Fecha de inicio de Traslado :13/05/2026',
+    'Datos del Destinatario :ACEITES DON LALO S.A.C. - REGISTRO ÚNICO DE CONTRIBUYENTES N° 20545678901',
+    'AV. LOS CIPRESES 450 - LURIGANCHO - LIMA - PERU',
+    'JR. LAS BEGONIAS 123 - SAN MARTIN - LIMA - PERU',
+    'Punto de llegada',
+    'Número de placa del vehiculo: ABC-1234'
+  ].join('\n');
+
+  test('la cabecera del destinatario no contamina punto_partida ni destino', () => {
+    const res = parsearCabeceraSUNAT(PDF_CABECERA_DENTRO);
+    expect(res.punto_partida).not.toMatch(/Datos del/i);
+    expect(res.punto_partida).toMatch(/LOS CIPRESES/);
+    expect(res.destino).not.toMatch(/Datos del/i);
+    expect(res.destino).toMatch(/BEGONIAS/);
+    // La cabecera sigue leyéndose bien para lo que sí es: empresa y RUC.
+    expect(res.empresa).toBe('ACEITES DON LALO S.A.C.');
+    expect(res.ruc).toBe('20545678901');
+  });
+
+  test('con una sola dirección la cabecera tampoco contamina el destino', () => {
+    const res = parsearCabeceraSUNAT([
+      'N° F001-00012345',
+      'Fecha de inicio de Traslado: 13/05/2026',
+      'Datos del Destinatario: ACEITES DON LALO S.A.C. - REGISTRO ÚNICO DE CONTRIBUYENTES N° 20545678901',
+      'JR. LAS BEGONIAS 123 - SAN MARTIN - LIMA - PERU',
+      'Punto de llegada'
+    ].join('\n'));
+    expect(res.destino).not.toMatch(/Datos del/i);
+    expect(res.destino).toMatch(/BEGONIAS/);
+  });
+
+  test('la barrera final corta la cabecera que meta el regex de llegada', () => {
+    // Sin líneas de dirección antes de la etiqueta, el regex "Punto de Llegada"
+    // captura todo lo que sigue: si eso es la cabecera, se corta hasta el RUC.
+    const res = parsearCabeceraSUNAT(
+      'Punto de Llegada :Datos del Destinatario :ACEITES DON LALO S.A.C. - ' +
+      'REGISTRO ÚNICO DE CONTRIBUYENTES N° 20545678901 AV. LOS CIPRESES 450 - LURIGANCHO - LIMA - PERU'
+    );
+    expect(res.destino).not.toMatch(/Datos del/i);
+    expect(res.destino).toMatch(/LOS CIPRESES/);
+  });
+
+  test('sin RUC no se adivina dónde empieza la dirección: se descarta', () => {
+    // El regex de llegada captura la cabecera entera pero sin RUC no hay
+    // corte posible: el valor se vacía en vez de guardar basura en la BD.
+    const res = parsearCabeceraSUNAT(
+      'Punto de Llegada :Datos del Destinatario :ACEITES DON LALO S.A.C. ' +
+      'AV. LOS CIPRESES 450 - LURIGANCHO - LIMA - PERU'
+    );
+    expect(res.destino).not.toMatch(/Datos del/i);
+    expect(res.destino).toBe('');
+  });
 });
 
 describe('extraerDireccionSUNAT', () => {

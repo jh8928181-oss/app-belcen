@@ -2062,7 +2062,7 @@ app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
         }
 
         // 1. Descontar la preforma elegida manualmente por el operador (stock en MILL)
-        const preRes = await client.query('SELECT stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [preforma_nombre]);
+        const preRes = await client.query('SELECT id, stock FROM inventario WHERE LOWER(nombre) = LOWER($1)', [preforma_nombre]);
         if (preRes.rows.length === 0) {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, mensaje: `La preforma "${preforma_nombre}" no existe en el inventario.` });
@@ -2077,6 +2077,7 @@ app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
         await registrarHistorial(client, {
             tipo: 'PRODUCCION', origen: 'soplado',
             producto: preforma_nombre,
+            articulo_id: preRes.rows[0].id,
             cantidad: cantidadPreformaMill, tipo_cambio: 'RESTA',
             stock_anterior: stockPreformaAnterior, stock_nuevo: stockPreformaAnterior - cantidadPreformaMill,
             usuario: usuarioResponsable(req, usuario),
@@ -2131,6 +2132,7 @@ app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
             await registrarHistorial(client, {
                 tipo: 'PRODUCCION', origen: 'soplado',
                 producto: etiquetaNombre,
+                articulo_id: etRow.rows[0].id,
                 cantidad: cantMill, tipo_cambio: 'RESTA',
                 stock_anterior: stockEtqAnterior, stock_nuevo: stockEtqAnterior - cantMill,
                 usuario: usuarioResponsable(req, usuario),
@@ -2327,6 +2329,7 @@ app.post('/api/soplado/etiquetar', gSoplado, async (req, res) => {
             await registrarHistorial(client, {
                 tipo: 'PRODUCCION', origen: 'soplado_etiquetado',
                 producto: stockEtq.nombre,
+                articulo_id: stockEtq.id,
                 cantidad: cantMill, tipo_cambio: 'RESTA',
                 stock_anterior: stockEtq.anterior, stock_nuevo: stockEtq.anterior - cantMill,
                 usuario: quien,
@@ -6046,7 +6049,11 @@ async function aplicarMovimientoStockInsumoRefinado(q, nombre, cantidad, signo, 
         tipo: signo < 0 ? 'SALIDA' : 'ENTRADA',
         origen: 'refinado',
         producto: item.nombre,
-        articulo_id: item.id,
+        // SIN articulo_id: este stock vive en stock_insumos_refinado y su id
+        // (1-10) choca con los ids de inventario (botellas, cajas). Guardarlo
+        // acá hacía que la auditoría atribuyera movimientos de químicos a
+        // botellas ajenas. El origen 'refinado' + el nombre identifican la fila.
+        articulo_id: null,
         cantidad: Number(cantidad),
         tipo_cambio: signo < 0 ? 'RESTA' : 'SUMA',
         stock_anterior: stockAnterior,
@@ -6262,7 +6269,9 @@ app.post('/api/almacen/stock-refinado/ajustar', requerirRolAlmacenInvRef, async 
             tipo: 'AJUSTE',
             origen: 'almacen',
             producto: String(nombre),
-            articulo_id: actual.rows[0].id,
+            // SIN articulo_id: el id pertenece a stock_insumos_refinado, no a
+            // inventario (ver aplicarMovimientoStockInsumoRefinado).
+            articulo_id: null,
             cantidad: Math.abs(diferencia),
             tipo_cambio: diferencia >= 0 ? 'SUMA' : 'RESTA',
             stock_anterior: stockAnterior,
@@ -6317,7 +6326,8 @@ app.post('/api/almacen/stock-refinado/ingresar', requerirRolAlmacenInvRef, async
             tipo: 'INGRESO',
             origen: 'almacen',
             producto: String(nombre),
-            articulo_id: actual.rows[0].id,
+            // SIN articulo_id: id de stock_insumos_refinado, no de inventario.
+            articulo_id: null,
             cantidad: cantidadNueva,
             tipo_cambio: 'SUMA',
             stock_anterior: stockAnterior,

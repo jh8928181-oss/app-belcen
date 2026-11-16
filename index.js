@@ -1059,11 +1059,32 @@ async function saldoEnvioServicio(q, servicio) {
           GROUP BY i.preforma_id`,
         [servicio]
     );
+    // Paradas: liquidan el saldo restante (merma o devolucion al almacen),
+    // por lo que también lo descuentan. Sin esto el contador nunca llegaria
+    // a 0 despues de parar el servicio.
+    let par = { rows: [] };
+    try {
+        par = await q.query(
+            `SELECT i.articulo_id, COALESCE(SUM(i.saldo), 0) AS liquidado
+               FROM servicios_paradas_items i
+               JOIN servicios_paradas p ON p.id = i.parada_id
+              WHERE p.servicio = $1
+              GROUP BY i.articulo_id`,
+            [servicio]
+        );
+    } catch (e) {
+        // Migración de paradas todavía no aplicada: se comporta como antes.
+        if (!e || e.code !== '42P01') throw e;
+    }
     const saldo = new Map();
     for (const e of env.rows) saldo.set(e.articulo_id, Number(e.enviado) || 0);
     for (const c of con.rows) {
         if (!c.articulo_id) continue;
         saldo.set(c.articulo_id, (saldo.get(c.articulo_id) || 0) - (Number(c.consumido) || 0));
+    }
+    for (const p of par.rows) {
+        if (!p.articulo_id) continue;
+        saldo.set(p.articulo_id, (saldo.get(p.articulo_id) || 0) - (Number(p.liquidado) || 0));
     }
     return saldo;
 }
@@ -1136,11 +1157,39 @@ app.get('/api/servicios/panel', async (req, res) => {
             const k = c.servicio + '|' + c.articulo_id;
             entregadoPor[k] = (entregadoPor[k] || 0) + Number(c.entregado);
         }
+        // Paradas: saldo ya liquidado (merma o devolucion). Resta del saldo
+        // para que el contador del servicio quede en 0. Si la tabla aun no
+        // existe (migracion pendiente) se ignora y el panel se ve como antes.
+        const liquidadoPor = {};
+        let paradas = [];
+        try {
+            const par = await pool.query(
+                `SELECT p.servicio, i.articulo_id, COALESCE(SUM(i.saldo), 0) AS liquidado
+                   FROM servicios_paradas_items i
+                   JOIN servicios_paradas p ON p.id = i.parada_id
+                  GROUP BY p.servicio, i.articulo_id`
+            );
+            for (const c of par.rows) {
+                const k = c.servicio + '|' + c.articulo_id;
+                liquidadoPor[k] = (liquidadoPor[k] || 0) + Number(c.liquidado);
+            }
+            const cab = await pool.query(
+                `SELECT * FROM servicios_paradas ORDER BY fecha DESC NULLS LAST, id DESC LIMIT 100`
+            );
+            const its = await pool.query(`SELECT * FROM servicios_paradas_items ORDER BY parada_id, id`);
+            const porParada = {};
+            for (const i of its.rows) (porParada[i.parada_id] = porParada[i.parada_id] || []).push(i);
+            paradas = cab.rows.map(p => Object.assign({}, p, { items: porParada[p.id] || [] }));
+        } catch (e) {
+            if (!e || e.code !== '42P01') throw e;
+            paradas = [];
+        }
         const servicios = SERVICIOS_SOPLADO.map(sv => {
             const insumos = env.rows
                 .filter(e => e.servicio === sv)
                 .map(e => {
                     const cons = entregadoPor[sv + '|' + e.articulo_id] || 0;
+                    const liq = liquidadoPor[sv + '|' + e.articulo_id] || 0;
                     const enviado = Number(e.enviado) || 0;
                     return {
                         articulo_id: e.articulo_id,
@@ -1149,7 +1198,8 @@ app.get('/api/servicios/panel', async (req, res) => {
                         unidad_medida: 'MILLARES',
                         enviado,
                         entregado: cons,
-                        saldo: enviado - cons
+                        liquidado: liq,
+                        saldo: enviado - cons - liq
                     };
                 });
             return { servicio: sv, insumos };
@@ -1177,14 +1227,14 @@ app.get('/api/servicios/panel', async (req, res) => {
             `SELECT servicio, COUNT(*)::int AS n FROM servicios_guias
               WHERE tipo_doc = 'GUIA' AND factura_estado = 'PENDIENTE' GROUP BY servicio`
         );
-        res.json({ success: true, servicios, guias: guias.rows, pendientes: pendientes.rows, sinFactura: sinFactura.rows });
+        res.json({ success: true, servicios, guias: guias.rows, paradas, pendientes: pendientes.rows, sinFactura: sinFactura.rows });
     } catch (err) {
         console.error('Error en panel de servicios:', err);
         if (err && err.code === '42P01') {
             // Tablas aun no creadas: la migracion esta pendiente de aplicar.
             return res.json({
                 success: true, migracionPendiente: true, servicios: [],
-                guias: [], pendientes: [], sinFactura: []
+                guias: [], paradas: [], pendientes: [], sinFactura: []
             });
         }
         res.status(500).json({ success: false, mensaje: 'Error al cargar el panel de servicios: ' + err.message });
@@ -1381,6 +1431,140 @@ app.post('/api/servicios/envios', gAlmacen, async (req, res) => {
         await client.query('ROLLBACK').catch(() => {});
         console.error('Error en envío a servicio:', err);
         res.status(500).json({ success: false, mensaje: 'Error al registrar el envío: ' + err.message });
+    } finally {
+        client.release();
+    }
+});
+
+// PARADO DE SERVICIO: cierra el saldo de un servicio y deja su contador en 0.
+// Por cada insumo con saldo se recibe la decision del usuario:
+//   MERMA   -> se descarta; no toca inventario (el material ya salio con el envio).
+//   ALMACEN -> se suma de vuelta al MISMO articulo, con su historial.
+// Las etiquetas con saldo menor a 1 millar se ofrecen premarcadas a MERMA en
+// la pantalla; aqui se acepta la decision que llegue.
+// Lo liquidado queda en servicios_paradas (historial aparte) y NO borra envios
+// ni guias: si se vuelve a enviar, esos envios son registros nuevos que
+// arrancan su propio saldo.
+app.post('/api/servicios/parada', gAlmacen, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const servicio = String(req.body.servicio || '').trim().toUpperCase();
+        const items = Array.isArray(req.body.items) ? req.body.items : [];
+        const observacion = String(req.body.observacion || '').trim().slice(0, 300);
+        if (!SERVICIOS_SOPLADO.includes(servicio)) {
+            return res.status(400).json({ success: false, mensaje: `Servicio inválido. Opciones: ${SERVICIOS_SOPLADO.join(', ')}.` });
+        }
+        if (!items.length) {
+            return res.status(400).json({ success: false, mensaje: 'No hay insumos que liquidar en este servicio.' });
+        }
+        await client.query('BEGIN');
+        // Las cantidades las calcula el servidor; la pantalla solo manda las
+        // decisiones, asi que un saldo manipulado por el cliente no existe.
+        const saldo = await saldoEnvioServicio(client, servicio);
+        const decididos = new Map();
+        for (const it of items) {
+            const articulo_id = parseInt(it.articulo_id, 10);
+            const decision = String(it.decision || '').trim().toUpperCase();
+            const faltan = [];
+            if (!articulo_id) faltan.push('artículo');
+            if (!decision) faltan.push('decisión');
+            if (faltan.length) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: `Cada línea necesita ${faltan.join(' y ')}.` });
+            }
+            if (decision !== 'MERMA' && decision !== 'ALMACEN') {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: 'Decisión inválida: solo MERMA o ALMACEN.' });
+            }
+            if (decididos.has(articulo_id)) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, mensaje: 'Un mismo artículo no puede venir dos veces.' });
+            }
+            decididos.set(articulo_id, decision);
+        }
+        // Para que el contador quede en 0 hay que decidir TODOS los insumos
+        // con saldo. Si falta alguno, se devuelve la lista en vez de cerrar a
+        // medias.
+        const pendientes = Array.from(saldo.entries()).filter(([, s]) => s > 0);
+        if (!pendientes.length) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, mensaje: `El servicio ${servicio} ya está en 0: no hay saldo que liquidar.` });
+        }
+        const sinDecidir = pendientes.filter(([id]) => !decididos.has(id));
+        if (sinDecidir.length) {
+            const nom = await client.query(
+                `SELECT id, nombre FROM inventario WHERE id = ANY($1::int[])`,
+                [sinDecidir.map(([id]) => id)]
+            );
+            const nombres = nom.rows.map(r => `"${r.nombre}"`).join(', ');
+            await client.query('ROLLBACK');
+            return res.status(400).json({
+                success: false,
+                mensaje: `Falta decidir qué hacer con: ${nombres || 'insumos pendientes'}.`
+            });
+        }
+        const par = await client.query(
+            `INSERT INTO servicios_paradas (fecha, servicio, observacion, usuario)
+             VALUES (CURRENT_DATE, $1, $2, $3) RETURNING id`,
+            [servicio, observacion || null, usuarioResponsable(req, req.body.usuario)]
+        );
+        const paradaId = par.rows[0].id;
+        const lineas = [];
+        let mermas = 0;
+        let devueltas = 0;
+        for (const [articulo_id, saldoReal] of pendientes) {
+            const decision = decididos.get(articulo_id);
+            const art = await client.query(
+                'SELECT id, nombre, categoria, stock FROM inventario WHERE id = $1',
+                [articulo_id]
+            );
+            if (!art.rows.length) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, mensaje: 'Un artículo con saldo ya no existe en el inventario.' });
+            }
+            const cat = String(art.rows[0].categoria || '').toUpperCase();
+            const tipoItem = cat.includes('ETIQUETA') ? 'ETIQUETA' : (cat.includes('PREFORMA') ? 'PREFORMA' : '');
+            await client.query(
+                `INSERT INTO servicios_paradas_items (parada_id, articulo_id, articulo_nombre, tipo_item, saldo, decision)
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [paradaId, articulo_id, art.rows[0].nombre, tipoItem, saldoReal, decision]
+            );
+            if (decision === 'ALMACEN') {
+                const antes = Number(art.rows[0].stock) || 0;
+                await client.query('UPDATE inventario SET stock = stock + $1 WHERE id = $2', [saldoReal, articulo_id]);
+                await actualizarEstadoArticulo(client, null, articulo_id);
+                await registrarHistorial(client, {
+                    tipo: 'INGRESO', origen: 'servicio_parada',
+                    producto: art.rows[0].nombre, articulo_id,
+                    cantidad: saldoReal, tipo_cambio: 'SUMA',
+                    stock_anterior: antes, stock_nuevo: antes + saldoReal,
+                    usuario: usuarioResponsable(req, req.body.usuario),
+                    referencia: `Parado de servicio ${servicio}: ${saldoReal} MILL regresados al almacén`
+                });
+                devueltas += 1;
+                lineas.push(`${art.rows[0].nombre}: ${saldoReal} MILL → almacén`);
+            } else {
+                mermas += 1;
+                lineas.push(`${art.rows[0].nombre}: ${saldoReal} MILL → merma`);
+            }
+        }
+        await client.query('COMMIT');
+        res.json({
+            success: true,
+            parada_id: paradaId,
+            mensaje: `Servicio ${servicio} parado. Contador en 0. ${devueltas} insumo(s) al almacén, ${mermas} a merma.`
+        });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        if (err && err.code === '42P01') {
+            return res.status(409).json({
+                success: false,
+                migracionPendiente: true,
+                mensaje: 'Faltan las tablas de paradas: corre <b>npm run migrate</b> en el servidor.'
+            });
+        }
+        console.error('Error en parado de servicio:', err);
+        res.status(500).json({ success: false, mensaje: 'Error al parar el servicio: ' + err.message });
     } finally {
         client.release();
     }

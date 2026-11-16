@@ -766,6 +766,44 @@
                 <span id="msgGuiaServicio" style="font-size:13px; font-weight:700;"></span>
             </form>
         </div>
+        <div class="caja-items">
+            <h4>⏹️ Parado de servicio</h4>
+            <p style="font-size:13px; color:#555;">
+                Cierra el saldo de un servicio y deja su <b>contador en 0</b>. Cada insumo con saldo se
+                liquidará como <b>MERMA</b> (se descarta y no vuelve al stock) o <b>REGRESAR AL ALMACÉN</b>
+                (se suma de vuelta al mismo artículo con su historial). Las etiquetas con <b>menos de 1 millar</b>
+                se ofrecen ya marcadas como merma. Nada de lo enviado o recibido se borra: si vuelves a enviar,
+                esos envíos son <b>registros nuevos</b> con su propio saldo.
+            </p>
+            <div class="fila-agregar">
+                <select id="parServicio">
+                    <option value="">-- Servicio --</option>
+                    <option value="SAUÑE">SAUÑE</option>
+                    <option value="B&amp;M DYLPLAST">B&amp;M DYLPLAST</option>
+                    <option value="SERVINDUSTRIAS EN GRASAS Y ACEITES SAC">SERVINDUSTRIAS EN GRASAS Y ACEITES SAC</option>
+                </select>
+                <button type="button" onclick="abrirParadaServicio()" class="btn-agregar-item">⏹️ Parar servicio</button>
+            </div>
+        </div>
+        <h4>Historial de paradas</h4>
+        <div class="tabla-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>FECHA</th>
+                        <th>SERVICIO</th>
+                        <th>PRODUCTO</th>
+                        <th class="text-center">SALDO (MILL)</th>
+                        <th>DECISIÓN</th>
+                        <th>USUARIO</th>
+                        <th>OBSERVACIÓN</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaParadasServicio">
+                    <tr><td colspan="7" class="text-center">Sin paradas registradas.</td></tr>
+                </tbody>
+            </table>
+        </div>
         <h4>Últimas guías y controles</h4>
         <div class="tabla-wrap">
             <table>
@@ -1282,6 +1320,39 @@
             <div class="barra-botones" style="margin-top:14px;">
                 <button type="button" onclick="cerrarModalAnularPendiente()" class="btn-modal-cancelar">Cancelar</button>
                 <button type="button" onclick="confirmarAnularPendiente()" class="btn-modal-ok" style="background:#c62828;">🗑️ Confirmar Anulación</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PARADO DE SERVICIO: cierra el saldo (contador a 0) con decisión por
+         insumo. Las etiquetas con menos de 1 millar vienen marcadas a merma. -->
+    <div id="modalParadaServicio" class="modal-fondo">
+        <div class="modal-carta mc-820">
+            <h3 class="h-modal-teal">⏹️ Parado de servicio</h3>
+            <p id="parAviso" style="color:#8a6d00; font-size:13px; display:none; font-weight:700;"></p>
+            <p style="color:#555; font-size:14px;">
+                Servicio: <b id="parServicioNombre"></b>. El contador quedará en <b>0</b>. Elige qué pasa
+                con cada saldo: <b>merma</b> (se descarta, no vuelve al stock) o <b>regresar al almacén</b>
+                (se suma al mismo artículo con su historial).
+            </p>
+            <div class="lista-modal" style="max-height:320px; margin-top:10px;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>INSUMO</th>
+                            <th>TIPO</th>
+                            <th class="text-center">SALDO (MILL)</th>
+                            <th>DECISIÓN</th>
+                        </tr>
+                    </thead>
+                    <tbody id="parLineas"></tbody>
+                </table>
+            </div>
+            <label style="font-weight:700; font-size:13px; display:block; margin-top:10px;">Observación (opcional)</label>
+            <textarea id="parObservacion" rows="2" class="input-cant-item" style="width:100%; min-width:0; text-align:left; margin-top:6px;" placeholder="Ej.: se cierra el servicio, material perdido en planta, corte de producción..."></textarea>
+            <div class="barra-botones" style="margin-top:14px;">
+                <button type="button" onclick="cerrarParadaServicio()" class="btn-modal-cancelar">Cancelar</button>
+                <button type="button" onclick="confirmarParadaServicio()" class="btn-modal-ok">⏹️ Confirmar parado</button>
             </div>
         </div>
     </div>
@@ -4380,6 +4451,10 @@
             try {
                 const res = await fetch('/api/servicios/panel');
                 const data = await res.json();
+                // Caché del panel: lo usa el PARADO DE SERVICIO para saber qué
+                // saldo tiene cada servicio sin volver a consultar.
+                panelServiciosCache = data;
+                renderParadasServicio(data.paradas);
                 if (data.migracionPendiente) {
                     tbody.innerHTML = '<tr><td colspan="5" class="text-center">Faltan las tablas de servicios: corre <b>npm run migrate</b> en el servidor.</td></tr>';
                     return;
@@ -4405,6 +4480,156 @@
             } catch (e) {
                 console.error(e);
                 tbody.innerHTML = '<tr><td colspan="5" class="text-center">Error al cargar.</td></tr>';
+            }
+        }
+
+        // ---- PARADO DE SERVICIO ----
+        // La pantalla solo manda las decisiones (MERMA / ALMACEN); las
+        // cantidades las recalcula el servidor, así que un saldo viejo en
+        // pantalla no puede cerrar de más.
+        let panelServiciosCache = null;
+        let guardParada = false;
+
+        function cerrarParadaServicio() {
+            document.getElementById('modalParadaServicio').style.display = 'none';
+        }
+
+        function renderParadasServicio(paradas) {
+            const tbody = document.getElementById('tablaParadasServicio');
+            if (!tbody) return;
+            const lista = Array.isArray(paradas) ? paradas : [];
+            if (!lista.length) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center">Sin paradas registradas.</td></tr>';
+                return;
+            }
+            const fechaTxt = f => String(f || '').slice(0, 10).split('-').reverse().join('/');
+            tbody.innerHTML = '';
+            lista.forEach(p => {
+                const items = Array.isArray(p.items) ? p.items : [];
+                const cabecera = i => i === 0
+                    ? `<td>${fechaTxt(p.fecha)}</td><td><b>${escOpServ(p.servicio)}</b></td>`
+                    : '<td></td><td></td>';
+                if (!items.length) {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `${cabecera(0)}<td colspan="5" class="text-center">Sin insumos.</td>`;
+                    tbody.appendChild(tr);
+                    return;
+                }
+                items.forEach((it, i) => {
+                    const dec = String(it.decision || '').toUpperCase() === 'ALMACEN'
+                        ? '<b style="color:#15803d;">↩ ALMACÉN</b>'
+                        : '<b style="color:#c62828;">🗑 MERMA</b>';
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `${cabecera(i)}`
+                        + `<td>${escOpServ(it.articulo_nombre)}</td>`
+                        + `<td class="text-center"><b>${fmtMill(it.saldo)}</b></td>`
+                        + `<td>${dec}</td>`
+                        + `<td>${i === 0 ? escOpServ(p.usuario || '') : ''}</td>`
+                        + `<td>${i === 0 ? escOpServ(p.observacion || '') : ''}</td>`;
+                    tbody.appendChild(tr);
+                });
+            });
+        }
+
+        function abrirParadaServicio() {
+            const svc = document.getElementById('parServicio').value;
+            if (!svc) { alert('Elige el servicio que quieres parar.'); return; }
+            const panel = panelServiciosCache;
+            if (!panel || !Array.isArray(panel.servicios)) {
+                alert('El panel aún no termina de cargar. Intenta de nuevo en unos segundos.');
+                return;
+            }
+            const sv = panel.servicios.find(s => s.servicio === svc);
+            const insumos = ((sv && sv.insumos) || []).filter(i => Number(i.saldo) > 0);
+            if (!insumos.length) {
+                alert(`El servicio ${svc} ya está en 0: no hay saldo que liquidar.`);
+                return;
+            }
+            document.getElementById('parServicioNombre').textContent = svc;
+            document.getElementById('parObservacion').value = '';
+            // Aviso sin bloquear: así el operario sabe que esos documentos
+            // quedan por resolver aunque pare el servicio.
+            const avisos = [];
+            (panel.pendientes || []).forEach(p => {
+                if (p.servicio === svc) avisos.push(`${p.n} control(es) pendiente(s) de vincular`);
+            });
+            (panel.sinFactura || []).forEach(p => {
+                if (p.servicio === svc) avisos.push(`${p.n} guía(s) sin factura`);
+            });
+            const av = document.getElementById('parAviso');
+            if (avisos.length) {
+                av.style.display = 'block';
+                av.textContent = '⚠️ Aviso: ' + avisos.join(' · ')
+                    + '. Puedes parar igual; esos documentos se resuelven aparte.';
+            } else {
+                av.style.display = 'none';
+            }
+            document.getElementById('parLineas').innerHTML = insumos.map(ins => {
+                const s = Number(ins.saldo);
+                const esEtiq = String(ins.tipo_item || '').toUpperCase() === 'ETIQUETA';
+                const menor1 = esEtiq && s < 1;
+                const nota = menor1
+                    ? ' <span style="color:#8a6d00; font-size:11px;">(menos de 1 millar → merma)</span>'
+                    : '';
+                const ops = `<option value="">-- Elegir --</option>`
+                    + `<option value="MERMA"${menor1 ? ' selected' : ''}>🗑 Merma (desaparece)</option>`
+                    + `<option value="ALMACEN">↩ Regresar al almacén</option>`;
+                return `<tr>
+                    <td>${escOpServ(ins.nombre)}${nota}</td>
+                    <td>${escOpServ(ins.tipo_item || '')}</td>
+                    <td class="text-center"><b>${fmtMill(s)}</b></td>
+                    <td><select class="par-decision" data-articulo="${Number(ins.articulo_id)}">${ops}</select></td>
+                </tr>`;
+            }).join('');
+            document.getElementById('modalParadaServicio').style.display = 'flex';
+        }
+
+        async function confirmarParadaServicio() {
+            if (guardParada) return;
+            const svc = document.getElementById('parServicio').value;
+            const lineas = Array.from(document.querySelectorAll('#parLineas tr')).map(tr => ({
+                articulo_id: Number(tr.querySelector('.par-decision').dataset.articulo),
+                decision: tr.querySelector('.par-decision').value
+            }));
+            if (!lineas.length) return;
+            const sinElegir = lineas.filter(l => !l.decision);
+            if (sinElegir.length) {
+                alert('Elige qué hacer con cada insumo: merma o regresar al almacén.');
+                return;
+            }
+            const nMerma = lineas.filter(l => l.decision === 'MERMA').length;
+            const nAlm = lineas.length - nMerma;
+            const texto = `¿Parar el servicio ${svc}?\n\n`
+                + `• ${nMerma} insumo(s) a MERMA (no vuelven al stock)\n`
+                + `• ${nAlm} insumo(s) REGRESAN al almacén\n\n`
+                + `El contador quedará en 0 y los próximos envíos serán registros nuevos.`;
+            if (!confirm(texto)) return;
+            guardParada = true;
+            try {
+                const res = await fetch('/api/servicios/parada', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        servicio: svc,
+                        items: lineas,
+                        observacion: document.getElementById('parObservacion').value
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    alert(data && data.mensaje ? data.mensaje : 'Error al parar el servicio.');
+                    return;
+                }
+                alert(data.mensaje || 'Servicio parado. Contador en 0.');
+                cerrarParadaServicio();
+                // El panel y los selects de guía se recargan: el saldo ya es 0.
+                cargarGuiasServicio();
+                cargarInsumosServicio();
+            } catch (e) {
+                console.error(e);
+                alert('Error de conexión al parar el servicio.');
+            } finally {
+                guardParada = false;
             }
         }
 

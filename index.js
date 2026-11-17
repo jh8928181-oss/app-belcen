@@ -77,6 +77,21 @@ const PRODUCTOS_TERMINADOS_MAP = {
     'faisan_900ml': 'Aceite de Soya Faisan 900 ml'
 };
 
+// --- SALUD: "sigue vivo" sin tocar la base ---
+// Lo usan los pings externos (cron-job.org, cada 10 min entre 07:00 y 22:00)
+// para que el servicio gratuito de Render no se duerma en horario laboral.
+// Va ANTES de las capas de autenticacion (routes/auth.js aplica
+// authMiddleware a todo /api): el ping no trae token y aun asi tiene que
+// contestar. Responde solo la hora: cero consultas, cero datos.
+app.get('/api/salud', (req, res) => {
+  res.json({
+    success: true,
+    ok: true,
+    servicio: 'app-belcen',
+    hora: new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' })
+  });
+});
+
 // --- RUTAS MODULARES ---
 const routes = require('./routes');
 app.use(routes);

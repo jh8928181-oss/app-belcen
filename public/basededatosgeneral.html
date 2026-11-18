@@ -2759,6 +2759,87 @@
         document.getElementById('ordenFecha').value = new Date().toISOString().slice(0, 10);
         cargarProveedores();
         // ============ SERVICIOS EXTERNOS DE SOPLADO ============
+        // ---- REPORTE DE SERVICIOS ----
+        // Mismo acordeón que en Almacén: la fila muestra el ciclo actual del
+        // insumo (0 tras parar) y ▶ despliega el historial uno a uno con su
+        // saldo corriente. Las filas abiertas se recuerdan porque la pestaña
+        // se refresca sola cada 30 s.
+        const reporteAbiertosBD = new Set();
+
+        function claveReporteBD(servicio, ins) {
+            return servicio + '|' + (ins.articulo_id == null ? '' : ins.articulo_id) + '|' + (ins.nombre || '');
+        }
+
+        function alternarDetalleBD(id) {
+            const det = document.getElementById(id);
+            if (!det) return;
+            const clave = det.getAttribute('data-clave') || '';
+            const abierto = det.style.display !== 'none';
+            det.style.display = abierto ? 'none' : '';
+            if (abierto) reporteAbiertosBD.delete(clave);
+            else reporteAbiertosBD.add(clave);
+            const flecha = document.getElementById(id + '-flecha');
+            if (flecha) flecha.textContent = abierto ? '▶' : '▼';
+        }
+
+        function renderReporteServiciosBD(servicios) {
+            const filas = [];
+            let n = 0;
+            (Array.isArray(servicios) ? servicios : []).forEach(sv => {
+                (sv.insumos || []).forEach(ins => {
+                    const clave = claveReporteBD(sv.servicio, ins);
+                    const abierto = reporteAbiertosBD.has(clave);
+                    const id = 'detRepBD' + (n++);
+                    filas.push(
+                        `<tr style="cursor:pointer;" onclick="alternarDetalleBD('${id}')">`
+                        + `<td class="text-center" id="${id}-flecha">${abierto ? '▼' : '▶'}</td>`
+                        + `<td>${escapeHtml(sv.servicio)}</td>`
+                        + `<td><b>${escapeHtml(ins.nombre)}</b></td>`
+                        + `<td class="text-center">${fmtN(ins.enviado)}</td>`
+                        + `<td class="text-center">${fmtN(ins.entregado)}</td>`
+                        + `<td class="text-center"><b>${fmtN(ins.saldo)}</b></td>`
+                        + `</tr>`
+                    );
+                    const movs = Array.isArray(ins.movimientos) ? ins.movimientos : [];
+                    const detalle = movs.length ? movs.map(m => {
+                        const icono = m.tipo === 'ENVIO' ? '📤 Envío'
+                            : m.tipo === 'PARADA' ? '⏹️ Parada'
+                                : m.tipo === 'CONTROL' ? '📋 Control' : '📥 Guía';
+                        return `<tr>`
+                            + `<td class="text-center">${fmtFecha(m.fecha)}</td>`
+                            + `<td>${icono} · ${escapeHtml(m.documento || '')}`
+                            + (m.nota ? ` <b style="color:#c62828;">(${escapeHtml(m.nota)})</b>` : '')
+                            + `</td>`
+                            + `<td class="text-center">${fmtN(m.cantidad)}</td>`
+                            + `<td class="text-center">${fmtN(m.saldo)}</td>`
+                            + `</tr>`;
+                    }).join('') : '<tr><td colspan="4" class="text-center">Sin movimientos.</td></tr>';
+                    const avisoCiclo = ins.cicloDesde
+                        ? `<div style="font-size:12px; color:#555; margin-top:6px;">Ciclo actual desde `
+                        + `<b>${fmtFecha(ins.cicloDesde)}</b>: lo de arriba es lo que quedó en el historial.</div>`
+                        : '';
+                    filas.push(
+                        `<tr id="${id}" data-clave="${escapeHtml(clave)}" style="${abierto ? '' : 'display:none;'}">`
+                        + `<td colspan="6" style="background:#f4f8f7; padding:8px;">`
+                        + `<div class="tabla-wrap"><table><thead><tr>`
+                        + `<th>FECHA</th><th>DOCUMENTO</th>`
+                        + `<th class="text-center">CANTIDAD</th><th class="text-center">SALDO CORRIENTE</th>`
+                        + `</tr></thead><tbody>${detalle}</tbody></table></div>${avisoCiclo}`
+                        + `</td></tr>`
+                    );
+                });
+            });
+            if (!filas.length) return '';
+            return `<h4 style="margin:14px 0 8px;">📊 Reporte de servicios</h4>`
+                + `<p style="font-size:13px; color:#555;">El cuadro muestra el <b>ciclo actual</b> de cada insumo `
+                + `(lo movido desde la última parada; al parar queda en <b>0</b>). Pulsa <b>▶</b> para desplegar `
+                + `<b>todo lo anterior</b> uno a uno: fecha, documento, cantidad y <b>saldo corriente</b>.</p>`
+                + `<div class="tabla-wrap"><table><thead><tr>`
+                + `<th></th><th>SERVICIO</th><th>INSUMO</th>`
+                + `<th class="text-center">ENVIADO</th><th class="text-center">ENTREGADO</th><th class="text-center">SALDO</th>`
+                + `</tr></thead><tbody>${filas.join('')}</tbody></table></div>`;
+        }
+
         async function cargarServiciosBD() {
             const cont = document.getElementById('bloquesServiciosBD');
             try {
@@ -2767,6 +2848,9 @@
                     cont.innerHTML = '<p class="sin-registros text-center">Faltan las tablas de servicios: corre <b>npm run migrate</b> en el servidor.</p>';
                     return;
                 }
+                // El reporte vive siempre, aunque todavía no haya guías: es el
+                // lugar donde queda lo de antes de parar un servicio.
+                const reporte = renderReporteServiciosBD(data.servicios || []);
                 const porServicio = {};
                 for (const g of (data.guias || [])) {
                     (porServicio[g.servicio] = porServicio[g.servicio] || []).push(g);
@@ -2776,11 +2860,7 @@
                 const sinFac = {};
                 for (const p of (data.sinFactura || [])) sinFac[p.servicio] = p.n;
                 const nombres = Object.keys(porServicio).sort();
-                if (!nombres.length) {
-                    cont.innerHTML = '<p class="sin-registros text-center">Sin guías ni controles de servicios.</p>';
-                    return;
-                }
-                cont.innerHTML = nombres.map(sv => {
+                const bloques = nombres.length ? nombres.map(sv => {
                     const filas = porServicio[sv].map(g => {
                         const esGuia = g.tipo_doc === 'GUIA';
                         const docTxt = (esGuia ? 'Guía ' : 'Control ') + escapeHtml(g.numero || '');
@@ -2816,7 +2896,8 @@
                         + `<th>Documento</th><th>Producto que llegó</th>`
                         + `<th class="text-center">Cantidad</th><th class="text-center">Fecha</th><th class="text-center">Factura</th>`
                         + `</tr></thead><tbody>${filas}</tbody></table></div>`;
-                }).join('');
+                }).join('') : '<p class="sin-registros text-center">Sin guías ni controles de servicios.</p>';
+                cont.innerHTML = reporte + bloques;
             } catch (e) {
                 console.error(e);
                 cont.innerHTML = '<p class="sin-registros text-center">Error al cargar servicios.</p>';

@@ -10,7 +10,9 @@
  *      origen servicio_parada.
  *  4. Las cantidades las calcula el servidor: la pantalla solo manda las
  *      decisiones, asi que un saldo viejo no cierra de mas.
- *  5. El panel resta lo liquidado por paradas del saldo que muestra.
+ *  5. El panel muestra el CICLO ACTUAL (desde la ultima parada): al parar
+ *      queda en 0 y lo anterior vive en insumos[].movimientos, que es el
+ *      reporte uno a uno con su saldo corriente.
  */
 const mockQuery = jest.fn();
 const mockRelease = jest.fn();
@@ -109,9 +111,7 @@ const SQL = {
   updateMas: /UPDATE inventario SET stock = stock \+ \$1/,
   updEstado: /UPDATE inventario SET estado/,
   historial: /INSERT INTO historial_inventario/,
-  panelEnvios: /FROM servicios_envios GROUP BY/,
-  panelEntregado: /cant_etiquetas/,
-  panelLiquidado: /JOIN servicios_paradas p ON/,
+  panelMovs: /libro de movimientos/,
   panelParadas: /SELECT \* FROM servicios_paradas ORDER/,
   panelItemsParada: /SELECT \* FROM servicios_paradas_items ORDER/,
   panelGuias: /FROM servicios_guias ORDER BY/
@@ -271,32 +271,124 @@ describe('POST /api/servicios/parada: liquidacion', () => {
   });
 });
 
-describe('GET /api/servicios/panel: el parado deja el contador en 0', () => {
-  test('resta lo liquidado por paradas del saldo', async () => {
+describe('GET /api/servicios/panel: el ciclo y el reporte', () => {
+  // El panel se arma con el libro de movimientos: envio +10, llegada -3 y
+  // la parada que cierra el ciclo el 16/11.
+  function movsCerrados() {
+    return [
+      {
+        servicio: 'SAUÑE', articulo_id: 4, nombre: 'Et X', tipo_item: 'ETIQUETA',
+        fecha: '2026-10-17', fecha_registro: '2026-10-17 08:00:00',
+        tipo: 'ENVIO', documento: 'ENVIO #1', cantidad: '10', ref_id: 1, ord: 1
+      },
+      {
+        servicio: 'SAUÑE', articulo_id: 4, nombre: 'Et X', tipo_item: null,
+        fecha: '2026-10-21', fecha_registro: '2026-10-21 09:00:00',
+        tipo: 'LLEGADA', documento: 'Guía EG07-1', cantidad: '-3', ref_id: 2, ord: 2
+      }
+    ];
+  }
+
+  function responderPanel(movs, paradas, items) {
     responder([
-      [SQL.panelEnvios, {
-        rows: [{ servicio: 'SAUÑE', articulo_id: 4, articulo_nombre: 'Et X', tipo_item: 'ETIQUETA', enviado: '10' }],
-        rowCount: 1
-      }],
-      [SQL.panelEntregado, { rows: [{ servicio: 'SAUÑE', articulo_id: 4, nombre: 'Et X', entregado: '3' }], rowCount: 1 }],
-      [SQL.panelLiquidado, { rows: [{ servicio: 'SAUÑE', articulo_id: 4, liquidado: '4' }], rowCount: 1 }],
-      [SQL.panelParadas, {
-        rows: [{ id: 9, fecha: '2026-11-16', servicio: 'SAUÑE', usuario: 'admin1', observacion: 'prueba' }],
-        rowCount: 1
-      }],
-      [SQL.panelItemsParada, {
-        rows: [{ parada_id: 9, articulo_id: 4, articulo_nombre: 'Et X', tipo_item: 'ETIQUETA', saldo: '4', decision: 'MERMA' }],
-        rowCount: 1
-      }],
-      [SQL.panelGuias, { rows: [], rowCount: 0 }]
+      [SQL.panelMovs, { rows: movs, rowCount: movs.length }],
+      [SQL.panelParadas, { rows: paradas, rowCount: paradas.length }],
+      [SQL.panelItemsParada, { rows: items, rowCount: items.length }],
+      [SQL.panelGuias, { rows: [{ id: 1, numero: 'T009-1' }], rowCount: 1 }],
+      [/tipo_doc = 'CONTROL'/, { rows: [{ servicio: 'SAUÑE', n: 1 }], rowCount: 1 }],
+      [/factura_estado = 'PENDIENTE'/, { rows: [{ servicio: 'SAUÑE', n: 1 }], rowCount: 1 }]
     ]);
+  }
+
+  test('tras la parada el ciclo queda en 0 y lo anterior vive en el reporte', async () => {
+    responderPanel(
+      movsCerrados(),
+      [{ id: 9, fecha: '2026-11-16', servicio: 'SAUÑE', usuario: 'admin1', observacion: 'corte' }],
+      [{ parada_id: 9, articulo_id: 4, articulo_nombre: 'Et X', tipo_item: 'ETIQUETA', saldo: '7', decision: 'MERMA' }]
+    );
     const res = await invocar('get', '/api/servicios/panel');
     expect(res.statusCode).toBe(200);
     const saune = res.cuerpo.servicios.find(s => s.servicio === 'SAUÑE');
-    // 10 enviados - 3 entregados - 4 liquidados por parada = 3.
-    expect(saune.insumos[0].saldo).toBe(3);
-    expect(saune.insumos[0].liquidado).toBe(4);
+    const ins = saune.insumos[0];
+    // Ciclo actual: la parada lo dejo en 0.
+    expect(ins.enviado).toBe(0);
+    expect(ins.entregado).toBe(0);
+    expect(ins.saldo).toBe(0);
+    expect(ins.cicloDesde).toBe('2026-11-16');
+    // El reporte: envio, llegada y la linea de parada, con saldo corriente.
+    expect(ins.movimientos).toHaveLength(3);
+    const [envio, llegada, parada] = ins.movimientos;
+    expect(envio).toMatchObject({ tipo: 'ENVIO', documento: 'ENVIO #1', cantidad: 10, saldo: 10 });
+    expect(llegada).toMatchObject({ tipo: 'LLEGADA', cantidad: -3, saldo: 7 });
+    expect(parada).toMatchObject({ tipo: 'PARADA', documento: 'PARADA #9', cantidad: -7, saldo: 0 });
+    expect(parada.nota).toBe('merma');
+    // La parada sigue saliendo en su historial, con sus items.
     expect(res.cuerpo.paradas).toHaveLength(1);
     expect(res.cuerpo.paradas[0].items[0].decision).toBe('MERMA');
+  });
+
+  test('un insumo en negativo se cierra con la linea de ajuste', async () => {
+    responderPanel(
+      [
+        {
+          servicio: 'B&M DYLPLAST', articulo_id: 4, nombre: 'Et X', tipo_item: 'ETIQUETA',
+          fecha: '2026-10-26', fecha_registro: '2026-10-26 08:00:00',
+          tipo: 'ENVIO', documento: 'ENVIO #3', cantidad: '10', ref_id: 3, ord: 1
+        },
+        {
+          servicio: 'B&M DYLPLAST', articulo_id: 4, nombre: 'Et X', tipo_item: null,
+          fecha: '2026-10-28', fecha_registro: '2026-10-28 09:00:00',
+          tipo: 'LLEGADA', documento: 'Guía EG07-2', cantidad: '-18', ref_id: 4, ord: 2
+        }
+      ],
+      [{ id: 11, fecha: '2026-11-17', servicio: 'B&M DYLPLAST', usuario: 'admin1', observacion: null }],
+      // La parada no lo registro (solo se liquidan saldos a favor): el
+      // reporte lo cierra igual con un ajuste a 0.
+      []
+    );
+    const res = await invocar('get', '/api/servicios/panel');
+    const bm = res.cuerpo.servicios.find(s => s.servicio === 'B&M DYLPLAST');
+    const ins = bm.insumos[0];
+    expect(ins.saldo).toBe(0);
+    expect(ins.enviado).toBe(0);
+    expect(ins.entregado).toBe(0);
+    const parada = ins.movimientos[ins.movimientos.length - 1];
+    expect(parada).toMatchObject({ tipo: 'PARADA', cantidad: 8, saldo: 0 });
+    expect(parada.nota).toBe('ajuste a 0');
+  });
+
+  test('lo que llega despues de la parada abre un ciclo nuevo', async () => {
+    responderPanel(
+      [
+        {
+          servicio: 'SAUÑE', articulo_id: 4, nombre: 'Et X', tipo_item: 'ETIQUETA',
+          fecha: '2026-10-17', fecha_registro: '2026-10-17 08:00:00',
+          tipo: 'ENVIO', documento: 'ENVIO #1', cantidad: '10', ref_id: 1, ord: 1
+        },
+        {
+          servicio: 'SAUÑE', articulo_id: 4, nombre: 'Et X', tipo_item: 'ETIQUETA',
+          fecha: '2026-11-20', fecha_registro: '2026-11-20 08:00:00',
+          tipo: 'ENVIO', documento: 'ENVIO #2', cantidad: '5', ref_id: 2, ord: 1
+        },
+        {
+          servicio: 'SAUÑE', articulo_id: 4, nombre: 'Et X', tipo_item: null,
+          fecha: '2026-11-21', fecha_registro: '2026-11-21 09:00:00',
+          tipo: 'LLEGADA', documento: 'Guía EG07-3', cantidad: '-2', ref_id: 3, ord: 2
+        }
+      ],
+      [{ id: 9, fecha: '2026-11-16', servicio: 'SAUÑE', usuario: 'admin1', observacion: null }],
+      [{ parada_id: 9, articulo_id: 4, articulo_nombre: 'Et X', tipo_item: 'ETIQUETA', saldo: '10', decision: 'MERMA' }]
+    );
+    const res = await invocar('get', '/api/servicios/panel');
+    const saune = res.cuerpo.servicios.find(s => s.servicio === 'SAUÑE');
+    const ins = saune.insumos[0];
+    // Solo lo de despues de la parada: 5 enviados - 2 entregados.
+    expect(ins.enviado).toBe(5);
+    expect(ins.entregado).toBe(2);
+    expect(ins.saldo).toBe(3);
+    expect(ins.cicloDesde).toBe('2026-11-16');
+    expect(ins.movimientos).toHaveLength(4);
+    expect(ins.movimientos[1]).toMatchObject({ tipo: 'PARADA', cantidad: -10, saldo: 0 });
+    expect(ins.movimientos[3]).toMatchObject({ tipo: 'LLEGADA', cantidad: -2, saldo: 3 });
   });
 });

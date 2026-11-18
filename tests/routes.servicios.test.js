@@ -372,8 +372,25 @@ describe('POST /api/servicios/guias/:id/factura', () => {
 describe('GET /api/servicios', () => {
   test('el panel trae servicios, guias y pendientes', async () => {
     responder([
-      [/FROM servicios_envios GROUP BY/, { rows: [{ servicio: 'SAUÑE', articulo_id: 4, articulo_nombre: 'Et X', tipo_item: 'ETIQUETA', enviado: '10' }], rowCount: 1 }],
-      [/cant_etiquetas/, { rows: [{ servicio: 'SAUÑE', articulo_id: 4, nombre: 'Et X', entregado: '3' }], rowCount: 1 }],
+      // El panel se arma con el libro de movimientos (envios + llegadas), no
+      // con sumas aparte: envio 10 y una llegada de 3 dejan saldo 7.
+      [/libro de movimientos/, {
+        rows: [
+          {
+            servicio: 'SAUÑE', articulo_id: 4, nombre: 'Et X', tipo_item: 'ETIQUETA',
+            fecha: '2026-10-17', fecha_registro: '2026-10-17 08:00:00',
+            tipo: 'ENVIO', documento: 'ENVIO #1', cantidad: '10', ref_id: 1, ord: 1
+          },
+          {
+            servicio: 'SAUÑE', articulo_id: 4, nombre: 'Et X', tipo_item: null,
+            fecha: '2026-10-21', fecha_registro: '2026-10-21 09:00:00',
+            tipo: 'LLEGADA', documento: 'Guía EG07-1', cantidad: '-3', ref_id: 2, ord: 2
+          }
+        ],
+        rowCount: 2
+      }],
+      [/SELECT \* FROM servicios_paradas ORDER/, { rows: [], rowCount: 0 }],
+      [/SELECT \* FROM servicios_paradas_items ORDER/, { rows: [], rowCount: 0 }],
       [/FROM servicios_guias ORDER BY/, { rows: [{ id: 1, numero: 'T009-1' }], rowCount: 1 }],
       [/tipo_doc = 'CONTROL'/, { rows: [{ servicio: 'SAUÑE', n: 2 }], rowCount: 1 }],
       [/factura_estado = 'PENDIENTE'/, { rows: [{ servicio: 'SAUÑE', n: 1 }], rowCount: 1 }]
@@ -386,7 +403,11 @@ describe('GET /api/servicios', () => {
       ['SAUÑE', 'B&M DYLPLAST', 'SERVINDUSTRIAS EN GRASAS Y ACEITES SAC']
     );
     const saune = res.cuerpo.servicios.find(s => s.servicio === 'SAUÑE');
+    expect(saune.insumos[0].enviado).toBe(10);
+    expect(saune.insumos[0].entregado).toBe(3);
     expect(saune.insumos[0].saldo).toBe(7);
+    expect(saune.insumos[0].cicloDesde).toBeNull();
+    expect(saune.insumos[0].movimientos).toHaveLength(2);
     expect(res.cuerpo.guias).toHaveLength(1);
   });
 

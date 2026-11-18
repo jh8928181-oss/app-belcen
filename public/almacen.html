@@ -804,6 +804,30 @@
                 </tbody>
             </table>
         </div>
+        <h4>📊 Reporte de servicios</h4>
+        <p style="font-size:13px; color:#555;">
+            El cuadro muestra el <b>ciclo actual</b>: lo movido desde la última parada del servicio
+            (al parar queda en <b>0</b>). Pulsa <b>▶</b> en una fila para desplegar <b>todo lo
+            anterior</b> uno a uno: fecha, documento (envío / guía / control / parada), cantidad y
+            <b>saldo corriente</b>.
+        </p>
+        <div class="tabla-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th>SERVICIO</th>
+                        <th>INSUMO</th>
+                        <th class="text-center">ENVIADO</th>
+                        <th class="text-center">ENTREGADO</th>
+                        <th class="text-center">SALDO</th>
+                    </tr>
+                </thead>
+                <tbody id="tablaReporteServicio">
+                    <tr><td colspan="6" class="text-center">Cargando…</td></tr>
+                </tbody>
+            </table>
+        </div>
         <h4>Últimas guías y controles</h4>
         <div class="tabla-wrap">
             <table>
@@ -4455,6 +4479,7 @@
                 // saldo tiene cada servicio sin volver a consultar.
                 panelServiciosCache = data;
                 renderParadasServicio(data.paradas);
+                renderReporteServicio(data.servicios);
                 if (data.migracionPendiente) {
                     tbody.innerHTML = '<tr><td colspan="5" class="text-center">Faltan las tablas de servicios: corre <b>npm run migrate</b> en el servidor.</td></tr>';
                     return;
@@ -4529,6 +4554,87 @@
                     tbody.appendChild(tr);
                 });
             });
+        }
+
+        // ---- REPORTE DE SERVICIOS ----
+        // Cada fila es un insumo con su ciclo actual (0 despues de parar) y un
+        // ▶ que despliega el historial uno a uno con su saldo corriente. Las
+        // filas abiertas se recuerdan: el refresco automatico (cada 15 s)
+        // vuelve a pintar la tabla y no debe cerrarlas mientras se leen.
+        const reporteAbiertos = new Set();
+
+        function claveReporteServicio(servicio, ins) {
+            return servicio + '|' + (ins.articulo_id == null ? '' : ins.articulo_id) + '|' + (ins.nombre || '');
+        }
+
+        function fechaReporte(f) {
+            return String(f || '').slice(0, 10).split('-').reverse().join('/');
+        }
+
+        function alternarDetalleServicio(id) {
+            const det = document.getElementById(id);
+            if (!det) return;
+            const clave = det.getAttribute('data-clave') || '';
+            const abierto = det.style.display !== 'none';
+            det.style.display = abierto ? 'none' : '';
+            if (abierto) reporteAbiertos.delete(clave);
+            else reporteAbiertos.add(clave);
+            const flecha = document.getElementById(id + '-flecha');
+            if (flecha) flecha.textContent = abierto ? '▶' : '▼';
+        }
+
+        function renderReporteServicio(servicios) {
+            const tbody = document.getElementById('tablaReporteServicio');
+            if (!tbody) return;
+            const filas = [];
+            let n = 0;
+            (Array.isArray(servicios) ? servicios : []).forEach(sv => {
+                (sv.insumos || []).forEach(ins => {
+                    const clave = claveReporteServicio(sv.servicio, ins);
+                    const abierto = reporteAbiertos.has(clave);
+                    const id = 'detRep' + (n++);
+                    filas.push(
+                        `<tr style="cursor:pointer;" onclick="alternarDetalleServicio('${id}')">`
+                        + `<td class="text-center" id="${id}-flecha">${abierto ? '▼' : '▶'}</td>`
+                        + `<td>${escOpServ(sv.servicio)}</td>`
+                        + `<td><b>${escOpServ(ins.nombre)}</b></td>`
+                        + `<td class="text-center">${fmtMill(ins.enviado)}</td>`
+                        + `<td class="text-center">${fmtMill(ins.entregado)}</td>`
+                        + `<td class="text-center"><b>${fmtMill(ins.saldo)}</b></td>`
+                        + `</tr>`
+                    );
+                    const movs = Array.isArray(ins.movimientos) ? ins.movimientos : [];
+                    const detalle = movs.length ? movs.map(m => {
+                        const icono = m.tipo === 'ENVIO' ? '📤 Envío'
+                            : m.tipo === 'PARADA' ? '⏹️ Parada'
+                                : m.tipo === 'CONTROL' ? '📋 Control' : '📥 Guía';
+                        return `<tr>`
+                            + `<td class="text-center">${fechaReporte(m.fecha)}</td>`
+                            + `<td>${icono} · ${escOpServ(m.documento || '')}`
+                            + (m.nota ? ` <b style="color:#c62828;">(${escOpServ(m.nota)})</b>` : '')
+                            + `</td>`
+                            + `<td class="text-center">${fmtMill(m.cantidad)}</td>`
+                            + `<td class="text-center">${fmtMill(m.saldo)}</td>`
+                            + `</tr>`;
+                    }).join('') : '<tr><td colspan="4" class="text-center">Sin movimientos.</td></tr>';
+                    const avisoCiclo = ins.cicloDesde
+                        ? `<div style="font-size:12px; color:#555; margin-top:6px;">Ciclo actual desde `
+                        + `<b>${fechaReporte(ins.cicloDesde)}</b>: lo de arriba es lo que quedó en el historial.</div>`
+                        : '';
+                    filas.push(
+                        `<tr id="${id}" data-clave="${escOpServ(clave)}" style="${abierto ? '' : 'display:none;'}">`
+                        + `<td colspan="6" style="background:#f4f8f7; padding:8px;">`
+                        + `<div class="tabla-wrap"><table><thead><tr>`
+                        + `<th>FECHA</th><th>DOCUMENTO</th>`
+                        + `<th class="text-center">CANTIDAD</th><th class="text-center">SALDO CORRIENTE</th>`
+                        + `</tr></thead><tbody>${detalle}</tbody></table></div>${avisoCiclo}`
+                        + `</td></tr>`
+                    );
+                });
+            });
+            tbody.innerHTML = filas.length
+                ? filas.join('')
+                : '<tr><td colspan="6" class="text-center">Sin movimientos de servicios.</td></tr>';
         }
 
         function abrirParadaServicio() {

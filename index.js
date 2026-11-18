@@ -1049,43 +1049,82 @@ async function resolverInsumosServicio(q, productoKey) {
     return out;
 }
 
-// Saldo disponible de lo enviado a un servicio: por articulo, lo enviado en
-// servicios_envios menos lo ya consumido por guias y controles registrados.
-// Devuelve Map<articulo_id, saldo> (negativo si se recibio mas de lo enviado).
+// Corte del ciclo de un servicio: su ultima parada. Todo lo anterior queda en
+// el reporte y el contador arranca de 0. Devuelve {fecha, fecha_registro} o
+// null si el servicio nunca se paro (o si falta la tabla de paradas).
+async function corteServicio(q, servicio) {
+    try {
+        const r = await q.query(
+            `SELECT fecha, fecha_registro FROM servicios_paradas
+              WHERE servicio = $1
+              ORDER BY COALESCE(fecha, fecha_registro::date) DESC,
+                       COALESCE(fecha_registro, fecha::timestamp) DESC
+              LIMIT 1`,
+            [servicio]
+        );
+        return r.rows[0] || null;
+    } catch (e) {
+        if (!e || e.code !== '42P01') throw e;
+        return null;
+    }
+}
+
+// Movimientos posteriores al corte: la parada cierra el ciclo en la fecha del
+// documento y, a igual fecha, en el momento en que se registro. Sin corte
+// (servicio nunca parado) se toma todo. `pref` es el alias de la tabla.
+function desdeCorteSql(pref, iFecha, iReg) {
+    const p = pref ? pref + '.' : '';
+    return `($${iFecha}::date IS NULL
+                OR COALESCE(${p}fecha, ${p}fecha_registro::date) > $${iFecha}
+                OR (COALESCE(${p}fecha, ${p}fecha_registro::date) = $${iFecha}
+                    AND COALESCE(${p}fecha_registro, ${p}fecha::timestamp) > $${iReg}::timestamp))`;
+}
+
+// Saldo disponible de lo enviado a un servicio EN EL CICLO ACTUAL: por
+// articulo, lo enviado en servicios_envios menos lo ya consumido por guias y
+// controles registrados, contado desde la ultima parada (lo anterior ya vive
+// en el reporte). Devuelve Map<articulo_id, saldo> (negativo si se recibio
+// mas de lo enviado).
 async function saldoEnvioServicio(q, servicio) {
+    const corte = await corteServicio(q, servicio);
+    const cf = corte ? corte.fecha : null;
+    const cr = corte ? corte.fecha_registro : null;
     const env = await q.query(
         `SELECT articulo_id, COALESCE(SUM(cantidad), 0) AS enviado
            FROM servicios_envios
-          WHERE servicio = $1
+          WHERE servicio = $1 AND ${desdeCorteSql('', 2, 3)}
           GROUP BY articulo_id`,
-        [servicio]
+        [servicio, cf, cr]
     );
     const con = await q.query(
         `SELECT i.etiqueta_id AS articulo_id, COALESCE(SUM(i.cant_etiquetas), 0) AS consumido
            FROM servicios_guias_items i
            JOIN servicios_guias g ON g.id = i.guia_id
           WHERE g.servicio = $1 AND i.etiqueta_id IS NOT NULL
+            AND ${desdeCorteSql('g', 2, 3)}
           GROUP BY i.etiqueta_id
          UNION ALL
          SELECT i.preforma_id, COALESCE(SUM(i.cant_preformas), 0)
            FROM servicios_guias_items i
            JOIN servicios_guias g ON g.id = i.guia_id
           WHERE g.servicio = $1 AND i.preforma_id IS NOT NULL
+            AND ${desdeCorteSql('g', 2, 3)}
           GROUP BY i.preforma_id`,
-        [servicio]
+        [servicio, cf, cr]
     );
     // Paradas: liquidan el saldo restante (merma o devolucion al almacen),
     // por lo que también lo descuentan. Sin esto el contador nunca llegaria
-    // a 0 despues de parar el servicio.
+    // a 0 despues de parar el servicio. Solo cuenta lo liquidado desde el
+    // corte: lo de antes ya cerro su ciclo.
     let par = { rows: [] };
     try {
         par = await q.query(
             `SELECT i.articulo_id, COALESCE(SUM(i.saldo), 0) AS liquidado
                FROM servicios_paradas_items i
                JOIN servicios_paradas p ON p.id = i.parada_id
-              WHERE p.servicio = $1
+              WHERE p.servicio = $1 AND ${desdeCorteSql('p', 2, 3)}
               GROUP BY i.articulo_id`,
-            [servicio]
+            [servicio, cf, cr]
         );
     } catch (e) {
         // Migración de paradas todavía no aplicada: se comporta como antes.
@@ -1142,81 +1181,237 @@ async function buscarBotellaServicio(client, nombre) {
     return hits.length === 1 ? hits[0] : null;
 }
 
-// Panel: saldos por servicio e insumo + guias con su factura.
+// Libro de movimientos de los servicios externos: envios (+) y llegadas por
+// guia o control (-), con su documento. Las paradas no salen de aqui: las
+// arma `armarLibro` desde la cabecera de servicios_paradas, porque cada
+// parada cierra TODOS los insumos del servicio (tambien los que quedaron en
+// negativo por recibir mas de lo enviado de las insumos enviados).
+const SQL_MOV_SERVICIOS = `
+-- libro de movimientos de servicios externos
+SELECT e.servicio, e.articulo_id, e.articulo_nombre AS nombre, e.tipo_item,
+       e.fecha, e.fecha_registro, 'ENVIO' AS tipo,
+       ('ENVIO #' || e.id) AS documento,
+       e.cantidad AS cantidad, e.id AS ref_id, 1 AS ord
+  FROM servicios_envios e
+UNION ALL
+SELECT g.servicio, i.etiqueta_id, i.etiqueta_nombre, NULL,
+       g.fecha, g.fecha_registro,
+       CASE WHEN g.tipo_doc = 'GUIA' THEN 'LLEGADA' ELSE 'CONTROL' END,
+       (CASE WHEN g.tipo_doc = 'GUIA' THEN 'Guía ' ELSE 'Control ' END) || g.numero,
+       -i.cant_etiquetas, g.id, 2
+  FROM servicios_guias_items i
+  JOIN servicios_guias g ON g.id = i.guia_id
+ WHERE g.tipo_doc IN ('GUIA', 'CONTROL') AND i.etiqueta_id IS NOT NULL
+UNION ALL
+SELECT g.servicio, i.preforma_id, i.preforma_nombre, NULL,
+       g.fecha, g.fecha_registro,
+       CASE WHEN g.tipo_doc = 'GUIA' THEN 'LLEGADA' ELSE 'CONTROL' END,
+       (CASE WHEN g.tipo_doc = 'GUIA' THEN 'Guía ' ELSE 'Control ' END) || g.numero,
+       -i.cant_preformas, g.id, 2
+  FROM servicios_guias_items i
+  JOIN servicios_guias g ON g.id = i.guia_id
+ WHERE g.tipo_doc IN ('GUIA', 'CONTROL') AND i.preforma_id IS NOT NULL`;
+
+// Clave de agrupacion: servicio + insumo. Sin articulo_id se agrupa por
+// nombre para no mezclar insumos distintos.
+function claveGrupo(m) {
+    return m.servicio + '|'
+        + (m.articulo_id == null ? 'N:' + String(m.nombre || '') : String(m.articulo_id));
+}
+
+// Fecha del documento como texto local (los tests la traen como cadena y pg
+// como Date): asi la comparacion no depende del huso horario. Sin fecha se
+// usa la del registro, igual que hace el corte del ciclo.
+function fechaOrden(v, respaldo) {
+    const x = v == null || v === '' ? respaldo : v;
+    if (x instanceof Date) {
+        return x.getFullYear() + '-'
+            + String(x.getMonth() + 1).padStart(2, '0') + '-'
+            + String(x.getDate()).padStart(2, '0');
+    }
+    return String(x || '').slice(0, 10);
+}
+
+function instanteOrden(v) {
+    if (v instanceof Date) return v.getTime();
+    if (!v) return 0;
+    const t = Date.parse(String(v).replace(' ', 'T'));
+    return isNaN(t) ? 0 : t;
+}
+
+// Fecha visible de un movimiento: la del documento y, si no trae (hay guias
+// cargadas sin fecha), la del registro.
+function fechaMov(m) {
+    return m.fecha || fechaOrden(m.fecha, m.fecha_registro);
+}
+
+// Orden del libro: por servicio e insumo y, dentro de cada uno, por la fecha
+// del documento, el momento del registro y el tipo (la parada va al final
+// para cerrar lo anterior).
+function compararLibro(a, b) {
+    const ka = claveGrupo(a);
+    const kb = claveGrupo(b);
+    if (ka !== kb) return ka < kb ? -1 : 1;
+    const fa = fechaOrden(a.fecha, a.fecha_registro);
+    const fb = fechaOrden(b.fecha, b.fecha_registro);
+    if (fa !== fb) return fa < fb ? -1 : 1;
+    const ra = instanteOrden(a.fecha_registro);
+    const rb = instanteOrden(b.fecha_registro);
+    if (ra !== rb) return ra - rb;
+    const oa = a.ord || 0;
+    const ob = b.ord || 0;
+    if (oa !== ob) return oa - ob;
+    return (a.ref_id || 0) - (b.ref_id || 0);
+}
+
+// Arma el libro por servicio e insumo: agrega la linea de parada de cada
+// parada del servicio (con su decision registrada, o como ajuste cuando el
+// insumo no estaba en la parada), le calcula el saldo corriente a cada linea
+// y separa el ciclo actual (desde la ultima parada) del historial.
+// Devuelve array de grupos con {servicio, articulo_id, nombre, tipo_item,
+// enviado, entregado, saldo, cicloDesde, movimientos}.
+function armarLibro(movs, paradas, itemsParada) {
+    const grupos = new Map();
+    for (const m of movs || []) {
+        const k = claveGrupo(m);
+        if (!grupos.has(k)) {
+            grupos.set(k, {
+                servicio: m.servicio, articulo_id: m.articulo_id,
+                nombre: m.nombre, tipo_item: m.tipo_item || '', movs: []
+            });
+        }
+        grupos.get(k).movs.push(m);
+    }
+    const decPorParada = {};
+    for (const it of itemsParada || []) {
+        (decPorParada[it.parada_id] = decPorParada[it.parada_id] || []).push(it);
+    }
+    for (const p of paradas || []) {
+        for (const g of grupos.values()) {
+            if (g.servicio !== p.servicio) continue;
+            const reg = (decPorParada[p.id] || []).find(i => i.articulo_id === g.articulo_id);
+            g.movs.push({
+                servicio: p.servicio, articulo_id: g.articulo_id, nombre: g.nombre,
+                tipo_item: reg && reg.tipo_item ? reg.tipo_item : g.tipo_item,
+                fecha: p.fecha, fecha_registro: p.fecha_registro,
+                tipo: 'PARADA', documento: 'PARADA #' + p.id, cantidad: 0,
+                decision: reg ? reg.decision : null,
+                ord: 3, ref_id: p.id
+            });
+        }
+    }
+    const out = [];
+    for (const g of grupos.values()) {
+        g.movs.sort(compararLibro);
+        let saldo = 0;
+        let enviado = 0;
+        let entregado = 0;
+        let cicloEnv = 0;
+        let cicloEnt = 0;
+        let huboParada = false;
+        let cicloDesde = null;
+        const movimientos = [];
+        for (const m of g.movs) {
+            if (m.tipo === 'PARADA') {
+                // La parada cierra el ciclo: su linea deja el contador en 0.
+                // Si el insumo estaba en negativo (llego mas de lo enviado)
+                // la linea es el ajuste que lo lleva a 0.
+                const antes = saldo;
+                saldo = 0;
+                cicloEnv = 0;
+                cicloEnt = 0;
+                huboParada = true;
+                cicloDesde = fechaMov(m);
+                if (Math.abs(antes) > 0.0000005) {
+                    movimientos.push({
+                        fecha: fechaMov(m), tipo: 'PARADA', documento: m.documento,
+                        cantidad: -antes, saldo: 0,
+                        nota: m.decision === 'MERMA' ? 'merma'
+                            : m.decision === 'ALMACEN' ? 'almacén'
+                                : 'ajuste a 0'
+                    });
+                }
+                continue;
+            }
+            const cant = Number(m.cantidad) || 0;
+            saldo += cant;
+            if (m.tipo === 'ENVIO') {
+                enviado += cant;
+                if (huboParada) cicloEnv += cant;
+            } else {
+                entregado += -cant;
+                if (huboParada) cicloEnt += -cant;
+            }
+            movimientos.push({
+                fecha: fechaMov(m), tipo: m.tipo, documento: m.documento,
+                cantidad: cant, saldo, nota: null
+            });
+        }
+        // Sin parada el ciclo es toda la historia.
+        if (!huboParada) {
+            cicloEnv = enviado;
+            cicloEnt = entregado;
+        }
+        g.enviado = cicloEnv;
+        g.entregado = cicloEnt;
+        // El saldo del cuadro es el del ciclo: siempre cuadra con
+        // enviado - entregado y termina en 0 tras una parada.
+        g.saldo = cicloEnv - cicloEnt;
+        g.cicloDesde = huboParada ? cicloDesde : null;
+        g.movimientos = movimientos;
+        delete g.movs;
+        out.push(g);
+    }
+    out.sort((a, b) => (claveGrupo(a) < claveGrupo(b) ? -1 : 1));
+    return out;
+}
+
+// Panel: saldos del ciclo actual por servicio e insumo + guias con su
+// factura. El ciclo arranca en la ultima parada del servicio: lo anterior
+// vive en insumos[].movimientos, que es el reporte uno a uno (fecha,
+// documento, cantidad y saldo corriente).
 app.get('/api/servicios/panel', async (req, res) => {
     try {
-        const env = await pool.query(
-            `SELECT servicio, articulo_id, articulo_nombre, tipo_item,
-                    COALESCE(SUM(cantidad), 0) AS enviado
-               FROM servicios_envios GROUP BY servicio, articulo_id, articulo_nombre, tipo_item`
-        );
-        const con = await pool.query(
-            `SELECT g.servicio,
-                    i.etiqueta_id AS articulo_id, i.etiqueta_nombre AS nombre,
-                    COALESCE(SUM(i.cant_etiquetas), 0) AS entregado
-               FROM servicios_guias_items i
-               JOIN servicios_guias g ON g.id = i.guia_id
-              WHERE g.tipo_doc IN ('GUIA', 'CONTROL') AND i.etiqueta_id IS NOT NULL
-              GROUP BY g.servicio, i.etiqueta_id, i.etiqueta_nombre
-              UNION ALL
-             SELECT g.servicio,
-                    i.preforma_id AS articulo_id, i.preforma_nombre AS nombre,
-                    COALESCE(SUM(i.cant_preformas), 0) AS entregado
-               FROM servicios_guias_items i
-               JOIN servicios_guias g ON g.id = i.guia_id
-              WHERE g.tipo_doc IN ('GUIA', 'CONTROL') AND i.preforma_id IS NOT NULL
-              GROUP BY g.servicio, i.preforma_id, i.preforma_nombre`
-        );
-        const entregadoPor = {};
-        for (const c of con.rows) {
-            const k = c.servicio + '|' + c.articulo_id;
-            entregadoPor[k] = (entregadoPor[k] || 0) + Number(c.entregado);
-        }
-        // Paradas: saldo ya liquidado (merma o devolucion). Resta del saldo
-        // para que el contador del servicio quede en 0. Si la tabla aun no
-        // existe (migracion pendiente) se ignora y el panel se ve como antes.
-        const liquidadoPor = {};
+        const mov = await pool.query(SQL_MOV_SERVICIOS);
+        // Paradas: el historial de la pantalla y las decisiones de cada
+        // linea del libro. Si falta la tabla el panel sigue funcionando
+        // (los ciclos quedan como hasta ahora).
         let paradas = [];
+        let itemsParada = [];
         try {
-            const par = await pool.query(
-                `SELECT p.servicio, i.articulo_id, COALESCE(SUM(i.saldo), 0) AS liquidado
-                   FROM servicios_paradas_items i
-                   JOIN servicios_paradas p ON p.id = i.parada_id
-                  GROUP BY p.servicio, i.articulo_id`
-            );
-            for (const c of par.rows) {
-                const k = c.servicio + '|' + c.articulo_id;
-                liquidadoPor[k] = (liquidadoPor[k] || 0) + Number(c.liquidado);
-            }
             const cab = await pool.query(
-                `SELECT * FROM servicios_paradas ORDER BY fecha DESC NULLS LAST, id DESC LIMIT 100`
+                `SELECT * FROM servicios_paradas ORDER BY fecha DESC NULLS LAST, id DESC`
             );
             const its = await pool.query(`SELECT * FROM servicios_paradas_items ORDER BY parada_id, id`);
+            itemsParada = its.rows;
             const porParada = {};
             for (const i of its.rows) (porParada[i.parada_id] = porParada[i.parada_id] || []).push(i);
             paradas = cab.rows.map(p => Object.assign({}, p, { items: porParada[p.id] || [] }));
         } catch (e) {
             if (!e || e.code !== '42P01') throw e;
             paradas = [];
+            itemsParada = [];
+        }
+        const grupos = armarLibro(mov.rows, paradas, itemsParada);
+        const porServicio = {};
+        for (const g of grupos) {
+            (porServicio[g.servicio] = porServicio[g.servicio] || []).push(g);
         }
         const servicios = SERVICIOS_SOPLADO.map(sv => {
-            const insumos = env.rows
-                .filter(e => e.servicio === sv)
-                .map(e => {
-                    const cons = entregadoPor[sv + '|' + e.articulo_id] || 0;
-                    const liq = liquidadoPor[sv + '|' + e.articulo_id] || 0;
-                    const enviado = Number(e.enviado) || 0;
-                    return {
-                        articulo_id: e.articulo_id,
-                        nombre: e.articulo_nombre,
-                        tipo_item: e.tipo_item,
-                        unidad_medida: 'MILLARES',
-                        enviado,
-                        entregado: cons,
-                        liquidado: liq,
-                        saldo: enviado - cons - liq
-                    };
-                });
+            const insumos = (porServicio[sv] || [])
+                .slice()
+                .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || '')))
+                .map(g => ({
+                    articulo_id: g.articulo_id,
+                    nombre: g.nombre,
+                    tipo_item: g.tipo_item,
+                    unidad_medida: 'MILLARES',
+                    enviado: g.enviado,
+                    entregado: g.entregado,
+                    saldo: g.saldo,
+                    cicloDesde: g.cicloDesde,
+                    movimientos: g.movimientos
+                }));
             return { servicio: sv, insumos };
         });
         const guias = await pool.query(

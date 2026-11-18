@@ -4646,11 +4646,16 @@
                 return;
             }
             const sv = panel.servicios.find(s => s.servicio === svc);
-            const insumos = ((sv && sv.insumos) || []).filter(i => Number(i.saldo) > 0);
+            // Los positivos piden decision (merma/almacen); los negativos
+            // (llego mas de lo enviado) se cierran solos con ajuste a 0 y no
+            // tocan inventario, asi que salen como fila fija sin dropdown.
+            const todos = (sv && sv.insumos) || [];
+            const insumos = todos.filter(i => Number(i.saldo) !== 0);
             if (!insumos.length) {
                 alert(`El servicio ${svc} ya está en 0: no hay saldo que liquidar.`);
                 return;
             }
+            const negativos = insumos.filter(i => Number(i.saldo) < 0);
             document.getElementById('parServicioNombre').textContent = svc;
             document.getElementById('parObservacion').value = '';
             // Aviso sin bloquear: así el operario sabe que esos documentos
@@ -4663,15 +4668,30 @@
                 if (p.servicio === svc) avisos.push(`${p.n} guía(s) sin factura`);
             });
             const av = document.getElementById('parAviso');
-            if (avisos.length) {
+            const avisos2 = [];
+            if (negativos.length) {
+                avisos2.push(`${negativos.length} insumo(s) en negativo (llegó más de lo enviado): `
+                    + 'se cierran con ajuste a 0 y no tocan el inventario');
+            }
+            if (avisos.length) avisos2.push('⚠️ ' + avisos.join(' · ')
+                + '. Puedes parar igual; esos documentos se resuelven aparte');
+            if (avisos2.length) {
                 av.style.display = 'block';
-                av.textContent = '⚠️ Aviso: ' + avisos.join(' · ')
-                    + '. Puedes parar igual; esos documentos se resuelven aparte.';
+                av.textContent = avisos2.join(' · ') + '.';
             } else {
                 av.style.display = 'none';
             }
             document.getElementById('parLineas').innerHTML = insumos.map(ins => {
                 const s = Number(ins.saldo);
+                // En negativo no hay nada que decidir: es un ajuste a 0.
+                if (s < 0) {
+                    return `<tr>
+                        <td>${escOpServ(ins.nombre)}</td>
+                        <td>${escOpServ(ins.tipo_item || '')}</td>
+                        <td class="text-center"><b>${fmtMill(s)}</b></td>
+                        <td class="text-center" style="color:#8a6d00;">Ajuste a 0 (no toca inventario)</td>
+                    </tr>`;
+                }
                 const esEtiq = String(ins.tipo_item || '').toUpperCase() === 'ETIQUETA';
                 const menor1 = esEtiq && s < 1;
                 const nota = menor1
@@ -4693,11 +4713,17 @@
         async function confirmarParadaServicio() {
             if (guardParada) return;
             const svc = document.getElementById('parServicio').value;
-            const lineas = Array.from(document.querySelectorAll('#parLineas tr')).map(tr => ({
-                articulo_id: Number(tr.querySelector('.par-decision').dataset.articulo),
-                decision: tr.querySelector('.par-decision').value
-            }));
-            if (!lineas.length) return;
+            // Solo las filas con dropdown aportan decision: las negativas son
+            // ajuste a 0 y se mandan sin decision (el servidor las cierra).
+            const filas = Array.from(document.querySelectorAll('#parLineas tr'));
+            const lineas = filas
+                .map(tr => {
+                    const sel = tr.querySelector('.par-decision');
+                    return sel ? { articulo_id: Number(sel.dataset.articulo), decision: sel.value } : null;
+                })
+                .filter(Boolean);
+            const nAjustes = filas.length - lineas.length;
+            if (!filas.length) return;
             const sinElegir = lineas.filter(l => !l.decision);
             if (sinElegir.length) {
                 alert('Elige qué hacer con cada insumo: merma o regresar al almacén.');
@@ -4706,9 +4732,10 @@
             const nMerma = lineas.filter(l => l.decision === 'MERMA').length;
             const nAlm = lineas.length - nMerma;
             const texto = `¿Parar el servicio ${svc}?\n\n`
-                + `• ${nMerma} insumo(s) a MERMA (no vuelven al stock)\n`
-                + `• ${nAlm} insumo(s) REGRESAN al almacén\n\n`
-                + `El contador quedará en 0 y los próximos envíos serán registros nuevos.`;
+                + (nMerma ? `• ${nMerma} insumo(s) a MERMA (no vuelven al stock)\n` : '')
+                + (nAlm ? `• ${nAlm} insumo(s) REGRESAN al almacén\n` : '')
+                + (nAjustes ? `• ${nAjustes} insumo(s) en negativo → ajuste a 0 (no toca inventario)\n` : '')
+                + `\nEl contador quedará en 0 y los próximos envíos serán registros nuevos.`;
             if (!confirm(texto)) return;
             guardParada = true;
             try {

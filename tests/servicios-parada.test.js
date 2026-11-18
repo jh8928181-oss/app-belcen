@@ -203,6 +203,105 @@ describe('POST /api/servicios/parada: validacion', () => {
     expect(textos.some(t => SQL.insParada.test(t))).toBe(false);
   });
 
+  test('un servicio solo con negativos se para con ajuste a 0', async () => {
+    // B&M: llego mas de lo enviado en los dos insumos. No hay nada que
+    // decidir (ni merma ni almacén), pero el servicio igual debe poder
+    // pararse para que el contador quede en 0.
+    responder([
+      [SQL.saldoEnvios, {
+        rows: [
+          { articulo_id: 4, enviado: '33.8' },
+          { articulo_id: 5, enviado: '45' }
+        ],
+        rowCount: 2
+      }],
+      [SQL.saldoConsumido, {
+        rows: [
+          { articulo_id: 4, consumido: '63.052' },
+          { articulo_id: 5, consumido: '63.052' }
+        ],
+        rowCount: 2
+      }],
+      [SQL.saldoParadas, { rows: [], rowCount: 0 }],
+      [SQL.insParada, { rows: [{ id: 88 }], rowCount: 1 }]
+    ]);
+    const res = await invocar('post', '/api/servicios/parada', {
+      body: { servicio: 'B&M DYLPLAST', items: [] }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.cuerpo.success).toBe(true);
+    expect(res.cuerpo.mensaje).toMatch('ajuste a 0');
+    // Sin items: no hay material que liquidar ni inventario que tocar.
+    const items = mockQuery.mock.calls.filter(c => SQL.insItem.test(String(c[0])));
+    expect(items).toHaveLength(0);
+    const upd = mockQuery.mock.calls.find(c => SQL.updateMas.test(String(c[0])));
+    expect(upd).toBeUndefined();
+  });
+
+  test('mezcla: los positivos piden decision y los negativos se cierran solos', async () => {
+    responder([
+      [SQL.saldoEnvios, {
+        rows: [
+          { articulo_id: 4, enviado: '10' },
+          { articulo_id: 5, enviado: '45' }
+        ],
+        rowCount: 2
+      }],
+      [SQL.saldoConsumido, {
+        rows: [
+          { articulo_id: 4, consumido: '4' },
+          { articulo_id: 5, consumido: '63.052' }
+        ],
+        rowCount: 2
+      }],
+      [SQL.saldoParadas, { rows: [], rowCount: 0 }],
+      [SQL.insParada, { rows: [{ id: 89 }], rowCount: 1 }],
+      [SQL.insItem, { rows: [], rowCount: 1 }],
+      [SQL.updateMas, { rows: [], rowCount: 1 }],
+      [SQL.updEstado, { rows: [], rowCount: 1 }],
+      [SQL.historial, { rows: [], rowCount: 1 }]
+    ]);
+    // Sin decidir el positivo no cierra.
+    const falta = await invocar('post', '/api/servicios/parada', {
+      body: { servicio: 'B&M DYLPLAST', items: [] }
+    });
+    expect(falta.statusCode).toBe(400);
+    expect(falta.cuerpo.mensaje).toMatch('Falta decidir');
+    expect(mockQuery.mock.calls.filter(c => SQL.insParada.test(String(c[0])))).toHaveLength(0);
+
+    // Con el positivo decidido cierra: solo ese queda como item.
+    responderConArticulos([
+      [SQL.saldoEnvios, {
+        rows: [
+          { articulo_id: 4, enviado: '10' },
+          { articulo_id: 5, enviado: '45' }
+        ],
+        rowCount: 2
+      }],
+      [SQL.saldoConsumido, {
+        rows: [
+          { articulo_id: 4, consumido: '4' },
+          { articulo_id: 5, consumido: '63.052' }
+        ],
+        rowCount: 2
+      }],
+      [SQL.saldoParadas, { rows: [], rowCount: 0 }],
+      [SQL.insParada, { rows: [{ id: 90 }], rowCount: 1 }],
+      [SQL.insItem, { rows: [], rowCount: 1 }],
+      [SQL.updateMas, { rows: [], rowCount: 1 }],
+      [SQL.updEstado, { rows: [], rowCount: 1 }],
+      [SQL.historial, { rows: [], rowCount: 1 }]
+    ]);
+    const ok = await invocar('post', '/api/servicios/parada', {
+      body: { servicio: 'B&M DYLPLAST', items: [{ articulo_id: 4, decision: 'MERMA' }] }
+    });
+    expect(ok.statusCode).toBe(200);
+    const items = mockQuery.mock.calls.filter(c => SQL.insItem.test(String(c[0])));
+    expect(items).toHaveLength(1);
+    expect(items[0][1]).toEqual([90, 4, 'Et X', 'ETIQUETA', 6, 'MERMA']);
+    expect(ok.cuerpo.mensaje).toMatch('ajuste a 0');
+  });
+
   test('rechaza si el servicio ya esta en 0', async () => {
     responder([
       [SQL.saldoEnvios, { rows: [{ articulo_id: 4, enviado: '10' }], rowCount: 1 }],

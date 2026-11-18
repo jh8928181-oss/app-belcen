@@ -1664,9 +1664,6 @@ app.post('/api/servicios/parada', gAlmacen, async (req, res) => {
         if (!SERVICIOS_SOPLADO.includes(servicio)) {
             return res.status(400).json({ success: false, mensaje: `Servicio inválido. Opciones: ${SERVICIOS_SOPLADO.join(', ')}.` });
         }
-        if (!items.length) {
-            return res.status(400).json({ success: false, mensaje: 'No hay insumos que liquidar en este servicio.' });
-        }
         await client.query('BEGIN');
         // Las cantidades las calcula el servidor; la pantalla solo manda las
         // decisiones, asi que un saldo manipulado por el cliente no existe.
@@ -1692,14 +1689,18 @@ app.post('/api/servicios/parada', gAlmacen, async (req, res) => {
             }
             decididos.set(articulo_id, decision);
         }
-        // Para que el contador quede en 0 hay que decidir TODOS los insumos
-        // con saldo. Si falta alguno, se devuelve la lista en vez de cerrar a
-        // medias.
-        const pendientes = Array.from(saldo.entries()).filter(([, s]) => s > 0);
-        if (!pendientes.length) {
+        // Saldo a favor (positivo): hay que decidir merma o almacen antes de
+        // cerrar. NEGATIVO (llego mas de lo enviado): no hay material que
+        // devolver ni tirar, asi que la parada lo cierra con un ajuste a 0 y
+        // no toca inventario (no pide decision). Los dos casos cuentan para
+        // que el servicio quede en 0 de verdad.
+        const conSaldo = Array.from(saldo.entries()).filter(([, s]) => Math.abs(s) > 0.0000005);
+        if (!conSaldo.length) {
             await client.query('ROLLBACK');
             return res.status(400).json({ success: false, mensaje: `El servicio ${servicio} ya está en 0: no hay saldo que liquidar.` });
         }
+        const pendientes = conSaldo.filter(([, s]) => s > 0);
+        const negativos = conSaldo.filter(([, s]) => s < 0);
         const sinDecidir = pendientes.filter(([id]) => !decididos.has(id));
         if (sinDecidir.length) {
             const nom = await client.query(
@@ -1759,10 +1760,14 @@ app.post('/api/servicios/parada', gAlmacen, async (req, res) => {
             }
         }
         await client.query('COMMIT');
+        // Los insumos en negativo no llevan item: no hay material que merma
+        // ni devolver, el reporte les arma la linea de "ajuste a 0" solo.
+        const ajustes = negativos.length;
         res.json({
             success: true,
             parada_id: paradaId,
-            mensaje: `Servicio ${servicio} parado. Contador en 0. ${devueltas} insumo(s) al almacén, ${mermas} a merma.`
+            mensaje: `Servicio ${servicio} parado. Contador en 0. ${devueltas} insumo(s) al almacén, ${mermas} a merma`
+                + (ajustes ? `, ${ajustes} en negativo con ajuste a 0.` : '.')
         });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});

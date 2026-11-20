@@ -414,21 +414,34 @@
                     if (!res.ok) throw new Error('Error del servidor.');
                     const items = await res.json();
                     const preformas = (Array.isArray(items) ? items : []).filter(esPreformaFisica);
-                    sel.innerHTML = '<option value="">-- Seleccione la preforma exacta --</option>';
-                    preformas.forEach(p => {
+                    // El auto-refresco vuelve a llamar esto cada 15 s: con
+                    // repoblarSelect el select SOLO se reconstruye si cambio el
+                    // contenido (nombre/stock) y, aun asi, se conserva lo que el
+                    // operador ya eligio. Sin eso, cada tic volvia a "-- Seleccione
+                    // la preforma exacta --" y se perdia la captura a medias.
+                    const firma = JSON.stringify(preformas.map(p => {
                         const n = Number(p.stock);
-                        const stockTxt = Number.isInteger(n) ? String(n) : n.toFixed(2);
-                        const opt = document.createElement('option');
-                        opt.value = p.nombre;
-                        opt.textContent = `${p.nombre} (Stock: ${stockTxt} MILLARES)`;
-                        sel.appendChild(opt);
+                        return [p.nombre, Number.isInteger(n) ? String(n) : n.toFixed(2)];
+                    }));
+                    repoblarSelect(sel, preformas.length ? firma : 'vacio', (s) => {
+                        if (preformas.length === 0) {
+                            s.innerHTML = '<option value="">-- Sin preformas en inventario --</option>';
+                            return;
+                        }
+                        s.innerHTML = '<option value="">-- Seleccione la preforma exacta --</option>';
+                        preformas.forEach(p => {
+                            const n = Number(p.stock);
+                            const stockTxt = Number.isInteger(n) ? String(n) : n.toFixed(2);
+                            const opt = document.createElement('option');
+                            opt.value = p.nombre;
+                            opt.textContent = `${p.nombre} (Stock: ${stockTxt} MILLARES)`;
+                            s.appendChild(opt);
+                        });
                     });
-                    if (preformas.length === 0) {
-                        sel.innerHTML = '<option value="">-- Sin preformas en inventario --</option>';
-                    }
                 } catch (e) {
+                    // Sin inventario no se toca el select: un fallo transitorio
+                    // no debería borrar lo que ya está elegido.
                     console.error(e);
-                    sel.innerHTML = '<option value="">-- No se pudo cargar preformas --</option>';
                 }
             }
         }
@@ -440,12 +453,22 @@
             'Molde de 200 ml', 'Molde de 2 Lt', 'Molde de 3 Lt'
         ];
 
+        // Molde elegido a mano por el operador en cada tarjeta (A/M): mientras
+        // esté activo, el auto-refresco NO lo pisa con el molde guardado en la
+        // línea. Se limpia al registrar producción (form.reset()).
+        const moldeElegidoOperador = { A: false, M: false };
+
         function poblarMoldes() {
             for (const suf of ['A', 'M']) {
                 const sel = document.getElementById('molde_linea_' + suf);
                 sel.innerHTML = '<option value="">-- Seleccionar molde --</option>'
                     + MOLDES_SOPLADO.map(m => `<option value="${m}">${m}</option>`).join('');
-                sel.addEventListener('change', () => filtrarBotellasPorMolde(suf));
+                // change solo lo dispara la interacción del usuario (asignar
+                // sel.value por código no lo dispara), así que marca la elección.
+                sel.addEventListener('change', () => {
+                    moldeElegidoOperador[suf] = true;
+                    filtrarBotellasPorMolde(suf);
+                });
             }
         }
 
@@ -506,7 +529,11 @@
                 opt.textContent = actual + ' (anterior)';
                 sel.appendChild(opt);
             }
-            sel.value = actual;
+            // Si el operador ya eligió molde en esta tarjeta, el refresco lo
+            // respeta: solo se propone el de la línea cuando aún no eligió.
+            if (!(moldeElegidoOperador[suf] && sel.value)) {
+                sel.value = actual;
+            }
             document.getElementById('moldeActualLinea_' + suf).textContent = actual
                 ? 'Molde actual en línea: ' + actual
                 : 'Esta línea aún no tiene molde registrado.';
@@ -606,6 +633,8 @@
                 if (res.ok && data.success) {
                     alert('✅ ' + data.mensaje);
                     form.reset();
+                    // Terminó la captura: vuelve a mandar el molde de la línea.
+                    moldeElegidoOperador[suf] = false;
                     const hint = document.getElementById('etiquetaHint_' + suf);
                     if (hint) hint.textContent = '';
                     cargarLineasSoplado();

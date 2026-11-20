@@ -120,10 +120,10 @@ describe('GET /api/auditoria/entradas — expone el vínculo con el catálogo', 
 });
 
 describe('GET /api/auditoria/proveedores — lista mínima del catálogo', () => {
-  test('sirve id y nombre para cualquier rol que vea Auditoría', async () => {
+  test('sirve id, nombre y categoria para cualquier rol que vea Auditoría', async () => {
     mockQuery.mockImplementation(async (sql) => {
-      if (/SELECT id, nombre FROM proveedores ORDER BY nombre/.test(sql)) {
-        return { rows: [{ id: 7, nombre: 'EUROPLAST SAC' }], rowCount: 1 };
+      if (/SELECT id, nombre, categoria FROM proveedores ORDER BY nombre/.test(sql)) {
+        return { rows: [{ id: 7, nombre: 'EUROPLAST SAC', categoria: 'General' }], rowCount: 1 };
       }
       return { rows: [], rowCount: 0 };
     });
@@ -131,8 +131,8 @@ describe('GET /api/auditoria/proveedores — lista mínima del catálogo', () =>
     const res = await invocar('get', '/api/auditoria/proveedores', { rol: 'produccion' });
 
     expect(res.statusCode).toBe(200);
-    expect(res.cuerpo).toEqual([{ id: 7, nombre: 'EUROPLAST SAC' }]);
-    expect(sqlDe('SELECT id, nombre FROM proveedores ORDER BY nombre')).toHaveLength(1);
+    expect(res.cuerpo).toEqual([{ id: 7, nombre: 'EUROPLAST SAC', categoria: 'General' }]);
+    expect(sqlDe('SELECT id, nombre, categoria FROM proveedores ORDER BY nombre')).toHaveLength(1);
   });
 });
 
@@ -191,7 +191,7 @@ describe('POST /api/auditoria/vincular-proveedores', () => {
 describe('POST /api/auditoria/vincular-ingreso — vínculo manual fila por fila', () => {
   function montarVinculo({ proveedorExiste = true, ingresoExiste = true } = {}) {
     mockQuery.mockImplementation(async (sql) => {
-      if (/SELECT id FROM proveedores WHERE id/.test(sql)) return { rows: proveedorExiste ? [{ id: 7 }] : [], rowCount: proveedorExiste ? 1 : 0 };
+      if (/SELECT id, categoria FROM proveedores WHERE id/.test(sql)) return { rows: proveedorExiste ? [{ id: 7, categoria: 'General' }] : [], rowCount: proveedorExiste ? 1 : 0 };
       if (/UPDATE registro_ingresos_almacen SET proveedor_id/.test(sql)) return { rows: [], rowCount: ingresoExiste ? 1 : 0 };
       return { rows: [], rowCount: 0 };
     });
@@ -205,7 +205,9 @@ describe('POST /api/auditoria/vincular-ingreso — vínculo manual fila por fila
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.cuerpo).toEqual({ success: true, proveedor_id: 7 });
+    // Devuelve la categoria para que la fila repintada ya muestre el badge de
+    // servicio sin volver a pedir la lista.
+    expect(res.cuerpo).toEqual({ success: true, proveedor_id: 7, proveedor_categoria: 'General' });
     const upd = mockQuery.mock.calls.find(c => /UPDATE registro_ingresos_almacen SET proveedor_id/.test(String(c[0])));
     expect(upd[1]).toEqual([7, 3]);
   });

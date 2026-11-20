@@ -4810,7 +4810,7 @@ app.get('/api/salidas/historial', async (req, res) => {
 app.get('/api/auditoria/entradas', gAuditoria, async (req, res) => {
     try {
         const vig = await pool.query(`SELECT * FROM ingresos_vigilancia ORDER BY fecha_ingreso DESC`);
-        const alm = await pool.query(`SELECT a.*, p.nombre AS proveedor_catalogo
+        const alm = await pool.query(`SELECT a.*, p.nombre AS proveedor_catalogo, p.categoria AS proveedor_categoria
                                          FROM registro_ingresos_almacen a
                                     LEFT JOIN proveedores p ON p.id = a.proveedor_id
                                      ORDER BY a.fecha_registro DESC, a.id DESC`);
@@ -4859,6 +4859,7 @@ app.get('/api/auditoria/entradas', gAuditoria, async (req, res) => {
                 proveedor: a.proveedor || 'N/D',
                 proveedor_id: a.proveedor_id !== undefined ? a.proveedor_id : null,
                 proveedor_catalogo: a.proveedor_catalogo || null,
+                proveedor_categoria: a.proveedor_categoria || null,
                 producto: a.producto_nombre || 'N/D',
                 cantidad: a.cantidad !== undefined && a.cantidad !== null ? a.cantidad : 0,
                 foto_url: fotoPorGuia[g] || null,
@@ -4879,7 +4880,7 @@ app.get('/api/auditoria/entradas', gAuditoria, async (req, res) => {
 // y supervisor.
 app.get('/api/auditoria/proveedores', gAuditoria, async (req, res) => {
     try {
-        const r = await pool.query('SELECT id, nombre FROM proveedores ORDER BY nombre');
+        const r = await pool.query('SELECT id, nombre, categoria FROM proveedores ORDER BY nombre');
         res.json(r.rows);
     } catch (err) {
         res.status(500).json({ success: false, mensaje: err.message });
@@ -4937,7 +4938,7 @@ app.post('/api/auditoria/vincular-ingreso', gAuditoria, async (req, res) => {
         if (!Number.isInteger(ingreso_id) || !ingreso_id || !Number.isInteger(proveedor_id) || !proveedor_id) {
             return res.status(400).json({ success: false, mensaje: 'Indique el ingreso y el proveedor del catálogo.' });
         }
-        const prov = await pool.query('SELECT id FROM proveedores WHERE id = $1', [proveedor_id]);
+        const prov = await pool.query('SELECT id, categoria FROM proveedores WHERE id = $1', [proveedor_id]);
         if (!prov.rows.length) {
             return res.status(404).json({ success: false, mensaje: 'Ese proveedor ya no está en el catálogo.' });
         }
@@ -4945,7 +4946,7 @@ app.post('/api/auditoria/vincular-ingreso', gAuditoria, async (req, res) => {
         if (!upd.rowCount) {
             return res.status(404).json({ success: false, mensaje: 'El ingreso no existe.' });
         }
-        res.json({ success: true, proveedor_id });
+        res.json({ success: true, proveedor_id, proveedor_categoria: prov.rows[0].categoria || null });
     } catch (err) {
         res.status(500).json({ success: false, mensaje: 'Error al vincular el ingreso: ' + err.message });
     }

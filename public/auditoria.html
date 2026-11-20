@@ -193,6 +193,17 @@
             font-family: inherit; background: rgba(255, 255, 255, 0.8); color: var(--texto);
         }
 
+        /* Guia de soplado externo: proveedor con categoria PREFORMAS Y SERVICIOS
+           (B&M DYPLAST, INVERSIONES E&M SAUÑE, SERVIS INDUSTRIAL). Su guia trae
+           botellas sopladas afuera, no mercaderia de cajas/tapas/etiquetas. */
+        .badge-servicio {
+            display: inline-block; margin-left: 6px; padding: 2px 8px;
+            border-radius: 999px; font-size: 10px; font-weight: 800;
+            letter-spacing: .04em; white-space: nowrap;
+            background: rgba(14, 116, 144, 0.12); color: #0e7490;
+            border: 1px solid rgba(14, 116, 144, 0.35);
+        }
+
         /* Control segmentado (Ingresos / Salidas) */
         .seg-alm { display: flex; gap: 6px; margin: 10px 0 2px; flex-wrap: wrap; }
         .seg-alm button {
@@ -998,13 +1009,24 @@
             etiquetarTablas();
         }
 
+        // Categorias del catalogo que son soplado externo: esas guias traen
+        // botellas sopladas afuera y se marcan con un badge para distinguirlas
+        // de las de cajas, tapas o etiquetas.
+        const CATEGORIAS_SERVICIO = ['PREFORMAS Y SERVICIOS'];
+
+        function badgeServicio(item) {
+            if (!item || !item.proveedor_categoria) return '';
+            if (CATEGORIAS_SERVICIO.indexOf(item.proveedor_categoria) === -1) return '';
+            return ` <span class="badge-servicio" title="Proveedor de soplado externo: la guia trae botellas sopladas afuera">🔧 SERVICIO</span>`;
+        }
+
         // Nombre canónico del catálogo. Si el ingreso quedó sin vínculo (el
         // proveedor puede darse de alta después, y el texto viene como
         // "EUROPLAST" o como "EUROPLAST SAC"), la celda ofrece el select para
         // vincularlo a mano: ningún ingreso queda atascado.
         function celdaProveedorAlm(item) {
             if (item.proveedor_id !== null && item.proveedor_id !== undefined) {
-                return item.proveedor_catalogo || item.proveedor || 'N/D';
+                return (item.proveedor_catalogo || item.proveedor || 'N/D') + badgeServicio(item);
             }
             if (proveedoresFiltro.length && item.ingreso_id != null) {
                 return `<select class="sel-vinc-prov" title="Vincular este ingreso con un proveedor del catálogo" onchange="vincularIngreso(${item.ingreso_id}, this.value)">` +
@@ -1099,6 +1121,7 @@
                 const fila = entradasAlmGlobal.find(x => x.ingreso_id === ingresoId);
                 if (fila) {
                     fila.proveedor_id = d.proveedor_id;
+                    fila.proveedor_categoria = d.proveedor_categoria || null;
                     const prov = proveedoresFiltro.find(p => p.id === d.proveedor_id);
                     if (prov) fila.proveedor_catalogo = prov.nombre;
                 }

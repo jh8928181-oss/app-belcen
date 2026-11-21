@@ -2305,7 +2305,9 @@ app.get('/api/inventario', async (req, res) => {
 
 // --- SOPLADO (CON PREFORMA SELECCIONADA Y ETIQUETA AUTOMÁTICA) ---
 // Cada tipo de botella resuelve su nombre final y su etiqueta. La etiqueta
-// NO se descuenta al soplar (salen en blanco): se descuenta al etiquetar.
+// se descuenta AQUÍ cuando el operador reporta el lote como etiquetado; si
+// no, las botellas salen en blanco y esa etiqueta se descuenta después con
+// /api/soplado/etiquetar (nunca las dos veces para el mismo lote).
 // El artículo EN BLANCO es genérico por tamaño ("Botella 1 Lt (blanco)"):
 // la marca la pone la etiqueta, y así una botella soplada sirve para la
 // línea que tenga ese envase. El tamaño sale del molde puesto en la línea:
@@ -2320,7 +2322,7 @@ function mapaBotellaSoplado(botella_tipo) {
             // LÍNEA BELINI
             case 'soplado_belini_200ml':
                 botellaNombre = 'Botella Belini x 200 ml';
-                etiquetaNombre = 'Etiqueta couche 90 gr x 200 ml B-1';
+                etiquetaNombre = 'Etiqueta couche 90 gr x 200 ml Belini';
                 blancoNombre = 'Botella 200 ml (blanco)';
                 tamano = '200ml';
                 break;
@@ -2434,11 +2436,14 @@ app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
 
         // Sin la migración de líneas, el reporte se guarda como antes.
         let conLinea = true;
+        // Sin la migración de "etiquetada" no se puede guardar ese dato.
+        let conEtiquetadaCol = false;
         try {
             const cols = await client.query(
                 `SELECT column_name FROM information_schema.columns WHERE table_name = 'reportes_soplado'`
             );
             conLinea = cols.rows.some(r => r.column_name === 'linea');
+            conEtiquetadaCol = cols.rows.some(r => r.column_name === 'etiquetada');
         } catch (e) { conLinea = false; }
 
         await client.query('BEGIN');
@@ -2585,22 +2590,26 @@ app.post('/api/soplado/registrar', gSoplado, async (req, res) => {
         // Guardar el reporte del día para la barra de estado y estadísticas.
         // Su id es el vínculo con el que se saldan los ajustes pendientes que
         // esta producción regulariza (se registra ya validado el destino).
+        // `etiquetada` deja asentado si el lote salió terminado (con etiqueta
+        // descontada aquí mismo) o en blanco (se etiqueta después).
         let reporteId = null;
+        const columnasRep = ['preforma_nombre', 'botella_tipo', 'botella_nombre', 'cantidad_botellas', 'usuario_registro'];
+        const valoresRep = [preforma_nombre, botella_tipo, botellaNombre, cantidadBotellas, usuario || 'soplado_user'];
         if (conLinea) {
-            const rep = await client.query(
-                `INSERT INTO reportes_soplado (preforma_nombre, botella_tipo, botella_nombre, cantidad_botellas, usuario_registro, linea, molde)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-                [preforma_nombre, botella_tipo, botellaNombre, cantidadBotellas, usuario || 'soplado_user', lineaVal, moldeVal || null]
-            );
-            reporteId = rep.rows[0] && rep.rows[0].id;
-        } else {
-            const rep = await client.query(
-                `INSERT INTO reportes_soplado (preforma_nombre, botella_tipo, botella_nombre, cantidad_botellas, usuario_registro)
-                 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-                [preforma_nombre, botella_tipo, botellaNombre, cantidadBotellas, usuario || 'soplado_user']
-            );
-            reporteId = rep.rows[0] && rep.rows[0].id;
+            columnasRep.push('linea', 'molde');
+            valoresRep.push(lineaVal, moldeVal || null);
         }
+        if (conEtiquetadaCol) {
+            columnasRep.push('etiquetada');
+            valoresRep.push(etiquetada);
+        }
+        const rep = await client.query(
+            `INSERT INTO reportes_soplado (${columnasRep.join(', ')}) VALUES (${
+                valoresRep.map((v, i) => '$' + (i + 1)).join(', ')
+            }) RETURNING id`,
+            valoresRep
+        );
+        reporteId = rep.rows[0] && rep.rows[0].id;
 
         // Entraron botellas terminadas (etiquetadas): si envasado tenía un
         // ajuste pendiente de este artículo, se salda solo aquí contra este

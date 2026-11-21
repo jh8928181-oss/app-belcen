@@ -82,7 +82,7 @@ async function invocar(method, ruta, req = {}) {
 
 // Mundo programable: columnas, marcha por área, stocks y líneas.
 const mundo = {
-  columnas: ['linea'],
+  columnas: ['linea', 'etiquetada'],
   marcha: { soplado_automatica: true, soplado_manual: true },
   preforma: 10,
   etiqueta: 10,
@@ -159,7 +159,7 @@ function usarMundo() {
 
 beforeEach(() => {
   mockQuery.mockReset();
-  mundo.columnas = ['linea'];
+  mundo.columnas = ['linea', 'etiquetada'];
   mundo.marcha = { soplado_automatica: true, soplado_manual: true };
   mundo.preforma = 10;
   mundo.etiqueta = 10;
@@ -197,6 +197,24 @@ describe('POST /api/soplado/registrar', () => {
     expect(ins[1][6]).toBe('Molde 1 Lt');
     const mem = mockQuery.mock.calls.find(c => /UPDATE soplado_lineas SET molde_actual/.test(String(c[0])));
     expect(mem[1]).toEqual(['Molde 1 Lt', 'MANUAL']);
+  });
+
+  test('el reporte deja asentado si el lote salió etiquetado o en blanco', async () => {
+    mundo.etiquetaArt = { id: 55, stock: 10 };
+    mundo.terminada = { id: 77, stock: 100 };
+
+    await invocar('post', '/api/soplado/registrar', { body: cuerpoBase() });
+    const insBlanco = mockQuery.mock.calls.find(c => /INSERT INTO reportes_soplado/.test(String(c[0])));
+    expect(insBlanco[1][7]).toBe(false);
+
+    mockQuery.mockClear();
+    const res = await invocar('post', '/api/soplado/registrar', {
+      body: { ...cuerpoBase(), etiquetada: true }
+    });
+
+    expect(res.statusCode).toBe(200);
+    const insEtq = mockQuery.mock.calls.find(c => /INSERT INTO reportes_soplado/.test(String(c[0])));
+    expect(insEtq[1][7]).toBe(true);
   });
 
   test('al soplar no se descuenta etiqueta ni terminada: van en blanco', async () => {

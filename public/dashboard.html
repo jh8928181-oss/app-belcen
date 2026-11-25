@@ -461,7 +461,7 @@
             <div class="seccion-head">
                 <h2>Inventario General</h2>
                 <div class="inv-actions">
-                    <input id="filtroInventario" class="buscador" placeholder="🔍 Buscar artículo, categoría o unidad...">
+                    <input id="filtroInventario" class="buscador" placeholder="🔍 Nombre, categoría, unidad, stock o estado...">
                     <button class="btn-actualizar btn-anim" onclick="cargarInventario()">🔄 Actualizar</button>
                 </div>
             </div>
@@ -631,15 +631,43 @@
             return Number.isInteger(n) ? String(n) : n.toFixed(2);
         }
 
+        // Búsqueda sin tildes ni mayúsculas: "SAUÑE" = "saune", "Caja" = "CAJA".
+        function normalizarBusq(v) {
+            return String(v == null ? '' : v)
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        // Todas las palabras del texto deben aparecer (en cualquier orden) en
+        // alguno de los campos: "belini 900" encuentra "Botella Belini x 900 ml".
+        // Los números se comparan sin puntos ni comas, así "1.748" y "1748"
+        // encuentran el mismo stock.
+        function coincideBusqueda(campos, texto) {
+            const palabras = normalizarBusq(texto).split(' ').filter(Boolean);
+            if (!palabras.length) return true;
+            const lista = campos || [];
+            const normales = lista.map(normalizarBusq);
+            return palabras.every(p => {
+                if (normales.some(c => c.includes(p))) return true;
+                const digitos = p.replace(/[^\d]/g, '');
+                if (!digitos) return false;
+                return lista.some(c =>
+                    String(c == null ? '' : c).replace(/[^\d]/g, '').includes(digitos));
+            });
+        }
+
         function renderInventario() {
-            const q = (document.getElementById('filtroInventario').value || '').toLowerCase();
-const baseInventario = inventarioGlobal.filter(a => !esServicioSoplado(a));
-const filtrados = baseInventario.filter(a =>
+            const q = document.getElementById('filtroInventario').value || '';
+            const baseInventario = inventarioGlobal.filter(a => !esServicioSoplado(a));
+            const filtrados = baseInventario.filter(a =>
                 (!soloBajoStock || esBajoStock(a)) &&
-                ((a.nombre || '').toLowerCase().includes(q) ||
-                (a.categoria || '').toLowerCase().includes(q) ||
-                (a.unidad_medida || '').toLowerCase().includes(q) ||
-                formatearNumero(a.stock).toLowerCase().includes(q))
+                coincideBusqueda(
+                    [a.id, a.nombre, a.categoria, a.unidad_medida, a.stock, a.estado],
+                    q
+                )
             );
 
             const tbody = document.getElementById('tablaInventario');

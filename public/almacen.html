@@ -949,7 +949,8 @@
             </div>
             <div>
                 <label><b>Buscar Artículo:</b></label>
-                <input type="text" id="inputBuscador" onkeyup="aplicarFiltros()" placeholder="Escribe para buscar...">
+                <input type="text" id="inputBuscador" oninput="aplicarFiltros()" placeholder="Nombre, categoría, stock o estado...">
+                <div id="contadorInsumos" class="sub-text"></div>
             </div>
         </div>
 
@@ -3131,18 +3132,58 @@
                 etiquetarTablas();
             }
 
+        // Búsqueda sin tildes ni mayúsculas: "SAUÑE" = "saune", "Caja" = "CAJA".
+        function normalizarBusq(v) {
+            return String(v == null ? '' : v)
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        // Todas las palabras del texto deben aparecer (en cualquier orden) en
+        // alguno de los campos: "belini 900" encuentra "Botella Belini x 900 ml".
+        // Los números se comparan sin puntos ni comas, así "1.748" y "1748"
+        // encuentran el mismo stock.
+        function coincideBusqueda(campos, texto) {
+            const palabras = normalizarBusq(texto).split(' ').filter(Boolean);
+            if (!palabras.length) return true;
+            const lista = campos || [];
+            const normales = lista.map(normalizarBusq);
+            return palabras.every(p => {
+                if (normales.some(c => c.includes(p))) return true;
+                const digitos = p.replace(/[^\d]/g, '');
+                if (!digitos) return false;
+                return lista.some(c =>
+                    String(c == null ? '' : c).replace(/[^\d]/g, '').includes(digitos));
+            });
+        }
+
         function aplicarFiltros() {
             const categoria = document.getElementById('filtroCategoria').value;
-            const texto = document.getElementById('inputBuscador').value.toLowerCase().trim();
-            let resultado = inventarioGlobal;
+            const texto = document.getElementById('inputBuscador').value || '';
+            // La tabla no lista los servicios de soplado: se excluyen antes de
+            // contar, para que el contador diga lo mismo que lo que se ve.
+            const base = inventarioGlobal.filter(i => !esServicioSoplado(i));
+            let resultado = base;
 
             if (categoria !== 'TODOS') {
                 resultado = resultado.filter(i => i.categoria && i.categoria.toUpperCase().includes(categoria));
             }
-            if (texto !== '') {
-                resultado = resultado.filter(i => i.nombre.toLowerCase().includes(texto));
+            if (normalizarBusq(texto)) {
+                resultado = resultado.filter(i => coincideBusqueda(
+                    [i.id, i.nombre, i.categoria, i.unidad_medida, i.stock, i.estado],
+                    texto
+                ));
             }
             mostrarInventarioAlmacen(resultado);
+            const cont = document.getElementById('contadorInsumos');
+            if (cont) {
+                cont.textContent = normalizarBusq(texto) || categoria !== 'TODOS'
+                    ? resultado.length + ' de ' + base.length + ' artículos'
+                    : base.length + ' artículos';
+            }
         }
 
         let guardAjustarStock = false;

@@ -892,12 +892,13 @@
                     <th>N° GUÍA</th>
                     <th>PROVEEDOR</th>
                     <th>PRODUCTO</th>
+                    <th class="text-center">UNIDAD</th>
                     <th class="text-center">CANTIDAD RECIBIDA</th>
                     <th class="text-center">ESTADO / CATEGORÍA</th>
                 </tr>
             </thead>
             <tbody id="tablaRegistroIngresos">
-                <tr><td colspan="6" class="text-center">Cargando registro de ingresos...</td></tr>
+                <tr><td colspan="7" class="text-center">Cargando registro de ingresos...</td></tr>
             </tbody>
         </table>
         </div>
@@ -2801,9 +2802,20 @@
             } catch(e) { console.error(e); }
         }
 
+        // Unidad de medida del ingreso: la propia de la fila (solo la guarda
+        // la conformidad ajustada) o, si está vacía, la del artículo en el
+        // inventario (todas las filas tienen articulo_id). Sin artículo
+        // resoluble se muestra "—".
+        function unidadDeIngreso(row) {
+            const propia = String(row.unidad_medida || '').trim();
+            if (propia) return propia;
+            const art = inventarioGlobal.find(a => Number(a.id) === Number(row.articulo_id));
+            return art ? unidadMostrar(art) : '—';
+        }
+
         function renderIngresos(lista) {
             const tbody = document.getElementById('tablaRegistroIngresos');
-            tbody.innerHTML = lista.length === 0 ? `<tr><td colspan="6" class="text-center">Sin registros.</td></tr>` : '';
+            tbody.innerHTML = lista.length === 0 ? `<tr><td colspan="7" class="text-center">Sin registros.</td></tr>` : '';
             lista.forEach(row => {
                 const fecha = row.fecha_registro ? fechaLocalISO(row.fecha_registro) : '';
                 const esSinGuia = row.estado === 'SIN GUIA';
@@ -2822,8 +2834,9 @@
                         <td>${row.numero_guia || (esSinGuia ? '<span class="sub-text">se vincula después</span>' : '—')}</td>
                         <td>${row.proveedor || '—'}</td>
                         <td><b>${row.producto_nombre}</b></td>
+                        <td class="text-center">${unidadDeIngreso(row)}</td>
                         <td class="text-center celda-azul">${row.cantidad}</td>
-                        <td class="text-center">${badge}${btnVincular}${row.categoria ? `<div class="sub-text">${row.categoria} · ${row.unidad_medida || 'UNIDADES'}</div>` : ''}</td>
+                        <td class="text-center">${badge}${btnVincular}${row.categoria ? `<div class="sub-text">${row.categoria}</div>` : ''}</td>
                     </tr>
                 `;
             });
@@ -3077,10 +3090,16 @@
         async function cargarInventarioAlmacen() {
             try {
                 const res = await fetch('/api/inventario');
+                // Los ingresos pueden llegar antes que el inventario: en ese
+                // primer pintado la unidad sale "—" y hay que repintarla ya
+                // que está la data. Después no hace falta (el refresco de
+                // 15 s repinta los ingresos con el inventario ya cargado).
+                const primeraCarga = inventarioGlobal.length === 0;
                 inventarioGlobal = await res.json();
                 rellenarDatalistInsumos();
                 resolverItemsAlmPendientes();
                 aplicarFiltros();
+                if (primeraCarga && ingresosGlobal.length) renderIngresos(ingresosGlobal);
                 refrescarVinculosDespacho();
             } catch(e) { console.error(e); }
         }
